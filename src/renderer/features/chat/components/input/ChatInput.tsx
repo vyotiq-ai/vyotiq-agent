@@ -1,0 +1,525 @@
+/**
+ * Chat Input Component
+ * 
+ * Modular, terminal-styled chat input with advanced features for message composition.
+ * Composes smaller, focused components for better maintainability.
+ * 
+ * #### Architecture
+ * - InputHeader: Status indicator and controls
+ * - InputTextarea: Message input with prompt symbol and cursor
+ * - InputActions: Run/Kill button (inline with textarea)
+ * - InputToolbar: File attach, model selector, yolo mode (now under textarea)
+ * - InputDropZone: Drag-and-drop overlay
+ * 
+ * #### Features
+ * - Multi-line message input with terminal aesthetic
+ * - File attachment support (drag-drop, paste, file picker)
+ * - Model/provider selection dropdown
+ * - YOLO mode (skip safety confirmations)
+ * - Real-time status and cost display
+ * - Keyboard shortcuts (Enter to send, Shift+Enter for newline)
+ * 
+ * @example
+ * <ChatInput />
+ */
+import React, { useState, useCallback, useEffect, memo, useRef } from 'react';
+import { X, History } from 'lucide-react';
+import { useChatInput, useAgentStatus, useSessionCost, useAvailableProviders } from '../../../../hooks';
+import { useAgentActions } from '../../../../state/AgentProvider';
+import { useUI } from '../../../../state/UIProvider';
+import { useRenderProfiler } from '../../../../utils/profiler';
+import { cn } from '../../../../utils/cn';
+
+// Modular input components
+import { InputHeader } from './InputHeader';
+import { InputTextarea } from './InputTextarea';
+import { InputActions } from './InputActions';
+import { InputToolbar } from './InputToolbar';
+import { InputDropZone } from './InputDropZone';
+import { MentionAutocomplete } from './MentionAutocomplete';
+import { DraftIndicator } from './DraftIndicator';
+import { ChatAttachmentList } from '../ChatAttachmentList';
+
+// =============================================================================
+// Paste Error Banner Component
+// =============================================================================
+
+interface PasteErrorBannerProps {
+  error: string | null;
+  onClear: () => void;
+}
+
+const PasteErrorBanner: React.FC<PasteErrorBannerProps> = memo(({ error, onClear }) => {
+  if (!error) return null;
+  
+  return (
+    <div className="px-3 py-2 bg-[var(--color-error)]/10 border-b border-[var(--color-error)]/20">
+      <div className="flex items-center justify-between text-xs font-mono">
+        <span className="text-[var(--color-error)]">{error}</span>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[var(--color-error)] hover:text-[var(--color-error)]/80 transition-colors ml-2"
+          aria-label="Dismiss error"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+});
+PasteErrorBanner.displayName = 'PasteErrorBanner';
+
+// =============================================================================
+// No Providers Warning Banner
+// =============================================================================
+
+interface NoProvidersWarningProps {
+  hasProviders: boolean;
+  onOpenSettings: () => void;
+}
+
+const NoProvidersWarning: React.FC<NoProvidersWarningProps> = memo(({ hasProviders, onOpenSettings }) => {
+  if (hasProviders) return null;
+  
+  return (
+    <div className="px-3 py-2 bg-[var(--color-warning)]/10 border-b border-[var(--color-warning)]/20">
+      <div className="flex items-center justify-between text-[10px] font-mono">
+        <span className="text-[var(--color-warning)] flex items-center gap-1.5">
+          <span className="text-[var(--color-warning)]">[WARN]</span>
+          no API keys configured - add provider via :config --providers
+        </span>
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="px-2 py-0.5 text-[9px] bg-[var(--color-warning)]/20 text-[var(--color-warning)] hover:bg-[var(--color-warning)]/30 transition-colors ml-2"
+          aria-label="Open settings"
+        >
+          :config
+        </button>
+      </div>
+    </div>
+  );
+});
+NoProvidersWarning.displayName = 'NoProvidersWarning';
+
+// =============================================================================
+// Clear Input Button
+// =============================================================================
+
+interface ClearButtonProps {
+  onClick: () => void;
+  visible: boolean;
+  disabled: boolean;
+}
+
+const ClearButton: React.FC<ClearButtonProps> = memo(({ onClick, visible, disabled }) => {
+  if (!visible) return null;
+  
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'flex items-center gap-0.5 px-1 py-0.5 rounded-sm',
+        'text-[9px] text-[var(--color-text-muted)]',
+        'hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]',
+        'transition-all duration-150',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+        disabled && 'opacity-50 cursor-not-allowed'
+      )}
+      title="Clear input (Escape)"
+      aria-label="Clear message input"
+    >
+      <X size={9} aria-hidden="true" />
+    </button>
+  );
+});
+ClearButton.displayName = 'ClearButton';
+
+// =============================================================================
+// Smart Placeholder Helper
+// =============================================================================
+
+/** Contextual placeholder suggestions based on conversation state */
+const PLACEHOLDER_HINTS = [
+  'describe what to do...',
+  'what would you like to build?',
+  'ask me to fix, refactor, or add features...',
+  'paste code or drop files to analyze...',
+  'explain the problem you are facing...',
+] as const;
+
+const FOLLOW_UP_HINTS = [
+  'continue, or ask for changes...',
+  'provide feedback or ask questions...',
+  'tell me what to do next...',
+  'request modifications...',
+  'ask for clarification...',
+] as const;
+
+const ATTACHMENT_HINTS = [
+  'describe what to do with the attached files...',
+  'explain what you need help with...',
+  'ask me to analyze or modify these files...',
+] as const;
+
+/** Hints when YOLO mode is enabled (auto-confirm all actions) */
+const YOLO_HINTS = [
+  'auto-confirm is ON - actions will execute immediately...',
+  'YOLO mode active - no confirmation prompts...',
+  'running in auto-confirm mode...',
+] as const;
+
+/**
+ * Get a contextual placeholder based on conversation state
+ */
+function getSmartPlaceholder(
+  messageCount: number,
+  attachmentCount: number,
+  yoloEnabled: boolean
+): string {
+  // Show YOLO warning occasionally when enabled
+  if (yoloEnabled && Math.random() < 0.3) {
+    const idx = Math.floor(Math.random() * YOLO_HINTS.length);
+    return YOLO_HINTS[idx];
+  }
+
+  // If there are attachments, suggest what to do with them
+  if (attachmentCount > 0) {
+    const idx = Math.floor(Math.random() * ATTACHMENT_HINTS.length);
+    return ATTACHMENT_HINTS[idx];
+  }
+  
+  // If it's a follow-up message, use follow-up hints
+  if (messageCount > 0) {
+    const idx = Math.floor(Math.random() * FOLLOW_UP_HINTS.length);
+    return FOLLOW_UP_HINTS[idx];
+  }
+  
+  // Initial message hints
+  const idx = Math.floor(Math.random() * PLACEHOLDER_HINTS.length);
+  return PLACEHOLDER_HINTS[idx];
+}
+
+// =============================================================================
+// Main ChatInput Component
+// =============================================================================
+
+export const ChatInput: React.FC = memo(() => {
+  useRenderProfiler('ChatInput');
+  
+  // === Hooks ===
+  const {
+    message,
+    setMessage,
+    clearMessage,
+    attachments,
+    isSending,
+    selectedProvider,
+    selectedModelId,
+    textareaRef,
+    agentBusy,
+    activeSession,
+    activeWorkspace,
+    canSend,
+    sessionWorkspaceValid,
+    handleAddAttachments,
+    handleRemoveAttachment,
+    handleProviderSelect,
+    handleToggleYolo,
+    handleSendMessage,
+    handleKeyDown,
+    handleFileDrop,
+    handlePaste,
+    pasteError,
+    clearPasteError,
+    isBrowsingHistory,
+    historyIndex,
+    historyLength,
+    // New: Mentions
+    mentions,
+    cursorPosition: _cursorPosition, // Used internally by mentions
+    setCursorPosition,
+    // New: Autocomplete
+    autocomplete,
+    // New: Draft
+    draft,
+  } = useChatInput();
+  
+  const actions = useAgentActions();
+  const { openSettings } = useUI();
+  const { 
+    isWorking, 
+    statusMessage, 
+    statusPhase, 
+    formattedElapsedTime,
+    isPaused,
+    messageCount,
+    contextMetrics,
+  } = useAgentStatus();
+  const { formattedCost, formattedTotalTokens, hasUsage, breakdownTitle } = useSessionCost();
+  const { availableProviders } = useAvailableProviders();
+  
+  // === Local State ===
+  const [isDragging, setIsDragging] = useState(false);
+  
+  // === Derived State ===
+  const hasProviders = availableProviders.length > 0;
+  const hasWorkspace = !!activeWorkspace;
+  const yoloEnabled = Boolean(activeSession?.config.yoloMode);
+  const hasContent = message.length > 0;
+  
+  // Workspace validation warning
+  const workspaceWarning = !sessionWorkspaceValid && activeSession && hasWorkspace 
+    ? 'Session bound to different workspace' 
+    : null;
+  
+  // Cost info object for toolbar
+  const costInfo = {
+    formattedCost,
+    formattedTokens: formattedTotalTokens,
+    hasUsage,
+    detailsTitle: breakdownTitle,
+  };
+
+  const contextInfo = contextMetrics?.metrics
+    ? {
+        utilization: contextMetrics.metrics.utilization,
+        totalTokens: contextMetrics.metrics.totalTokens,
+        maxInputTokens: contextMetrics.metrics.maxInputTokens,
+        availableTokens: contextMetrics.metrics.availableTokens,
+        isWarning: contextMetrics.metrics.isWarning,
+        needsPruning: contextMetrics.metrics.needsPruning,
+        tokensByRole: contextMetrics.metrics.tokensByRole,
+      }
+    : undefined;
+  
+  // === Handlers ===
+  // Use refs to avoid stale closures in event handlers
+  const agentBusyRef = useRef(agentBusy);
+  const activeSessionRef = useRef(activeSession);
+  const actionsRef = useRef(actions);
+  const isPausedRef = useRef(isPaused);
+  
+  useEffect(() => {
+    agentBusyRef.current = agentBusy;
+    activeSessionRef.current = activeSession;
+    actionsRef.current = actions;
+    isPausedRef.current = isPaused;
+  }, [agentBusy, activeSession, actions, isPaused]);
+  
+  const handleStop = useCallback(() => {
+    if (activeSessionRef.current) {
+      actionsRef.current.cancelRun(activeSessionRef.current.id);
+    }
+  }, []);
+
+  const handlePauseResume = useCallback(() => {
+    const session = activeSessionRef.current;
+    if (!session) return;
+    if (isPausedRef.current) {
+      actionsRef.current.resumeRun(session.id);
+    } else {
+      actionsRef.current.pauseRun(session.id);
+    }
+  }, []);
+  
+  // Global ESC key to stop running agent
+  useEffect(() => {
+    const handleEscKey = (e: KeyboardEvent) => {
+      const currentBusy = agentBusyRef.current;
+      const currentSession = activeSessionRef.current;
+      if (e.key === 'Escape' && currentBusy && currentSession) {
+        e.preventDefault();
+        actionsRef.current.cancelRun(currentSession.id);
+      }
+    };
+    
+    window.addEventListener('keydown', handleEscKey);
+    return () => window.removeEventListener('keydown', handleEscKey);
+  }, []); // No dependencies - uses refs
+  
+  // Drag-and-drop handlers
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+  
+  const onDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+  
+  const onDrop = useCallback((e: React.DragEvent) => {
+    setIsDragging(false);
+    handleFileDrop(e);
+  }, [handleFileDrop]);
+  
+  return (
+    <div className="w-full min-w-0 overflow-hidden">
+      {/* Terminal container - edge to edge full width */}
+      <div 
+        className={cn(
+          'terminal-container relative w-full',
+          'bg-[var(--color-surface-editor)]',
+          'border-t border-[var(--color-border-subtle)]',
+          'font-mono',
+          'transition-all duration-200'
+        )}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        role="region"
+        aria-label="Chat input terminal"
+      >
+        {/* Header */}
+        <InputHeader
+          isWorking={isWorking}
+          statusMessage={statusMessage}
+          statusPhase={statusPhase ?? 'idle'}
+          workspaceWarning={workspaceWarning}
+          elapsedTime={formattedElapsedTime}
+          isPaused={isPaused}
+          onTogglePause={handlePauseResume}
+        />
+        
+        {/* Drop overlay */}
+        <InputDropZone isActive={isDragging} />
+        
+        {/* No providers warning */}
+        <NoProvidersWarning hasProviders={hasProviders} onOpenSettings={openSettings} />
+        
+        {/* Paste error */}
+        <PasteErrorBanner error={pasteError} onClear={clearPasteError} />
+        
+        {/* Attachments */}
+        {attachments.length > 0 && (
+          <div className="px-3 py-0.5 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-editor)]">
+            <ChatAttachmentList 
+              attachments={attachments} 
+              onRemove={handleRemoveAttachment} 
+              variant="strip"
+            />
+          </div>
+        )}
+
+        {/* Composer */}
+        <div className="px-3 py-1.5">
+          <div className="flex items-start gap-2">
+            <div className="flex-1 min-w-0 relative">
+              {/* @ Mention Autocomplete */}
+              <MentionAutocomplete
+                suggestions={mentions.suggestions}
+                selectedIndex={mentions.selectedIndex}
+                onSelect={mentions.handleSelect}
+                visible={!!mentions.activeMention}
+                isLoading={mentions.isLoading}
+                noResults={mentions.noResults}
+              />
+
+              <InputTextarea
+                ref={textareaRef}
+                value={message}
+                onChange={setMessage}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                onSelectionChange={setCursorPosition}
+                onFocus={() => {
+                  // Update cursor position on focus
+                  if (textareaRef.current) {
+                    setCursorPosition(textareaRef.current.selectionStart ?? 0);
+                  }
+                }}
+                onBlur={() => {
+                  // Keep cursor position on blur for mention detection
+                }}
+                disabled={agentBusy}
+                hasWorkspace={hasWorkspace}
+                placeholder={getSmartPlaceholder(messageCount, attachments.length, yoloEnabled)}
+                className="w-full"
+                maxHeight={220}
+                ariaDescribedBy="chat-input-hints"
+                ghostText={autocomplete.suggestion ?? undefined}
+                ghostTextLoading={autocomplete.isLoading}
+                showGhostTextHint={autocomplete.isActive && !!autocomplete.suggestion}
+                ghostTextProvider={autocomplete.provider}
+                ghostTextLatencyMs={autocomplete.latencyMs}
+              />
+            </div>
+
+            <InputActions
+              isRunning={agentBusy ?? false}
+              canSend={canSend}
+              isSending={isSending}
+              onSend={handleSendMessage}
+              onStop={handleStop}
+              className="self-center mt-0.5"
+            />
+          </div>
+        </div>
+
+        {/* Footer - clean and minimal */}
+        <div 
+          id="chat-input-hints"
+          className="flex items-center gap-3 text-[9px] font-mono text-[var(--color-text-muted)] border-t border-[var(--color-border-subtle)] px-3 py-1.5 min-w-0"
+          aria-label="Message options and shortcuts"
+        >
+          {/* Toolbar */}
+          <InputToolbar
+            onAddAttachments={handleAddAttachments}
+            provider={selectedProvider}
+            modelId={selectedModelId}
+            onProviderSelect={handleProviderSelect}
+            availableProviders={availableProviders}
+            yoloEnabled={yoloEnabled}
+            onToggleYolo={handleToggleYolo}
+            disabled={agentBusy ?? false}
+            hasSession={!!activeSession}
+            hasWorkspace={hasWorkspace}
+            messageCount={messageCount}
+            costInfo={costInfo}
+            contextInfo={contextInfo}
+            className="flex-1 min-w-0"
+          />
+
+          {/* Right: Minimal status */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* History indicator */}
+            {isBrowsingHistory && (
+              <span 
+                className="flex items-center gap-0.5 text-[var(--color-info)]"
+                title="Use ↑↓ to navigate history"
+              >
+                <History size={8} />
+                <span className="text-[8px] tabular-nums">{historyIndex + 1}/{historyLength}</span>
+              </span>
+            )}
+
+            {/* Draft indicator */}
+            <DraftIndicator
+              status={draft.status}
+              lastSavedAt={draft.lastSavedAt}
+              visible={draft.hasDraft || draft.status !== 'idle'}
+            />
+
+            {/* Keyboard hints - very compact */}
+            <span className="hidden lg:inline text-[8px] text-[var(--color-text-dim)]">⏎ run</span>
+
+            {/* Clear button */}
+            <ClearButton
+              onClick={clearMessage}
+              visible={hasContent || attachments.length > 0}
+              disabled={agentBusy ?? false}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+ChatInput.displayName = 'ChatInput';
+
+export default ChatInput;

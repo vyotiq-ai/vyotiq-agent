@@ -1,0 +1,207 @@
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { TriangleAlert, RefreshCw, Copy, Check, TerminalSquare } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { createLogger } from '../../utils/logger';
+import { captureComponentError } from '../../utils/telemetry';
+
+const logger = createLogger('ErrorBoundary');
+const IS_DEV = Boolean(import.meta.env?.DEV);
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+  /** Whether to show a compact error display */
+  compact?: boolean;
+}
+
+interface State {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
+  copied: boolean;
+}
+
+/**
+ * Error Boundary component that catches JavaScript errors anywhere in the child
+ * component tree, logs those errors, and displays a fallback UI.
+ */
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { 
+      hasError: false, 
+      error: null, 
+      errorInfo: null,
+      copied: false,
+    };
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<State> {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    this.setState({ errorInfo });
+    
+    // Log error
+    logger.error('ErrorBoundary caught an error', { error, componentStack: errorInfo?.componentStack });
+
+    // Capture into structured telemetry (best-effort)
+    try {
+      captureComponentError(error, { componentStack: errorInfo?.componentStack }, 'ErrorBoundary');
+    } catch (telemetryError) {
+      logger.warn('Telemetry capture failed in ErrorBoundary', {
+        error: telemetryError instanceof Error ? telemetryError.message : String(telemetryError),
+      });
+    }
+    
+    // Call optional error handler
+    this.props.onError?.(error, errorInfo);
+  }
+
+  handleReset = (): void => {
+    this.setState({ hasError: false, error: null, errorInfo: null, copied: false });
+  };
+
+  handleCopyError = async (): Promise<void> => {
+    const { error, errorInfo } = this.state;
+    const errorText = `Error: ${error?.message}\n\nStack: ${error?.stack}\n\nComponent Stack: ${errorInfo?.componentStack}`;
+    
+    try {
+      await navigator.clipboard.writeText(errorText);
+      this.setState({ copied: true });
+      setTimeout(() => this.setState({ copied: false }), 2000);
+    } catch (err) {
+      logger.error('Failed to copy error', { error: err });
+    }
+  };
+
+  render(): ReactNode {
+    if (this.state.hasError) {
+      // Custom fallback if provided
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
+      // Default error UI - Terminal style
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center font-mono bg-[var(--color-surface-base)]">
+          {/* Terminal window header */}
+          <div className="w-full max-w-lg mb-4">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] border-b-0">
+              <div className="w-2 h-2 rounded-full bg-[var(--color-error)]" />
+              <div className="w-2 h-2 rounded-full bg-[var(--color-warning)]/30" />
+              <div className="w-2 h-2 rounded-full bg-[var(--color-accent-primary)]/30" />
+              <TerminalSquare size={10} className="ml-2 text-[var(--color-text-placeholder)]" />
+              <span className="text-[10px] text-[var(--color-text-placeholder)]">error_handler</span>
+            </div>
+          </div>
+          
+          <div className="w-full max-w-lg bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)] p-4">
+            {/* Error header */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-[var(--color-error)] text-[10px]">[ERR]</span>
+              <TriangleAlert size={14} className="text-[var(--color-error)]" />
+              <span className="text-[11px] text-[var(--color-text-secondary)]">Process terminated unexpectedly</span>
+            </div>
+            
+            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">
+              # An unexpected error occurred in the application
+            </p>
+
+            {this.state.error && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[9px] text-[var(--color-error)] uppercase tracking-wider">
+                    # ERROR_DETAILS
+                  </span>
+                  <button
+                    onClick={this.handleCopyError}
+                    className="flex items-center gap-1 text-[9px] text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)] transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+                  >
+                    {this.state.copied ? <Check size={10} /> : <Copy size={10} />}
+                    {this.state.copied ? 'copied' : '--copy'}
+                  </button>
+                </div>
+                <div className="bg-[var(--color-surface-2)]/50 border border-[var(--color-border-subtle)] p-2">
+                  <p className="text-[10px] text-[var(--color-error)] break-all">
+                    <span className="text-[var(--color-text-placeholder)]">&gt;</span> {this.state.error.message}
+                  </p>
+                </div>
+
+                {IS_DEV && this.state.error.stack && (
+                  <pre className="mt-2 text-[9px] text-[var(--color-text-placeholder)] overflow-auto max-h-40 p-2 bg-[var(--color-surface-2)]/30 border border-[var(--color-border-subtle)]">
+                    {this.state.error.stack}
+                  </pre>
+                )}
+                {this.state.errorInfo?.componentStack && (
+                  <details className="mt-2">
+                    <summary className="text-[9px] text-[var(--color-text-placeholder)] cursor-pointer hover:text-[var(--color-text-secondary)]">
+                      $ stack --trace
+                    </summary>
+                    <pre className="mt-1 text-[9px] text-[var(--color-text-placeholder)] overflow-auto max-h-24 p-2 bg-[var(--color-surface-2)]/30 border border-[var(--color-border-subtle)]">
+                      {this.state.errorInfo.componentStack}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2 border-t border-[var(--color-border-subtle)]">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.location.reload()}
+                className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              >
+                <RefreshCw size={10} />
+                --reload
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={this.handleReset}
+                className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-[var(--color-accent-primary)]"
+              >
+                --retry
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+/**
+ * Wrapper component for feature-level error boundaries with a simpler UI
+ */
+export const FeatureErrorBoundary: React.FC<{ children: ReactNode; featureName?: string }> = ({ 
+  children, 
+  featureName = 'component' 
+}) => {
+  return (
+    <ErrorBoundary
+      fallback={
+        <div className="flex items-center gap-2 p-3 bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)] font-mono">
+          <span className="text-[var(--color-error)] text-[9px]">[ERR]</span>
+          <TriangleAlert size={12} className="text-[var(--color-error)] shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-[var(--color-text-secondary)] truncate">
+              {featureName} --status=failed
+            </p>
+            <p className="text-[9px] text-[var(--color-text-placeholder)]">
+              # try refreshing or contact support
+            </p>
+          </div>
+        </div>
+      }
+    >
+      {children}
+    </ErrorBoundary>
+  );
+};
+

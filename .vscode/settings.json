@@ -1,0 +1,6 @@
+{
+    "inlineChat.enableV2": true,
+    "inlineChat.lineEmptyHint": true,
+    "css.lint.unknownAtRules": "ignore",
+    "typescript.autoClosingTags": false
+}
