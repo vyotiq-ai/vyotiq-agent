@@ -2,7 +2,7 @@
   "name": "vyotiq-ai",
   "productName": "Vyotiq AI",
   "version": "1.0.0",
-  "description": "An advanced AI-powered coding assistant with autonomous agent capabilities, multi-provider LLM support, and integrated development tools",
+  "description": "An AI-powered coding assistant with autonomous agent capabilities, multi-provider LLM support, and integrated development tools",
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",
