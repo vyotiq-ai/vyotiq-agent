@@ -47,7 +47,7 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🔀 **Multi-Provider AI** | Seamlessly switch between Claude, GPT-4, Gemini, DeepSeek, and OpenRouter |
+| 🔀 **Multi-Provider AI** | Seamlessly switch between Claude, GPT, Gemini, DeepSeek, and OpenRouter |
 | 🤖 **Autonomous Agents** | Advanced task execution with tool confirmation and safety guardrails |
 | 💻 **Integrated IDE** | Monaco editor, xterm.js terminal, and browser automation |
 | 🧠 **Context-Aware** | Smart summarization, prompt caching, and context window optimization |
