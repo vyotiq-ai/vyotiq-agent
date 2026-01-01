@@ -93,3 +93,7 @@ out/
 
 # Build output
 dist/
+
+# GitHub and Kiro
+.github/
+.kiro/
