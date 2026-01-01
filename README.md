@@ -157,16 +157,14 @@ Supported languages: TypeScript, JavaScript, Python, Go, Rust, Java, C/C++, and 
 ### 🤖 Agent System
 
 <details>
-<summary><strong>Built-in Tools (20+)</strong></summary>
+<summary><strong>Built-in Tools (40+)</strong></summary>
 
 | Category | Tools |
 |----------|-------|
-| **File Operations** | `readFile`, `writeFile`, `editFile`, `listDir`, `bulkOperations` |
-| **Search** | `grep`, `glob` |
-| **Terminal** | `runTerminal`, `checkTerminal`, `killTerminal` |
-| **Browser** | Navigate, extract, screenshot, click, type, scroll, fill forms, evaluate JS |
-| **LSP** | Hover, definition, references, symbols, diagnostics, completions, code actions |
-| **Memory** | Persistent agent memory storage |
+| **File Operations** | `read`, `write`, `edit`, `ls`, `grep`, `glob`, `bulkOperations` |
+| **Terminal** | `run`, `checkTerminal`, `killTerminal` |
+| **Browser** | `browser_fetch`, `browser_navigate`, `browser_extract`, `browser_snapshot`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_fill_form`, `browser_wait`, `browser_hover`, `browser_evaluate`, `browser_state`, `browser_back`, `browser_forward`, `browser_reload`, `browser_console`, `browser_network`, `browser_tabs`, `browser_security_status`, `browser_check_url` |
+| **LSP** | `lsp_hover`, `lsp_definition`, `lsp_references`, `lsp_symbols`, `lsp_diagnostics`, `lsp_completions`, `lsp_code_actions`, `lsp_rename` |
 | **Linting** | `readLints` for code quality checks |
 | **Dynamic** | `createTool` for runtime tool generation |
 
@@ -334,7 +332,6 @@ vyotiq/
 │   │   │   ├── providers/        # LLM provider integrations
 │   │   │   ├── context/          # Context management
 │   │   │   ├── cache/            # Caching systems
-│   │   │   ├── memory/           # Persistent agent memory
 │   │   │   ├── compliance/       # Safety & compliance
 │   │   │   ├── recovery/         # Error recovery
 │   │   │   └── debugging/        # Execution tracing
@@ -358,7 +355,6 @@ vyotiq/
 │   │   │   ├── settings/         # Settings panel
 │   │   │   ├── fileTree/         # File tree explorer
 │   │   │   ├── sessions/         # Session management
-│   │   │   ├── memory/           # Memory panel
 │   │   │   ├── undo/             # Undo history
 │   │   │   └── workspaces/       # Workspace switcher
 │   │   ├── state/                # State management
@@ -454,11 +450,11 @@ npx electron-rebuild -f -w node-pty
 </details>
 
 <details>
-<summary><strong>❌ Performance or memory issues</strong></summary>
+<summary><strong>❌ Performance issues</strong></summary>
 
 - Enable context compression for long conversations
 - Reduce tool result cache size in Settings
-- Restart the app to clear memory
+- Restart the app to clear caches
 
 </details>
 

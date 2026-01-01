@@ -131,13 +131,11 @@ Comprehensive documentation has been created for the Vyotiq AI project. All docu
 - Execution tracing and debugging
 
 ### Tool System
-- 20+ built-in tools documented
-- File operations (read, write, edit, list)
-- Search tools (grep, glob)
-- Terminal management
-- Browser automation (15+ actions)
-- LSP integration (8+ operations)
-- Memory storage
+- 40+ built-in tools documented
+- File operations (read, write, edit, ls, grep, glob, bulkOperations)
+- Terminal management (run, checkTerminal, killTerminal)
+- Browser automation (21 tools)
+- LSP integration (8 tools)
 - Dynamic tool creation
 
 ### Provider Support
@@ -267,11 +265,11 @@ npm run make
 
 | Document | Lines | Sections | Code Examples |
 |----------|-------|----------|----------------|
-| ARCHITECTURE.md | 600+ | 15 | 20+ |
+| ARCHITECTURE.md | 650+ | 15 | 20+ |
 | DEVELOPMENT.md | 700+ | 18 | 30+ |
-| API.md | 800+ | 20 | 40+ |
+| API.md | 900+ | 20 | 50+ |
 | TROUBLESHOOTING.md | 500+ | 12 | 25+ |
-| **Total** | **2,600+** | **65** | **115+** |
+| **Total** | **2,750+** | **65** | **125+** |
 
 ## Quality Checklist
 
@@ -303,6 +301,6 @@ The documentation is ready for developers, contributors, and users to get starte
 
 ---
 
-**Documentation Created**: December 28, 2025
+**Documentation Updated**: January 1, 2026
 **Vyotiq AI Version**: 1.0.0
 **Status**: Complete and Ready for Use

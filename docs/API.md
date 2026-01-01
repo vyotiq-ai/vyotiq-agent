@@ -635,10 +635,10 @@ interface ToolResult {
 
 #### File Operations
 
-**readFile**
+**read**
 ```typescript
 {
-  name: 'readFile',
+  name: 'read',
   parameters: {
     path: string;
     encoding?: 'utf-8' | 'base64';
@@ -646,10 +646,10 @@ interface ToolResult {
 }
 ```
 
-**writeFile**
+**write**
 ```typescript
 {
-  name: 'writeFile',
+  name: 'write',
   parameters: {
     path: string;
     content: string;
@@ -658,10 +658,10 @@ interface ToolResult {
 }
 ```
 
-**editFile**
+**edit**
 ```typescript
 {
-  name: 'editFile',
+  name: 'edit',
   parameters: {
     path: string;
     oldStr: string;
@@ -670,13 +670,28 @@ interface ToolResult {
 }
 ```
 
-**listDir**
+**ls**
 ```typescript
 {
-  name: 'listDir',
+  name: 'ls',
   parameters: {
     path: string;
     recursive?: boolean;
+  }
+}
+```
+
+**bulkOperations**
+```typescript
+{
+  name: 'bulkOperations',
+  parameters: {
+    operations: Array<{
+      type: 'read' | 'write' | 'delete' | 'rename';
+      path: string;
+      content?: string;
+      newPath?: string;
+    }>;
   }
 }
 ```
@@ -708,10 +723,10 @@ interface ToolResult {
 
 #### Terminal
 
-**runTerminal**
+**run**
 ```typescript
 {
-  name: 'runTerminal',
+  name: 'run',
   parameters: {
     command: string;
     cwd?: string;
@@ -741,42 +756,52 @@ interface ToolResult {
 }
 ```
 
-#### Browser
+#### Browser (21 tools)
 
-**navigate**
+**browser_fetch**
 ```typescript
 {
-  name: 'navigate',
+  name: 'browser_fetch',
   parameters: {
     url: string;
   }
 }
 ```
 
-**screenshot**
+**browser_navigate**
 ```typescript
 {
-  name: 'screenshot',
+  name: 'browser_navigate',
+  parameters: {
+    url: string;
+  }
+}
+```
+
+**browser_screenshot**
+```typescript
+{
+  name: 'browser_screenshot',
   parameters: {
     fullPage?: boolean;
   }
 }
 ```
 
-**click**
+**browser_click**
 ```typescript
 {
-  name: 'click',
+  name: 'browser_click',
   parameters: {
     selector: string;
   }
 }
 ```
 
-**type**
+**browser_type**
 ```typescript
 {
-  name: 'type',
+  name: 'browser_type',
   parameters: {
     selector: string;
     text: string;
@@ -784,12 +809,256 @@ interface ToolResult {
 }
 ```
 
-**extract**
+**browser_extract**
 ```typescript
 {
-  name: 'extract',
+  name: 'browser_extract',
   parameters: {
     selector?: string;
+  }
+}
+```
+
+**browser_snapshot**
+```typescript
+{
+  name: 'browser_snapshot',
+  parameters: {}
+}
+```
+
+**browser_scroll**
+```typescript
+{
+  name: 'browser_scroll',
+  parameters: {
+    direction: 'up' | 'down';
+    amount?: number;
+  }
+}
+```
+
+**browser_fill_form**
+```typescript
+{
+  name: 'browser_fill_form',
+  parameters: {
+    fields: Array<{ selector: string; value: string }>;
+  }
+}
+```
+
+**browser_wait**
+```typescript
+{
+  name: 'browser_wait',
+  parameters: {
+    selector?: string;
+    timeout?: number;
+  }
+}
+```
+
+**browser_hover**
+```typescript
+{
+  name: 'browser_hover',
+  parameters: {
+    selector: string;
+  }
+}
+```
+
+**browser_evaluate**
+```typescript
+{
+  name: 'browser_evaluate',
+  parameters: {
+    script: string;
+  }
+}
+```
+
+**browser_state**
+```typescript
+{
+  name: 'browser_state',
+  parameters: {}
+}
+```
+
+**browser_back / browser_forward / browser_reload**
+```typescript
+{
+  name: 'browser_back' | 'browser_forward' | 'browser_reload',
+  parameters: {}
+}
+```
+
+**browser_console**
+```typescript
+{
+  name: 'browser_console',
+  parameters: {}
+}
+```
+
+**browser_network**
+```typescript
+{
+  name: 'browser_network',
+  parameters: {}
+}
+```
+
+**browser_tabs**
+```typescript
+{
+  name: 'browser_tabs',
+  parameters: {
+    action: 'list' | 'new' | 'close' | 'switch';
+    tabId?: number;
+  }
+}
+```
+
+**browser_security_status**
+```typescript
+{
+  name: 'browser_security_status',
+  parameters: {}
+}
+```
+
+**browser_check_url**
+```typescript
+{
+  name: 'browser_check_url',
+  parameters: {
+    url: string;
+  }
+}
+```
+
+#### LSP Code Intelligence (8 tools)
+
+**lsp_hover**
+```typescript
+{
+  name: 'lsp_hover',
+  parameters: {
+    path: string;
+    line: number;
+    column: number;
+  }
+}
+```
+
+**lsp_definition**
+```typescript
+{
+  name: 'lsp_definition',
+  parameters: {
+    path: string;
+    line: number;
+    column: number;
+  }
+}
+```
+
+**lsp_references**
+```typescript
+{
+  name: 'lsp_references',
+  parameters: {
+    path: string;
+    line: number;
+    column: number;
+  }
+}
+```
+
+**lsp_symbols**
+```typescript
+{
+  name: 'lsp_symbols',
+  parameters: {
+    query: string;
+    path?: string;
+  }
+}
+```
+
+**lsp_diagnostics**
+```typescript
+{
+  name: 'lsp_diagnostics',
+  parameters: {
+    path: string;
+  }
+}
+```
+
+**lsp_completions**
+```typescript
+{
+  name: 'lsp_completions',
+  parameters: {
+    path: string;
+    line: number;
+    column: number;
+  }
+}
+```
+
+**lsp_code_actions**
+```typescript
+{
+  name: 'lsp_code_actions',
+  parameters: {
+    path: string;
+    line: number;
+    column: number;
+  }
+}
+```
+
+**lsp_rename**
+```typescript
+{
+  name: 'lsp_rename',
+  parameters: {
+    path: string;
+    line: number;
+    column: number;
+    newName: string;
+  }
+}
+```
+
+#### Linting
+
+**readLints**
+```typescript
+{
+  name: 'readLints',
+  parameters: {
+    path: string;
+  }
+}
+```
+
+#### Dynamic Tool Creation
+
+**createTool**
+```typescript
+{
+  name: 'createTool',
+  parameters: {
+    name: string;
+    description: string;
+    parameters: object;
+    implementation: string;
   }
 }
 ```

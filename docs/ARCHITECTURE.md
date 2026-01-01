@@ -81,7 +81,6 @@ src/main/
 │   ├── providers/            # LLM provider integrations
 │   ├── context/              # Context management & summarization
 │   ├── cache/                # Caching systems (prompt, tool result, context)
-│   ├── memory/               # Persistent agent memory storage
 │   ├── compliance/           # Safety & compliance checks
 │   ├── recovery/             # Error recovery & self-healing
 │   ├── debugging/            # Execution tracing & debugging
@@ -150,18 +149,60 @@ Tools are the interface between the agent and the system. Each tool:
 - Returns structured results
 - Can be confirmed by user before execution (safety)
 
-**Built-in Tools (20+)**:
+#### Built-in Tools (40+)
 
-| Category | Tools |
-|----------|-------|
-| **File Operations** | `readFile`, `writeFile`, `editFile`, `listDir`, `bulkOperations` |
-| **Search** | `grep`, `glob` |
-| **Terminal** | `runTerminal`, `checkTerminal`, `killTerminal` |
-| **Browser** | Navigate, extract, screenshot, click, type, scroll, fill forms, evaluate JS |
-| **LSP** | Hover, definition, references, symbols, diagnostics, completions, code actions |
-| **Memory** | Persistent agent memory storage |
-| **Linting** | `readLints` for code quality checks |
-| **Dynamic** | `createTool` for runtime tool generation |
+**File Operations (7 tools)**
+- `read` - Read file contents
+- `write` - Write/create files
+- `edit` - Edit specific lines in files
+- `ls` - List directory contents
+- `grep` - Search file contents
+- `glob` - Find files by pattern
+- `bulkOperations` - Batch file operations
+
+**Terminal (3 tools)**
+- `run` - Execute shell commands
+- `checkTerminal` - Check terminal status
+- `killTerminal` - Kill terminal process
+
+**Browser Automation (21 tools)**
+- `browser_fetch` - Fetch web content
+- `browser_navigate` - Navigate to URL
+- `browser_extract` - Extract page content
+- `browser_snapshot` - Get page structure
+- `browser_screenshot` - Capture screenshots
+- `browser_click` - Click elements
+- `browser_type` - Type text
+- `browser_scroll` - Scroll page
+- `browser_fill_form` - Fill form fields
+- `browser_wait` - Wait for conditions
+- `browser_hover` - Hover interactions
+- `browser_evaluate` - Execute JavaScript
+- `browser_state` - Get browser state
+- `browser_back` - Navigate back
+- `browser_forward` - Navigate forward
+- `browser_reload` - Reload page
+- `browser_console` - Get console logs
+- `browser_network` - Monitor network requests
+- `browser_tabs` - Tab management
+- `browser_security_status` - Security monitoring
+- `browser_check_url` - URL safety check
+
+**LSP Code Intelligence (8 tools)**
+- `lsp_hover` - Get hover information
+- `lsp_definition` - Go to definition
+- `lsp_references` - Find references
+- `lsp_symbols` - Search symbols
+- `lsp_diagnostics` - Get diagnostics
+- `lsp_completions` - Get completions
+- `lsp_code_actions` - Get code actions
+- `lsp_rename` - Rename symbol
+
+**Linting (1 tool)**
+- `readLints` - Get linting errors
+
+**Dynamic (1 tool)**
+- `createTool` - Create custom tools at runtime
 
 ### Session Management
 
@@ -206,7 +247,6 @@ src/renderer/
 │   ├── settings/             # Settings panel
 │   ├── fileTree/             # File tree explorer
 │   ├── sessions/             # Session management
-│   ├── memory/               # Memory panel
 │   ├── undo/                 # Undo history
 │   ├── workspaces/           # Workspace switcher
 │   └── onboarding/           # First-run wizard
@@ -277,16 +317,16 @@ const {
 #### 3. UIProvider (UI-Only State)
 
 Manages:
-- Panel visibility (terminal, browser, settings)
+- Panel visibility (browser, settings)
 - Panel sizes (resizable panels)
 - Modal states (shortcuts, command palette)
 - Theme and layout preferences
 
 ```typescript
 const { 
-  terminalPanelOpen, 
+  browserPanelOpen, 
   browserPanelWidth,
-  actions: { openTerminalPanel, setBrowserPanelWidth }
+  actions: { openBrowserPanel, setBrowserPanelWidth }
 } = useUI();
 ```
 
