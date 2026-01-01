@@ -12,7 +12,7 @@ import type {
   AutonomousFeatureFlags,
 } from '../../../shared/types';
 import type { MonitorConfig, UsageSample, ResourceMonitorDeps } from './types';
-import { DEFAULT_MONITOR_CONFIG } from './types';
+import { DEFAULT_MONITOR_CONFIG, getResourceMaxLimit } from './types';
 import { ResourceAllocator } from './ResourceAllocator';
 
 // =============================================================================
@@ -43,7 +43,7 @@ export class ResourceMonitor extends EventEmitter {
     this.config = { ...DEFAULT_MONITOR_CONFIG, ...config };
 
     // Initialize storage for each resource type
-    const resourceTypes: ResourceType[] = ['tokens', 'agents', 'files', 'terminals', 'time', 'memory', 'api-calls'];
+    const resourceTypes: ResourceType[] = ['tokens', 'agents', 'files', 'terminals', 'time', 'api-calls'];
     for (const type of resourceTypes) {
       this.samples.set(type, []);
       this.alerts.set(type, []);
@@ -316,26 +316,7 @@ export class ResourceMonitor extends EventEmitter {
   }
 
   private getMaxForType(type: ResourceType): number {
-    // const flags = this.getFeatureFlags(); // TODO: Use flags when needed
-
-    switch (type) {
-      case 'agents':
-        return 10; // Max 10 concurrent agents
-      case 'tokens':
-        return 1000000;
-      case 'files':
-        return 100;
-      case 'terminals':
-        return 10;
-      case 'time':
-        return 3600000;
-      case 'memory':
-        return 200000;
-      case 'api-calls':
-        return 1000;
-      default:
-        return 100;
-    }
+    return getResourceMaxLimit(type);
   }
 
   private calculateTrend(samples: UsageSample[]): 'increasing' | 'decreasing' | 'stable' {

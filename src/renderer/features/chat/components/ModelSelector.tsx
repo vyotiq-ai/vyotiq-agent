@@ -5,7 +5,7 @@
  * Integrates OpenRouter filters for advanced model discovery.
  */
 import React, { useState, memo, useCallback, useEffect, useMemo } from 'react';
-import { ChevronDown, RefreshCw, Search, X } from 'lucide-react';
+import { ChevronDown, RefreshCw, Search, X, AlertTriangle } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { fetchProviderModels, fetchRawOpenRouterModels, apiModelToModelInfo } from '../../../utils/models';
 import { ProviderIcon } from '../../../components/ui/ProviderIcons';
@@ -37,6 +37,7 @@ interface ModelSelectorProps {
   disabled?: boolean;
   disabledReason?: string;
   availableProviders?: LLMProviderName[];
+  providersCooldown?: Record<string, { inCooldown: boolean; remainingMs: number; reason: string } | null>;
 }
 
 const providers: ProviderConfig[] = [
@@ -65,7 +66,8 @@ export const ModelSelectorComponent: React.FC<ModelSelectorProps> = ({
   onSelect, 
   disabled,
   disabledReason,
-  availableProviders = []
+  availableProviders = [],
+  providersCooldown = {}
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedTab, setSelectedTab] = useState<LLMProviderName | 'auto'>(currentProvider);
@@ -224,6 +226,7 @@ export const ModelSelectorComponent: React.FC<ModelSelectorProps> = ({
               : provider.id !== 'auto' 
                 ? (providerModels.get(provider.id as LLMProviderName) || []) 
                 : [];
+            const cooldownInfo = provider.id !== 'auto' ? providersCooldown[provider.id] : null;
             return (
               <ProviderTab
                 key={provider.id}
@@ -232,10 +235,32 @@ export const ModelSelectorComponent: React.FC<ModelSelectorProps> = ({
                 isAvailable={isAvailable}
                 modelCount={models.length}
                 onClick={() => setSelectedTab(provider.id)}
+                cooldownInfo={cooldownInfo}
               />
             );
           })}
         </div>
+
+        {/* Cooldown Warning Banner */}
+        {selectedTab !== 'auto' && providersCooldown[selectedTab]?.inCooldown && (
+          <div className="mb-4 p-3 border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 rounded">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={14} className="text-[var(--color-warning)] flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-mono text-[var(--color-warning)]">
+                  Provider temporarily rate-limited
+                </p>
+                <p className="text-[9px] text-[var(--color-text-muted)] mt-1">
+                  {providersCooldown[selectedTab]!.reason.split('\n')[0]}
+                </p>
+                <p className="text-[9px] text-[var(--color-text-dim)] mt-1">
+                  Cooldown expires in ~{Math.ceil(providersCooldown[selectedTab]!.remainingMs / 1000)}s. 
+                  You can still select this provider, but requests will use a fallback until cooldown ends.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Auto Mode Content */}
         {selectedTab === 'auto' && (

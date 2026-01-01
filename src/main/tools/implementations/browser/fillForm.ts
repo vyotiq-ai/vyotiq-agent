@@ -211,7 +211,7 @@ export const browserFillFormTool: ToolDefinition<FillFormArgs> = {
 **Use refs from browser_snapshot** for reliable targeting.`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {

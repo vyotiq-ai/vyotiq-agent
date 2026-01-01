@@ -236,7 +236,7 @@ export const browserConsoleTool: ToolDefinition<ConsoleArgs> = {
 **Best Practice:** Call this after browser_navigate or interactions to check for errors.`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-read',
   riskLevel: 'safe',
 
   schema: {

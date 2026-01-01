@@ -151,7 +151,7 @@ export const browserTypeTool: ToolDefinition<TypeArgs> = {
 - Any editable element`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {

@@ -68,7 +68,7 @@ export const DEFAULT_PARALLEL_CONFIG: ParallelExecutionConfig = {
   maxConcurrency: 5,
   enabled: true,
   toolTimeoutMs: 120000,
-  sequentialCategories: ['terminal'], // Terminal commands should be sequential
+  sequentialCategories: ['terminal', 'browser-write'], // Terminal and browser state-changing tools should be sequential
 };
 
 // =============================================================================
@@ -84,6 +84,9 @@ export const DEFAULT_PARALLEL_CONFIG: ParallelExecutionConfig = {
  * 3. Write tools to the SAME file must be sequential
  * 4. Terminal commands are sequential (shared state)
  * 5. A write tool depends on any prior read of the same file
+ * 6. Code intelligence tools (LSP) can always run in parallel
+ * 7. Browser-read tools can run in parallel (independent HTTP requests)
+ * 8. Browser-write tools (click, type, navigate) are sequential
  */
 export function analyzeToolDependencies(
   tools: ToolCallPayload[],
@@ -94,6 +97,9 @@ export function analyzeToolDependencies(
   // Track file access for dependency detection
   const fileReads = new Map<string, number[]>(); // path -> indices that read it
   const fileWrites = new Map<string, number[]>(); // path -> indices that write it
+  
+  // Track browser state-changing operations
+  let lastBrowserStateChange = -1;
   
   for (let i = 0; i < tools.length; i++) {
     const tool = tools[i];
@@ -134,6 +140,20 @@ export function analyzeToolDependencies(
         fileReads.set(targetPath, []);
       }
       fileReads.get(targetPath)!.push(i);
+    } else if (category === 'code-intelligence') {
+      // LSP tools have no dependencies - they query language servers
+    } else if (category === 'browser-read') {
+      // Browser read-only tools can parallelize but depend on prior state changes
+      if (lastBrowserStateChange >= 0) {
+        dependencies.push(lastBrowserStateChange);
+      }
+    } else if (category === 'browser-write') {
+      // Browser state-changing tools are sequential
+      canParallelize = false;
+      if (lastBrowserStateChange >= 0) {
+        dependencies.push(lastBrowserStateChange);
+      }
+      lastBrowserStateChange = i;
     }
     
     // Remove duplicates and sort
@@ -456,6 +476,12 @@ export function canBenefitFromParallel(
         parallelizable++;
         writtenPaths.add(targetPath);
       }
+    } else if (category === 'code-intelligence') {
+      // LSP tools can always parallelize
+      parallelizable++;
+    } else if (category === 'browser-read') {
+      // Browser read-only tools can parallelize
+      parallelizable++;
     }
   }
   

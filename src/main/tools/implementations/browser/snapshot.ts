@@ -338,7 +338,7 @@ export const browserSnapshotTool: ToolDefinition<SnapshotArgs> = {
 **Use refs in selectors:** [data-vyotiq-ref="e5"]`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-read',
   riskLevel: 'safe',
 
   schema: {

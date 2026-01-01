@@ -93,6 +93,7 @@ declare global {
         // Provider info
         getAvailableProviders: () => Promise<string[]>;
         hasAvailableProviders: () => Promise<boolean>;
+        getProvidersCooldown: () => Promise<Record<string, { inCooldown: boolean; remainingMs: number; reason: string } | null>>;
         // Message editing
         editMessage: (sessionId: string, messageIndex: number, newContent: string) => Promise<{ success: boolean; error?: string }>;
         // Branch management
@@ -390,61 +391,6 @@ declare global {
         }) => void) => () => void;
       };
 
-
-      terminal: {
-        run: (payload: {
-          command: string;
-          cwd?: string;
-          waitForExit?: boolean;
-          timeout?: number;
-          description?: string;
-        }) => Promise<{
-          success: boolean;
-          pid?: number;
-          stdout?: string;
-          stderr?: string;
-          exitCode?: number | null;
-          isRunning?: boolean;
-          error?: string;
-        }>;
-        getOutput: (payload: {
-          pid: number;
-          incrementalOnly?: boolean;
-          filter?: string;
-        }) => Promise<{
-          success: boolean;
-          pid?: number;
-          stdout?: string;
-          stderr?: string;
-          exitCode?: number | null;
-          isRunning?: boolean;
-          error?: string;
-        }>;
-        kill: (pid: number) => Promise<{
-          success: boolean;
-          killed?: boolean;
-          error?: string;
-        }>;
-        list: () => Promise<{
-          success: boolean;
-          processes?: Array<{
-            pid: number;
-            command: string;
-            description?: string;
-            stdout: string;
-            stderr: string;
-            exitCode: number | null;
-            isRunning: boolean;
-            startedAt: number;
-            finishedAt?: number;
-          }>;
-          error?: string;
-        }>;
-        onOutput: (callback: (data: { pid: number; data: string; stream: 'stdout' | 'stderr' }) => void) => () => void;
-        onExit: (callback: (data: { pid: number; code: number }) => void) => () => void;
-        onError: (callback: (data: { pid: number; error: string }) => void) => () => void;
-      };
-
       undo: {
         // Get all file changes for a session
         getHistory: (sessionId: string) => Promise<Array<{
@@ -612,34 +558,6 @@ declare global {
         cleanupToolResults: () => Promise<{ success: boolean; removed: number }>;
         // Invalidate tool results for a specific path
         invalidatePath: (path: string) => Promise<{ success: boolean; invalidated: number }>;
-      };
-      autocomplete: {
-        // Request an autocomplete suggestion
-        request: (payload: {
-          text: string;
-          cursorPosition: number;
-          recentMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
-          sessionId?: string;
-          context?: {
-            workspaceName?: string;
-            projectType?: string;
-            recentFiles?: string[];
-            sessionTopic?: string;
-          };
-        }) => Promise<{
-          suggestion: string | null;
-          provider?: string;
-          modelId?: string;
-          latencyMs?: number;
-          cached?: boolean;
-          error?: string;
-        }>;
-        // Cancel any pending autocomplete request
-        cancel: () => Promise<{ success: boolean; error?: string }>;
-        // Check if autocomplete is enabled
-        isEnabled: () => Promise<boolean>;
-        // Clear the autocomplete cache
-        clearCache: () => Promise<{ success: boolean; error?: string }>;
       };
       editorAI: {
         // Get inline code completion (ghost text)
@@ -1266,8 +1184,6 @@ declare global {
               p99DurationMs: number;
               slowestOperation: string;
               fastestOperation: string;
-              memoryPeakMb: number;
-              memoryAvgMb: number;
             };
             bottlenecks: Array<{
               type: string;
@@ -1792,165 +1708,74 @@ declare global {
         isCircuitBreakerTriggered: (runId: string) => Promise<boolean>;
       };
 
-      // Memory API
-      memory: {
+      /**
+       * Claude Code Subscription API
+       */
+      claude: {
         /**
-         * Create a new memory
+         * Import credentials from Claude Code CLI
          */
-        create: (payload: {
-          content: string;
-          category?: 'decision' | 'context' | 'preference' | 'fact' | 'task' | 'error' | 'general';
-          importance?: 'low' | 'medium' | 'high' | 'critical';
-          keywords?: string[];
-          isPinned?: boolean;
-        }) => Promise<{
+        startOAuth: () => Promise<{
           success: boolean;
-          memory?: {
-            id: string;
-            content: string;
-            category: string;
-            importance: string;
-            keywords: string[];
-            workspaceId: string;
-            sessionId?: string;
-            createdAt: number;
-            lastAccessedAt: number;
-            accessCount: number;
-            isPinned: boolean;
-            source: 'agent' | 'user';
+          subscription?: {
+            accessToken: string;
+            refreshToken: string;
+            expiresAt: number;
+            tier: 'free' | 'pro' | 'max' | 'team' | 'enterprise';
+            organizationId?: string;
+            email?: string;
+            connectedAt: number;
           };
           error?: string;
         }>;
 
         /**
-         * Get a memory by ID
+         * Disconnect Claude Code subscription
          */
-        get: (id: string) => Promise<{
+        disconnect: () => Promise<{ success: boolean; error?: string }>;
+
+        /**
+         * Get current subscription status
+         */
+        getSubscriptionStatus: () => Promise<{
+          connected: boolean;
+          tier?: 'free' | 'pro' | 'max' | 'team' | 'enterprise';
+          email?: string;
+          expiresAt?: number;
+          isExpired?: boolean;
+          expiresIn?: string;
+        }>;
+
+        /**
+         * Refresh expired access token
+         */
+        refreshToken: () => Promise<{
           success: boolean;
-          memory?: {
-            id: string;
-            content: string;
-            category: string;
-            importance: string;
-            keywords: string[];
-            workspaceId: string;
-            sessionId?: string;
-            createdAt: number;
-            lastAccessedAt: number;
-            accessCount: number;
-            isPinned: boolean;
-            source: 'agent' | 'user';
+          subscription?: {
+            accessToken: string;
+            refreshToken: string;
+            expiresAt: number;
+            tier: 'free' | 'pro' | 'max' | 'team' | 'enterprise';
+            organizationId?: string;
+            email?: string;
+            connectedAt: number;
           };
           error?: string;
         }>;
 
         /**
-         * Update a memory
+         * Check if Claude Code CLI is installed
          */
-        update: (id: string, updates: {
-          content?: string;
-          category?: string;
-          importance?: string;
-          keywords?: string[];
-          isPinned?: boolean;
-        }) => Promise<{
-          success: boolean;
-          memory?: {
-            id: string;
-            content: string;
-            category: string;
-            importance: string;
-            keywords: string[];
-            workspaceId: string;
-            sessionId?: string;
-            createdAt: number;
-            lastAccessedAt: number;
-            accessCount: number;
-            isPinned: boolean;
-            source: 'agent' | 'user';
-          };
-          error?: string;
+        checkInstalled: () => Promise<{
+          installed: boolean;
+          hasCredentials: boolean;
+          cliAvailable: boolean;
         }>;
 
         /**
-         * Delete a memory
+         * Launch Claude Code CLI authentication (opens terminal)
          */
-        delete: (id: string) => Promise<{ success: boolean; error?: string }>;
-
-        /**
-         * Search memories
-         */
-        search: (options: {
-          query?: string;
-          category?: string;
-          importance?: string;
-          limit?: number;
-        }) => Promise<{
-          success: boolean;
-          memories: Array<{
-            id: string;
-            content: string;
-            category: string;
-            importance: string;
-            keywords: string[];
-            workspaceId: string;
-            sessionId?: string;
-            createdAt: number;
-            lastAccessedAt: number;
-            accessCount: number;
-            isPinned: boolean;
-            source: 'agent' | 'user';
-          }>;
-          totalCount: number;
-          error?: string;
-        }>;
-
-        /**
-         * List recent/important memories
-         */
-        list: (limit?: number) => Promise<{
-          success: boolean;
-          memories: Array<{
-            id: string;
-            content: string;
-            category: string;
-            importance: string;
-            keywords: string[];
-            workspaceId: string;
-            sessionId?: string;
-            createdAt: number;
-            lastAccessedAt: number;
-            accessCount: number;
-            isPinned: boolean;
-            source: 'agent' | 'user';
-          }>;
-          stats: {
-            totalMemories: number;
-            byCategory: Record<string, number>;
-            byImportance: Record<string, number>;
-            pinnedCount: number;
-          } | null;
-          error?: string;
-        }>;
-
-        /**
-         * Get memory statistics
-         */
-        getStats: () => Promise<{
-          success: boolean;
-          stats: {
-            totalMemories: number;
-            byCategory: Record<string, number>;
-            byImportance: Record<string, number>;
-            pinnedCount: number;
-          } | null;
-          error?: string;
-        }>;
-
-        /**
-         * Clear all memories for the current workspace
-         */
-        clear: () => Promise<{ success: boolean; count: number; error?: string }>;
+        launchAuth: () => Promise<{ success: boolean; error?: string }>;
       };
     };
   }

@@ -26,6 +26,9 @@ export interface AgenticContext {
   
   /** Reduced maxOutputTokens when credit/quota limits are hit */
   maxOutputTokens?: number;
+  
+  /** Debug trace ID for this run */
+  traceId?: string;
 }
 
 export interface InternalSession {

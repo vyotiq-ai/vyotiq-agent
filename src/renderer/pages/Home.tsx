@@ -28,15 +28,15 @@ const EditorLoader: React.FC = () => (
 );
 
 export const Home: React.FC = () => {
-  const { tabs, isEditorVisible, isOperationDiffVisible } = useEditor();
+  const { tabs, isEditorVisible, isOperationDiffVisible, isDiffVisible } = useEditor();
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isResizing, setIsResizing] = useState(false);
   
   // Auto-open modified files in a new tab when the agent edits them
   useFileOperationDiff({ enabled: true, autoOpenEditor: true });
   
-  // Show editor panel when there are open tabs OR when there's an operation diff
-  const showEditor = isEditorVisible && (tabs.length > 0 || isOperationDiffVisible);
+  // Show editor panel when there are open tabs OR when there's a diff visible
+  const showEditor = isEditorVisible && (tabs.length > 0 || isOperationDiffVisible || isDiffVisible);
   
   // Handle resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {

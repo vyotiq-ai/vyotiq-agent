@@ -25,6 +25,7 @@ const logger = createLogger('EditorProvider');
 
 const STORAGE_KEY = 'vyotiq-editor-tabs';
 const SETTINGS_KEY = 'vyotiq-editor-settings';
+const DIFFS_STORAGE_KEY = 'vyotiq-editor-diffs';
 
 // Debounce helper for localStorage persistence
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
@@ -67,6 +68,17 @@ export interface OperationDiff {
   action: 'write' | 'edit' | 'create' | 'modified' | 'created';
   toolCallId?: string;
   timestamp: number;
+}
+
+/** Stored diff entry with unique ID */
+export interface StoredDiff {
+  id: string;
+  path: string;
+  original: string;
+  modified: string;
+  timestamp: number;
+  toolCallId?: string;
+  action?: 'write' | 'edit' | 'create' | 'modified' | 'created';
 }
 
 interface EditorContextValue {
@@ -123,17 +135,34 @@ interface EditorContextValue {
   toggleEditor: () => void;
 
   // Diff operations
-  showDiff: (path: string, original: string, modified: string) => void;
+  showDiff: (path: string, original: string, modified: string, toolCallId?: string) => void;
   showGitDiff: (path: string) => Promise<void>;
   hideDiff: () => void;
   setDiffViewMode: (mode: DiffViewMode) => void;
   getFileDiff: (path: string) => { original: string; modified: string } | undefined;
+  getFileDiffHistory: (path: string) => StoredDiff[];
+  getDiffById: (id: string) => StoredDiff | undefined;
   clearFileDiff: (path: string) => void;
+  clearDiffById: (id: string) => void;
+  clearAllDiffs: () => void;
+  getAllDiffs: () => StoredDiff[];
 
   // Operation diff operations - for showing file operation results
   showOperationDiff: (diff: Omit<OperationDiff, 'timestamp'>) => void;
   hideOperationDiff: () => void;
   openOperationDiffFile: () => Promise<void>;
+
+  // Undo history diff operations - for viewing diffs from undo history
+  showUndoHistoryDiff: (change: {
+    id: string;
+    filePath: string;
+    previousContent: string | null;
+    newContent: string | null;
+    status: 'undoable' | 'undone' | 'redoable';
+    description?: string;
+    timestamp?: number;
+    runId?: string;
+  }) => void;
 
   // Queries
   hasUnsavedChanges: () => boolean;
@@ -166,6 +195,9 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
     (s) => s.settings?.editorAISettings,
     (a, b) => a === b,
   );
+
+  // Get workspace diagnostics for agent context
+  const { state: workspaceState } = useWorkspaceContext();
 
   // Load initial state from localStorage
   const [tabs, setTabs] = useState<EditorTab[]>(() => {
@@ -218,8 +250,29 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
   const [isDiffVisible, setIsDiffVisible] = useState(false);
   const [diffViewMode, setDiffViewMode] = useState<DiffViewMode>('side-by-side');
 
-  // Store diffs per file path so they persist when switching tabs
-  const fileDiffsRef = useRef<Map<string, { original: string; modified: string }>>(new Map());
+  // Store diffs with unique IDs for history persistence
+  // Structure: Map<id, StoredDiff> where id = `${path}-${timestamp}`
+  const diffHistoryRef = useRef<Map<string, StoredDiff> | null>(null);
+  
+  // Lazy initialization of diffHistoryRef from localStorage
+  if (diffHistoryRef.current === null) {
+    try {
+      const stored = localStorage.getItem(DIFFS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Array<[string, StoredDiff]>;
+        // Filter out diffs older than 24 hours
+        const now = Date.now();
+        const maxAge = 24 * 60 * 60 * 1000;
+        const validDiffs = parsed.filter(([, diff]) => now - (diff.timestamp || 0) < maxAge);
+        diffHistoryRef.current = new Map(validDiffs);
+      } else {
+        diffHistoryRef.current = new Map();
+      }
+    } catch (err) {
+      logger.debug('Failed to restore diffs from localStorage', { error: err });
+      diffHistoryRef.current = new Map();
+    }
+  }
 
   // Operation diff state - for showing file operation results even without tabs
   const [operationDiff, setOperationDiff] = useState<OperationDiff | null>(null);
@@ -354,14 +407,29 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
   // Sync editor state to main process for agent context
   useEffect(() => {
     const activeTab = tabs.find(t => t.id === activeTabId);
+    
+    // Include workspace diagnostics in the editor state for agent context
+    const diagnosticsForAgent = workspaceState.diagnostics.map(d => ({
+      filePath: d.filePath,
+      message: d.message,
+      severity: d.severity,
+      line: d.line,
+      column: d.column,
+      endLine: d.endLine,
+      endColumn: d.endColumn,
+      source: d.source,
+      code: d.code,
+    }));
+
     window.vyotiq.agent.updateEditorState({
       openFiles: tabs.map(t => t.path),
       activeFile: activeTab?.path || null,
       cursorPosition: activeTab?.cursorPosition || null,
+      diagnostics: diagnosticsForAgent,
     }).catch((err: unknown) => {
       logger.debug('Failed to sync editor state', { error: err });
     });
-  }, [tabs, activeTabId]);
+  }, [tabs, activeTabId, workspaceState.diagnostics]);
 
   // Load file content
   const loadFileContent = useCallback(async (filePath: string): Promise<{ content: string; error?: string }> => {
@@ -680,22 +748,114 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
   const hideEditor = useCallback(() => setIsEditorVisible(false), []);
   const toggleEditor = useCallback(() => setIsEditorVisible(prev => !prev), []);
 
-  // Show diff - stores diff per file path so it persists
-  const showDiff = useCallback((path: string, original: string, modified: string) => {
-    // Store in the map for persistence
-    fileDiffsRef.current.set(path, { original, modified });
-    setDiff({ path, original, modified, isLoading: false });
+  // Helper to persist diffs to localStorage
+  const persistDiffs = useCallback(() => {
+    try {
+      if (!diffHistoryRef.current) return;
+      const entries = Array.from(diffHistoryRef.current.entries());
+      // Only persist if there are diffs
+      if (entries.length > 0) {
+        localStorage.setItem(DIFFS_STORAGE_KEY, JSON.stringify(entries));
+      } else {
+        localStorage.removeItem(DIFFS_STORAGE_KEY);
+      }
+    } catch (err) {
+      logger.debug('Failed to persist diffs to localStorage', { error: err });
+    }
+  }, []);
+
+  // Show diff - stores diff with unique ID for history persistence
+  const showDiff = useCallback((path: string, original: string, modified: string, toolCallId?: string) => {
+    const timestamp = Date.now();
+    const id = toolCallId || `${path}-${timestamp}`;
+    
+    // Store in the map for persistence with unique ID
+    const storedDiff: StoredDiff = {
+      id,
+      path,
+      original,
+      modified,
+      timestamp,
+      toolCallId,
+    };
+    diffHistoryRef.current?.set(id, storedDiff);
+    
+    setDiff({ path, original, modified, isLoading: false, toolCallId });
     setIsDiffVisible(true);
-  }, []);
+    // Persist to localStorage
+    persistDiffs();
+  }, [persistDiffs]);
 
-  // Get stored diff for a file
+  // Get the most recent stored diff for a file (for backward compatibility)
   const getFileDiff = useCallback((path: string) => {
-    return fileDiffsRef.current.get(path);
+    if (!diffHistoryRef.current) return undefined;
+    
+    // Find the most recent diff for this path
+    let mostRecent: StoredDiff | undefined;
+    for (const diff of diffHistoryRef.current.values()) {
+      if (diff.path === path) {
+        if (!mostRecent || diff.timestamp > mostRecent.timestamp) {
+          mostRecent = diff;
+        }
+      }
+    }
+    
+    if (mostRecent) {
+      return { original: mostRecent.original, modified: mostRecent.modified };
+    }
+    return undefined;
   }, []);
 
-  // Clear stored diff for a file
+  // Get all diffs for a specific file (history)
+  const getFileDiffHistory = useCallback((path: string): StoredDiff[] => {
+    if (!diffHistoryRef.current) return [];
+    
+    const history: StoredDiff[] = [];
+    for (const diff of diffHistoryRef.current.values()) {
+      if (diff.path === path) {
+        history.push(diff);
+      }
+    }
+    
+    // Sort by timestamp descending (most recent first)
+    return history.sort((a, b) => b.timestamp - a.timestamp);
+  }, []);
+
+  // Get a specific diff by ID
+  const getDiffById = useCallback((id: string): StoredDiff | undefined => {
+    return diffHistoryRef.current?.get(id);
+  }, []);
+
+  // Clear all stored diffs for a file
   const clearFileDiff = useCallback((path: string) => {
-    fileDiffsRef.current.delete(path);
+    if (!diffHistoryRef.current) return;
+    
+    // Remove all diffs for this path
+    for (const [id, diff] of diffHistoryRef.current.entries()) {
+      if (diff.path === path) {
+        diffHistoryRef.current.delete(id);
+      }
+    }
+    persistDiffs();
+  }, [persistDiffs]);
+
+  // Clear a specific diff by ID
+  const clearDiffById = useCallback((id: string) => {
+    diffHistoryRef.current?.delete(id);
+    persistDiffs();
+  }, [persistDiffs]);
+
+  // Clear all stored diffs
+  const clearAllDiffs = useCallback(() => {
+    diffHistoryRef.current?.clear();
+    localStorage.removeItem(DIFFS_STORAGE_KEY);
+  }, []);
+
+  // Get all stored diffs (for UI display)
+  const getAllDiffs = useCallback((): StoredDiff[] => {
+    if (!diffHistoryRef.current) return [];
+    return Array.from(diffHistoryRef.current.values())
+      .sort((a, b) => b.timestamp - a.timestamp);
   }, []);
 
   // Show git diff
@@ -766,6 +926,38 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
     }
   }, [operationDiff, openFile, hideOperationDiff]);
 
+  // Show undo history diff - for viewing diffs from undo history panel
+  const showUndoHistoryDiff = useCallback((change: {
+    id: string;
+    filePath: string;
+    previousContent: string | null;
+    newContent: string | null;
+    status: 'undoable' | 'undone' | 'redoable';
+    description?: string;
+    timestamp?: number;
+    runId?: string;
+  }) => {
+    // For undo history, we show the change as: previous -> new (what the agent did)
+    // This matches the undo history panel's perspective
+    const original = change.previousContent ?? '';
+    const modified = change.newContent ?? '';
+    
+    setDiff({
+      path: change.filePath,
+      original,
+      modified,
+      isLoading: false,
+      undoChangeId: change.id,
+      undoStatus: change.status,
+      description: change.description,
+      timestamp: change.timestamp,
+      runId: change.runId,
+    });
+    setIsDiffVisible(true);
+    setIsEditorVisible(true);
+    logger.debug('Showing undo history diff', { path: change.filePath, changeId: change.id, status: change.status });
+  }, []);
+
   // Queries
   const hasUnsavedChanges = useCallback(() => tabs.some(t => t.isDirty), [tabs]);
   const getUnsavedTabs = useCallback(() => tabs.filter(t => t.isDirty), [tabs]);
@@ -806,10 +998,16 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
     hideDiff,
     setDiffViewMode,
     getFileDiff,
+    getFileDiffHistory,
+    getDiffById,
     clearFileDiff,
+    clearDiffById,
+    clearAllDiffs,
+    getAllDiffs,
     showOperationDiff,
     hideOperationDiff,
     openOperationDiffFile,
+    showUndoHistoryDiff,
     hasUnsavedChanges,
     getUnsavedTabs,
     isFileOpen,
@@ -839,10 +1037,16 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
     showGitDiff,
     hideDiff,
     getFileDiff,
+    getFileDiffHistory,
+    getDiffById,
     clearFileDiff,
+    clearDiffById,
+    clearAllDiffs,
+    getAllDiffs,
     showOperationDiff,
     hideOperationDiff,
     openOperationDiffFile,
+    showUndoHistoryDiff,
     hasUnsavedChanges,
     getUnsavedTabs,
     isFileOpen,

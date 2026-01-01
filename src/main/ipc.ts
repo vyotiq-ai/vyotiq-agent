@@ -178,6 +178,11 @@ export const registerIpcHandlers = (context: IpcContext) => {
     return getOrchestrator()?.getAvailableProviders() ?? [];
   });
 
+  // Get cooldown status for all providers
+  ipcMain.handle('agent:get-providers-cooldown', () => {
+    return getOrchestrator()?.getProvidersCooldownStatus() ?? {};
+  });
+
   // Get sessions filtered by workspace ID - returns only sessions for the specified workspace
   ipcMain.handle('agent:get-sessions-by-workspace', (_event, workspaceId: string) => {
     try {
@@ -565,17 +570,6 @@ export const registerIpcHandlers = (context: IpcContext) => {
         // Enable or disable debug mode based on verbose logging setting
         orchestrator.setDebugEnabled(updated.debugSettings.verboseLogging);
       }
-    }
-
-    // Apply terminal settings
-    // Terminal settings are used when spawning new terminal processes
-    // Each command run will use these settings (timeout, shell preference, etc.)
-    if (updated.terminalSettings) {
-      logger.info('Terminal settings updated', {
-        defaultShell: updated.terminalSettings.defaultShell,
-        defaultTimeout: updated.terminalSettings.defaultTimeout,
-        maxConcurrentProcesses: updated.terminalSettings.maxConcurrentProcesses,
-      });
     }
 
     emitToRenderer({ type: 'settings-update', settings: updated });
@@ -1444,236 +1438,6 @@ export const registerIpcHandlers = (context: IpcContext) => {
   });
 
   // ==========================================================================
-  // Memory IPC Handlers
-  // ==========================================================================
-
-  ipcMain.handle('memory:create', async (_event, payload: {
-    content: string;
-    category?: string;
-    importance?: string;
-    keywords?: string[];
-    isPinned?: boolean;
-  }) => {
-    try {
-      const { getMemoryStorage } = await import('./agent/memory');
-      const storage = getMemoryStorage();
-      const workspacePath = getActiveWorkspacePath();
-      
-      if (!workspacePath) {
-        return { success: false, error: 'No active workspace' };
-      }
-
-      const memory = storage.create({
-        content: payload.content,
-        category: (payload.category as 'decision' | 'context' | 'preference' | 'fact' | 'task' | 'error' | 'general') ?? 'general',
-        importance: (payload.importance as 'low' | 'medium' | 'high' | 'critical') ?? 'medium',
-        keywords: payload.keywords,
-        workspaceId: workspacePath,
-        source: 'user',
-        isPinned: payload.isPinned ?? false,
-      });
-
-      return { success: true, memory };
-    } catch (error) {
-      logger.error('Failed to create memory', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  ipcMain.handle('memory:get', async (_event, id: string) => {
-    try {
-      const { getMemoryStorage } = await import('./agent/memory');
-      const storage = getMemoryStorage();
-      const memory = storage.get(id);
-      return { success: true, memory };
-    } catch (error) {
-      logger.error('Failed to get memory', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  ipcMain.handle('memory:update', async (_event, id: string, updates: {
-    content?: string;
-    category?: string;
-    importance?: string;
-    keywords?: string[];
-    isPinned?: boolean;
-  }) => {
-    try {
-      const { getMemoryStorage } = await import('./agent/memory');
-      const storage = getMemoryStorage();
-      const memory = storage.update(id, {
-        content: updates.content,
-        category: updates.category as 'decision' | 'context' | 'preference' | 'fact' | 'task' | 'error' | 'general' | undefined,
-        importance: updates.importance as 'low' | 'medium' | 'high' | 'critical' | undefined,
-        keywords: updates.keywords,
-        isPinned: updates.isPinned,
-      });
-      return { success: !!memory, memory };
-    } catch (error) {
-      logger.error('Failed to update memory', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  ipcMain.handle('memory:delete', async (_event, id: string) => {
-    try {
-      const { getMemoryStorage } = await import('./agent/memory');
-      const storage = getMemoryStorage();
-      const deleted = storage.delete(id);
-      return { success: deleted };
-    } catch (error) {
-      logger.error('Failed to delete memory', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  ipcMain.handle('memory:search', async (_event, options: {
-    query?: string;
-    category?: string;
-    importance?: string;
-    limit?: number;
-  }) => {
-    try {
-      const { getMemoryStorage } = await import('./agent/memory');
-      const storage = getMemoryStorage();
-      const workspacePath = getActiveWorkspacePath();
-      
-      if (!workspacePath) {
-        return { success: false, error: 'No active workspace', memories: [], totalCount: 0 };
-      }
-
-      const result = storage.search({
-        workspaceId: workspacePath,
-        query: options.query,
-        category: options.category as 'decision' | 'context' | 'preference' | 'fact' | 'task' | 'error' | 'general' | undefined,
-        importance: options.importance as 'low' | 'medium' | 'high' | 'critical' | undefined,
-        limit: options.limit ?? 20,
-      });
-
-      return { success: true, memories: result.memories, totalCount: result.totalCount };
-    } catch (error) {
-      logger.error('Failed to search memories', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, memories: [], totalCount: 0 };
-    }
-  });
-
-  ipcMain.handle('memory:list', async (_event, limit?: number) => {
-    try {
-      const { getMemoryStorage } = await import('./agent/memory');
-      const storage = getMemoryStorage();
-      const workspacePath = getActiveWorkspacePath();
-      
-      if (!workspacePath) {
-        return { success: false, error: 'No active workspace', memories: [], stats: null };
-      }
-
-      const memories = storage.getRecentForContext(workspacePath, limit ?? 20);
-      const stats = storage.getStats(workspacePath);
-
-      return { success: true, memories, stats };
-    } catch (error) {
-      logger.error('Failed to list memories', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, memories: [], stats: null };
-    }
-  });
-
-  ipcMain.handle('memory:get-stats', async () => {
-    try {
-      const { getMemoryStorage } = await import('./agent/memory');
-      const storage = getMemoryStorage();
-      const workspacePath = getActiveWorkspacePath();
-      
-      if (!workspacePath) {
-        return { success: false, error: 'No active workspace', stats: null };
-      }
-
-      const stats = storage.getStats(workspacePath);
-      return { success: true, stats };
-    } catch (error) {
-      logger.error('Failed to get memory stats', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, stats: null };
-    }
-  });
-
-  ipcMain.handle('memory:clear', async () => {
-    try {
-      const { getMemoryStorage } = await import('./agent/memory');
-      const storage = getMemoryStorage();
-      const workspacePath = getActiveWorkspacePath();
-      
-      if (!workspacePath) {
-        return { success: false, error: 'No active workspace', count: 0 };
-      }
-
-      const count = storage.clearWorkspace(workspacePath);
-      return { success: true, count };
-    } catch (error) {
-      logger.error('Failed to clear memories', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, count: 0 };
-    }
-  });
-
-  // ==========================================================================
-  // Autocomplete IPC Handlers
-  // ==========================================================================
-
-  ipcMain.handle('autocomplete:request', async (_event, payload: {
-    text: string;
-    cursorPosition: number;
-    recentMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
-    sessionId?: string;
-  }) => {
-    try {
-      const { getAutocompleteService } = await import('./agent/autocomplete');
-      const service = getAutocompleteService();
-
-      if (!service) {
-        return { suggestion: null, error: 'Autocomplete service not initialized' };
-      }
-
-      return await service.getSuggestion(payload);
-    } catch (error) {
-      logger.error('Autocomplete request failed', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return { suggestion: null, error: (error as Error).message };
-    }
-  });
-
-  ipcMain.handle('autocomplete:cancel', async () => {
-    try {
-      const { getAutocompleteService } = await import('./agent/autocomplete');
-      const service = getAutocompleteService();
-      service?.cancelPending();
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  ipcMain.handle('autocomplete:is-enabled', async () => {
-    try {
-      const { getAutocompleteService } = await import('./agent/autocomplete');
-      const service = getAutocompleteService();
-      return service?.isEnabled() ?? false;
-    } catch {
-      return false;
-    }
-  });
-
-  ipcMain.handle('autocomplete:clear-cache', async () => {
-    try {
-      const { getAutocompleteService } = await import('./agent/autocomplete');
-      const service = getAutocompleteService();
-      service?.clearCache();
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  // ==========================================================================
   // File Tree IPC Handlers
   // ==========================================================================
 
@@ -1767,122 +1531,6 @@ export const registerIpcHandlers = (context: IpcContext) => {
     } catch (error) {
       logger.error('Failed to list directory', { error: error instanceof Error ? error.message : String(error) });
       return { success: false, error: (error as Error).message, files: [] };
-    }
-  });
-
-  // ==========================================================================
-  // Terminal IPC Handlers
-  // ==========================================================================
-
-  ipcMain.handle('terminal:run', async (_event, payload: {
-    command: string;
-    cwd?: string;
-    waitForExit?: boolean;
-    timeout?: number;
-    description?: string;
-  }) => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) {
-        return { success: false, error: 'Orchestrator not initialized' };
-      }
-
-      // Get the active workspace path as default cwd
-      const cwd = payload.cwd || getActiveWorkspacePath() || process.cwd();
-
-      // Use the terminal manager from orchestrator for proper PTY support
-      const terminalManager = orchestrator.getTerminalManager();
-
-      const result = await terminalManager.run(payload.command, {
-        cwd,
-        waitForExit: payload.waitForExit !== false,
-        timeout: payload.timeout || 30000,
-        description: payload.description,
-      });
-
-      return {
-        success: true,
-        pid: result.pid,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-        isRunning: result.isRunning,
-      };
-    } catch (error) {
-      const err = error as Error;
-      return {
-        success: false,
-        error: err.message,
-      };
-    }
-  });
-
-  ipcMain.handle('terminal:get-output', async (_event, payload: {
-    pid: number;
-    incrementalOnly?: boolean;
-    filter?: string;
-  }) => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) {
-        return { success: false, error: 'Orchestrator not initialized' };
-      }
-
-      const terminalManager = orchestrator.getTerminalManager();
-      const state = terminalManager.getOutput(payload.pid, {
-        incrementalOnly: payload.incrementalOnly,
-        filter: payload.filter,
-      });
-
-      if (!state) {
-        return { success: false, error: 'Process not found' };
-      }
-
-      return {
-        success: true,
-        pid: state.pid,
-        stdout: state.stdout,
-        stderr: state.stderr,
-        exitCode: state.exitCode,
-        isRunning: state.isRunning,
-      };
-    } catch (error) {
-      const err = error as Error;
-      return { success: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('terminal:kill', async (_event, pid: number) => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) {
-        return { success: false, error: 'Orchestrator not initialized' };
-      }
-
-      const terminalManager = orchestrator.getTerminalManager();
-      const killed = await terminalManager.kill(pid);
-
-      return { success: true, killed };
-    } catch (error) {
-      const err = error as Error;
-      return { success: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('terminal:list', async () => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) {
-        return { success: false, error: 'Orchestrator not initialized' };
-      }
-
-      const terminalManager = orchestrator.getTerminalManager();
-      const processes = terminalManager.listProcesses?.() ?? [];
-
-      return { success: true, processes };
-    } catch (error) {
-      const err = error as Error;
-      return { success: false, error: err.message };
     }
   });
 
@@ -3271,6 +2919,151 @@ export const registerIpcHandlers = (context: IpcContext) => {
     } catch (error) {
       logger.error('Failed to check circuit breaker', { runId, error: error instanceof Error ? error.message : String(error) });
       return false;
+    }
+  });
+
+  // ==========================================================================
+  // Claude Code Subscription OAuth IPC Handlers
+  // ==========================================================================
+
+  ipcMain.handle('claude:start-oauth', async () => {
+    try {
+      const { importClaudeCodeCredentials, startBackgroundRefresh, setSubscriptionUpdateCallback, setStatusChangeCallback } = await import('./agent/claudeAuth');
+      const subscription = await importClaudeCodeCredentials();
+      
+      // Save subscription to settings
+      await getSettingsStore().update({ claudeSubscription: subscription });
+      
+      // Set callback to emit status changes to renderer
+      setStatusChangeCallback((event) => {
+        emitToRenderer({
+          type: 'claude-subscription',
+          eventType: event.type,
+          message: event.message,
+          tier: event.tier,
+        });
+      });
+      
+      // Set callback to auto-save refreshed tokens
+      setSubscriptionUpdateCallback(async (updated) => {
+        await getSettingsStore().update({ claudeSubscription: updated });
+        emitToRenderer({ type: 'settings-update', settings: getSettingsStore().get() });
+        getOrchestrator()?.refreshProviders();
+      });
+      
+      // Start background refresh
+      startBackgroundRefresh(subscription);
+      
+      // Refresh providers to use new subscription
+      getOrchestrator()?.refreshProviders();
+      
+      // Emit settings update to renderer
+      emitToRenderer({ type: 'settings-update', settings: getSettingsStore().get() });
+      
+      logger.info('Claude Code credentials imported', { tier: subscription.tier });
+      return { success: true, subscription };
+    } catch (error) {
+      logger.error('Claude Code import failed', { error: error instanceof Error ? error.message : String(error) });
+      return { success: false, error: error instanceof Error ? error.message : 'Import failed' };
+    }
+  });
+
+  ipcMain.handle('claude:disconnect', async () => {
+    try {
+      const { clearClaudeSubscription, setSubscriptionUpdateCallback, setStatusChangeCallback } = await import('./agent/claudeAuth');
+      await clearClaudeSubscription();
+      
+      // Clear callbacks
+      setSubscriptionUpdateCallback(null);
+      setStatusChangeCallback(null);
+      
+      // Remove subscription from settings
+      await getSettingsStore().update({ claudeSubscription: undefined });
+      
+      // Refresh providers
+      getOrchestrator()?.refreshProviders();
+      
+      // Emit settings update to renderer
+      emitToRenderer({ type: 'settings-update', settings: getSettingsStore().get() });
+      
+      logger.info('Claude subscription disconnected');
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to disconnect Claude subscription', { error: error instanceof Error ? error.message : String(error) });
+      return { success: false, error: error instanceof Error ? error.message : 'Disconnect failed' };
+    }
+  });
+
+  ipcMain.handle('claude:get-subscription-status', async () => {
+    try {
+      const settings = getSettingsStore().get();
+      const { getSubscriptionStatus } = await import('./agent/claudeAuth');
+      return getSubscriptionStatus(settings.claudeSubscription);
+    } catch (error) {
+      logger.error('Failed to get subscription status', { error: error instanceof Error ? error.message : String(error) });
+      return { connected: false };
+    }
+  });
+
+  ipcMain.handle('claude:refresh-token', async () => {
+    try {
+      const settings = getSettingsStore().get();
+      if (!settings.claudeSubscription?.refreshToken) {
+        return { success: false, error: 'No refresh token available' };
+      }
+
+      const { refreshClaudeToken } = await import('./agent/claudeAuth');
+      const subscription = await refreshClaudeToken(settings.claudeSubscription.refreshToken);
+      
+      // Save updated subscription
+      await getSettingsStore().update({ claudeSubscription: subscription });
+      
+      // Refresh providers to use updated token
+      getOrchestrator()?.refreshProviders();
+      
+      logger.info('Claude token refreshed', { tier: subscription.tier });
+      return { success: true, subscription };
+    } catch (error) {
+      logger.error('Failed to refresh Claude token', { error: error instanceof Error ? error.message : String(error) });
+      return { success: false, error: error instanceof Error ? error.message : 'Token refresh failed' };
+    }
+  });
+
+  ipcMain.handle('claude:check-installed', async () => {
+    try {
+      const { isClaudeCodeInstalled, hasClaudeCodeCredentials, isClaudeCodeCLIAvailable } = await import('./agent/claudeAuth');
+      const cliAvailable = await isClaudeCodeCLIAvailable();
+      const installed = await isClaudeCodeInstalled();
+      const hasCredentials = installed ? await hasClaudeCodeCredentials() : false;
+      return { installed, hasCredentials, cliAvailable };
+    } catch (error) {
+      logger.error('Failed to check Claude Code installation', { error: error instanceof Error ? error.message : String(error) });
+      return { installed: false, hasCredentials: false, cliAvailable: false };
+    }
+  });
+
+  ipcMain.handle('claude:launch-auth', async () => {
+    try {
+      const { launchClaudeAuthentication, setAuthCompleteCallback } = await import('./agent/claudeAuth');
+      
+      // Set callback to handle auth completion
+      setAuthCompleteCallback(async (subscription) => {
+        // Save subscription to settings
+        await getSettingsStore().update({ claudeSubscription: subscription });
+        
+        // Refresh providers
+        getOrchestrator()?.refreshProviders();
+        
+        // Emit settings update
+        emitToRenderer({ type: 'settings-update', settings: getSettingsStore().get() });
+        
+        logger.info('Claude auth completed via file watcher', { tier: subscription.tier });
+      });
+      
+      return await launchClaudeAuthentication();
+    } catch (error) {
+      logger.error('Failed to launch Claude authentication', { error: error instanceof Error ? error.message : String(error) });
+      return { success: false, error: error instanceof Error ? error.message : 'Launch failed' };
     }
   });
 

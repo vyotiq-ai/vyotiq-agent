@@ -5,6 +5,9 @@ import {
   ChevronRight,
   Loader2,
   X as XIcon,
+  ExternalLink,
+  FileText,
+  Copy,
 } from 'lucide-react';
 
 import { cn } from '../../../../utils/cn';
@@ -17,43 +20,49 @@ import {
   getReadMetadataInfo,
   getToolIconComponent,
   getToolTarget,
-  safeJsonStringify,
 } from '../../utils/toolDisplay';
 
 import { ResearchResultPreview } from './ResearchResultPreview';
 import { LiveFetchPreview } from './LiveFetchPreview';
 import { AutoFetchPreview } from './AutoFetchPreview';
 import { TerminalOutputPreview } from './TerminalOutputPreview';
-import { FileDiffPreview } from './FileDiffPreview';
-import { CopyIconButton } from './CopyIconButton';
 import { DynamicToolIndicator } from '../DynamicToolIndicator';
 
 import type { ToolCall } from './types';
 
 const TERMINAL_PREVIEW_MAX_CHARS = 10_000;
 
-function getOutputPreview(content: string, maxLines: number, maxChars: number): string | null {
-  if (!content) return null;
+/** Extract first line of error for inline display */
+function getErrorPreview(output: string): string | null {
+  if (!output) return null;
+  const firstLine = output.split('\n')[0]?.trim();
+  if (!firstLine) return null;
+  return firstLine.length > 60 ? firstLine.slice(0, 57) + '...' : firstLine;
+}
 
-  const limit = Math.min(content.length, maxChars);
-  let i = 0;
-  let lineStart = 0;
-  const lines: string[] = [];
-
-  while (i <= limit && lines.length < maxLines) {
-    const isEnd = i === limit;
-    const ch = content.charCodeAt(i);
-    if (isEnd || ch === 10 /* \n */) {
-      const line = content.slice(lineStart, i).trim();
-      if (line) lines.push(line);
-      lineStart = i + 1;
-    }
-    i++;
+/** Compute diff stats for file operations */
+function computeDiffStats(originalContent: string | null, newContent: string) {
+  const originalLines = originalContent?.split('\n') || [];
+  const newLines = newContent?.split('\n') || [];
+  
+  if (!originalContent || originalContent.length === 0) {
+    return { added: newLines.length, removed: 0, isNew: true };
   }
-
-  if (lines.length === 0) return null;
-  const preview = lines.join('\n');
-  return preview.length > 150 ? preview.slice(0, 147) + '...' : preview;
+  
+  const originalSet = new Set(originalLines);
+  const newSet = new Set(newLines);
+  
+  let added = 0;
+  let removed = 0;
+  
+  for (const line of newLines) {
+    if (!originalSet.has(line)) added++;
+  }
+  for (const line of originalLines) {
+    if (!newSet.has(line)) removed++;
+  }
+  
+  return { added, removed, isNew: false };
 }
 
 /**
@@ -64,12 +73,17 @@ export const ToolItem: React.FC<{
   isExpanded: boolean;
   onToggle: () => void;
   isLast: boolean;
-}> = memo(({ tool, isExpanded, onToggle, isLast }) => {
+  onOpenDiffEditor?: (path: string, original: string, modified: string, toolCallId?: string) => void;
+  onOpenFile?: (path: string) => void;
+}> = memo(({ tool, isExpanded, onToggle, isLast, onOpenDiffEditor, onOpenFile }) => {
   const Icon = getToolIconComponent(tool.name);
   const target = getToolTarget(tool.arguments, tool.name, tool._argsJson);
   const isActive = tool.status === 'running';
   const hasError = tool.status === 'error';
   const isSuccess = tool.status === 'completed';
+
+  // Check if this is a file operation tool
+  const isFileOperation = tool.name === 'write' || tool.name === 'edit' || tool.name === 'create_file';
 
   // Get file read metadata info (lines read, total lines, etc.)
   const readMetaInfo = getReadMetadataInfo(tool.resultMetadata, tool.name);
@@ -77,6 +91,7 @@ export const ToolItem: React.FC<{
 
   // Elapsed time for running tools
   const [elapsed, setElapsed] = useState<string>('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!isActive || !tool.startTime) return;
@@ -97,17 +112,13 @@ export const ToolItem: React.FC<{
   // Combine stored output with real-time streaming output
   const rawOutput = useMemo(() => {
     const storedOutput = tool.fullOutput ?? tool.result?.content ?? '';
-
-    // For running terminal commands, prefer streaming output if available
     if (isActive && isTerminalTool && terminalStream?.output) {
       return terminalStream.output;
     }
-
     return storedOutput;
   }, [tool.fullOutput, tool.result?.content, isActive, isTerminalTool, terminalStream?.output]);
 
-  // Clean ANSI escape codes from terminal output for display.
-  // For collapsed tools, only clean a small prefix to keep re-renders cheap.
+  // Clean ANSI escape codes from terminal output for display
   const fullOutput = useMemo(() => {
     if (!rawOutput) return '';
     if (!isTerminalTool) return rawOutput;
@@ -115,44 +126,77 @@ export const ToolItem: React.FC<{
     return cleanTerminalOutput(rawOutput.slice(0, TERMINAL_PREVIEW_MAX_CHARS));
   }, [rawOutput, isTerminalTool, isExpanded]);
 
-  // Get output preview (header)
-  const outputPreview = useMemo(() => {
-    if (!fullOutput) return null;
-    if (hasError) return fullOutput.slice(0, 200);
-    return getOutputPreview(fullOutput, 3, 2000);
-  }, [fullOutput, hasError]);
+  // Get error preview for inline display
+  const errorPreview = useMemo(() => {
+    if (!hasError || !fullOutput) return null;
+    return getErrorPreview(fullOutput);
+  }, [hasError, fullOutput]);
 
+  // File operation metadata
+  const fileOpMeta = useMemo(() => {
+    if (!isFileOperation || !isSuccess || !tool.resultMetadata) return null;
+    
+    const path = (tool.resultMetadata.filePath as string) || 
+                 (tool.resultMetadata.path as string) || 
+                 (tool.arguments?.file_path as string) || '';
+    const originalContent = (tool.resultMetadata.originalContent as string) || null;
+    const newContent = (tool.resultMetadata.newContent as string) || 
+                       (tool.resultMetadata.content as string) || '';
+    const action = tool.resultMetadata.action as string;
+    
+    const stats = computeDiffStats(originalContent, newContent);
+    const actionLabel = stats.isNew ? 'Created' : (action === 'edit' ? 'Edited' : 'Modified');
+    
+    return { path, originalContent, newContent, stats, actionLabel };
+  }, [isFileOperation, isSuccess, tool.resultMetadata, tool.arguments]);
+
+  // Determine if tool has expandable content
   const hasExpandableDetails = Boolean(
-    (tool.arguments && Object.keys(tool.arguments).length > 0) ||
-    (fullOutput && fullOutput.trim().length > 0) ||
-    tool.resultMetadata ||
-    (isActive && isTerminalTool), // Always expandable for running terminal commands
+    tool.resultMetadata?.type === 'research_result' ||
+    tool.resultMetadata?.type === 'web_content' ||
+    tool.resultMetadata?.type === 'auto_fetch_result' ||
+    (isTerminalTool && fullOutput) ||
+    (isActive && isTerminalTool),
   );
 
-  const [copiedWhat, setCopiedWhat] = useState<'args' | 'output' | null>(null);
+  // File operation action handlers
+  const handleOpenDiff = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (fileOpMeta && onOpenDiffEditor) {
+      onOpenDiffEditor(fileOpMeta.path, fileOpMeta.originalContent || '', fileOpMeta.newContent, tool.callId);
+    }
+  }, [fileOpMeta, onOpenDiffEditor, tool.callId]);
 
-  const copyToClipboard = useCallback(
-    async (what: 'args' | 'output') => {
-      const text = what === 'args' ? (tool._argsJson || safeJsonStringify(tool.arguments, 2)) : fullOutput;
-      await navigator.clipboard.writeText(text);
-      setCopiedWhat(what);
-      window.setTimeout(() => setCopiedWhat(null), 1500);
-    },
-    [tool.arguments, tool._argsJson, fullOutput],
-  );
+  const handleOpenFile = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (fileOpMeta && onOpenFile) {
+      onOpenFile(fileOpMeta.path);
+    }
+  }, [fileOpMeta, onOpenFile]);
+
+  const handleCopyPath = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (fileOpMeta) {
+      void navigator.clipboard.writeText(fileOpMeta.path);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  }, [fileOpMeta]);
 
   return (
-    <div className={cn('group/tool min-w-0 overflow-hidden', !isLast && 'mb-0.5')}>
-      {/* Tool header row */}
-      <button
-        type="button"
+    <div className={cn('group/tool min-w-0 overflow-hidden', !isLast && 'mb-px')}>
+      {/* Tool header row - using div with role="button" to avoid nested button issue */}
+      <div
+        role={hasExpandableDetails ? 'button' : undefined}
+        tabIndex={hasExpandableDetails ? 0 : undefined}
         className={cn(
-          'flex items-center gap-1.5 py-0.5 cursor-pointer min-w-0 w-full',
-          'hover:bg-[var(--color-surface-1)]/30 rounded-sm px-1 -mx-1',
-          'transition-colors duration-100',
-          'outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/25',
+          'flex items-center gap-2 py-1 min-w-0 w-full',
+          'hover:bg-[var(--color-surface-2)]/40 rounded px-2 -mx-2',
+          'transition-all duration-150',
+          'outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30',
+          hasExpandableDetails ? 'cursor-pointer' : 'cursor-default',
         )}
-        onClick={onToggle}
+        onClick={hasExpandableDetails ? onToggle : undefined}
         onKeyDown={(e) => {
           if (!hasExpandableDetails) return;
           if (e.key === 'Enter' || e.key === ' ') {
@@ -162,31 +206,25 @@ export const ToolItem: React.FC<{
         }}
         aria-expanded={hasExpandableDetails ? isExpanded : undefined}
       >
-        {/* Expand/collapse indicator */}
-        <span className="text-[var(--color-text-dim)] opacity-40 w-2.5">
-          {hasExpandableDetails ? (
-            isExpanded ? (
-              <ChevronDown size={10} />
-            ) : (
-              <ChevronRight size={10} />
-            )
+        {/* Status indicator with subtle background */}
+        <span className={cn(
+          'flex items-center justify-center w-4 h-4 rounded flex-shrink-0',
+          isActive && 'bg-[var(--color-warning)]/10',
+          hasError && 'bg-[var(--color-error)]/10',
+          isSuccess && 'bg-[var(--color-success)]/10',
+        )}>
+          {isActive ? (
+            <Loader2 size={10} className="text-[var(--color-warning)] animate-spin" />
+          ) : hasError ? (
+            <XIcon size={10} className="text-[var(--color-error)]" />
           ) : (
-            <span className="inline-block w-2.5" />
+            <Check size={10} className="text-[var(--color-success)]" />
           )}
         </span>
 
-        {/* Status indicator */}
-        {isActive ? (
-          <Loader2 size={10} className="text-[var(--color-warning)] animate-spin flex-shrink-0" />
-        ) : hasError ? (
-          <XIcon size={10} className="text-[var(--color-error)] flex-shrink-0" />
-        ) : (
-          <Check size={10} className="text-[var(--color-success)] flex-shrink-0" />
-        )}
-
         {/* Tool icon */}
         <Icon
-          size={10}
+          size={12}
           className={cn(
             'flex-shrink-0',
             isActive && 'text-[var(--color-warning)]',
@@ -198,7 +236,7 @@ export const ToolItem: React.FC<{
         {/* Tool name */}
         <span
           className={cn(
-            'text-[11px] font-medium',
+            'text-[11px] font-medium flex-shrink-0',
             isActive && 'text-[var(--color-warning)]',
             hasError && 'text-[var(--color-error)]',
             isSuccess && 'text-[var(--color-text-secondary)]',
@@ -207,7 +245,7 @@ export const ToolItem: React.FC<{
           {tool.name}
         </span>
 
-        {/* Dynamic tool indicator - Phase 7 */}
+        {/* Dynamic tool indicator */}
         {tool.isDynamic && (
           <DynamicToolIndicator
             toolName={tool.name}
@@ -218,129 +256,148 @@ export const ToolItem: React.FC<{
           />
         )}
 
-        {/* Target/context */}
+        {/* Target/context - styled as a subtle tag */}
         {target && (
-          <>
-            <span className="text-[var(--color-text-dim)] opacity-30">→</span>
-            <span
-              className={cn(
-                'text-[10px] text-[var(--color-text-muted)] truncate min-w-0',
-                'max-w-[48vw] sm:max-w-[52vw] md:max-w-[520px]',
-              )}
-              title={target}
-            >
-              {target}
-            </span>
-          </>
+          <span
+            className={cn(
+              'text-[10px] text-[var(--color-text-muted)] truncate min-w-0',
+              'px-1.5 py-0.5 rounded bg-[var(--color-surface-2)]/50',
+              'max-w-[30vw] sm:max-w-[35vw] md:max-w-[280px]',
+            )}
+            title={target}
+          >
+            {target}
+          </span>
         )}
 
-        {/* Read operation metadata (lines read info) */}
+        {/* Read operation metadata */}
         {isSuccess && readMetaInfo && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-dim)] font-mono">
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-dim)] font-mono flex-shrink-0">
             {readMetaInfo}
           </span>
         )}
 
-        <span className="ml-auto flex items-center gap-2">
-          {/* Elapsed time for running */}
-          {isActive && elapsed && (
-            <span className="text-[10px] text-[var(--color-warning)]/70">{elapsed}</span>
+        {/* Expand indicator for expandable items */}
+        {hasExpandableDetails && (
+          <span className="text-[var(--color-text-dim)]/50 flex-shrink-0 ml-auto mr-1">
+            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </span>
+        )}
+
+        {/* Right side: file op info OR timing/error */}
+        <span className={cn('flex items-center gap-1.5 flex-shrink-0', !hasExpandableDetails && 'ml-auto')}>
+          {/* File operation: Modified badge + stats + actions */}
+          {fileOpMeta && (
+            <>
+              {/* Action badge */}
+              <span className={cn(
+                'text-[9px] px-1.5 py-0.5 rounded font-medium',
+                fileOpMeta.stats.isNew 
+                  ? 'bg-[var(--color-success)]/15 text-[var(--color-success)]' 
+                  : 'bg-[var(--color-warning)]/15 text-[var(--color-warning)]'
+              )}>
+                {fileOpMeta.actionLabel}
+              </span>
+              
+              {/* Diff stats */}
+              <span className="flex items-center gap-1 text-[9px] font-mono">
+                {fileOpMeta.stats.added > 0 && (
+                  <span className="text-[var(--color-success)]">
+                    +{fileOpMeta.stats.added}
+                  </span>
+                )}
+                {fileOpMeta.stats.removed > 0 && (
+                  <span className="text-[var(--color-error)]">
+                    -{fileOpMeta.stats.removed}
+                  </span>
+                )}
+              </span>
+
+              {/* Copy path */}
+              <button
+                type="button"
+                onClick={handleCopyPath}
+                className={cn(
+                  'p-1 rounded text-[var(--color-text-muted)]',
+                  'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
+                  'transition-colors opacity-0 group-hover/tool:opacity-100'
+                )}
+                title={copied ? 'Copied!' : 'Copy path'}
+              >
+                <Copy size={10} className={copied ? 'text-[var(--color-success)]' : ''} />
+              </button>
+              
+              {/* Open file */}
+              {onOpenFile && (
+                <button
+                  type="button"
+                  onClick={handleOpenFile}
+                  className={cn(
+                    'p-1 rounded text-[var(--color-text-muted)]',
+                    'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
+                    'transition-colors opacity-0 group-hover/tool:opacity-100'
+                  )}
+                  title="Open file"
+                >
+                  <FileText size={10} />
+                </button>
+              )}
+              
+              {/* Open diff */}
+              {onOpenDiffEditor && (
+                <button
+                  type="button"
+                  onClick={handleOpenDiff}
+                  className={cn(
+                    'p-1 rounded text-[var(--color-text-muted)]',
+                    'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
+                    'transition-colors opacity-0 group-hover/tool:opacity-100'
+                  )}
+                  title="View diff"
+                >
+                  <ExternalLink size={10} />
+                </button>
+              )}
+            </>
           )}
 
-          {/* Duration for completed/error tools (when available) */}
-          {!isActive && typeof durationMs === 'number' && (
-            <span className="text-[10px] text-[var(--color-text-dim)]">
-              {formatDurationMs(durationMs)}
-            </span>
+          {/* Non-file operations: timing and error info */}
+          {!fileOpMeta && (
+            <>
+              {isActive && elapsed && (
+                <span className="text-[9px] text-[var(--color-warning)]/80 font-mono">{elapsed}</span>
+              )}
+              {!isActive && typeof durationMs === 'number' && !hasError && (
+                <span className="text-[9px] text-[var(--color-text-dim)] font-mono">
+                  {formatDurationMs(durationMs)}
+                </span>
+              )}
+              {hasError && errorPreview && (
+                <span 
+                  className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-error)]/10 text-[var(--color-error)] font-mono truncate max-w-[200px]" 
+                  title={fullOutput || errorPreview}
+                >
+                  {errorPreview}
+                </span>
+              )}
+              {hasError && !errorPreview && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-error)]/10 text-[var(--color-error)] font-mono">
+                  failed
+                </span>
+              )}
+            </>
           )}
-
-          {/* Error indicator */}
-          {hasError && <span className="text-[10px] text-[var(--color-error)]/70">failed</span>}
         </span>
-      </button>
-
-      {/* Expanded details (args + output) */}
-      {isExpanded && hasExpandableDetails && (
-        <div
-          className={cn(
-            'ml-6 mt-1 mb-2 min-w-0 overflow-hidden',
-            'bg-[var(--color-surface-1)]/50 rounded px-2 py-1.5',
-            'border-l-2',
-            hasError ? 'border-[var(--color-error)]/30' : 'border-[var(--color-border-subtle)]',
-          )}
-        >
-          {/* Args */}
-          {tool.arguments && Object.keys(tool.arguments).length > 0 && (
-            <div className="mb-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[var(--color-text-dim)]">args</span>
-                <CopyIconButton
-                  onCopy={() => {
-                    void copyToClipboard('args');
-                  }}
-                  copied={copiedWhat === 'args'}
-                  idleTitle="copy args"
-                  ariaLabel="Copy tool arguments"
-                />
-              </div>
-              <pre
-                className={cn(
-                  'mt-1 text-[10px] font-mono text-[var(--color-text-muted)]',
-                  'max-h-[140px] overflow-y-auto scrollbar-thin',
-                  'whitespace-pre-wrap break-all',
-                )}
-              >
-                {tool._argsJson || safeJsonStringify(tool.arguments, 2)}
-              </pre>
-            </div>
-          )}
-
-          {/* Output */}
-          {fullOutput && fullOutput.trim().length > 0 && (
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[var(--color-text-dim)]">output</span>
-                <CopyIconButton
-                  onCopy={() => {
-                    void copyToClipboard('output');
-                  }}
-                  copied={copiedWhat === 'output'}
-                  idleTitle="copy output"
-                  ariaLabel="Copy tool output"
-                />
-              </div>
-              <pre
-                className={cn(
-                  'mt-1 text-[10px] font-mono',
-                  'max-h-[220px] overflow-y-auto scrollbar-thin',
-                  'whitespace-pre-wrap break-words',
-                  hasError ? 'text-[var(--color-error)]/80' : 'text-[var(--color-text-muted)]',
-                )}
-              >
-                {fullOutput.length > 8000 ? `${fullOutput.slice(0, 8000)}\n\n…(truncated)` : fullOutput}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
+      </div>
 
       {/* Research result display */}
       {isExpanded && tool.resultMetadata?.type === 'research_result' && (
         <ResearchResultPreview
           query={(tool.resultMetadata.query as string) || ''}
-          sources={
-            (tool.resultMetadata.sources as Array<{ url: string; title: string; accessed?: number }>) || []
-          }
-          findings={
-            (tool.resultMetadata.findings as Array<{
-              title: string;
-              content: string;
-              source: string;
-              relevance: number;
-            }>) || []
-          }
+          sources={(tool.resultMetadata.sources as Array<{ url: string; title: string; accessed?: number }>) || []}
+          findings={(tool.resultMetadata.findings as Array<{ title: string; content: string; source: string; relevance: number }>) || []}
           depth={tool.resultMetadata.depth as string}
-          output={outputPreview || ''}
+          output=""
         />
       )}
 
@@ -352,7 +409,7 @@ export const ToolItem: React.FC<{
           contentLength={tool.resultMetadata.contentLength as number}
           headingCount={tool.resultMetadata.headingCount as number}
           linkCount={tool.resultMetadata.linkCount as number}
-          output={outputPreview || ''}
+          output=""
         />
       )}
 
@@ -363,29 +420,17 @@ export const ToolItem: React.FC<{
           focus={(tool.resultMetadata.focus as string) || 'general'}
           sourceCount={(tool.resultMetadata.sourceCount as number) || 0}
           sources={(tool.resultMetadata.sources as Array<{ url: string; title: string }>) || []}
-          output={outputPreview || ''}
+          output=""
         />
       )}
 
       {/* Terminal output display */}
-      {isExpanded && tool.name.includes('command') && fullOutput && (
+      {isExpanded && isTerminalTool && fullOutput && (
         <TerminalOutputPreview
           command={tool.arguments?.command as string}
           output={fullOutput}
           exitCode={tool.resultMetadata?.exitCode as number}
           hasError={hasError}
-        />
-      )}
-
-      {/* File diff preview for write/edit operations */}
-      {isExpanded && isSuccess && (tool.name === 'write' || tool.name === 'edit' || tool.name === 'create_file') && 
-        tool.resultMetadata && (tool.resultMetadata.newContent || tool.resultMetadata.content) && (
-        <FileDiffPreview
-          path={(tool.resultMetadata.filePath as string) || (tool.resultMetadata.path as string) || (tool.arguments?.file_path as string) || ''}
-          originalContent={(tool.resultMetadata.originalContent as string) || null}
-          newContent={(tool.resultMetadata.newContent as string) || (tool.resultMetadata.content as string) || ''}
-          action={tool.resultMetadata.action as 'write' | 'edit' | 'create' | 'modified' | 'created'}
-          className="ml-6"
         />
       )}
     </div>

@@ -698,13 +698,16 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
           // Move operation
           await window.vyotiq.files.rename(sourcePath, newPath);
         } else {
-          // Copy operation - read and create new file
-          // For now, we'll use the terminal to copy
-          const isWindows = navigator.platform.toLowerCase().includes('win');
-          const cmd = isWindows 
-            ? `copy "${sourcePath}" "${newPath}"` 
-            : `cp -r "${sourcePath}" "${newPath}"`;
-          await window.vyotiq.terminal.run({ command: cmd, waitForExit: true });
+          // Copy operation - read content and write to new location
+          try {
+            const results = await window.vyotiq.files.read([sourcePath]);
+            if (results.length > 0 && results[0].content) {
+              await window.vyotiq.files.write(newPath, results[0].content);
+            }
+          } catch (copyErr) {
+            // If read/write fails (e.g., binary file), log and continue
+            logger.warn('Failed to copy file', { sourcePath, newPath, error: copyErr });
+          }
         }
       }
       

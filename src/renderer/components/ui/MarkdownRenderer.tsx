@@ -1,19 +1,9 @@
 /**
  * Markdown Renderer Component
- *
- * Uses `react-markdown` + remark/rehype plugins for:
- * - GFM (tables, task lists, strikethrough)
- * - Math (KaTeX)
- * - Syntax highlighting (highlight.js via rehype-highlight)
- *
- * Features:
- * - Code blocks with copy, run, and insert actions
- * - Styled tables, blockquotes, lists
- * - Task list checkboxes
- * - Link previews with external indicator
+ * Enhanced terminal-style markdown rendering with improved visual hierarchy
  */
 import React, { memo, useMemo } from 'react';
-import { Check, ExternalLink } from 'lucide-react';
+import { Check, ExternalLink, Terminal } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -29,296 +19,331 @@ interface MarkdownRendererProps {
   className?: string;
   onRunCode?: (code: string, language: string) => void;
   onInsertCode?: (code: string, language: string) => void;
-  /** Whether to enable interactive features like code actions */
   interactive?: boolean;
+  messageType?: 'user' | 'assistant';
 }
 
-
-export const MarkdownRenderer: React.FC<MarkdownRendererProps> = memo(({ 
-  content, 
-  compact = false, 
+export const MarkdownRenderer: React.FC<MarkdownRendererProps> = memo(({
+  content,
+  compact = false,
   className,
   onRunCode,
   onInsertCode,
   interactive = true,
+  messageType = 'assistant',
 }) => {
-  const plugins = useMemo(
-    () => ({
-      remarkPlugins: [remarkGfm, remarkMath],
-      rehypePlugins: [rehypeKatex, rehypeHighlight],
-    }),
-    [],
-  );
+  const plugins = useMemo(() => ({
+    remarkPlugins: [remarkGfm, remarkMath],
+    rehypePlugins: [rehypeKatex, rehypeHighlight],
+  }), []);
 
-  const components = useMemo(
-    () => ({
-      // Enhanced links with external indicator
-      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
-        const isExternal = href?.startsWith('http') || href?.startsWith('//');
-        return (
-          <a
-            href={href}
-            target={isExternal ? '_blank' : undefined}
-            rel={isExternal ? 'noopener noreferrer' : undefined}
-            className={cn(
-              'text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)]',
-              'underline decoration-[var(--color-accent-primary)]/30 hover:decoration-[var(--color-accent-primary)]',
-              'transition-colors inline-flex items-center gap-0.5'
-            )}
-          >
-            {children}
-            {isExternal && <ExternalLink size={10} className="opacity-50" />}
-          </a>
-        );
-      },
+  // Define text colors based on message type
+  const textColors = useMemo(() => ({
+    primary: messageType === 'user' ? 'text-white' : 'text-[var(--color-text-primary)]',
+    secondary: messageType === 'user' ? 'text-gray-100' : 'text-[var(--color-text-secondary)]',
+    muted: messageType === 'user' ? 'text-gray-300' : 'text-[var(--color-text-muted)]',
+  }), [messageType]);
 
-      // Enhanced blockquotes with callout support
-      blockquote: ({ children }: { children?: React.ReactNode }) => {
-        const callout = parseCallout(children);
-        if (callout) {
-          return <Callout type={callout.type}>{callout.content}</Callout>;
-        }
+  const components = useMemo(() => ({
+    // Links - Enhanced with better visual indicators
+    a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+      const isExternal = href?.startsWith('http') || href?.startsWith('//');
+      return (
+        <a
+          href={href}
+          target={isExternal ? '_blank' : undefined}
+          rel={isExternal ? 'noopener noreferrer' : undefined}
+          className={cn(
+            'text-[var(--color-accent-primary)] hover:text-[var(--color-accent-primary)]/80',
+            'underline decoration-dotted underline-offset-2 decoration-1',
+            'hover:decoration-solid transition-all duration-200',
+            'inline-flex items-center gap-1 font-medium'
+          )}
+        >
+          {children}
+          {isExternal && (
+            <ExternalLink size={10} className="opacity-60 hover:opacity-100 transition-opacity" />
+          )}
+        </a>
+      );
+    },
 
-        return <DefaultBlockquote>{children}</DefaultBlockquote>;
-      },
+    // Blockquotes with callout support
+    blockquote: ({ children }: { children?: React.ReactNode }) => {
+      const callout = parseCallout(children);
+      if (callout) return <Callout type={callout.type}>{callout.content}</Callout>;
+      return <DefaultBlockquote>{children}</DefaultBlockquote>;
+    },
 
-      // Styled tables
-      table: ({ children }: { children?: React.ReactNode }) => (
-        <div className="my-3 overflow-x-auto rounded-lg border border-[var(--color-border-subtle)]">
-          <table className="w-full text-[11px]">
-            {children}
-          </table>
+    // Tables - Enhanced terminal-style formatting with better visual hierarchy
+    table: ({ children }: { children?: React.ReactNode }) => (
+      <div className={cn(
+        'my-4 overflow-x-auto rounded-lg border border-[var(--color-border-subtle)]',
+        'bg-[var(--color-surface-1)] shadow-sm'
+      )}>
+        <table className="w-full text-[11px] border-collapse font-mono">{children}</table>
+      </div>
+    ),
+    thead: ({ children }: { children?: React.ReactNode }) => (
+      <thead className={cn(
+        'bg-[var(--color-surface-2)]',
+        'border-b-2 border-[var(--color-accent-primary)]/20'
+      )}>{children}</thead>
+    ),
+    th: ({ children }: { children?: React.ReactNode }) => (
+      <th className={cn(
+        'px-4 py-3 text-left font-bold text-[var(--color-text-primary)]',
+        'border-r border-[var(--color-border-subtle)]/30 last:border-r-0',
+        'bg-gradient-to-b from-[var(--color-surface-2)] to-[var(--color-surface-1)]'
+      )}>
+        <div className="flex items-center gap-2">
+          <Terminal size={10} className="text-[var(--color-accent-primary)] opacity-60" />
+          <span>{children}</span>
         </div>
-      ),
+      </th>
+    ),
+    td: ({ children }: { children?: React.ReactNode }) => (
+      <td className={cn(
+        'px-4 py-2.5 border-b border-[var(--color-border-subtle)]/20',
+        'border-r border-[var(--color-border-subtle)]/30 last:border-r-0',
+        'text-[var(--color-text-secondary)]'
+      )}>
+        {children}
+      </td>
+    ),
+    tr: ({ children }: { children?: React.ReactNode }) => (
+      <tr className={cn(
+        'hover:bg-[var(--color-surface-2)]/40 transition-colors duration-200',
+        'border-b border-[var(--color-border-subtle)]/10 last:border-b-0'
+      )}>{children}</tr>
+    ),
 
-      thead: ({ children }: { children?: React.ReactNode }) => (
-        <thead className="bg-[var(--color-surface-2)] text-[var(--color-text-primary)]">
-          {children}
-        </thead>
-      ),
-
-      th: ({ children }: { children?: React.ReactNode }) => (
-        <th className="px-3 py-2 text-left font-semibold border-b border-[var(--color-border-subtle)]">
-          {children}
-        </th>
-      ),
-
-      td: ({ children }: { children?: React.ReactNode }) => (
-        <td className="px-3 py-2 border-b border-[var(--color-border-subtle)]/50">
-          {children}
-        </td>
-      ),
-
-      tr: ({ children }: { children?: React.ReactNode }) => (
-        <tr className="hover:bg-[var(--color-surface-1)]/50 transition-colors">
-          {children}
-        </tr>
-      ),
-
-      // Enhanced lists
-      ul: ({ children }: { children?: React.ReactNode }) => (
-        <ul className="my-2 ml-4 space-y-1 list-none">
-          {children}
-        </ul>
-      ),
-
-      ol: ({ children }: { children?: React.ReactNode }) => (
-        <ol className="my-2 ml-4 space-y-1 list-decimal list-inside">
-          {children}
-        </ol>
-      ),
-
-      li: ({ children, className: liClassName }: { children?: React.ReactNode; className?: string }) => {
-        // Check if this is a task list item
-        const isTaskList = liClassName?.includes('task-list-item');
-        
+    // Lists - Enhanced terminal-style formatting with better spacing
+    ul: ({ children }: { children?: React.ReactNode }) => (
+      <ul className="my-3 ml-0 space-y-1.5 list-none">{children}</ul>
+    ),
+    ol: ({ children, start }: { children?: React.ReactNode; start?: number }) => (
+      <ol className="my-3 ml-0 space-y-1.5 list-none" start={start}>{children}</ol>
+    ),
+    li: ({ children, className: liClassName, ...props }: { children?: React.ReactNode; className?: string; node?: { tagName?: string; parent?: { tagName?: string } } }) => {
+      const isTaskList = liClassName?.includes('task-list-item');
+      const isOrdered = props.node?.tagName === 'li' && props.node?.parent?.tagName === 'ol';
+      
+      if (isTaskList) {
         return (
-          <li className={cn(
-            'relative pl-4',
-            !isTaskList && "before:content-['•'] before:absolute before:left-0 before:text-[var(--color-accent-primary)] before:font-bold",
-            isTaskList && 'list-none pl-0'
-          )}>
+          <li className={`list-none flex items-start gap-2.5 ${textColors.secondary} leading-relaxed ml-0 py-0.5`}>
             {children}
           </li>
         );
-      },
+      }
+      
+      return (
+        <li className={cn(
+          `${textColors.secondary} leading-relaxed flex items-start gap-2.5 list-none ml-0 py-0.5`,
+          `hover:${textColors.primary} transition-colors duration-200`
+        )} style={{ listStyle: 'none' }}>
+          <span className={cn(
+            'font-mono text-sm mt-0.5 flex-shrink-0 w-4 text-center',
+            'text-[var(--color-accent-primary)] hover:text-[var(--color-accent-primary)]/80 transition-colors'
+          )}>
+            {isOrdered ? '→' : '•'}
+          </span>
+          <span className="min-w-0 flex-1">{children}</span>
+        </li>
+      );
+    },
 
-      // Task list checkbox styling
-      input: ({ type, checked, disabled }: { type?: string; checked?: boolean; disabled?: boolean }) => {
-        if (type === 'checkbox') {
-          return (
-            <span className={cn(
-              'inline-flex items-center justify-center w-4 h-4 mr-2 rounded',
-              'border border-[var(--color-border-default)]',
-              checked 
-                ? 'bg-[var(--color-accent-primary)] border-[var(--color-accent-primary)]' 
-                : 'bg-[var(--color-surface-1)]',
-              disabled && 'cursor-default'
-            )}>
-              {checked && <Check size={10} className="text-[var(--color-text-on-accent)]" />}
-            </span>
-          );
-        }
-        return null;
-      },
+    // Task list checkbox - Enhanced styling
+    input: ({ type, checked }: { type?: string; checked?: boolean }) => {
+      if (type !== 'checkbox') return null;
+      return (
+        <span className={cn(
+          'inline-flex items-center justify-center w-4 h-4 mr-2 rounded border-2 transition-all duration-200',
+          checked 
+            ? 'bg-[var(--color-accent-primary)] border-[var(--color-accent-primary)] shadow-sm' 
+            : 'bg-transparent border-[var(--color-border-default)] hover:border-[var(--color-accent-primary)]/50'
+        )}>
+          {checked && <Check size={10} className="text-[var(--color-surface-base)] font-bold" />}
+        </span>
+      );
+    },
 
-      // Enhanced headings
-      h1: ({ children }: { children?: React.ReactNode }) => (
-        <h1 className="text-[1.4em] font-bold text-[var(--color-text-primary)] mt-4 mb-2 pb-1 border-b border-[var(--color-border-subtle)]">
-          {children}
-        </h1>
-      ),
+    // Headings - Enhanced visual hierarchy with terminal-style prefixes and dynamic colors
+    h1: ({ children }: { children?: React.ReactNode }) => (
+      <h1 className={cn(
+        `text-lg font-bold ${textColors.primary} mt-6 mb-3 pb-2`,
+        'border-b-2 border-[var(--color-accent-primary)]/30',
+        'flex items-center gap-2 group'
+      )}>
+        <span className="text-[var(--color-accent-primary)] font-mono text-base group-hover:text-[var(--color-accent-primary)]/80 transition-colors">
+          #
+        </span>
+        <span className="flex-1">{children}</span>
+      </h1>
+    ),
+    h2: ({ children }: { children?: React.ReactNode }) => (
+      <h2 className={cn(
+        `text-base font-bold ${textColors.primary} mt-5 mb-2`,
+        'flex items-center gap-2 group'
+      )}>
+        <span className="text-[var(--color-accent-primary)] font-mono text-sm group-hover:text-[var(--color-accent-primary)]/80 transition-colors">
+          ##
+        </span>
+        <span className="flex-1">{children}</span>
+      </h2>
+    ),
+    h3: ({ children }: { children?: React.ReactNode }) => (
+      <h3 className={cn(
+        `text-sm font-semibold ${textColors.primary} mt-4 mb-2`,
+        'flex items-center gap-2 group'
+      )}>
+        <span className="text-[var(--color-accent-primary)] font-mono text-xs group-hover:text-[var(--color-accent-primary)]/80 transition-colors">
+          ###
+        </span>
+        <span className="flex-1">{children}</span>
+      </h3>
+    ),
+    h4: ({ children }: { children?: React.ReactNode }) => (
+      <h4 className={cn(
+        `text-sm font-medium ${textColors.primary} mt-3 mb-1`,
+        'flex items-center gap-1.5 group'
+      )}>
+        <span className="text-[var(--color-accent-primary)] font-mono text-xs group-hover:text-[var(--color-accent-primary)]/80 transition-colors">
+          ####
+        </span>
+        <span className="flex-1">{children}</span>
+      </h4>
+    ),
+    h5: ({ children }: { children?: React.ReactNode }) => (
+      <h5 className={cn(
+        `text-xs font-medium ${textColors.secondary} mt-3 mb-1`,
+        'flex items-center gap-1.5 group'
+      )}>
+        <span className="text-[var(--color-accent-primary)] font-mono text-xs group-hover:text-[var(--color-accent-primary)]/80 transition-colors">
+          #####
+        </span>
+        <span className="flex-1">{children}</span>
+      </h5>
+    ),
+    h6: ({ children }: { children?: React.ReactNode }) => (
+      <h6 className={cn(
+        `text-xs font-medium ${textColors.muted} mt-2 mb-1`,
+        'flex items-center gap-1.5 group'
+      )}>
+        <span className="text-[var(--color-accent-primary)] font-mono text-xs group-hover:text-[var(--color-accent-primary)]/80 transition-colors">
+          ######
+        </span>
+        <span className="flex-1">{children}</span>
+      </h6>
+    ),
 
-      h2: ({ children }: { children?: React.ReactNode }) => (
-        <h2 className="text-[1.25em] font-semibold text-[var(--color-text-primary)] mt-3 mb-2">
-          {children}
-        </h2>
-      ),
+    // Other elements - Enhanced styling with dynamic colors
+    hr: () => (
+      <hr className={cn(
+        'my-6 border-0 h-px bg-gradient-to-r',
+        'from-transparent via-[var(--color-border-subtle)] to-transparent'
+      )} />
+    ),
+    p: ({ children }: { children?: React.ReactNode }) => (
+      <p className={`my-2.5 ${textColors.secondary} leading-relaxed`}>{children}</p>
+    ),
+    strong: ({ children }: { children?: React.ReactNode }) => (
+      <strong className={`font-bold ${textColors.primary}`}>{children}</strong>
+    ),
+    em: ({ children }: { children?: React.ReactNode }) => (
+      <em className={`italic ${textColors.primary}`}>{children}</em>
+    ),
+    del: ({ children }: { children?: React.ReactNode }) => (
+      <del className={`line-through opacity-70 ${textColors.muted}`}>{children}</del>
+    ),
 
-      h3: ({ children }: { children?: React.ReactNode }) => (
-        <h3 className="text-[1.1em] font-semibold text-[var(--color-text-primary)] mt-3 mb-1">
-          {children}
-        </h3>
-      ),
-
-      h4: ({ children }: { children?: React.ReactNode }) => (
-        <h4 className="text-[1em] font-semibold text-[var(--color-text-primary)] mt-2 mb-1">
-          {children}
-        </h4>
-      ),
-
-      // Horizontal rule
-      hr: () => (
-        <hr className="my-4 border-none h-px bg-gradient-to-r from-transparent via-[var(--color-border-default)] to-transparent" />
-      ),
-
-      // Paragraphs with proper spacing
-      p: ({ children }: { children?: React.ReactNode }) => (
-        <p className="my-2 leading-relaxed">
-          {children}
-        </p>
-      ),
-
-      // Block code lives under <pre><code/></pre>. Render it here so we never
-      // accidentally place block-level wrappers inside a <p>.
-      pre: ({ children }: { children?: React.ReactNode }) => {
-        const childArray = React.Children.toArray(children);
-        const codeChild = childArray.find(
-          (child) => React.isValidElement(child) && (child as { type?: unknown }).type === 'code',
-        ) as React.ReactElement<{ className?: string; children?: React.ReactNode }> | undefined;
-
-        if (!codeChild) {
-          return (
-            <pre className="my-2 overflow-x-auto rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] p-3 text-[11px] leading-relaxed font-mono">
-              {children}
-            </pre>
-          );
-        }
-
-        const codeClassName = codeChild.props.className;
-        const raw = extractPlainText(codeChild.props.children);
-
-        // className is usually like: "language-ts"
-        const languageMatch = /language-([^\s]+)/.exec(codeClassName ?? '');
-        const language = languageMatch?.[1] ?? 'text';
-
-        // react-markdown gives trailing newline sometimes; normalize
-        const code = raw.replace(/\n$/, '');
-
-        return (
-          <CodeBlock
-            code={code}
-            language={language}
-            onRun={interactive ? onRunCode : undefined}
-            onInsert={interactive ? onInsertCode : undefined}
-          />
-        );
-      },
-
-      // Strong/bold text
-      strong: ({ children }: { children?: React.ReactNode }) => (
-        <strong className="font-semibold text-[var(--color-text-primary)]">
-          {children}
-        </strong>
-      ),
-
-      // Emphasis/italic text
-      em: ({ children }: { children?: React.ReactNode }) => (
-        <em className="italic text-[var(--color-text-secondary)]">
-          {children}
-        </em>
-      ),
-
-      // Strikethrough
-      del: ({ children }: { children?: React.ReactNode }) => (
-        <del className="line-through text-[var(--color-text-muted)]">
-          {children}
-        </del>
-      ),
-
-      // Code blocks with actions + inline code styling + interactive components
-      code: ({
-        inline,
-        className: codeClassName,
-        children,
-      }: {
-        inline?: boolean;
-        className?: string;
-        children?: React.ReactNode;
-      }) => {
-        const raw = extractPlainText(children);
-        const isInline = inline ?? (!/language-/.test(codeClassName ?? '') && !raw.includes('\n'));
-
-        if (isInline) {
-          return (
-            <code className={cn(
-              'px-1.5 py-0.5 rounded text-[0.9em]',
-              'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
-              'text-[var(--color-accent-secondary)] font-mono',
-              codeClassName
-            )}>
-              {children}
-            </code>
-          );
-        }
-
-        // For fenced blocks, keep this a plain <code> and let the `pre` renderer
-        // handle the block wrapper/actions to avoid invalid DOM nesting.
-        return <code className={codeClassName}>{children}</code>;
-      },
-
-      // Images with styling
-      img: ({ src, alt }: { src?: string; alt?: string }) => (
-        <span className="block my-3">
-          <img
-            src={src}
-            alt={alt}
-            className="max-w-full h-auto rounded-lg border border-[var(--color-border-subtle)]"
-            loading="lazy"
+    // Images - Enhanced with better presentation
+    img: ({ src, alt }: { src?: string; alt?: string }) => (
+      <div className="block my-4 group">
+        <div className={cn(
+          'relative overflow-hidden rounded-lg border border-[var(--color-border-subtle)]',
+          'bg-[var(--color-surface-1)] shadow-sm hover:shadow-md transition-shadow duration-200'
+        )}>
+          <img 
+            src={src} 
+            alt={alt} 
+            className="max-w-full h-auto block" 
+            loading="lazy" 
           />
           {alt && (
-            <span className="block mt-1 text-[10px] text-[var(--color-text-muted)] text-center italic">
+            <div className={cn(
+              'absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent',
+              'p-2 text-white text-[10px] font-mono opacity-0 group-hover:opacity-100 transition-opacity'
+            )}>
               {alt}
-            </span>
+            </div>
           )}
-        </span>
-      ),
-    }),
-    [interactive, onInsertCode, onRunCode],
-  );
-  
+        </div>
+      </div>
+    ),
+
+    // Code blocks
+    pre: ({ children }: { children?: React.ReactNode }) => {
+      const childArray = React.Children.toArray(children);
+      const codeChild = childArray.find(
+        (child) => React.isValidElement(child) && (child as { type?: unknown }).type === 'code',
+      ) as React.ReactElement<{ className?: string; children?: React.ReactNode }> | undefined;
+
+      if (!codeChild) {
+        return (
+          <pre className="my-2 p-3 overflow-x-auto rounded border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] text-[11px] font-mono">
+            {children}
+          </pre>
+        );
+      }
+
+      const codeClassName = codeChild.props.className;
+      const raw = extractPlainText(codeChild.props.children);
+      const languageMatch = /language-([^\s]+)/.exec(codeClassName ?? '');
+      const language = languageMatch?.[1] ?? 'text';
+      const code = raw.replace(/\n$/, '');
+
+      return (
+        <CodeBlock
+          code={code}
+          language={language}
+          onRun={interactive ? onRunCode : undefined}
+          onInsert={interactive ? onInsertCode : undefined}
+        />
+      );
+    },
+
+    // Inline code - Enhanced terminal-style with better visual indicators
+    code: ({ inline, className: codeClassName, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) => {
+      const raw = extractPlainText(children);
+      const isInline = inline ?? (!/language-/.test(codeClassName ?? '') && !raw.includes('\n'));
+
+      if (isInline) {
+        return (
+          <code className={cn(
+            'relative px-2 py-1 mx-0.5 rounded-md text-[0.9em] font-mono',
+            'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
+            'text-[var(--color-accent-primary)] font-medium',
+            'hover:bg-[var(--color-surface-header)] transition-colors duration-200',
+            'before:content-["‹"] before:absolute before:-left-1 before:top-0 before:text-[8px] before:text-[var(--color-accent-primary)]/40',
+            'after:content-["›"] after:absolute after:-right-1 after:top-0 after:text-[8px] after:text-[var(--color-accent-primary)]/40'
+          )}>
+            {children}
+          </code>
+        );
+      }
+      return <code className={codeClassName}>{children}</code>;
+    },
+  }), [interactive, onRunCode, onInsertCode, textColors]);
+
   return (
     <div className={cn(
-      'markdown-content min-w-0 max-w-full overflow-hidden',
-      'text-[var(--color-text-primary)] leading-relaxed break-words',
-      compact ? 'text-[10px]' : 'text-[12px]',
+      'markdown-content text-left',
+      compact ? 'text-[11px]' : 'text-[12px]',
+      '[&_ul]:list-none [&_ol]:list-none [&_li]:list-none', // Ensure no default list styling
       className
     )}>
-      <ReactMarkdown
-        remarkPlugins={plugins.remarkPlugins}
-        rehypePlugins={plugins.rehypePlugins}
-        components={components}
-      >
+      <ReactMarkdown remarkPlugins={plugins.remarkPlugins} rehypePlugins={plugins.rehypePlugins} components={components}>
         {content}
       </ReactMarkdown>
     </div>
@@ -326,5 +351,4 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = memo(({
 });
 
 MarkdownRenderer.displayName = 'MarkdownRenderer';
-
 export default MarkdownRenderer;

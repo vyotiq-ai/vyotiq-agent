@@ -59,6 +59,7 @@ async function getPty(): Promise<typeof pty> {
   return nodePtyLoadPromise;
 }
 
+
 interface ProcessInfo {
   pty: pty.IPty;
   command: string;
@@ -207,6 +208,7 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
       }
     });
   }
+
 
   /**
    * Get output from a process

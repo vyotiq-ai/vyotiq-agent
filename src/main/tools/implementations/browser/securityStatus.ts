@@ -129,7 +129,7 @@ export const browserSecurityStatusTool: ToolDefinition<SecurityStatusArgs> = {
 - Security configuration (when includeConfig=true)`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-read',
   riskLevel: 'safe',
 
   schema: {

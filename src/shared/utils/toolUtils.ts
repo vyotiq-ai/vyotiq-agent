@@ -24,6 +24,8 @@ export type ToolCategory =
   | 'communication'       // Email, messaging
   | 'system'              // System operations
   | 'code-intelligence'   // Symbols, definitions, references, diagnostics
+  | 'browser-read'        // Browser read-only operations (fetch, extract, console)
+  | 'browser-write'       // Browser state-changing operations (click, type, navigate)
   | 'other';              // Uncategorized
 
 export type ToolAction = 'create' | 'edit' | 'delete' | 'rename' | 'read' | 'run' | 'check' | 'kill' | 'search' | 'media' | 'communicate';
@@ -44,7 +46,11 @@ const TERMINAL_KILL_TOOLS = ['kill_terminal', 'killTerminal', 'kill'];
 
 const MEDIA_TOOLS = ['video', 'audio', 'media', 'record', 'capture', 'mediaInfo'];
 const COMMUNICATION_TOOLS = ['email', 'compose_email', 'composeEmail', 'message', 'notify'];
-const CODE_INTEL_TOOLS = ['symbol', 'definition', 'reference', 'diagnostic', 'hover', 'completion'];
+const CODE_INTEL_TOOLS = ['lsp_', 'symbol', 'definition', 'reference', 'diagnostic', 'hover', 'completion', 'code_action', 'rename'];
+
+// Browser tools - separated into read-only and state-changing
+const BROWSER_READ_TOOLS = ['browser_fetch', 'browser_extract', 'browser_console', 'browser_network', 'browser_snapshot', 'browser_state', 'browser_security', 'browser_check'];
+const BROWSER_WRITE_TOOLS = ['browser_click', 'browser_type', 'browser_navigate', 'browser_scroll', 'browser_fill', 'browser_hover', 'browser_evaluate', 'browser_back', 'browser_forward', 'browser_reload', 'browser_tabs'];
 
 /**
  * Categorize a tool by name and determine its action
@@ -54,6 +60,14 @@ export function categorizeToolName(toolName: string): {
   action?: ToolAction;
 } {
   const normalized = toolName.toLowerCase();
+
+  // Browser operations - check first since they have specific prefixes
+  if (BROWSER_READ_TOOLS.some(t => normalized.includes(t))) {
+    return { category: 'browser-read', action: 'read' };
+  }
+  if (BROWSER_WRITE_TOOLS.some(t => normalized.includes(t))) {
+    return { category: 'browser-write', action: 'edit' };
+  }
 
   // File operations - write category
   if (FILE_WRITE_TOOLS.some(t => normalized.includes(t))) {

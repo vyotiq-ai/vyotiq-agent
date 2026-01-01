@@ -5,6 +5,107 @@ import { DEFAULT_MODELS } from './registry';
 
 const logger = createLogger('GeminiProvider');
 
+// =============================================================================
+// Gemini Schema Sanitization
+// =============================================================================
+
+/**
+ * Check if a value is a plain object (not array, not null)
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Sanitize JSON Schema for Gemini API compatibility.
+ * 
+ * Gemini's function calling API uses a restricted subset of JSON Schema
+ * based on Protocol Buffers. It does NOT support:
+ * - `additionalProperties` field
+ * - `type` as an array (e.g., ["string", "null"])
+ * - Complex `anyOf`/`oneOf`/`allOf` constructs
+ * - `$schema`, `$ref`, `$defs` references
+ * 
+ * @see https://ai.google.dev/gemini-api/docs/function-calling
+ */
+function sanitizeGeminiSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(sanitizeGeminiSchema);
+  if (!isPlainObject(schema)) return schema;
+
+  const result: Record<string, unknown> = { ...schema };
+
+  // Remove unsupported top-level fields
+  delete result.additionalProperties;
+  delete result.$schema;
+  delete result.$ref;
+  delete result.$defs;
+  delete result.definitions;
+
+  // Handle type arrays - Gemini only supports single type strings
+  // Convert ["string", "null"] to just "string"
+  if (Array.isArray(result.type)) {
+    const types = result.type.filter((t): t is string => typeof t === 'string' && t !== 'null');
+    result.type = types.length > 0 ? types[0] : 'string';
+  }
+
+  // Handle anyOf/oneOf by taking the first non-null option
+  // This is a simplification but works for nullable types
+  if (Array.isArray(result.anyOf)) {
+    const nonNullOption = result.anyOf.find(
+      (opt) => isPlainObject(opt) && opt.type !== 'null'
+    );
+    if (nonNullOption && isPlainObject(nonNullOption)) {
+      // Merge the non-null option into result, removing anyOf
+      delete result.anyOf;
+      Object.assign(result, sanitizeGeminiSchema(nonNullOption));
+    } else {
+      delete result.anyOf;
+    }
+  }
+
+  if (Array.isArray(result.oneOf)) {
+    const nonNullOption = result.oneOf.find(
+      (opt) => isPlainObject(opt) && opt.type !== 'null'
+    );
+    if (nonNullOption && isPlainObject(nonNullOption)) {
+      delete result.oneOf;
+      Object.assign(result, sanitizeGeminiSchema(nonNullOption));
+    } else {
+      delete result.oneOf;
+    }
+  }
+
+  // Remove allOf - Gemini doesn't support schema composition
+  if (Array.isArray(result.allOf)) {
+    // Try to merge allOf schemas into one
+    const merged: Record<string, unknown> = {};
+    for (const subSchema of result.allOf) {
+      if (isPlainObject(subSchema)) {
+        const sanitized = sanitizeGeminiSchema(subSchema) as Record<string, unknown>;
+        Object.assign(merged, sanitized);
+      }
+    }
+    delete result.allOf;
+    Object.assign(result, merged);
+  }
+
+  // Recursively sanitize nested properties
+  if (isPlainObject(result.properties)) {
+    const sanitizedProps: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(result.properties)) {
+      sanitizedProps[key] = sanitizeGeminiSchema(value);
+    }
+    result.properties = sanitizedProps;
+  }
+
+  // Recursively sanitize array items
+  if ('items' in result) {
+    result.items = sanitizeGeminiSchema(result.items);
+  }
+
+  return result;
+}
+
 /** Gemini model from /v1beta/models endpoint */
 export interface GeminiModel {
   name: string;
@@ -135,7 +236,7 @@ export class GeminiProvider extends BaseLLMProvider {
   /** Valid Gemini model ID patterns */
   private static readonly VALID_MODEL_PATTERNS = [
     /^gemini-/,   // All Gemini models: gemini-pro, gemini-1.5-pro, etc.
-    /^models\//,  // Full model path format
+    /^models\/gemini-/,  // Full model path format for Gemini models
   ];
   
   /** Models that REQUIRE thought signatures for function calling */
@@ -804,10 +905,14 @@ export class GeminiProvider extends BaseLLMProvider {
           });
         }
         
+        // CRITICAL: Sanitize schema for Gemini API compatibility
+        // Gemini doesn't support additionalProperties, type arrays, or complex anyOf/oneOf
+        const sanitizedSchema = sanitizeGeminiSchema(tool.jsonSchema);
+        
         return {
           name: tool.name,
           description: enhancedDescription,
-          parameters: tool.jsonSchema,
+          parameters: sanitizedSchema,
         };
       })
     }] : undefined;

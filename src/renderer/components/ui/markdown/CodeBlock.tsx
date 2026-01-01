@@ -11,52 +11,58 @@ export interface CodeBlockProps {
   collapseThreshold?: number;
 }
 
-// Language display names and colors
-const LANGUAGE_INFO: Record<string, { name: string; color: string }> = {
-  typescript: { name: 'TypeScript', color: 'text-[#3178c6]' },
-  ts: { name: 'TypeScript', color: 'text-[#3178c6]' },
-  tsx: { name: 'TSX', color: 'text-[#3178c6]' },
-  javascript: { name: 'JavaScript', color: 'text-[#f7df1e]' },
-  js: { name: 'JavaScript', color: 'text-[#f7df1e]' },
-  jsx: { name: 'JSX', color: 'text-[#61dafb]' },
-  python: { name: 'Python', color: 'text-[#3776ab]' },
-  py: { name: 'Python', color: 'text-[#3776ab]' },
-  rust: { name: 'Rust', color: 'text-[#dea584]' },
-  rs: { name: 'Rust', color: 'text-[#dea584]' },
-  go: { name: 'Go', color: 'text-[#00add8]' },
-  java: { name: 'Java', color: 'text-[#b07219]' },
-  cpp: { name: 'C++', color: 'text-[#f34b7d]' },
-  c: { name: 'C', color: 'text-[#555555]' },
-  csharp: { name: 'C#', color: 'text-[#178600]' },
-  cs: { name: 'C#', color: 'text-[#178600]' },
-  ruby: { name: 'Ruby', color: 'text-[#701516]' },
-  rb: { name: 'Ruby', color: 'text-[#701516]' },
-  php: { name: 'PHP', color: 'text-[#4f5d95]' },
-  swift: { name: 'Swift', color: 'text-[#ffac45]' },
-  kotlin: { name: 'Kotlin', color: 'text-[#a97bff]' },
-  html: { name: 'HTML', color: 'text-[#e34c26]' },
-  css: { name: 'CSS', color: 'text-[#563d7c]' },
-  scss: { name: 'SCSS', color: 'text-[#c6538c]' },
-  json: { name: 'JSON', color: 'text-[var(--color-warning)]' },
-  yaml: { name: 'YAML', color: 'text-[#cb171e]' },
-  yml: { name: 'YAML', color: 'text-[#cb171e]' },
-  markdown: { name: 'Markdown', color: 'text-[var(--color-text-muted)]' },
-  md: { name: 'Markdown', color: 'text-[var(--color-text-muted)]' },
-  sql: { name: 'SQL', color: 'text-[#e38c00]' },
-  bash: { name: 'Bash', color: 'text-[#89e051]' },
-  sh: { name: 'Shell', color: 'text-[#89e051]' },
-  shell: { name: 'Shell', color: 'text-[#89e051]' },
-  powershell: { name: 'PowerShell', color: 'text-[#012456]' },
-  ps1: { name: 'PowerShell', color: 'text-[#012456]' },
-  cmd: { name: 'CMD', color: 'text-[var(--color-text-muted)]' },
-  dockerfile: { name: 'Dockerfile', color: 'text-[#384d54]' },
-  docker: { name: 'Docker', color: 'text-[#384d54]' },
-  graphql: { name: 'GraphQL', color: 'text-[#e10098]' },
-  xml: { name: 'XML', color: 'text-[#0060ac]' },
-  toml: { name: 'TOML', color: 'text-[#9c4221]' },
-  ini: { name: 'INI', color: 'text-[var(--color-text-muted)]' },
-  diff: { name: 'Diff', color: 'text-[var(--color-success)]' },
-  text: { name: 'Text', color: 'text-[var(--color-text-muted)]' },
+// Language display names and colors - Enhanced with more languages
+const LANGUAGE_INFO: Record<string, { name: string; color: string; icon?: string }> = {
+  typescript: { name: 'TypeScript', color: 'text-[#3178c6]', icon: 'TS' },
+  ts: { name: 'TypeScript', color: 'text-[#3178c6]', icon: 'TS' },
+  tsx: { name: 'TSX', color: 'text-[#3178c6]', icon: 'TSX' },
+  javascript: { name: 'JavaScript', color: 'text-[#f7df1e]', icon: 'JS' },
+  js: { name: 'JavaScript', color: 'text-[#f7df1e]', icon: 'JS' },
+  jsx: { name: 'JSX', color: 'text-[#61dafb]', icon: 'JSX' },
+  python: { name: 'Python', color: 'text-[#3776ab]', icon: 'PY' },
+  py: { name: 'Python', color: 'text-[#3776ab]', icon: 'PY' },
+  rust: { name: 'Rust', color: 'text-[#dea584]', icon: 'RS' },
+  rs: { name: 'Rust', color: 'text-[#dea584]', icon: 'RS' },
+  go: { name: 'Go', color: 'text-[#00add8]', icon: 'GO' },
+  java: { name: 'Java', color: 'text-[#b07219]', icon: 'JAVA' },
+  cpp: { name: 'C++', color: 'text-[#f34b7d]', icon: 'C++' },
+  c: { name: 'C', color: 'text-[#555555]', icon: 'C' },
+  csharp: { name: 'C#', color: 'text-[#178600]', icon: 'C#' },
+  cs: { name: 'C#', color: 'text-[#178600]', icon: 'C#' },
+  ruby: { name: 'Ruby', color: 'text-[#701516]', icon: 'RB' },
+  rb: { name: 'Ruby', color: 'text-[#701516]', icon: 'RB' },
+  php: { name: 'PHP', color: 'text-[#4f5d95]', icon: 'PHP' },
+  swift: { name: 'Swift', color: 'text-[#ffac45]', icon: 'SWIFT' },
+  kotlin: { name: 'Kotlin', color: 'text-[#a97bff]', icon: 'KT' },
+  html: { name: 'HTML', color: 'text-[#e34c26]', icon: 'HTML' },
+  css: { name: 'CSS', color: 'text-[#563d7c]', icon: 'CSS' },
+  scss: { name: 'SCSS', color: 'text-[#c6538c]', icon: 'SCSS' },
+  sass: { name: 'Sass', color: 'text-[#c6538c]', icon: 'SASS' },
+  json: { name: 'JSON', color: 'text-[var(--color-warning)]', icon: 'JSON' },
+  yaml: { name: 'YAML', color: 'text-[#cb171e]', icon: 'YAML' },
+  yml: { name: 'YAML', color: 'text-[#cb171e]', icon: 'YAML' },
+  toml: { name: 'TOML', color: 'text-[#9c4221]', icon: 'TOML' },
+  xml: { name: 'XML', color: 'text-[#0060ac]', icon: 'XML' },
+  markdown: { name: 'Markdown', color: 'text-[var(--color-text-muted)]', icon: 'MD' },
+  md: { name: 'Markdown', color: 'text-[var(--color-text-muted)]', icon: 'MD' },
+  sql: { name: 'SQL', color: 'text-[#e38c00]', icon: 'SQL' },
+  bash: { name: 'Bash', color: 'text-[#89e051]', icon: 'BASH' },
+  sh: { name: 'Shell', color: 'text-[#89e051]', icon: 'SH' },
+  shell: { name: 'Shell', color: 'text-[#89e051]', icon: 'SH' },
+  zsh: { name: 'Zsh', color: 'text-[#89e051]', icon: 'ZSH' },
+  fish: { name: 'Fish', color: 'text-[#89e051]', icon: 'FISH' },
+  powershell: { name: 'PowerShell', color: 'text-[#012456]', icon: 'PS1' },
+  ps1: { name: 'PowerShell', color: 'text-[#012456]', icon: 'PS1' },
+  cmd: { name: 'CMD', color: 'text-[var(--color-text-muted)]', icon: 'CMD' },
+  dockerfile: { name: 'Dockerfile', color: 'text-[#384d54]', icon: 'DOCKER' },
+  docker: { name: 'Docker', color: 'text-[#384d54]', icon: 'DOCKER' },
+  graphql: { name: 'GraphQL', color: 'text-[#e10098]', icon: 'GQL' },
+  ini: { name: 'INI', color: 'text-[var(--color-text-muted)]', icon: 'INI' },
+  diff: { name: 'Diff', color: 'text-[var(--color-success)]', icon: 'DIFF' },
+  patch: { name: 'Patch', color: 'text-[var(--color-success)]', icon: 'PATCH' },
+  log: { name: 'Log', color: 'text-[var(--color-text-muted)]', icon: 'LOG' },
+  text: { name: 'Text', color: 'text-[var(--color-text-muted)]', icon: 'TXT' },
+  plaintext: { name: 'Text', color: 'text-[var(--color-text-muted)]', icon: 'TXT' },
 };
 
 export const CodeBlock: React.FC<CodeBlockProps> = memo(({ 
@@ -94,15 +100,31 @@ export const CodeBlock: React.FC<CodeBlockProps> = memo(({
   const isRunnable = ['bash', 'sh', 'shell', 'zsh', 'cmd', 'powershell', 'ps1'].includes(language.toLowerCase());
 
   return (
-    <div className="relative group my-2 rounded-md overflow-hidden border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--color-surface-header)] border-b border-[var(--color-border-subtle)]">
-        <div className="flex items-center gap-2">
-          <span className={cn('text-[10px] font-mono font-medium', langInfo.color)}>
-            {langInfo.name}
-          </span>
-          <span className="text-[9px] text-[var(--color-text-dim)]">
-            {lineCount} line{lineCount !== 1 ? 's' : ''}
-          </span>
+    <div className="relative group my-3 rounded-lg overflow-hidden border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] shadow-sm hover:shadow-md transition-shadow duration-200">
+      <div className="flex items-center justify-between px-4 py-2 bg-[var(--color-surface-header)] border-b border-[var(--color-border-subtle)]">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {langInfo.icon && (
+              <span className={cn(
+                'text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-md border',
+                langInfo.color, 
+                'bg-current/10 border-current/20'
+              )}>
+                {langInfo.icon}
+              </span>
+            )}
+            <span className={cn('text-[10px] font-mono font-semibold', langInfo.color)}>
+              {langInfo.name}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-[9px] text-[var(--color-text-dim)]">
+            <span>{lineCount} line{lineCount !== 1 ? 's' : ''}</span>
+            {shouldCollapse && (
+              <span className="opacity-60">
+                {isCollapsed ? `(showing ${collapseThreshold})` : '(full)'}
+              </span>
+            )}
+          </div>
         </div>
         
         {/* Always visible copy button + hover actions */}

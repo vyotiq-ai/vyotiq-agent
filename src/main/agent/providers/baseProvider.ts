@@ -438,6 +438,8 @@ export interface LLMProvider {
   readonly supportsCaching?: boolean;
   generate(request: ProviderRequest): Promise<ProviderResponse>;
   stream(request: ProviderRequest): AsyncGenerator<ProviderResponseChunk>;
+  /** Fetch available models from the provider API (optional) */
+  fetchModels?(signal?: AbortSignal): Promise<unknown[]>;
 }
 
 export abstract class BaseLLMProvider implements LLMProvider {

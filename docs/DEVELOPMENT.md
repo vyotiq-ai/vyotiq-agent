@@ -87,7 +87,6 @@ main/
 │   ├── providers/            # LLM providers
 │   ├── context/              # Context management
 │   ├── cache/                # Caching systems
-│   ├── memory/               # Agent memory
 │   ├── compliance/           # Safety checks
 │   ├── recovery/             # Error recovery
 │   └── debugging/            # Execution tracing
@@ -115,7 +114,6 @@ renderer/
 │   ├── browser/              # Browser panel
 │   ├── settings/             # Settings panel
 │   ├── sessions/             # Session management
-│   ├── memory/               # Memory panel
 │   ├── undo/                 # Undo history
 │   ├── workspaces/           # Workspace switcher
 │   └── onboarding/           # First-run wizard

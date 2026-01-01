@@ -126,7 +126,7 @@ export const browserHoverTool: ToolDefinition<HoverArgs> = {
 - Testing hover interactions`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {

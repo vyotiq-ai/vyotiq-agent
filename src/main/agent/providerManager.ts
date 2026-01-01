@@ -77,4 +77,24 @@ export class ProviderManager {
             }))
             .sort((a, b) => a.priority - b.priority);
     }
+
+    /**
+     * Get cooldown status for all providers
+     */
+    public getProvidersCooldownStatus(): Record<string, { inCooldown: boolean; remainingMs: number; reason: string } | null> {
+        const result: Record<string, { inCooldown: boolean; remainingMs: number; reason: string } | null> = {};
+        for (const [name] of this.providers) {
+            const cooldownInfo = this.runExecutor.getProviderCooldownInfo(name);
+            if (cooldownInfo) {
+                result[name] = {
+                    inCooldown: true,
+                    remainingMs: cooldownInfo.remainingMs,
+                    reason: cooldownInfo.reason,
+                };
+            } else {
+                result[name] = null;
+            }
+        }
+        return result;
+    }
 }

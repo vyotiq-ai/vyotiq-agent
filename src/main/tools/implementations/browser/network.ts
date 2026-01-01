@@ -237,7 +237,7 @@ export const browserNetworkTool: ToolDefinition<NetworkArgs> = {
 **Best Practice:** Call this after page interactions to check API responses.`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-read',
   riskLevel: 'safe',
 
   schema: {

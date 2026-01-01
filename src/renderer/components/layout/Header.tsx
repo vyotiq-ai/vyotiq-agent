@@ -10,10 +10,8 @@ import {
   Plus, 
   PanelLeft, 
   Settings,
-  Terminal,
   History,
   Globe,
-  Brain,
 } from 'lucide-react';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { useAgentSelector } from '../../state/AgentProvider';
@@ -96,10 +94,8 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
   );
   
   const { 
-    terminalPanelOpen, toggleTerminalPanel, 
     undoHistoryOpen, toggleUndoHistory, 
     browserPanelOpen, toggleBrowserPanel,
-    memoryPanelOpen, toggleMemoryPanel,
   } = useUI();
 
   const workspaceLabel = useMemo(() => {
@@ -128,8 +124,8 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
         </IconButton>
         
         {/* CLI-style Path */}
-        <div className="flex items-center gap-1 text-[11px] min-w-0 overflow-hidden ml-1">
-          <span className="text-[var(--color-accent-primary)] flex-shrink-0">λ</span>
+        <div className="flex items-center gap-1.5 text-[11px] min-w-0 overflow-hidden ml-1">
+          <span className="text-[var(--color-accent-primary)] flex-shrink-0 text-sm font-medium opacity-90">λ</span>
           
           {hasWorkspace && workspaceLabel ? (
             <span 
@@ -139,7 +135,7 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
               {workspaceLabel}
             </span>
           ) : (
-            <span className="text-[var(--color-text-placeholder)] italic">no workspace</span>
+            <span className="text-[var(--color-text-placeholder)]">~</span>
           )}
         </div>
         
@@ -172,14 +168,6 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
         {/* Panel Toggles - grouped */}
         <div className="flex items-center gap-0.5 ml-1 pl-1.5 border-l border-[var(--color-border-subtle)]">
           <IconButton
-            onClick={toggleTerminalPanel}
-            title={terminalPanelOpen ? 'Hide terminal [Ctrl+`]' : 'Show terminal [Ctrl+`]'}
-            active={terminalPanelOpen}
-          >
-            <Terminal size={13} />
-          </IconButton>
-          
-          <IconButton
             onClick={toggleBrowserPanel}
             title={browserPanelOpen ? 'Hide browser [Ctrl+Shift+B]' : 'Show browser [Ctrl+Shift+B]'}
             active={browserPanelOpen}
@@ -193,14 +181,6 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
             active={undoHistoryOpen}
           >
             <History size={13} />
-          </IconButton>
-          
-          <IconButton
-            onClick={toggleMemoryPanel}
-            title={memoryPanelOpen ? 'Hide memory [Ctrl+Shift+Y]' : 'Show memory [Ctrl+Shift+Y]'}
-            active={memoryPanelOpen}
-          >
-            <Brain size={13} />
           </IconButton>
         </div>
         

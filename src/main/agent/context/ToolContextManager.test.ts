@@ -33,7 +33,6 @@ const MOCK_TOOLS: ToolDefinition[] = [
   createMockTool('grep', 'Search in files'),
   createMockTool('glob', 'Find files by pattern'),
   createMockTool('run', 'Run terminal command'),
-  createMockTool('memory', 'Memory operations'),
   // LSP tools
   createMockTool('lsp_hover', 'Get hover info'),
   createMockTool('lsp_definition', 'Go to definition'),

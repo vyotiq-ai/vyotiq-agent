@@ -141,7 +141,7 @@ export const browserStateTool: ToolDefinition<StateArgs> = {
 - Understanding page structure overview`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-read',
   riskLevel: 'safe',
 
   schema: {

@@ -32,6 +32,7 @@ const agentAPI = {
 	renameSession: (sessionId: string, title: string) => ipcRenderer.invoke('agent:rename-session', sessionId, title),
 	getAvailableProviders: () => ipcRenderer.invoke('agent:get-available-providers'),
 	hasAvailableProviders: () => ipcRenderer.invoke('agent:has-available-providers'),
+	getProvidersCooldown: () => ipcRenderer.invoke('agent:get-providers-cooldown'),
 	editMessage: (sessionId: string, messageIndex: number, newContent: string) =>
 		ipcRenderer.invoke('agent:edit-message', sessionId, messageIndex, newContent),
 	createBranch: (sessionId: string, messageId: string, name?: string) =>
@@ -314,40 +315,6 @@ const fileAPI = {
 };
 
 // ==========================================================================
-// Terminal API
-// ==========================================================================
-
-const terminalAPI = {
-	run: (payload: {
-		command: string;
-		cwd?: string;
-		waitForExit?: boolean;
-		timeout?: number;
-		description?: string;
-	}) => ipcRenderer.invoke('terminal:run', payload),
-	getOutput: (payload: { pid: number; incrementalOnly?: boolean; filter?: string }) =>
-		ipcRenderer.invoke('terminal:get-output', payload),
-	kill: (pid: number) => ipcRenderer.invoke('terminal:kill', pid),
-	list: () => ipcRenderer.invoke('terminal:list'),
-	onOutput: (callback: (data: { pid: number; data: string; stream: 'stdout' | 'stderr' }) => void) => {
-		const listener = (_event: IpcRendererEvent, data: { pid: number; data: string; stream: 'stdout' | 'stderr' }) =>
-			callback(data);
-		ipcRenderer.on('terminal:output', listener);
-		return () => ipcRenderer.removeListener('terminal:output', listener);
-	},
-	onExit: (callback: (data: { pid: number; code: number }) => void) => {
-		const listener = (_event: IpcRendererEvent, data: { pid: number; code: number }) => callback(data);
-		ipcRenderer.on('terminal:exit', listener);
-		return () => ipcRenderer.removeListener('terminal:exit', listener);
-	},
-	onError: (callback: (data: { pid: number; error: string }) => void) => {
-		const listener = (_event: IpcRendererEvent, data: { pid: number; error: string }) => callback(data);
-		ipcRenderer.on('terminal:error', listener);
-		return () => ipcRenderer.removeListener('terminal:error', listener);
-	},
-};
-
-// ==========================================================================
 // Undo API
 // ==========================================================================
 
@@ -404,50 +371,6 @@ const cacheAPI = {
 	// Invalidate tool results for a specific path (when file changes)
 	invalidatePath: (path: string): Promise<{ success: boolean; invalidated: number }> =>
 		ipcRenderer.invoke('cache:invalidate-path', path),
-};
-
-// ==========================================================================
-// Autocomplete API
-// ==========================================================================
-
-interface AutocompleteRequestPayload {
-	text: string;
-	cursorPosition: number;
-	recentMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
-	sessionId?: string;
-	context?: {
-		workspaceName?: string;
-		projectType?: string;
-		recentFiles?: string[];
-		sessionTopic?: string;
-	};
-}
-
-interface AutocompleteResponsePayload {
-	suggestion: string | null;
-	provider?: string;
-	modelId?: string;
-	latencyMs?: number;
-	cached?: boolean;
-	error?: string;
-}
-
-const autocompleteAPI = {
-	// Request an autocomplete suggestion
-	request: (payload: AutocompleteRequestPayload): Promise<AutocompleteResponsePayload> =>
-		ipcRenderer.invoke('autocomplete:request', payload),
-
-	// Cancel any pending autocomplete request
-	cancel: (): Promise<{ success: boolean; error?: string }> =>
-		ipcRenderer.invoke('autocomplete:cancel'),
-
-	// Check if autocomplete is enabled
-	isEnabled: (): Promise<boolean> =>
-		ipcRenderer.invoke('autocomplete:is-enabled'),
-
-	// Clear the autocomplete cache
-	clearCache: (): Promise<{ success: boolean; error?: string }> =>
-		ipcRenderer.invoke('autocomplete:clear-cache'),
 };
 
 // ==========================================================================
@@ -1428,96 +1351,70 @@ const loopDetectionAPI = {
 };
 
 // ==========================================================================
-// Memory API
+// Claude Code Subscription OAuth API
 // ==========================================================================
 
-interface MemoryEntry {
-	id: string;
-	content: string;
-	category: 'decision' | 'context' | 'preference' | 'fact' | 'task' | 'error' | 'general';
-	importance: 'low' | 'medium' | 'high' | 'critical';
-	keywords: string[];
-	workspaceId: string;
-	sessionId?: string;
-	createdAt: number;
-	lastAccessedAt: number;
-	accessCount: number;
-	isPinned: boolean;
-	source: 'agent' | 'user';
+interface ClaudeSubscriptionStatus {
+	connected: boolean;
+	tier?: 'free' | 'pro' | 'max' | 'team' | 'enterprise';
+	email?: string;
+	expiresAt?: number;
+	isExpired?: boolean;
+	expiresIn?: string;
 }
 
-interface MemoryStats {
-	totalMemories: number;
-	byCategory: Record<string, number>;
-	byImportance: Record<string, number>;
-	pinnedCount: number;
+interface ClaudeSubscription {
+	accessToken: string;
+	refreshToken: string;
+	expiresAt: number;
+	tier: 'free' | 'pro' | 'max' | 'team' | 'enterprise';
+	organizationId?: string;
+	email?: string;
+	connectedAt: number;
 }
 
-const memoryAPI = {
+interface ClaudeInstallStatus {
+	installed: boolean;
+	hasCredentials: boolean;
+	cliAvailable: boolean;
+}
+
+const claudeAPI = {
 	/**
-	 * Create a new memory
+	 * Import credentials from Claude Code CLI
 	 */
-	create: (payload: {
-		content: string;
-		category?: string;
-		importance?: string;
-		keywords?: string[];
-		isPinned?: boolean;
-	}): Promise<{ success: boolean; memory?: MemoryEntry; error?: string }> =>
-		ipcRenderer.invoke('memory:create', payload),
+	startOAuth: (): Promise<{ success: boolean; subscription?: ClaudeSubscription; error?: string }> =>
+		ipcRenderer.invoke('claude:start-oauth'),
 
 	/**
-	 * Get a memory by ID
+	 * Disconnect Claude Code subscription
 	 */
-	get: (id: string): Promise<{ success: boolean; memory?: MemoryEntry; error?: string }> =>
-		ipcRenderer.invoke('memory:get', id),
+	disconnect: (): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('claude:disconnect'),
 
 	/**
-	 * Update a memory
+	 * Get current subscription status
 	 */
-	update: (id: string, updates: {
-		content?: string;
-		category?: string;
-		importance?: string;
-		keywords?: string[];
-		isPinned?: boolean;
-	}): Promise<{ success: boolean; memory?: MemoryEntry; error?: string }> =>
-		ipcRenderer.invoke('memory:update', id, updates),
+	getSubscriptionStatus: (): Promise<ClaudeSubscriptionStatus> =>
+		ipcRenderer.invoke('claude:get-subscription-status'),
 
 	/**
-	 * Delete a memory
+	 * Refresh expired access token
 	 */
-	delete: (id: string): Promise<{ success: boolean; error?: string }> =>
-		ipcRenderer.invoke('memory:delete', id),
+	refreshToken: (): Promise<{ success: boolean; subscription?: ClaudeSubscription; error?: string }> =>
+		ipcRenderer.invoke('claude:refresh-token'),
 
 	/**
-	 * Search memories
+	 * Check if Claude Code CLI is installed
 	 */
-	search: (options: {
-		query?: string;
-		category?: string;
-		importance?: string;
-		limit?: number;
-	}): Promise<{ success: boolean; memories: MemoryEntry[]; totalCount: number; error?: string }> =>
-		ipcRenderer.invoke('memory:search', options),
+	checkInstalled: (): Promise<ClaudeInstallStatus> =>
+		ipcRenderer.invoke('claude:check-installed'),
 
 	/**
-	 * List recent/important memories
+	 * Launch Claude Code CLI authentication (opens terminal)
 	 */
-	list: (limit?: number): Promise<{ success: boolean; memories: MemoryEntry[]; stats: MemoryStats | null; error?: string }> =>
-		ipcRenderer.invoke('memory:list', limit),
-
-	/**
-	 * Get memory statistics
-	 */
-	getStats: (): Promise<{ success: boolean; stats: MemoryStats | null; error?: string }> =>
-		ipcRenderer.invoke('memory:get-stats'),
-
-	/**
-	 * Clear all memories for the current workspace
-	 */
-	clear: (): Promise<{ success: boolean; count: number; error?: string }> =>
-		ipcRenderer.invoke('memory:clear'),
+	launchAuth: (): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('claude:launch-auth'),
 };
 
 contextBridge.exposeInMainWorld('vyotiq', {
@@ -1533,10 +1430,8 @@ contextBridge.exposeInMainWorld('vyotiq', {
 	files: fileAPI,
 	cache: cacheAPI,
 	git: gitAPI,
-	terminal: terminalAPI,
 	undo: undoAPI,
 	browser: browserAPI,
-	autocomplete: autocompleteAPI,
 	editorAI: editorAIAPI,
 
 	// Language Server Protocol API
@@ -1551,6 +1446,6 @@ contextBridge.exposeInMainWorld('vyotiq', {
 	// Loop Detection API
 	loopDetection: loopDetectionAPI,
 
-	// Memory API
-	memory: memoryAPI,
+	// Claude Code Subscription OAuth API
+	claude: claudeAPI,
 });

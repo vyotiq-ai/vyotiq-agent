@@ -48,7 +48,6 @@ import { useMessageHistory } from './useMessageHistory';
 import { useMentions } from './useMentions';
 import { useDraftMessage } from './useDraftMessage';
 import { useWorkspaceFiles } from './useWorkspaceFiles';
-import { useAutoComplete } from './useAutoComplete';
 
 /**
  * Refactored chat input hook using composition
@@ -68,10 +67,6 @@ export const useChatInput = () => {
       const activeSession = state.activeSessionId
         ? state.sessions.find((session) => session.id === state.activeSessionId)
         : undefined;
-
-      const autocompleteEnabled = state.settings?.autocompleteSettings?.enabled ?? true;
-      const autocompleteDebounceMs = state.settings?.autocompleteSettings?.debounceMs ?? 300;
-      const autocompleteMinChars = state.settings?.autocompleteSettings?.minChars ?? 3;
 
       const recentUserMessagesForHistory: ChatMessage[] = [];
       const messages = activeSession?.messages ?? [];
@@ -110,9 +105,6 @@ export const useChatInput = () => {
         recentUserMessageContents,
         recentUserMessagesForHistory,
         sessionTopic,
-        autocompleteEnabled,
-        autocompleteDebounceMs,
-        autocompleteMinChars,
       };
     },
     (a, b) => {
@@ -128,9 +120,6 @@ export const useChatInput = () => {
         if (a.recentUserMessageContents[i] !== b.recentUserMessageContents[i]) return false;
       }
       if (a.sessionTopic !== b.sessionTopic) return false;
-      if (a.autocompleteEnabled !== b.autocompleteEnabled) return false;
-      if (a.autocompleteDebounceMs !== b.autocompleteDebounceMs) return false;
-      if (a.autocompleteMinChars !== b.autocompleteMinChars) return false;
       if (a.recentUserMessagesForHistory.length !== b.recentUserMessagesForHistory.length) return false;
       for (let i = 0; i < a.recentUserMessagesForHistory.length; i++) {
         const am = a.recentUserMessagesForHistory[i];
@@ -197,37 +186,6 @@ export const useChatInput = () => {
     workspacePath: activeWorkspace?.path ?? undefined,
     enabled: true,
     isLoading: workspaceFiles.isLoading,
-  });
-
-  // Extract recent file mentions for context
-  const recentFileMentions = useMemo(() => {
-    const files = new Set<string>();
-    for (const content of sessionSnapshot.recentUserMessageContents) {
-      const mentions = content.match(/@[\w./\\-]+/g);
-      if (mentions) {
-        mentions.forEach(m => files.add(m.slice(1))); // Remove @ prefix
-      }
-    }
-    return Array.from(files).slice(0, 5);
-  }, [sessionSnapshot.recentUserMessageContents]);
-
-  // AI Autocomplete system with workspace context
-  const autocomplete = useAutoComplete({
-    text: messageState.message,
-    cursorPosition,
-    enabled: sessionSnapshot.autocompleteEnabled,
-    debounceMs: sessionSnapshot.autocompleteDebounceMs,
-    minChars: sessionSnapshot.autocompleteMinChars,
-    sessionId: activeSession?.id,
-    recentMessages: sessionSnapshot.recentUserMessagesForHistory.slice(-5).map((m) => ({
-      role: 'user' as const,
-      content: m.content.slice(0, 200),
-    })),
-    context: {
-      workspaceName: activeWorkspace?.path?.split(/[/\\]/).pop(),
-      recentFiles: recentFileMentions,
-      sessionTopic: sessionSnapshot.sessionTopic,
-    },
   });
 
   // Draft auto-save
@@ -357,51 +315,6 @@ export const useChatInput = () => {
       }
     }
 
-    // Handle autocomplete Tab to accept suggestion
-    if (e.key === 'Tab' && autocomplete.isActive && autocomplete.suggestion) {
-      e.preventDefault();
-      const newText = autocomplete.acceptSuggestion();
-      if (newText) {
-        messageState.setMessage(newText);
-        // Update cursor position to end of accepted text
-        const newCursorPos = newText.length;
-        setCursorPosition(newCursorPos);
-        setTimeout(() => {
-          if (messageState.textareaRef.current) {
-            messageState.textareaRef.current.selectionStart = newCursorPos;
-            messageState.textareaRef.current.selectionEnd = newCursorPos;
-          }
-        }, 0);
-      }
-      return;
-    }
-
-    // Handle Ctrl+ArrowRight to accept next word from autocomplete
-    if (e.key === 'ArrowRight' && e.ctrlKey && autocomplete.isActive && autocomplete.suggestion) {
-      e.preventDefault();
-      const newText = autocomplete.acceptNextWord();
-      if (newText) {
-        messageState.setMessage(newText);
-        // Update cursor position to end of accepted word
-        const newCursorPos = newText.length - (autocomplete.suggestion ? autocomplete.suggestion.length : 0);
-        setCursorPosition(newCursorPos);
-        setTimeout(() => {
-          if (messageState.textareaRef.current) {
-            messageState.textareaRef.current.selectionStart = newCursorPos;
-            messageState.textareaRef.current.selectionEnd = newCursorPos;
-          }
-        }, 0);
-      }
-      return;
-    }
-
-    // Handle Escape to dismiss autocomplete
-    if (e.key === 'Escape' && autocomplete.isActive) {
-      e.preventDefault();
-      autocomplete.dismissSuggestion();
-      return;
-    }
-
     // Handle Enter to send
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -425,7 +338,7 @@ export const useChatInput = () => {
         messageHistory.resetHistory();
       }
     }
-  }, [chatSubmit, agentBusy, activeSession, actions, messageState, messageHistory, mentions, handleMentionSelect, setCursorPosition, autocomplete]);
+  }, [chatSubmit, agentBusy, activeSession, actions, messageState, messageHistory, mentions, handleMentionSelect, setCursorPosition]);
 
   // Return a unified API compatible with the original hook
   return {
@@ -483,26 +396,16 @@ export const useChatInput = () => {
       activeMention: mentions.activeMention,
       suggestions: mentions.suggestions,
       selectedIndex: mentions.selectedIndex,
+      setSelectedIndex: mentions.setSelectedIndex,
       handleSelect: handleMentionSelect,
       parseMentions: mentions.parseMentions,
       isLoading: mentions.isLoading,
       noResults: mentions.noResults,
+      searchQuery: mentions.searchQuery,
+      totalFiles: mentions.totalFiles,
     },
     cursorPosition,
     setCursorPosition,
-
-    // AI Autocomplete
-    autocomplete: {
-      suggestion: autocomplete.suggestion,
-      isLoading: autocomplete.isLoading,
-      isActive: autocomplete.isActive,
-      acceptSuggestion: autocomplete.acceptSuggestion,
-      acceptNextWord: autocomplete.acceptNextWord,
-      dismissSuggestion: autocomplete.dismissSuggestion,
-      provider: autocomplete.provider,
-      latencyMs: autocomplete.latencyMs,
-      cached: autocomplete.cached,
-    },
 
     // Draft auto-save
     draft: {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, TerminalSettings, ComplianceSettings, AccessLevelSettings, BrowserSettings, AutocompleteSettings, TaskRoutingSettings, RoutingTaskType, TaskModelMapping, EditorAISettings, AutonomousFeatureFlags } from '../../shared/types';
+import type { AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, ComplianceSettings, AccessLevelSettings, BrowserSettings, TaskRoutingSettings, RoutingTaskType, TaskModelMapping, EditorAISettings, AutonomousFeatureFlags } from '../../shared/types';
 import { useAgentSelector } from '../state/AgentProvider';
 import { getDefaultModel } from '../../shared/providers';
 import { createLogger } from '../utils/logger';
@@ -236,23 +236,6 @@ export const useSettings = (open: boolean) => {
     [],
   );
 
-  // Update terminal settings
-  const updateTerminalSetting = useCallback(
-    (field: keyof TerminalSettings, value: TerminalSettings[keyof TerminalSettings]) => {
-      setLocalSettings((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          terminalSettings: {
-            ...prev.terminalSettings,
-            [field]: value,
-          } as TerminalSettings,
-        };
-      });
-    },
-    [],
-  );
-
   // Update compliance settings
   const updateComplianceSetting = useCallback(
     (field: keyof ComplianceSettings, value: ComplianceSettings[keyof ComplianceSettings]) => {
@@ -298,23 +281,6 @@ export const useSettings = (open: boolean) => {
             ...prev.browserSettings,
             [field]: value,
           } as BrowserSettings,
-        };
-      });
-    },
-    [],
-  );
-
-  // Update autocomplete settings
-  const updateAutocompleteSetting = useCallback(
-    (field: keyof AutocompleteSettings, value: AutocompleteSettings[keyof AutocompleteSettings]) => {
-      setLocalSettings((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          autocompleteSettings: {
-            ...prev.autocompleteSettings,
-            [field]: value,
-          } as AutocompleteSettings,
         };
       });
     },
@@ -477,9 +443,7 @@ export const useSettings = (open: boolean) => {
     updateCacheSetting,
     updateDebugSetting,
     updatePromptSetting,
-    updateTerminalSetting,
     updateBrowserSetting,
-    updateAutocompleteSetting,
     updateTaskRoutingSetting,
     updateTaskMapping,
     updateEditorAISetting,

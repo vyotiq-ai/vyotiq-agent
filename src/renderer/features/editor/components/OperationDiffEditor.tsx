@@ -128,13 +128,38 @@ export const OperationDiffEditor: React.FC<OperationDiffEditorProps> = memo(({
 
     editorRef.current = editor;
 
+    // Auto-scroll to first change for better UX
+    setTimeout(() => {
+      const changes = editor.getLineChanges();
+      if (changes && changes.length > 0) {
+        const firstChange = changes[0];
+        const modifiedEditor = editor.getModifiedEditor();
+        const targetLine = firstChange.modifiedStartLineNumber || firstChange.modifiedEndLineNumber;
+        modifiedEditor.revealLineInCenter(targetLine);
+        modifiedEditor.setPosition({ lineNumber: targetLine, column: 1 });
+      }
+    }, 100);
+
     return () => {
       editor.dispose();
       originalModel.dispose();
       modifiedModel.dispose();
       editorRef.current = null;
     };
-  }, [operationDiff.originalContent, operationDiff.newContent, operationDiff.path, language, settings, viewMode]);
+  }, [operationDiff.originalContent, operationDiff.newContent, operationDiff.path]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Update editor options when settings change
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({
+        fontSize: settings.fontSize,
+        fontFamily: settings.fontFamily,
+        lineNumbers: settings.lineNumbers,
+        renderWhitespace: settings.renderWhitespace,
+        smoothScrolling: settings.smoothScrolling,
+      });
+    }
+  }, [settings]);
 
   // Update view mode
   useEffect(() => {

@@ -9,6 +9,7 @@ import React, { memo, useState, useCallback, useRef, useEffect, useMemo } from '
 import { Pencil, X, Check, GitBranch, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 import type { ChatMessage } from '../../../../shared/types';
+import { formatTokenUsageEnhanced } from '../../../utils/messageFormatting';
 import { cn } from '../../../utils/cn';
 import { ThinkingPanel } from './ThinkingPanel';
 import { GeneratedMedia } from './GeneratedMedia';
@@ -20,44 +21,13 @@ interface TokenUsageDisplay {
 }
 
 function formatTokenUsage(usage?: ChatMessage['usage']): TokenUsageDisplay | undefined {
-  if (!usage) return undefined;
-  const total = usage.total ?? (usage.input + usage.output);
-  if (!Number.isFinite(total)) return undefined;
+  const enhanced = formatTokenUsageEnhanced(usage);
+  if (!enhanced) return undefined;
   
-  // Format the total tokens for display
-  let text: string;
-  if (total < 1000) {
-    text = `${total} tok`;
-  } else {
-    const k = Math.round((total / 1000) * 10) / 10;
-    text = `${k}k tok`;
-  }
-  
-  // Build tooltip with detailed breakdown
-  const tooltipLines: string[] = [
-    `Total: ${total.toLocaleString()} tokens`,
-    `  Input: ${usage.input.toLocaleString()}`,
-    `  Output: ${usage.output.toLocaleString()}`,
-  ];
-  
-  // Add cache hit info for DeepSeek if available
-  if (usage.cacheHit && usage.cacheHit > 0) {
-    const hitRatio = Math.round((usage.cacheHit / usage.input) * 100);
-    text += ` (${hitRatio}% cached)`;
-    tooltipLines.push(`Cache hit: ${usage.cacheHit.toLocaleString()} (${hitRatio}%)`);
-    if (usage.cacheMiss) {
-      tooltipLines.push(`Cache miss: ${usage.cacheMiss.toLocaleString()}`);
-    }
-  }
-  
-  // Add reasoning tokens info for thinking models
-  if (usage.reasoningTokens && usage.reasoningTokens > 0) {
-    const reasoningK = Math.round((usage.reasoningTokens / 1000) * 10) / 10;
-    text += reasoningK >= 1 ? ` +${reasoningK}k reasoning` : ` +${usage.reasoningTokens} reasoning`;
-    tooltipLines.push(`Reasoning: ${usage.reasoningTokens.toLocaleString()}`);
-  }
-  
-  return { text, tooltip: tooltipLines.join('\n') };
+  return {
+    text: enhanced.text,
+    tooltip: enhanced.tooltip,
+  };
 }
 
 /**
@@ -146,6 +116,56 @@ interface RoutingInfo {
   originalProvider?: string;
 }
 
+/**
+ * Format model ID for compact display
+ * Extracts the meaningful part of model IDs like "gemini-2.5-flash-preview-05-20"
+ */
+function formatModelIdShort(modelId: string): string {
+  // Remove provider prefix if present (e.g., "openai/gpt-4" -> "gpt-4")
+  const withoutPrefix = modelId.split('/').pop() || modelId;
+  // For long model names, take first 3 segments
+  const parts = withoutPrefix.split('-');
+  if (parts.length > 3) {
+    return parts.slice(0, 3).join('-');
+  }
+  return withoutPrefix;
+}
+
+/** Compact provider/model badge for message headers */
+const ProviderModelBadge: React.FC<{
+  provider: string;
+  modelId?: string;
+  iteration?: number;
+  isAutoRouted?: boolean;
+}> = memo(({ provider, modelId, iteration, isAutoRouted }) => {
+  const shortModel = modelId ? formatModelIdShort(modelId) : null;
+  const tooltip = [
+    `Provider: ${provider}`,
+    modelId && `Model: ${modelId}`,
+    iteration && `Iteration: ${iteration}`,
+    isAutoRouted && 'Auto-routed',
+  ].filter(Boolean).join('\n');
+
+  return (
+    <span 
+      className="inline-flex items-center gap-1 text-[9px] text-[var(--color-text-muted)] font-mono"
+      title={tooltip}
+    >
+      <span className="text-[var(--color-text-secondary)]">{provider}</span>
+      {shortModel && (
+        <>
+          <span className="text-[var(--color-text-dim)]">/</span>
+          <span>{shortModel}</span>
+        </>
+      )}
+      {iteration && (
+        <span className="text-[var(--color-text-dim)]">[{iteration}]</span>
+      )}
+    </span>
+  );
+});
+ProviderModelBadge.displayName = 'ProviderModelBadge';
+
 /** Threshold for collapsible long messages (in characters) */
 const COLLAPSE_THRESHOLD = 1500;
 /** Number of characters to show when collapsed */
@@ -169,6 +189,10 @@ interface MessageLineProps {
   isSearchMatch?: boolean;
   /** Whether this is the currently focused search match */
   isCurrentSearchMatch?: boolean;
+  /** Children to render inside the message (e.g., tool executions) */
+  children?: React.ReactNode;
+  /** Whether to show lambda branding (first assistant message after user) */
+  showBranding?: boolean;
 }
 
 const MessageLineComponent: React.FC<MessageLineProps> = ({
@@ -184,9 +208,10 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
   reaction,
   isSearchMatch = false,
   isCurrentSearchMatch = false,
+  children,
+  showBranding = true,
 }) => {
   const [copied, setCopied] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -233,8 +258,8 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
     setTimeout(() => setCopied(false), 2000);
   }, [message.content]);
 
-  const handleMouseEnter = useCallback(() => setIsHovered(true), []);
-  const handleMouseLeave = useCallback(() => setIsHovered(false), []);
+  const handleMouseEnter = useCallback(() => {}, []);
+  const handleMouseLeave = useCallback(() => {}, []);
 
   const handleStartEdit = useCallback(() => {
     setEditContent(message.content);
@@ -272,162 +297,100 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
   });
 
   const tokenSummary = formatTokenUsage(message.usage);
-  const editedStr = message.updatedAt ? new Date(message.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined;
 
   const displayContent = message.content;
 
-  // User message - right-aligned with distinct styling
+  // User message - terminal/CLI style, right-aligned
   if (type === 'user') {
     const renderMarkdownUser = Boolean(displayContent && looksLikeMarkdown(displayContent));
 
     return (
       <div 
         className={cn(
-          'py-2 group relative font-mono',
-          'transition-colors',
-          // Search highlighting
-          isSearchMatch && 'bg-[var(--color-warning)]/10 rounded-lg',
-          isCurrentSearchMatch && 'ring-2 ring-[var(--color-warning)] ring-offset-1 ring-offset-[var(--color-surface-base)]'
+          'py-1.5 group relative font-mono',
+          isSearchMatch && 'bg-[var(--color-warning)]/10',
+          isCurrentSearchMatch && 'ring-1 ring-[var(--color-warning)]'
         )}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        role="article"
-        aria-label={`Your message at ${timeStr}`}
         data-message-id={message.id}
       >
-        <div className="flex justify-end">
-          <div className="max-w-[96%] sm:max-w-[90%] md:max-w-[85%] lg:max-w-[80%] flex flex-col items-end min-w-0">
-            {/* Header */}
-            <div className="w-full flex items-center justify-between gap-2 text-[10px] mb-1 min-w-0">
-              <div className="min-w-0 flex items-center gap-2 text-[var(--color-text-placeholder)] font-mono overflow-hidden flex-1">
-                <span className="flex-shrink-0">[{timeStr}]</span>
-                <span className="text-[var(--color-accent-primary)] font-medium">you</span>
-                {tokenSummary && (
-                  <span className="truncate hidden sm:inline" title={tokenSummary.tooltip}>• {tokenSummary.text}</span>
-                )}
-                {editedStr && (
-                  <span className="truncate hidden sm:inline">• edited {editedStr}</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5">
-              {/* Fork button */}
-              {onFork && !isEditing && (
-                <button
-                  onClick={() => onFork(message.id)}
-                  className={cn(
-                    // On touch screens there is no hover: keep actions visible.
-                    'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 p-1 text-[9px] transition-opacity rounded',
-                    'text-[var(--color-text-placeholder)] hover:text-[var(--color-info)] hover:bg-[var(--color-surface-2)]',
-                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
-                  )}
-                  title="fork from here"
-                  aria-label="Fork conversation from this message"
-                >
-                  <GitBranch size={10} aria-hidden="true" />
-                </button>
-              )}
-              {/* Edit button */}
-              {onEdit && !isEditing && (
-                <button
-                  onClick={handleStartEdit}
-                  className={cn(
-                    'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 p-1 text-[9px] transition-opacity rounded',
-                    'text-[var(--color-text-placeholder)] hover:text-[var(--color-accent-primary)] hover:bg-[var(--color-surface-2)]',
-                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
-                  )}
-                  title="edit message"
-                  aria-label="Edit this message"
-                >
-                  <Pencil size={10} aria-hidden="true" />
-                </button>
-              )}
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-2 text-[10px] mb-1">
+          {/* Left - actions on hover */}
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={handleCopy}
+              className="px-1.5 py-0.5 text-[9px] text-[var(--color-text-placeholder)] hover:text-[var(--color-accent-primary)] rounded transition-colors"
+            >
+              {copied ? 'copied' : 'copy'}
+            </button>
+            {onFork && !isEditing && (
               <button
-                onClick={handleCopy}
-                className={cn(
-                  'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 px-1.5 py-0.5 text-[9px] transition-opacity',
-                  'text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)]',
-                  // Prevent layout shift when label toggles between "copy" and "copied"
-                  'min-w-[44px] text-right',
-                  'rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
-                )}
-                title="copy"
-                aria-label={copied ? 'Copied to clipboard' : 'Copy message to clipboard'}
+                onClick={() => onFork(message.id)}
+                className="p-1 text-[var(--color-text-placeholder)] hover:text-[var(--color-info)] rounded transition-colors"
+                title="fork"
               >
-                {copied ? 'copied' : 'copy'}
+                <GitBranch size={10} />
               </button>
-              </div>
-            </div>
+            )}
+            {onEdit && !isEditing && (
+              <button
+                onClick={handleStartEdit}
+                className="p-1 text-[var(--color-text-placeholder)] hover:text-[var(--color-accent-primary)] rounded transition-colors"
+                title="edit"
+              >
+                <Pencil size={10} />
+              </button>
+            )}
+          </div>
+          
+          {/* Right - timestamp and label */}
+          <div className="flex items-center gap-2 text-[9px]">
+            <span className="text-[var(--color-text-dim)]">{timeStr}</span>
+            <span className="text-[var(--color-accent-primary)] font-medium">you</span>
+          </div>
+        </div>
 
-            {/* Message bubble */}
-            <div className={cn(
-              'px-3.5 py-2 rounded-2xl rounded-tr-sm min-w-0 max-w-full',
-              'bg-[var(--color-accent-primary)]/8',
-              'border border-[var(--color-accent-primary)]/15',
-              'transition-all duration-200 break-words overflow-hidden',
-              isHovered && 'bg-[var(--color-accent-primary)]/12 border-[var(--color-accent-primary)]/25 shadow-sm shadow-[var(--color-accent-primary)]/5',
-              isEditing && 'ring-2 ring-[var(--color-accent-primary)]/30'
-            )}>
-              {/* Attachments */}
-              {message.attachments && message.attachments.length > 0 && (
-                <div className="text-[10px] text-[var(--color-text-muted)] mb-2 pb-2 border-b border-[var(--color-accent-primary)]/10">
-                  {message.attachments.map((att, idx) => {
-                    const isLast = idx === message.attachments!.length - 1;
-                    return (
-                      <div key={att.id} className="flex items-center gap-1.5">
-                        <span className="text-[var(--color-accent-primary)]/50">
-                          {isLast ? '└' : '├'}
-                        </span>
-                        <span className="text-[var(--color-info)]/80">{att.name}</span>
-                        <span className="text-[var(--color-text-dim)]">[{Math.round(att.size / 1024)}kb]</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              
-              {/* Content - editable or display */}
-              {isEditing ? (
-                <div className="space-y-2" role="form" aria-label="Edit message">
-                  <textarea
-                    ref={editTextareaRef}
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    onKeyDown={handleEditKeyDown}
-                    className={cn(
-                      'w-full min-h-[60px] p-2 text-[12px] bg-[var(--color-surface-1)] rounded-sm',
-                      'border border-[var(--color-border-subtle)] focus-visible:border-[var(--color-accent-primary)]',
-                      'text-[var(--color-text-primary)] resize-none outline-none'
-                    )}
-                    placeholder="Edit your message..."
-                    aria-label="Edit message content"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={handleCancelEdit}
-                      className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
-                      title="Cancel (Esc)"
-                      aria-label="Cancel editing"
-                    >
-                      <X size={14} aria-hidden="true" />
-                    </button>
-                    <button
-                      onClick={handleSaveEdit}
-                      className="p-1.5 rounded hover:bg-[var(--color-accent-primary)]/20 text-[var(--color-accent-primary)]"
-                      title="Save & Resend (Enter)"
-                      aria-label="Save and resend message"
-                    >
-                      <Check size={14} aria-hidden="true" />
-                    </button>
+        {/* Content - right aligned with right border */}
+        <div className="flex justify-end">
+          <div className="pr-3 mr-2 border-r border-[var(--color-accent-primary)]/20">
+            {/* Attachments */}
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="text-[10px] text-[var(--color-text-muted)] mb-1 text-right">
+                {message.attachments.map((att) => (
+                  <div key={att.id} className="flex items-center justify-end gap-1.5">
+                    <span className="text-[var(--color-info)]">{att.name}</span>
+                    <span className="text-[var(--color-text-dim)]">{Math.round(att.size / 1024)}kb</span>
                   </div>
-                </div>
-              ) : displayContent && (
-                <ContentRenderer
-                  content={displayContent}
-                  useMarkdown={renderMarkdownUser}
+                ))}
+              </div>
+            )}
+            
+            {/* Content */}
+            {isEditing ? (
+              <div className="space-y-2 text-left max-w-[500px]">
+                <textarea
+                  ref={editTextareaRef}
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  onKeyDown={handleEditKeyDown}
+                  className="w-full min-h-[60px] p-2 text-[12px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] focus:border-[var(--color-accent-primary)] text-[var(--color-text-primary)] resize-none outline-none"
                 />
-              )}
-            </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={handleCancelEdit} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]">
+                    <X size={12} />
+                  </button>
+                  <button onClick={handleSaveEdit} className="p-1 text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)]">
+                    <Check size={12} />
+                  </button>
+                </div>
+              </div>
+            ) : displayContent && (
+              <div className="text-[12px] text-[var(--color-text-primary)] leading-relaxed break-words text-right max-w-[600px]">
+                <ContentRenderer content={displayContent} useMarkdown={renderMarkdownUser} messageType="user" />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -435,8 +398,6 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
   }
 
   // Assistant message - left-aligned with different styling
-  // Always render assistant messages through markdown for consistent formatting
-  // This ensures code blocks, lists, tables, and other formatting are properly displayed
   const renderMarkdown = Boolean(displayContent);
 
   const isSummaryMessage = Boolean(message.isSummary);
@@ -444,9 +405,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
   return (
     <div 
       className={cn(
-        'py-2 group relative font-mono',
-        'transition-all duration-200',
-        // Search highlighting
+        'py-1.5 group relative font-mono',
         isSearchMatch && 'bg-[var(--color-warning)]/10 rounded-lg',
         isCurrentSearchMatch && 'ring-2 ring-[var(--color-warning)] ring-offset-1 ring-offset-[var(--color-surface-base)]'
       )}
@@ -454,221 +413,197 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
       onMouseLeave={handleMouseLeave}
       data-message-id={message.id}
     >
-      <div className="flex justify-start">
-        <div className="w-full min-w-0 max-w-full overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between gap-2 text-[10px] mb-1">
-            <div className="min-w-0 flex items-center gap-2 font-mono overflow-hidden">
-              <span className={cn(
-                'text-[11px] transition-all',
-                isStreaming
-                  ? 'text-[var(--color-warning)] animate-pulse'
-                  : 'text-[var(--color-info)]'
-              )}>
-                {'>'}
-              </span>
-              <span className={cn(
-                'font-medium transition-colors',
-                isStreaming
-                  ? 'text-[var(--color-warning)]'
-                  : 'text-[var(--color-info)]'
-              )}>
-                <span title={message.modelId ? `model: ${message.modelId}` : undefined}>
-                  vyotiq
-                </span>
-              </span>
-              <span className="text-[var(--color-text-placeholder)]">[{timeStr}]</span>
-              {/* Task-based routing indicator - show badge on larger screens */}
-              {routingInfo && routingInfo.provider && (
-                <span className="hidden sm:inline-flex">
-                  <RoutingBadge
-                    taskType={routingInfo.taskType}
-                    provider={routingInfo.provider}
-                    model={routingInfo.model ?? undefined}
-                    confidence={routingInfo.confidence}
-                    reason={routingInfo.reason}
-                    usedFallback={routingInfo.usedFallback}
-                    originalProvider={routingInfo.originalProvider}
-                    compact
-                  />
-                </span>
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-2 text-[10px] mb-1">
+        <div className="min-w-0 flex items-center gap-2 font-mono overflow-hidden">
+          {showBranding ? (
+            <>
+              <span className="text-[var(--color-accent-primary)] text-sm font-medium">λ</span>
+              <span className="text-[var(--color-text-muted)] text-[9px]">vyotiq</span>
+              <span className="text-[var(--color-text-dim)] text-[9px]">{timeStr}</span>
+            </>
+          ) : (
+            <span className="text-[var(--color-text-dim)] text-[9px]">{timeStr}</span>
+          )}
+          {/* Provider/model badge - show on first message with routing, or inline on all */}
+          {routingInfo && routingInfo.provider && showBranding && (
+            <RoutingBadge
+              taskType={routingInfo.taskType}
+              provider={routingInfo.provider}
+              model={routingInfo.model ?? undefined}
+              confidence={routingInfo.confidence}
+              reason={routingInfo.reason}
+              usedFallback={routingInfo.usedFallback}
+              originalProvider={routingInfo.originalProvider}
+              compact
+            />
+          )}
+          {/* Show provider/model inline when no routing info or on continuation messages */}
+          {message.provider && (!routingInfo || !showBranding) && (
+            <span 
+              className="text-[9px] font-mono text-[var(--color-text-muted)]"
+              title={message.modelId || message.provider}
+            >
+              <span className="text-[var(--color-text-secondary)]">{message.provider}</span>
+              {message.modelId && (
+                <>
+                  <span className="text-[var(--color-text-dim)]">/</span>
+                  <span className="text-[var(--color-text-dim)]">{message.modelId.split('-').slice(0, 2).join('-')}</span>
+                </>
               )}
-              {isSummaryMessage && (
-                <span className="text-[var(--color-accent-secondary)] hidden sm:inline">• summary</span>
-              )}
-              {tokenSummary && (
-                <span className="text-[var(--color-text-dim)] truncate hidden sm:inline" title={tokenSummary.tooltip}>• {tokenSummary.text}</span>
-              )}
-            </div>
+            </span>
+          )}
+          {isSummaryMessage && (
+            <span className="text-[var(--color-accent-secondary)] text-[9px]">summary</span>
+          )}
+        </div>
 
-            {displayContent && (
-              <div className="flex items-center gap-1">
-                {/* Reaction buttons */}
-                {onReaction && !isStreaming && (
-                  <>
-                    <button
-                      onClick={() => handleReaction('up')}
-                      className={cn(
-                        'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 p-1 text-[9px] transition-all duration-150 rounded',
-                        reaction === 'up'
-                          ? 'text-[var(--color-success)] bg-[var(--color-success)]/10'
-                          : 'text-[var(--color-text-placeholder)] hover:text-[var(--color-success)] hover:bg-[var(--color-surface-2)]/50'
-                      )}
-                      title="Good response"
-                      aria-label="Rate as good response"
-                      aria-pressed={reaction === 'up'}
-                    >
-                      <ThumbsUp size={10} />
-                    </button>
-                    <button
-                      onClick={() => handleReaction('down')}
-                      className={cn(
-                        'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 p-1 text-[9px] transition-all duration-150 rounded',
-                        reaction === 'down'
-                          ? 'text-[var(--color-error)] bg-[var(--color-error)]/10'
-                          : 'text-[var(--color-text-placeholder)] hover:text-[var(--color-error)] hover:bg-[var(--color-surface-2)]/50'
-                      )}
-                      title="Poor response"
-                      aria-label="Rate as poor response"
-                      aria-pressed={reaction === 'down'}
-                    >
-                      <ThumbsDown size={10} />
-                    </button>
-                  </>
-                )}
-                {onFork && !isStreaming && (
+        {/* Right side: tokens + actions */}
+        <div className="flex items-center gap-2">
+          {tokenSummary && (
+            <span className="text-[var(--color-text-dim)] text-[9px] tabular-nums" title={tokenSummary.tooltip}>{tokenSummary.text}</span>
+          )}
+          
+          {displayContent && (
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              {onReaction && !isStreaming && (
+                <>
                   <button
-                    onClick={() => onFork(message.id)}
+                    onClick={() => handleReaction('up')}
                     className={cn(
-                      'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 p-1 text-[9px] transition-all duration-150',
-                      'text-[var(--color-text-placeholder)] hover:text-[var(--color-info)] hover:bg-[var(--color-surface-2)]/50 rounded'
+                      'p-1 rounded transition-colors',
+                      reaction === 'up'
+                        ? 'opacity-100 text-[var(--color-success)] bg-[var(--color-success)]/10'
+                        : 'text-[var(--color-text-placeholder)] hover:text-[var(--color-success)] hover:bg-[var(--color-surface-2)]/50'
                     )}
-                    title="fork from here"
+                    title="Good response"
                   >
-                    <GitBranch size={10} />
+                    <ThumbsUp size={10} />
                   </button>
-                )}
+                  <button
+                    onClick={() => handleReaction('down')}
+                    className={cn(
+                      'p-1 rounded transition-colors',
+                      reaction === 'down'
+                        ? 'opacity-100 text-[var(--color-error)] bg-[var(--color-error)]/10'
+                        : 'text-[var(--color-text-placeholder)] hover:text-[var(--color-error)] hover:bg-[var(--color-surface-2)]/50'
+                    )}
+                    title="Poor response"
+                  >
+                    <ThumbsDown size={10} />
+                  </button>
+                </>
+              )}
+              {onFork && !isStreaming && (
                 <button
-                  onClick={handleCopy}
-                  className={cn(
-                    'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 px-1.5 py-0.5 text-[9px] transition-all duration-150',
-                    'text-[var(--color-text-placeholder)] hover:text-[var(--color-info)] hover:bg-[var(--color-surface-2)]/50 rounded',
-                    // Prevent layout shift when label toggles between "copy" and "copied"
-                    'min-w-[52px] text-right'
-                  )}
-                  title="copy response"
+                  onClick={() => onFork(message.id)}
+                  className="p-1 text-[var(--color-text-placeholder)] hover:text-[var(--color-info)] hover:bg-[var(--color-surface-2)]/50 rounded transition-colors"
+                  title="fork from here"
                 >
-                  {copied ? <span className="text-[var(--color-success)]">copied</span> : 'copy'}
+                  <GitBranch size={10} />
                 </button>
-              </div>
-            )}
+              )}
+              <button
+                onClick={handleCopy}
+                className="px-1.5 py-0.5 text-[9px] text-[var(--color-text-placeholder)] hover:text-[var(--color-info)] hover:bg-[var(--color-surface-2)]/50 rounded transition-colors"
+                title="copy response"
+              >
+                {copied ? <span className="text-[var(--color-success)]">copied</span> : 'copy'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className={cn(
+        'pl-3 border-l',
+        showBranding 
+          ? 'ml-2 border-[var(--color-accent-primary)]/15' 
+          : 'ml-4 border-[var(--color-border-subtle)]/30'
+      )}>
+        {/* Thinking Panel */}
+        {(message.thinking || message.isThinkingStreaming) && (
+          <div className="mb-2">
+            <ThinkingPanel
+              thinking={message.thinking || ''}
+              isStreaming={message.isThinkingStreaming}
+              modelName={getThinkingModelName(message.modelId)}
+              defaultCollapsed={!message.isThinkingStreaming}
+            />
           </div>
+        )}
 
-          {/* Align assistant content/tools to a shared gutter */}
-          <div className="ml-3 min-w-0">
-            {/* Thinking Panel - shows model's reasoning process */}
-            {(message.thinking || message.isThinkingStreaming) && (
-              <ThinkingPanel
-                thinking={message.thinking || ''}
-                isStreaming={message.isThinkingStreaming}
-                modelName={getThinkingModelName(message.modelId)}
-                defaultCollapsed={!message.isThinkingStreaming} // Expand while streaming
-              />
-            )}
-
-            {/* Response content area */}
-            <div className={cn(
-              'px-3 py-2 border-l-2 transition-all duration-200 rounded-r break-words overflow-hidden',
-              'bg-[var(--color-surface-1)]/20 min-w-0',
-              isStreaming 
-                ? 'border-[var(--color-warning)]/50' 
-                : 'border-[var(--color-info)]/20',
-              isHovered && !isStreaming && 'border-[var(--color-info)]/40 bg-[var(--color-surface-1)]/30'
-            )}>
-              {isSummaryMessage ? (
-                <details className="group">
-                  <summary className={cn(
-                    'cursor-pointer select-none list-none',
-                    'text-[10px] font-mono text-[var(--color-text-muted)]',
-                    'flex items-center justify-between gap-2'
-                  )}>
-                    <span className="truncate">Summary message (context compression)</span>
-                    <span className="text-[var(--color-text-dim)] group-open:hidden">show</span>
-                    <span className="text-[var(--color-text-dim)] hidden group-open:inline">hide</span>
-                  </summary>
-                  <div className="pt-2">
-                    {displayContent && (
-                      <ContentRenderer
-                        content={displayContent}
-                        useMarkdown={renderMarkdown}
-                        onRunCode={onRunCode}
-                        onInsertCode={onInsertCode}
-                      />
-                    )}
-                  </div>
-                </details>
-              ) : isLongMessage ? (
-                <div>
-                  <ContentRenderer
-                    content={isExpanded ? displayContent : collapsedContent}
-                    useMarkdown={renderMarkdown}
-                    onRunCode={onRunCode}
-                    onInsertCode={onInsertCode}
-                  />
-                  {!isExpanded && (
-                    <div className="mt-1 text-[var(--color-text-muted)] text-[10px]">...</div>
-                  )}
-                  <button
-                    onClick={handleToggleExpand}
-                    className={cn(
-                      'mt-2 flex items-center gap-1 px-2 py-1 rounded text-[10px]',
-                      'text-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary)]/10',
-                      'transition-colors'
-                    )}
-                  >
-                    {isExpanded ? (
-                      <>
-                        <ChevronUp size={12} />
-                        <span>Show less</span>
-                      </>
-                    ) : (
-                      <>
-                        <ChevronDown size={12} />
-                        <span>Show more ({Math.round((displayContent.length - collapsedContent.length) / 100) * 100}+ chars)</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                displayContent && (
+        {/* Response content */}
+        <div className="break-words overflow-hidden min-w-0">
+          {isSummaryMessage ? (
+            <details className="group/summary">
+              <summary className="cursor-pointer select-none list-none text-[10px] font-mono text-[var(--color-text-muted)] flex items-center gap-2">
+                <span>Summary (context compression)</span>
+                <span className="text-[var(--color-text-dim)] text-[9px] group-open/summary:hidden">show</span>
+                <span className="text-[var(--color-text-dim)] text-[9px] hidden group-open/summary:inline">hide</span>
+              </summary>
+              <div className="pt-2">
+                {displayContent && (
                   <ContentRenderer
                     content={displayContent}
                     useMarkdown={renderMarkdown}
+                    messageType="assistant"
                     onRunCode={onRunCode}
                     onInsertCode={onInsertCode}
                   />
-                )
-              )}
-
-              {(message.generatedImages || message.generatedAudio) && (
-                <GeneratedMedia
-                  images={message.generatedImages}
-                  audio={message.generatedAudio}
-                />
-              )}
-            </div>
-
-            {/* Streaming indicator */}
-            {isStreaming && !displayContent && !message.isThinkingStreaming && (
-              <div className="mt-1 px-3 border-l-2 border-[var(--color-warning)]/40">
-                <div className="flex items-center gap-1.5 text-[var(--color-text-muted)] text-[10px] py-1">
-                  <span className="inline-block w-1.5 h-1.5 bg-[var(--color-warning)]/60 animate-pulse rounded-full" aria-hidden="true" />
-                  <span className="text-[var(--color-text-placeholder)]">receiving...</span>
-                </div>
+                )}
               </div>
-            )}
-          </div>
+            </details>
+          ) : isLongMessage ? (
+            <div>
+              <ContentRenderer
+                content={isExpanded ? displayContent : collapsedContent}
+                useMarkdown={renderMarkdown}
+                messageType="assistant"
+                onRunCode={onRunCode}
+                onInsertCode={onInsertCode}
+              />
+              {!isExpanded && (
+                <span className="text-[var(--color-text-muted)] text-[10px]">...</span>
+              )}
+              <button
+                onClick={handleToggleExpand}
+                className="mt-2 flex items-center gap-1 px-2 py-1 rounded text-[10px] text-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary)]/10 transition-colors"
+              >
+                {isExpanded ? <><ChevronUp size={12} /><span>Show less</span></> : <><ChevronDown size={12} /><span>Show more</span></>}
+              </button>
+            </div>
+          ) : (
+            displayContent && (
+              <ContentRenderer
+                content={displayContent}
+                useMarkdown={renderMarkdown}
+                messageType="assistant"
+                onRunCode={onRunCode}
+                onInsertCode={onInsertCode}
+              />
+            )
+          )}
+
+          {(message.generatedImages || message.generatedAudio) && (
+            <GeneratedMedia
+              images={message.generatedImages}
+              audio={message.generatedAudio}
+            />
+          )}
         </div>
+
+        {/* Tool executions */}
+        {children && <div className="mt-2">{children}</div>}
+
+        {/* Streaming indicator */}
+        {isStreaming && !displayContent && !message.isThinkingStreaming && (
+          <div className="flex items-center gap-1.5 text-[10px] py-1">
+            <span className="w-1.5 h-1.5 bg-[var(--color-accent-primary)] animate-pulse rounded-full" />
+            <span className="text-[var(--color-text-placeholder)]">thinking...</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -683,14 +618,19 @@ const LazyMarkdownRenderer = React.lazy(() => import('../../../components/ui/Mar
 const ContentRenderer: React.FC<{ 
   content: string;
   useMarkdown: boolean;
+  messageType?: 'user' | 'assistant';
   onRunCode?: (code: string, language: string) => void;
   onInsertCode?: (code: string, language: string) => void;
-}> = memo(({ content, useMarkdown, onRunCode, onInsertCode }) => {
+}> = memo(({ content, useMarkdown, messageType = 'assistant', onRunCode, onInsertCode }) => {
+  const textColorClass = messageType === 'user' 
+    ? 'text-white' 
+    : 'text-[var(--color-text-secondary)]';
+
   if (useMarkdown) {
     return (
       <React.Suspense
         fallback={
-          <div className="text-[12px] text-[var(--color-text-primary)] leading-relaxed whitespace-pre-wrap break-words">
+          <div className={`text-[12px] ${textColorClass} leading-relaxed whitespace-pre-wrap break-words`}>
             {content}
           </div>
         }
@@ -699,6 +639,7 @@ const ContentRenderer: React.FC<{
           content={content} 
           onRunCode={onRunCode} 
           onInsertCode={onInsertCode}
+          messageType={messageType}
           interactive
         />
       </React.Suspense>
@@ -706,7 +647,7 @@ const ContentRenderer: React.FC<{
   }
   
   return (
-    <div className="text-[12px] text-[var(--color-text-primary)] leading-relaxed whitespace-pre-wrap break-words">
+    <div className={`text-[12px] ${textColorClass} leading-relaxed whitespace-pre-wrap break-words`}>
       {content}
     </div>
   );

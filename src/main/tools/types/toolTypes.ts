@@ -149,6 +149,8 @@ export type ToolCategory =
   | 'communication'  // Email, messaging
   | 'system'         // System operations
   | 'code-intelligence' // Symbols, definitions, references, diagnostics
+  | 'browser-read'   // Browser read-only operations (fetch, extract, console)
+  | 'browser-write'  // Browser state-changing operations (click, type, navigate)
   | 'other';         // Uncategorized
 
 export interface ToolUIMetadata {

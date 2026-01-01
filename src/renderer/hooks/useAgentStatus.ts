@@ -113,5 +113,10 @@ export const useAgentStatus = () => {
     messageCount: snapshot.messageCount,
     activeSessionId: snapshot.activeSessionId,
     isPaused,
+    // Provider/model info for current iteration
+    activeProvider: snapshot.agentStatusInfo?.provider,
+    activeModelId: snapshot.agentStatusInfo?.modelId,
+    currentIteration: snapshot.agentStatusInfo?.currentIteration,
+    maxIterations: snapshot.agentStatusInfo?.maxIterations,
   };
 };

@@ -242,8 +242,6 @@ export const ChatInput: React.FC = memo(() => {
     mentions,
     cursorPosition: _cursorPosition, // Used internally by mentions
     setCursorPosition,
-    // New: Autocomplete
-    autocomplete,
     // New: Draft
     draft,
   } = useChatInput();
@@ -258,9 +256,13 @@ export const ChatInput: React.FC = memo(() => {
     isPaused,
     messageCount,
     contextMetrics,
+    activeProvider,
+    activeModelId,
+    currentIteration,
+    maxIterations,
   } = useAgentStatus();
   const { formattedCost, formattedTotalTokens, hasUsage, breakdownTitle } = useSessionCost();
-  const { availableProviders } = useAvailableProviders();
+  const { availableProviders, providersCooldown } = useAvailableProviders();
   
   // === Local State ===
   const [isDragging, setIsDragging] = useState(false);
@@ -358,11 +360,11 @@ export const ChatInput: React.FC = memo(() => {
   }, [handleFileDrop]);
   
   return (
-    <div className="w-full min-w-0 overflow-hidden">
+    <div className="w-full min-w-0 overflow-visible">
       {/* Terminal container - edge to edge full width */}
       <div 
         className={cn(
-          'terminal-container relative w-full',
+          'terminal-container relative w-full overflow-visible',
           'bg-[var(--color-surface-editor)]',
           'border-t border-[var(--color-border-subtle)]',
           'font-mono',
@@ -409,16 +411,6 @@ export const ChatInput: React.FC = memo(() => {
         <div className="px-3 py-1.5">
           <div className="flex items-start gap-2">
             <div className="flex-1 min-w-0 relative">
-              {/* @ Mention Autocomplete */}
-              <MentionAutocomplete
-                suggestions={mentions.suggestions}
-                selectedIndex={mentions.selectedIndex}
-                onSelect={mentions.handleSelect}
-                visible={!!mentions.activeMention}
-                isLoading={mentions.isLoading}
-                noResults={mentions.noResults}
-              />
-
               <InputTextarea
                 ref={textareaRef}
                 value={message}
@@ -441,11 +433,19 @@ export const ChatInput: React.FC = memo(() => {
                 className="w-full"
                 maxHeight={220}
                 ariaDescribedBy="chat-input-hints"
-                ghostText={autocomplete.suggestion ?? undefined}
-                ghostTextLoading={autocomplete.isLoading}
-                showGhostTextHint={autocomplete.isActive && !!autocomplete.suggestion}
-                ghostTextProvider={autocomplete.provider}
-                ghostTextLatencyMs={autocomplete.latencyMs}
+              />
+
+              {/* @ Mention Autocomplete - positioned above textarea */}
+              <MentionAutocomplete
+                suggestions={mentions.suggestions}
+                selectedIndex={mentions.selectedIndex}
+                onSelect={mentions.handleSelect}
+                onSelectionChange={mentions.setSelectedIndex}
+                visible={!!mentions.activeMention}
+                isLoading={mentions.isLoading}
+                noResults={mentions.noResults}
+                searchQuery={mentions.searchQuery}
+                totalFiles={mentions.totalFiles}
               />
             </div>
 
@@ -473,6 +473,7 @@ export const ChatInput: React.FC = memo(() => {
             modelId={selectedModelId}
             onProviderSelect={handleProviderSelect}
             availableProviders={availableProviders}
+            providersCooldown={providersCooldown}
             yoloEnabled={yoloEnabled}
             onToggleYolo={handleToggleYolo}
             disabled={agentBusy ?? false}
@@ -482,6 +483,11 @@ export const ChatInput: React.FC = memo(() => {
             costInfo={costInfo}
             contextInfo={contextInfo}
             className="flex-1 min-w-0"
+            activeProvider={activeProvider}
+            activeModelId={activeModelId}
+            currentIteration={currentIteration}
+            maxIterations={maxIterations}
+            isWorking={isWorking}
           />
 
           {/* Right: Minimal status */}

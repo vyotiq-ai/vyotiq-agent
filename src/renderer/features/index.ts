@@ -20,9 +20,6 @@ export * from './workspaces';
 // Browser feature - Embedded browser for agent
 export * from './browser';
 
-// Terminal feature - Embedded terminal
-export * from './terminal';
-
 // Undo feature - Undo history management
 export * from './undo';
 

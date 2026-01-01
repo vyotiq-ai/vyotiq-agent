@@ -175,7 +175,7 @@ export const browserCheckUrlTool: ToolDefinition<CheckUrlArgs> = {
 - 61-100: High risk, likely dangerous (will be blocked)`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-read',
   riskLevel: 'safe',
 
   schema: {

@@ -15,7 +15,6 @@ import { runTerminalTool } from './runTerminal';
 import { checkTerminalTool } from './checkTerminal';
 import { killTerminalTool } from './killTerminal';
 import { readLintsTool } from './readLints';
-import { memoryTool } from './memory';
 
 import { createToolTool } from './createTool';
 // Browser tools - now modular (separate tools for each action)
@@ -36,7 +35,6 @@ export { runTerminalTool } from './runTerminal';
 export { checkTerminalTool } from './checkTerminal';
 export { killTerminalTool } from './killTerminal';
 export { readLintsTool } from './readLints';
-export { memoryTool } from './memory';
 
 // Dynamic tool creation
 export { createToolTool } from './createTool';
@@ -109,8 +107,6 @@ export const ALL_TOOLS: ToolDefinition[] = [
   killTerminalTool,
   // Code intelligence (legacy)
   readLintsTool,
-  // Memory operations
-  memoryTool,
   // Dynamic tool creation
   createToolTool,
   // Browser/Web operations (modular tools)

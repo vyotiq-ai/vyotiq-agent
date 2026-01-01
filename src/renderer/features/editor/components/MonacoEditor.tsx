@@ -431,6 +431,9 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
       e.event.preventDefault();
       e.event.stopPropagation();
 
+      // Close AI context menu if open
+      setAIContextMenu(prev => ({ ...prev, isOpen: false }));
+
       setContextMenu({
         isOpen: true,
         position: { x: e.event.posx, y: e.event.posy },
@@ -852,7 +855,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
         break;
       }
       case 'aiActions': {
-        // Open AI context menu at the same position
+        // Close main context menu and open AI context menu at the same position
+        setContextMenu(prev => ({ ...prev, isOpen: false }));
         setAIContextMenu({
           isOpen: true,
           position: contextMenu.position,
@@ -902,6 +906,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
         isOpen={contextMenu.isOpen}
         position={contextMenu.position}
         canSave={tab.isDirty}
+        fileName={tab.name}
         onAction={handleContextMenuAction}
         onClose={() => setContextMenu(prev => ({ ...prev, isOpen: false }))}
       />

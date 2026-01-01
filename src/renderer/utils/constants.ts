@@ -50,7 +50,6 @@ export const KEYBOARD_SHORTCUTS = {
   sendMessage: { key: 'Enter', modifier: '', description: 'Send message' },
   newLine: { key: 'Enter', modifier: 'shift', description: 'Insert new line' },
   toggleSidebar: { key: 'b', modifier: 'ctrl', description: 'Toggle sidebar' },
-  toggleTerminal: { key: '`', modifier: 'ctrl', description: 'Toggle terminal panel' },
   toggleBrowser: { key: 'b', modifier: 'ctrl+shift', description: 'Toggle browser panel' },
   toggleUndoHistory: { key: 'h', modifier: 'ctrl+shift', description: 'Toggle undo history' },
   toggleMetrics: { key: 'm', modifier: 'ctrl+shift', description: 'Toggle metrics dashboard' },

@@ -129,34 +129,24 @@ export const EmptyState: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col items-center justify-center h-full bg-[var(--color-surface-base)] font-mono">
       <div className="text-left space-y-4 max-w-md px-4">
-        {/* Logo/Title */}
-        <div className="flex items-center gap-2 mb-6">
-          <span className="text-xl text-[var(--color-accent-primary)]">λ</span>
-          <span className="text-xs text-[var(--color-text-primary)] font-semibold">vyotiq</span>
-          <span className="text-[10px] text-[var(--color-text-muted)] ml-2">v1.0.0</span>
+        {/* Lambda brand mark */}
+        <div className="flex items-center mb-1">
+          <span className="text-[var(--color-accent-primary)] text-2xl font-medium leading-none opacity-80">λ</span>
         </div>
 
         {/* Status display */}
         <div className="text-[11px] space-y-2 p-3 bg-[var(--color-surface-1)]/50 rounded-lg border border-[var(--color-border-subtle)]">
-          <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
-            <span className="text-[var(--color-accent-primary)]">›</span>
-            <span>vyotiq --status</span>
-          </div>
-          
-          <div className="pl-4 text-[var(--color-text-placeholder)] space-y-1">
+          <div className="text-[var(--color-text-placeholder)] space-y-1.5">
             <div className="flex items-center gap-2">
-              <span className="text-[var(--color-text-dim)]">├──</span>
-              <span>workspace:</span>
+              <span className="text-[var(--color-text-muted)] w-16">workspace</span>
               <span className={workspaceStatus.color}>{workspaceStatus.text}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[var(--color-text-dim)]">├──</span>
-              <span>session:</span>
+              <span className="text-[var(--color-text-muted)] w-16">session</span>
               <span className={sessionStatus.color}>{sessionStatus.text}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[var(--color-text-dim)]">└──</span>
-              <span>status:</span>
+              <span className="text-[var(--color-text-muted)] w-16">status</span>
               <span className={overallStatus.color}>{overallStatus.text}</span>
             </div>
           </div>
@@ -164,7 +154,6 @@ export const EmptyState: React.FC = () => {
 
         {/* Command prompt with typewriter effect */}
         <div className="flex items-center gap-1.5 text-[12px] py-3">
-          <span className="text-[var(--color-accent-primary)] text-xs">λ</span>
           <span className="text-[var(--color-text-secondary)] min-h-[1.2em]">{displayedText}</span>
           <span className={cn(
             "w-[8px] h-[16px] bg-[var(--color-accent-primary)] rounded-[1px]",

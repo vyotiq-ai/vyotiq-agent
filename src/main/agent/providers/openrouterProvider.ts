@@ -251,67 +251,74 @@ export class OpenRouterProvider extends BaseLLMProvider {
             const data = line.slice(6).trim();
             if (data === '[DONE]') continue;
 
+            let event: Record<string, unknown>;
             try {
-              const event = JSON.parse(data);
-              
-              // Check for errors in the chunk - throw to trigger proper error handling
-              if (event.error) {
-                const errorMessage = typeof event.error === 'object' 
-                  ? (event.error.message || event.error.code || JSON.stringify(event.error))
-                  : String(event.error);
-                logger.error('Stream error from OpenRouter', { error: event.error });
-                throw new APIError(
-                  errorMessage,
-                  event.error.code || 500,
-                  undefined,
-                  false, // Not retryable by default - let error handling decide
-                  false,
-                  false
-                );
-              }
-
-              const choice = event.choices?.[0];
-              if (!choice) continue;
-
-              // Handle content delta
-              if (choice.delta?.content) {
-                yield { delta: choice.delta.content };
-              }
-
-              // Handle tool calls
-              if (choice.delta?.tool_calls) {
-                for (const tc of choice.delta.tool_calls) {
-                  yield {
-                    toolCall: {
-                      index: tc.index ?? 0,
-                      callId: tc.id,
-                      name: tc.function?.name,
-                      argsJson: tc.function?.arguments,
-                    }
-                  };
-                }
-              }
-
-              // Handle finish reason
-              if (choice.finish_reason) {
-                yield { finishReason: choice.finish_reason };
-              }
-
-              // Handle usage (typically in final chunk)
-              if (event.usage) {
-                yield {
-                  usage: {
-                    input: event.usage.prompt_tokens ?? 0,
-                    output: event.usage.completion_tokens ?? 0,
-                    total: event.usage.total_tokens ?? 0,
-                  }
-                };
-              }
+              event = JSON.parse(data);
             } catch {
               // Skip non-JSON lines (like SSE comments)
               if (data && !data.startsWith(':')) {
                 logger.debug('Skipping non-JSON SSE data', { data: data.substring(0, 100) });
               }
+              continue;
+            }
+            
+            // Check for errors in the chunk - throw to trigger proper error handling
+            if (event.error) {
+              const errorObj = event.error as Record<string, unknown>;
+              const errorMessage = typeof event.error === 'object' 
+                ? (errorObj.message || errorObj.code || JSON.stringify(event.error)) as string
+                : String(event.error);
+              logger.error('Stream error from OpenRouter', { error: event.error });
+              throw new APIError(
+                errorMessage,
+                (errorObj.code as number) || 500,
+                undefined,
+                false, // Not retryable by default - let error handling decide
+                false,
+                false
+              );
+            }
+
+            const choice = (event.choices as Array<Record<string, unknown>>)?.[0];
+            if (!choice) continue;
+
+            const delta = choice.delta as Record<string, unknown> | undefined;
+            
+            // Handle content delta
+            if (delta?.content) {
+              yield { delta: delta.content as string };
+            }
+
+            // Handle tool calls
+            if (delta?.tool_calls) {
+              for (const tc of delta.tool_calls as Array<Record<string, unknown>>) {
+                const fn = tc.function as Record<string, unknown> | undefined;
+                yield {
+                  toolCall: {
+                    index: (tc.index as number) ?? 0,
+                    callId: tc.id as string | undefined,
+                    name: fn?.name as string | undefined,
+                    argsJson: fn?.arguments as string | undefined,
+                  }
+                };
+              }
+            }
+
+            // Handle finish reason
+            if (choice.finish_reason) {
+              yield { finishReason: choice.finish_reason as string };
+            }
+
+            // Handle usage (typically in final chunk)
+            if (event.usage) {
+              const usage = event.usage as Record<string, number>;
+              yield {
+                usage: {
+                  input: usage.prompt_tokens ?? 0,
+                  output: usage.completion_tokens ?? 0,
+                  total: usage.total_tokens ?? 0,
+                }
+              };
             }
           }
         }

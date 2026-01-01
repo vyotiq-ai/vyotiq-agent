@@ -21,8 +21,6 @@ import { SessionManager } from './sessionManager';
 import { RunExecutor } from './runExecutor';
 import { ToolConfirmationHandler } from './toolConfirmationHandler';
 import { SessionManagementHandler } from './sessionManagementHandler';
-import { initAutocompleteService } from './autocomplete';
-import { getAutocompleteService } from './autocomplete';
 import { getEditorAIService } from './editor';
 import { getCacheManager, getContextCache, getToolResultCache } from './cache';
 import { TerminalEventHandler } from './terminalEventHandler';
@@ -108,7 +106,6 @@ export class AgentOrchestrator extends EventEmitter {
       getPromptSettings: () => this.settingsStore.get().promptSettings,
       getComplianceSettings: () => this.settingsStore.get().complianceSettings,
       getAccessLevelSettings: () => this.settingsStore.get().accessLevelSettings,
-      getTerminalSettings: () => this.settingsStore.get().terminalSettings,
       getEditorState: () => this.getEditorState(),
       getWorkspaceDiagnostics: () => this.getWorkspaceDiagnostics(),
     });
@@ -167,15 +164,6 @@ export class AgentOrchestrator extends EventEmitter {
     // Load custom tools from settings
     await this.loadCustomTools();
 
-    // Initialize autocomplete service with access to providers and settings
-    initAutocompleteService({
-      getProviders: () => this.providerManager.getProviders(),
-      getSettings: () => this.settingsStore.get().autocompleteSettings,
-      logger: this.logger,
-      isProviderInCooldown: (provider) => this.runExecutor.isProviderInCooldown(provider),
-    });
-    this.logger.info('Autocomplete service initialized');
-
     // Initialize editor AI service for code editor features
     const { initEditorAIService } = await import('./editor');
     initEditorAIService({
@@ -218,15 +206,9 @@ export class AgentOrchestrator extends EventEmitter {
             // ignore
           }
 
-          // Editor AI + Autocomplete caches
+          // Editor AI cache
           try {
             getEditorAIService()?.clearCache();
-          } catch {
-            // ignore
-          }
-
-          try {
-            getAutocompleteService()?.clearCache();
           } catch {
             // ignore
           }
@@ -273,6 +255,13 @@ export class AgentOrchestrator extends EventEmitter {
    */
   getProvidersInfo(): Array<{ name: string; enabled: boolean; hasApiKey: boolean; priority: number }> {
     return this.providerManager.getProvidersInfo();
+  }
+
+  /**
+   * Get cooldown status for all providers
+   */
+  getProvidersCooldownStatus(): Record<string, { inCooldown: boolean; remainingMs: number; reason: string } | null> {
+    return this.providerManager.getProvidersCooldownStatus();
   }
 
   updateEditorState(state: {
@@ -429,7 +418,7 @@ export class AgentOrchestrator extends EventEmitter {
     // Validate that providers are configured before allowing message sending
     if (!this.hasAvailableProviders()) {
       const errorMsg = 'No available provider. Please configure at least one LLM provider with an API key in Settings.';
-      this.logger.error('Run failed', { error: errorMsg });
+      // Don't log error here - runExecutor.handleRunError will log it
       this.emitEvent({
         type: 'agent-status',
         sessionId: payload.sessionId,

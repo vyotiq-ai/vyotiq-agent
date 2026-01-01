@@ -5,8 +5,9 @@ export {
   WorkspaceContextProvider, 
   useWorkspaceContext, 
   type WorkspaceContextState,
+  type WorkspaceDiagnostic,
 } from './WorkspaceContextProvider';
-export { EditorProvider, useEditor, type OperationDiff } from './EditorProvider';
+export { EditorProvider, useEditor, type OperationDiff, type StoredDiff } from './EditorProvider';
 export { agentReducer, initialState, type AgentUIState, type AgentAction, type AgentStatusInfo } from './agentReducer';
 
 // Domain-specific reducers

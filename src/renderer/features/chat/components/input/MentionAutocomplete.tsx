@@ -1,19 +1,11 @@
 /**
  * Mention Autocomplete Component
  * 
- * Dropdown UI for @file mention suggestions with keyboard navigation.
- * Displays file suggestions from the workspace with loading and empty states.
- * 
- * @example
- * <MentionAutocomplete
- *   suggestions={suggestions}
- *   selectedIndex={0}
- *   onSelect={handleSelect}
- *   visible={true}
- * />
+ * Terminal-styled dropdown for @file mention suggestions with keyboard navigation.
+ * Features CLI aesthetic with monospace fonts, subtle borders, and smooth animations.
  */
 import React, { memo, useRef, useEffect } from 'react';
-import { File, FolderOpen, Code2, Loader2, SearchX } from 'lucide-react';
+import { File, FolderOpen, Code2, Loader2 } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 import type { MentionItem } from '../../hooks/useMentions';
 
@@ -22,45 +14,39 @@ import type { MentionItem } from '../../hooks/useMentions';
 // =============================================================================
 
 export interface MentionAutocompleteProps {
-  /** List of suggestions to display */
   suggestions: MentionItem[];
-  /** Currently selected index */
   selectedIndex: number;
-  /** Callback when a suggestion is selected */
   onSelect: (item: MentionItem) => void;
-  /** Callback when selection index changes */
   onSelectionChange?: (index: number) => void;
-  /** Whether the autocomplete is visible */
   visible: boolean;
-  /** Position relative to input */
   position?: { top: number; left: number };
-  /** Additional className */
   className?: string;
-  /** Whether files are still loading */
   isLoading?: boolean;
-  /** Whether search returned no results */
   noResults?: boolean;
+  searchQuery?: string;
+  totalFiles?: number;
 }
 
 // =============================================================================
 // Icon Component
 // =============================================================================
 
-const MentionIcon: React.FC<{ type: MentionItem['icon'] }> = memo(({ type }) => {
-  const iconProps = { size: 12, className: 'flex-shrink-0' };
+const FileIcon: React.FC<{ type: MentionItem['icon']; isSelected: boolean }> = memo(({ type, isSelected }) => {
+  const baseClass = cn(
+    'flex-shrink-0 transition-colors duration-100',
+    isSelected ? 'opacity-100' : 'opacity-70'
+  );
   
   switch (type) {
-    case 'file':
-      return <File {...iconProps} className={cn(iconProps.className, 'text-[var(--color-accent-primary)]')} />;
     case 'folder':
-      return <FolderOpen {...iconProps} className={cn(iconProps.className, 'text-[var(--color-warning)]')} />;
+      return <FolderOpen size={11} className={cn(baseClass, 'text-[var(--color-warning)]')} />;
     case 'code':
-      return <Code2 {...iconProps} className={cn(iconProps.className, 'text-[var(--color-success)]')} />;
+      return <Code2 size={11} className={cn(baseClass, 'text-[var(--color-info)]')} />;
     default:
-      return <File {...iconProps} className={cn(iconProps.className, 'text-[var(--color-text-muted)]')} />;
+      return <File size={11} className={cn(baseClass, 'text-[var(--color-accent-primary)]')} />;
   }
 });
-MentionIcon.displayName = 'MentionIcon';
+FileIcon.displayName = 'FileIcon';
 
 // =============================================================================
 // Suggestion Item Component
@@ -69,6 +55,7 @@ MentionIcon.displayName = 'MentionIcon';
 interface SuggestionItemProps {
   item: MentionItem;
   isSelected: boolean;
+  index: number;
   onClick: () => void;
   onMouseEnter: () => void;
 }
@@ -76,17 +63,21 @@ interface SuggestionItemProps {
 const SuggestionItem: React.FC<SuggestionItemProps> = memo(({
   item,
   isSelected,
+  index,
   onClick,
   onMouseEnter,
 }) => {
   const itemRef = useRef<HTMLButtonElement>(null);
 
-  // Scroll into view when selected
   useEffect(() => {
     if (isSelected && itemRef.current) {
       itemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   }, [isSelected]);
+
+  // Get file extension for badge
+  const ext = item.label.includes('.') ? item.label.split('.').pop()?.toLowerCase() : null;
+  const isFolder = item.icon === 'folder';
 
   return (
     <button
@@ -95,45 +86,76 @@ const SuggestionItem: React.FC<SuggestionItemProps> = memo(({
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       className={cn(
-        'w-full flex items-center gap-2 px-2 py-1.5 text-left',
-        'font-mono text-[11px]',
-        'transition-colors duration-100',
+        'group w-full flex items-center gap-2.5 px-2.5 py-1.5 text-left',
+        'font-mono text-[10px] leading-tight',
+        'transition-all duration-75',
         'focus:outline-none',
+        'border-l-2',
         isSelected
-          ? 'bg-[var(--color-accent-primary)]/15 text-[var(--color-text-primary)]'
-          : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-3)]'
+          ? 'bg-[var(--color-accent-primary)]/10 border-l-[var(--color-accent-primary)]'
+          : 'border-l-transparent hover:bg-[var(--color-surface-3)] hover:border-l-[var(--color-border-strong)]'
       )}
       role="option"
       aria-selected={isSelected}
     >
-      <MentionIcon type={item.icon} />
+      {/* Index number (vim-style) */}
+      <span className={cn(
+        'w-4 text-[8px] tabular-nums text-right flex-shrink-0',
+        isSelected ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-dim)] opacity-50'
+      )}>
+        {index + 1}
+      </span>
+
+      {/* Icon */}
+      <FileIcon type={item.icon} isSelected={isSelected} />
       
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1">
-          <span className={cn(
-            'font-medium',
-            isSelected ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-primary)]'
-          )}>
-            {item.label}
-          </span>
-          
-          {item.type === 'file' && item.filePath && (
-            <span className="text-[9px] px-1 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">
-              file
-            </span>
-          )}
-        </div>
+      {/* File info */}
+      <div className="flex-1 min-w-0 flex items-center gap-2">
+        {/* Filename */}
+        <span className={cn(
+          'font-medium truncate',
+          isSelected ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)]'
+        )}>
+          {item.label}
+        </span>
         
-        {item.description && (
-          <div className="text-[9px] text-[var(--color-text-muted)] truncate">
-            {item.description}
-          </div>
+        {/* Extension badge */}
+        {ext && !isFolder && (
+          <span className={cn(
+            'flex-shrink-0 px-1 py-px rounded text-[7px] uppercase tracking-wider',
+            isSelected 
+              ? 'bg-[var(--color-accent-primary)]/20 text-[var(--color-accent-primary)]'
+              : 'bg-[var(--color-surface-2)] text-[var(--color-text-muted)]'
+          )}>
+            {ext}
+          </span>
+        )}
+        
+        {/* Folder indicator */}
+        {isFolder && (
+          <span className={cn(
+            'flex-shrink-0 px-1 py-px rounded text-[7px] uppercase tracking-wider',
+            'bg-[var(--color-warning)]/15 text-[var(--color-warning)]'
+          )}>
+            dir
+          </span>
         )}
       </div>
 
+      {/* Path (truncated from left) */}
+      {item.description && item.description !== item.label && (
+        <span className={cn(
+          'flex-shrink-0 max-w-[120px] text-[8px] truncate direction-rtl text-left',
+          isSelected ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-dim)] opacity-60'
+        )}>
+          {item.description}
+        </span>
+      )}
+
+      {/* Selection indicator */}
       {isSelected && (
-        <span className="text-[9px] text-[var(--color-text-muted)] flex-shrink-0">
-          ↵
+        <span className="flex-shrink-0 text-[8px] text-[var(--color-accent-primary)] opacity-70">
+          ⏎
         </span>
       )}
     </button>
@@ -155,8 +177,9 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = memo(({
   className,
   isLoading = false,
   noResults = false,
+  searchQuery = '',
+  totalFiles = 0,
 }) => {
-  // Show if visible AND (has suggestions OR is loading OR has no results)
   const shouldShow = visible && (suggestions.length > 0 || isLoading || noResults);
   if (!shouldShow) return null;
 
@@ -164,26 +187,49 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = memo(({
     <div
       className={cn(
         'absolute z-[100]',
-        'min-w-[280px] max-w-[400px] max-h-[240px]',
-        'overflow-y-auto overflow-x-hidden',
-        'bg-[var(--color-surface-editor)] border border-[var(--color-border)]',
-        'rounded-md shadow-xl',
+        'min-w-[320px] max-w-[450px] max-h-[280px]',
+        'overflow-hidden',
+        'bg-[var(--color-surface-1)] border border-[var(--color-border-default)]',
+        'rounded-lg shadow-lg',
         'font-mono',
         'animate-in fade-in slide-in-from-bottom-2 duration-150',
         className
       )}
       style={{
-        bottom: 'calc(100% + 8px)',
+        bottom: 'calc(100% + 6px)',
         left: position?.left ?? 0,
       }}
       role="listbox"
       aria-label="File suggestions"
     >
-      {/* Header */}
-      <div className="px-2 py-1.5 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] flex items-center justify-between">
-        <span className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wider">
-          @file - search workspace
-        </span>
+      {/* Terminal-style header */}
+      <div className="px-2.5 py-1.5 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {/* Terminal dots */}
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-[var(--color-error)] opacity-70" />
+            <span className="w-2 h-2 rounded-full bg-[var(--color-warning)] opacity-70" />
+            <span className="w-2 h-2 rounded-full bg-[var(--color-success)] opacity-70" />
+          </div>
+          
+          {/* Title */}
+          <span className="text-[9px] text-[var(--color-text-muted)] tracking-wide">
+            {searchQuery ? (
+              <>
+                <span className="text-[var(--color-accent-primary)]">grep</span>
+                <span className="opacity-50"> &quot;{searchQuery}&quot; </span>
+                <span className="text-[var(--color-text-dim)]">· {suggestions.length} found</span>
+              </>
+            ) : (
+              <>
+                <span className="text-[var(--color-accent-primary)]">ls</span>
+                <span className="opacity-50"> workspace </span>
+                <span className="text-[var(--color-text-dim)]">· {totalFiles} files</span>
+              </>
+            )}
+          </span>
+        </div>
+        
         {isLoading && (
           <Loader2 size={10} className="text-[var(--color-accent-primary)] animate-spin" />
         )}
@@ -191,28 +237,28 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = memo(({
 
       {/* Loading state */}
       {isLoading && suggestions.length === 0 && (
-        <div className="px-3 py-4 flex items-center justify-center gap-2 text-[var(--color-text-muted)]">
-          <Loader2 size={14} className="animate-spin" />
-          <span className="text-[10px]">Loading workspace files...</span>
+        <div className="px-3 py-6 flex flex-col items-center justify-center gap-2 text-[var(--color-text-muted)]">
+          <Loader2 size={16} className="animate-spin text-[var(--color-accent-primary)]" />
+          <span className="text-[9px]">scanning workspace...</span>
         </div>
       )}
 
       {/* No results state */}
       {noResults && !isLoading && (
-        <div className="px-3 py-4 flex flex-col items-center justify-center gap-1 text-[var(--color-text-muted)]">
-          <SearchX size={18} className="opacity-50" />
-          <span className="text-[10px]">No matching files found</span>
-          <span className="text-[9px] opacity-70">Try a different search term</span>
+        <div className="px-3 py-6 flex flex-col items-center justify-center gap-1.5 text-[var(--color-text-muted)]">
+          <span className="text-[11px] text-[var(--color-error)]">no matches</span>
+          <span className="text-[9px] opacity-60">try a different query</span>
         </div>
       )}
 
       {/* Suggestions list */}
       {suggestions.length > 0 && (
-        <div className="py-1">
+        <div className="overflow-y-auto max-h-[200px] py-1 scrollbar-thin">
           {suggestions.map((item, index) => (
             <SuggestionItem
               key={item.id}
               item={item}
+              index={index}
               isSelected={index === selectedIndex}
               onClick={() => onSelect(item)}
               onMouseEnter={() => onSelectionChange?.(index)}
@@ -221,13 +267,28 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = memo(({
         </div>
       )}
 
-      {/* Footer hint */}
+      {/* Footer with keyboard hints */}
       {suggestions.length > 0 && (
-        <div className="px-2 py-1 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-2)]">
-          <div className="flex items-center justify-between text-[8px] text-[var(--color-text-muted)]">
-            <span>↑↓ navigate</span>
-            <span>↵ select</span>
-            <span>esc dismiss</span>
+        <div className="px-2.5 py-1.5 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
+          <div className="flex items-center justify-between text-[8px] text-[var(--color-text-dim)]">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1">
+                <kbd className="px-1 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">↑</kbd>
+                <kbd className="px-1 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">↓</kbd>
+                <span className="opacity-70">nav</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">⏎</kbd>
+                <span className="opacity-70">select</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">esc</kbd>
+                <span className="opacity-70">close</span>
+              </span>
+            </div>
+            <span className="tabular-nums opacity-50">
+              {selectedIndex + 1}/{suggestions.length}
+            </span>
           </div>
         </div>
       )}

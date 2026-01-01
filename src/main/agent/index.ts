@@ -85,13 +85,14 @@ export type {
 } from './context';
 
 // Model routing - explicit exports
-export { ModelRouter, MODEL_CONFIGS } from './routing';
+export { ModelRouter, MODEL_CONFIGS, analyzeUserQuery, selectBestModel, selectBestProvider, hasCapableProvider } from './routing';
 export type { 
   ModelCapabilities, 
   ModelConfig, 
   TaskAnalysis as RoutingTaskAnalysis, 
   TaskType, 
-  RoutingDecision 
+  RoutingDecision,
+  RequiredCapabilities,
 } from './routing';
 
 // Safety module - validation and protection

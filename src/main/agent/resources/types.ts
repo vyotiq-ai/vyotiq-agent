@@ -37,6 +37,26 @@ export type {
 // =============================================================================
 
 /**
+ * Default maximum values for each resource type.
+ * Used by ResourceAllocator and ResourceMonitor for limit calculations.
+ */
+export const RESOURCE_MAX_LIMITS: Record<ResourceType, number> = {
+  agents: 10,
+  tokens: 1000000,
+  files: 100,
+  terminals: 10,
+  time: 3600000,
+  'api-calls': 1000,
+};
+
+/**
+ * Get the maximum limit for a resource type
+ */
+export function getResourceMaxLimit(type: ResourceType): number {
+  return RESOURCE_MAX_LIMITS[type] ?? 100;
+}
+
+/**
  * Pool item for tracking individual resources
  */
 export interface PoolItem<T = unknown> {
@@ -111,16 +131,6 @@ export const DEFAULT_POOL_CONFIGS: Record<ResourceType, PoolConfig> = {
     type: 'time',
     minSize: 0,
     maxSize: 3600000, // 1 hour max
-    warmUpCount: 0,
-    idleTimeoutMs: 0,
-    healthCheckIntervalMs: 0,
-    allowOverflow: false,
-    overflowLimit: 0,
-  },
-  memory: {
-    type: 'memory',
-    minSize: 0,
-    maxSize: 100000, // Context window tokens
     warmUpCount: 0,
     idleTimeoutMs: 0,
     healthCheckIntervalMs: 0,
@@ -211,7 +221,6 @@ export const DEFAULT_MONITOR_CONFIG: MonitorConfig = {
     files: { warning: 80, critical: 95 },
     terminals: { warning: 80, critical: 100 },
     time: { warning: 80, critical: 95 },
-    memory: { warning: 75, critical: 90 },
     'api-calls': { warning: 80, critical: 95 },
   },
 };

@@ -598,6 +598,7 @@ export class ToolExecutor {
           toolCallId: toolCall.callId,
           createdAt: Date.now(),
           toolSuccess: cachedResult.success,
+          resultMetadata: cachedResult.metadata,
         };
 
         session.state.messages.push(toolMessage);
@@ -778,6 +779,7 @@ export class ToolExecutor {
       toolCallId: toolCall.callId,
       createdAt: Date.now(),
       toolSuccess: result.success,
+      resultMetadata: result.metadata,
     };
 
     session.state.messages.push(toolMessage);

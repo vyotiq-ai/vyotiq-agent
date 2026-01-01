@@ -338,7 +338,7 @@ export const DEFAULT_LAZY_LOADER_CONFIG: LazyLoaderConfig = {
 /**
  * Resource type
  */
-export type PerformanceResourceType = 'memory' | 'cpu' | 'tokens' | 'api-calls' | 'connections';
+export type PerformanceResourceType = 'cpu' | 'tokens' | 'api-calls' | 'connections';
 
 /**
  * Resource budget
@@ -386,8 +386,6 @@ export interface ResourceAllocation {
  * Resource manager configuration
  */
 export interface ResourceManagerConfig {
-  /** Memory budget (bytes) */
-  memoryBudget: number;
   /** CPU budget (percentage 0-100) */
   cpuBudget: number;
   /** Token budget per minute */
@@ -406,7 +404,6 @@ export interface ResourceManagerConfig {
  * Default resource manager configuration
  */
 export const DEFAULT_RESOURCE_MANAGER_CONFIG: ResourceManagerConfig = {
-  memoryBudget: 512 * 1024 * 1024, // 512MB
   cpuBudget: 80,
   tokenBudgetPerMinute: 100000,
   apiCallBudgetPerMinute: 100,

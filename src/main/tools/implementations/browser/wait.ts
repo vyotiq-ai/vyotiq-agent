@@ -173,7 +173,7 @@ export const browserWaitTool: ToolDefinition<WaitArgs> = {
 - Adding delays between actions`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {

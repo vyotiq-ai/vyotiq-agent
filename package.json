@@ -24,7 +24,9 @@
     "claude",
     "gpt",
     "gemini",
-    "ai developer",
+    "openai",
+    "deepseek",
+    "aideveloper",
     "code generation",
     "code completion",
     "code review",
@@ -78,6 +80,7 @@
     "jsdom": "^27.2.0",
     "typescript": "^5.9.3",
     "vite": "^7.2.4",
+    "vite-plugin-native": "^2.2.2",
     "vitest": "^4.0.14"
   },
   "dependencies": {

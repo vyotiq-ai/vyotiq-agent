@@ -40,6 +40,10 @@ export interface AgentStatusInfo {
   runStartedAt?: number;
   /** Average time per iteration in ms (for ETA calculation) */
   avgIterationTimeMs?: number;
+  /** Provider used for current iteration */
+  provider?: string;
+  /** Model ID used for current iteration */
+  modelId?: string;
 }
 
 /** Tracks tool results associated with tool calls by callId */

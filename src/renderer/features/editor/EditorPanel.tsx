@@ -344,9 +344,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = memo(({
           </div>
         )}
         
-        {tabs.length === 0 ? (
-          <EditorEmptyState />
-        ) : isDiffVisible && diff ? (
+        {isDiffVisible && diff ? (
           <DiffEditor
             diff={diff}
             settings={settings}
@@ -355,6 +353,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = memo(({
             onClose={hideDiff}
             onRefresh={refreshDiff}
           />
+        ) : tabs.length === 0 ? (
+          <EditorEmptyState />
         ) : activeTab ? (
           <MonacoEditor
             tab={activeTab}

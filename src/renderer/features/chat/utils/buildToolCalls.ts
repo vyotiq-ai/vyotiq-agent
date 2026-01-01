@@ -30,7 +30,8 @@ export function buildToolCalls(params: {
     if (msg.role === 'tool' && msg.toolCallId) {
       const matchedToolCall = toolCallMap.get(msg.toolCallId);
       const resultEvent = toolResults?.get(msg.toolCallId);
-      const metadata = resultEvent?.result?.metadata;
+      // Use metadata from toolResults event first, fall back to message's resultMetadata
+      const metadata = resultEvent?.result?.metadata ?? msg.resultMetadata;
       const fullOutput = resultEvent?.result?.output;
 
       if (matchedToolCall) {

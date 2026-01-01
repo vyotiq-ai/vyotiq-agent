@@ -22,6 +22,7 @@ export interface InputToolbarProps {
   modelId?: string;
   onProviderSelect: (provider: LLMProviderName | 'auto', modelId?: string) => void;
   availableProviders?: LLMProviderName[];
+  providersCooldown?: Record<string, { inCooldown: boolean; remainingMs: number; reason: string } | null>;
   yoloEnabled: boolean;
   onToggleYolo: () => void;
   disabled: boolean;
@@ -49,6 +50,16 @@ export interface InputToolbarProps {
     };
   };
   className?: string;
+  /** Active provider being used for current iteration (when running) */
+  activeProvider?: string;
+  /** Active model being used for current iteration (when running) */
+  activeModelId?: string;
+  /** Current iteration number */
+  currentIteration?: number;
+  /** Maximum iterations */
+  maxIterations?: number;
+  /** Whether agent is currently working */
+  isWorking?: boolean;
 }
 
 // =============================================================================
@@ -102,6 +113,7 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
   modelId,
   onProviderSelect,
   availableProviders = [],
+  providersCooldown = {},
   yoloEnabled,
   onToggleYolo,
   disabled,
@@ -110,9 +122,26 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
   costInfo,
   contextInfo,
   className,
+  activeProvider,
+  activeModelId,
+  currentIteration,
+  maxIterations,
+  isWorking,
 }) => {
   const isActionDisabled = disabled || !hasWorkspace;
   const isModelDisabled = disabled || !hasSession || !hasWorkspace;
+  
+  // Format model ID for display (shorten long model names)
+  const formatModelId = (id: string): string => {
+    // Remove provider prefix if present (e.g., "openai/gpt-4" -> "gpt-4")
+    const withoutPrefix = id.split('/').pop() || id;
+    // For long model names, take first 3 segments
+    const parts = withoutPrefix.split('-');
+    if (parts.length > 3) {
+      return parts.slice(0, 3).join('-');
+    }
+    return withoutPrefix;
+  };
   
   return (
     <div 
@@ -128,7 +157,33 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
         disabled={isModelDisabled}
         disabledReason={!hasWorkspace ? 'Select workspace first' : !hasSession ? 'Start session first' : undefined}
         availableProviders={availableProviders}
+        providersCooldown={providersCooldown}
       />
+
+      {/* Active iteration info when running */}
+      {isWorking && activeProvider && (
+        <>
+          <span className="h-3 w-px bg-[var(--color-border-subtle)]" />
+          <span 
+            className="flex items-center gap-1 text-[10px] font-mono text-[var(--color-accent-primary)] whitespace-nowrap"
+            title={`Running: ${activeProvider}${activeModelId ? ` / ${activeModelId}` : ''}`}
+          >
+            <span className="text-[var(--color-text-dim)]">run=</span>
+            <span>{activeProvider}</span>
+            {activeModelId && (
+              <>
+                <span className="text-[var(--color-text-dim)]">/</span>
+                <span className="text-[var(--color-text-secondary)]">{formatModelId(activeModelId)}</span>
+              </>
+            )}
+            {currentIteration && maxIterations && (
+              <span className="text-[var(--color-text-muted)] ml-1">
+                [{currentIteration}/{maxIterations}]
+              </span>
+            )}
+          </span>
+        </>
+      )}
 
       {/* Divider */}
       <span className="h-3 w-px bg-[var(--color-border-subtle)]" />

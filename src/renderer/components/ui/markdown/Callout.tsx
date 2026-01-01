@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { AlertCircle, CheckCircle2, Info, Quote, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Info, XCircle } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 
 export interface CalloutProps {
@@ -21,50 +21,70 @@ export const Callout: React.FC<CalloutProps> = memo(({ type, children }) => {
   const config = {
     note: {
       icon: Info,
-      bg: 'bg-[var(--color-info)]/5',
-      border: 'border-[var(--color-info)]/30',
+      bg: 'bg-[var(--color-info)]/8',
+      border: 'border-l-[var(--color-info)]',
       iconColor: 'text-[var(--color-info)]',
       title: 'Note',
+      prefix: 'ℹ',
     },
     tip: {
       icon: CheckCircle2,
-      bg: 'bg-[var(--color-success)]/5',
-      border: 'border-[var(--color-success)]/30',
+      bg: 'bg-[var(--color-success)]/8',
+      border: 'border-l-[var(--color-success)]',
       iconColor: 'text-[var(--color-success)]',
       title: 'Tip',
+      prefix: '💡',
     },
     warning: {
       icon: AlertCircle,
-      bg: 'bg-[var(--color-warning)]/5',
-      border: 'border-[var(--color-warning)]/30',
+      bg: 'bg-[var(--color-warning)]/8',
+      border: 'border-l-[var(--color-warning)]',
       iconColor: 'text-[var(--color-warning)]',
       title: 'Warning',
+      prefix: '⚠',
     },
     caution: {
       icon: XCircle,
-      bg: 'bg-[var(--color-error)]/5',
-      border: 'border-[var(--color-error)]/30',
+      bg: 'bg-[var(--color-error)]/8',
+      border: 'border-l-[var(--color-error)]',
       iconColor: 'text-[var(--color-error)]',
       title: 'Caution',
+      prefix: '🚨',
     },
     important: {
       icon: AlertCircle,
-      bg: 'bg-[var(--color-accent-secondary)]/5',
-      border: 'border-[var(--color-accent-secondary)]/30',
+      bg: 'bg-[var(--color-accent-secondary)]/8',
+      border: 'border-l-[var(--color-accent-secondary)]',
       iconColor: 'text-[var(--color-accent-secondary)]',
       title: 'Important',
+      prefix: '❗',
     },
   };
 
-  const { icon: Icon, bg, border, iconColor, title } = config[type];
+  const { icon: Icon, bg, border, iconColor, title, prefix } = config[type];
 
   return (
-    <div className={cn('my-3 p-3 rounded-lg border-l-4', bg, border)}>
-      <div className="flex items-start gap-2">
-        <Icon size={14} className={cn('mt-0.5 flex-shrink-0', iconColor)} />
+    <div className={cn(
+      'my-4 p-4 rounded-lg border-l-4 border border-[var(--color-border-subtle)]',
+      'shadow-sm hover:shadow-md transition-shadow duration-200',
+      bg, border
+    )}>
+      <div className="flex items-start gap-3">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-base">{prefix}</span>
+          <Icon size={14} className={cn('flex-shrink-0', iconColor)} />
+        </div>
         <div className="min-w-0 flex-1">
-          <div className={cn('text-[10px] font-semibold uppercase tracking-wide mb-1', iconColor)}>{title}</div>
-          <div className="text-[var(--color-text-secondary)]">{children}</div>
+          <div className={cn(
+            'text-[10px] font-mono font-bold uppercase tracking-wider mb-2',
+            'flex items-center gap-2', iconColor
+          )}>
+            <span>{title}</span>
+            <div className={cn('h-px flex-1 opacity-30', iconColor.replace('text-', 'bg-'))} />
+          </div>
+          <div className="text-[var(--color-text-secondary)] text-[11px] leading-relaxed">
+            {children}
+          </div>
         </div>
       </div>
     </div>
@@ -102,12 +122,26 @@ export function parseCallout(children: React.ReactNode): { type: CalloutProps['t
 export const DefaultBlockquote: React.FC<{ children?: React.ReactNode }> = ({ children }) => (
   <blockquote
     className={cn(
-      'my-3 pl-3 py-1 border-l-2 border-[var(--color-accent-primary)]/40',
-      'text-[var(--color-text-secondary)] italic',
-      'bg-[var(--color-surface-1)]/30 rounded-r',
+      'my-4 pl-6 py-3 border-l-4 border-[var(--color-accent-primary)]/40',
+      'text-[var(--color-text-secondary)] italic text-[11px] leading-relaxed',
+      'bg-[var(--color-surface-1)]/50 rounded-r-lg relative',
+      'shadow-sm hover:shadow-md transition-shadow duration-200'
     )}
   >
-    <Quote size={12} className="inline mr-1 opacity-40" />
-    {children}
+    <span className={cn(
+      'absolute left-3 top-2 text-[var(--color-accent-primary)]/60 text-lg font-serif',
+      'select-none pointer-events-none'
+    )}>
+      "
+    </span>
+    <div className="ml-2 relative">
+      {children}
+      <span className={cn(
+        'absolute -bottom-1 right-0 text-[var(--color-accent-primary)]/60 text-lg font-serif',
+        'select-none pointer-events-none'
+      )}>
+        "
+      </span>
+    </div>
   </blockquote>
 );

@@ -1190,42 +1190,6 @@ export const DEFAULT_COMPLIANCE_SETTINGS: ComplianceSettings = {
   logViolations: true,
 };
 
-/**
- * Terminal settings for integrated terminal
- */
-export interface TerminalSettings {
-  /** Default shell to use */
-  defaultShell: 'system' | 'powershell' | 'cmd' | 'bash' | 'zsh';
-  /** Terminal font size in pixels */
-  fontSize: number;
-  /** Number of scrollback lines to keep */
-  scrollbackLines: number;
-  /** Copy text on selection */
-  copyOnSelect: boolean;
-  /** Enable cursor blinking */
-  cursorBlink: boolean;
-  /** Cursor style */
-  cursorStyle: 'block' | 'underline' | 'bar';
-  /** Default command timeout in milliseconds */
-  defaultTimeout: number;
-  /** Maximum concurrent terminal processes */
-  maxConcurrentProcesses: number;
-}
-
-/**
- * Default terminal settings
- */
-export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
-  defaultShell: 'system',
-  fontSize: 12,
-  scrollbackLines: 10000,
-  copyOnSelect: true,
-  cursorBlink: true,
-  cursorStyle: 'block',
-  defaultTimeout: 120000,
-  maxConcurrentProcesses: 5,
-};
-
 // =============================================================================
 // Browser Security Settings
 // =============================================================================
@@ -1335,90 +1299,6 @@ export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
   blockMixedContent: true,
   trustedLocalhostPorts: [3000, 3001, 4000, 5000, 5173, 8000, 8080, 8888],
 };
-
-// =============================================================================
-// Autocomplete Settings
-// =============================================================================
-
-/**
- * AI inline autocomplete settings
- * Controls the behavior of sentence/word completion suggestions while typing
- */
-export interface AutocompleteSettings {
-  /** Enable inline autocomplete suggestions */
-  enabled: boolean;
-  /** Debounce delay in milliseconds before requesting suggestions (100-1000) */
-  debounceMs: number;
-  /** Minimum characters typed before triggering autocomplete (5-50) */
-  minChars: number;
-  /** Maximum tokens for completion response (10-200) */
-  maxTokens: number;
-  /** Temperature for completion generation (0-1, lower = more focused) */
-  temperature: number;
-  /** Preferred provider for autocomplete (uses configured providers only) */
-  preferredProvider: LLMProviderName | 'auto';
-  /** Show keyboard hint for accepting suggestions */
-  showAcceptHint: boolean;
-  /** Trigger on word boundaries only (more conservative) */
-  triggerOnWordBoundary: boolean;
-}
-
-/**
- * Default autocomplete settings
- */
-export const DEFAULT_AUTOCOMPLETE_SETTINGS: AutocompleteSettings = {
-  enabled: true,
-  debounceMs: 400,
-  minChars: 10,
-  maxTokens: 60,
-  temperature: 0.3,
-  preferredProvider: 'auto',
-  showAcceptHint: true,
-  triggerOnWordBoundary: false,
-};
-
-/**
- * Request payload for autocomplete
- */
-export interface AutocompleteRequest {
-  /** Current text in the input */
-  text: string;
-  /** Cursor position in the text */
-  cursorPosition: number;
-  /** Recent conversation context (optional) */
-  recentMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
-  /** Session ID for context (optional) */
-  sessionId?: string;
-  /** Workspace context for better suggestions */
-  context?: {
-    /** Name of the current workspace */
-    workspaceName?: string;
-    /** Primary language/framework of the project */
-    projectType?: string;
-    /** Recently mentioned files in the session */
-    recentFiles?: string[];
-    /** Session topic or purpose */
-    sessionTopic?: string;
-  };
-}
-
-/**
- * Response from autocomplete service
- */
-export interface AutocompleteResponse {
-  /** Suggested completion text */
-  suggestion: string | null;
-  /** Provider that generated the suggestion */
-  provider?: LLMProviderName;
-  /** Model used for generation */
-  modelId?: string;
-  /** Time taken in milliseconds */
-  latencyMs?: number;
-  /** Whether the request was cached */
-  cached?: boolean;
-  /** Error message if failed */
-  error?: string;
-}
 
 // =============================================================================
 // Access Level Types
@@ -1822,6 +1702,32 @@ export interface RoutingDecision {
   isCustomTask?: boolean;
 }
 
+/**
+ * Claude Code subscription tier
+ */
+export type ClaudeSubscriptionTier = 'free' | 'pro' | 'max' | 'team' | 'enterprise';
+
+/**
+ * Claude Code subscription authentication data
+ * Stores OAuth tokens and subscription information for Claude Code integration
+ */
+export interface ClaudeSubscription {
+  /** OAuth access token for API calls */
+  accessToken: string;
+  /** OAuth refresh token for token renewal */
+  refreshToken: string;
+  /** Token expiration timestamp (Unix ms) */
+  expiresAt: number;
+  /** User's subscription tier */
+  tier: ClaudeSubscriptionTier;
+  /** Organization ID for team/enterprise plans */
+  organizationId?: string;
+  /** User's email address */
+  email?: string;
+  /** When the subscription was connected */
+  connectedAt: number;
+}
+
 export interface AgentSettings {
   apiKeys: Partial<Record<LLMProviderName, string>>;
   rateLimits: Partial<Record<LLMProviderName, number>>;
@@ -1838,21 +1744,18 @@ export interface AgentSettings {
   promptSettings?: PromptSettings;
   /** Compliance enforcement settings */
   complianceSettings?: ComplianceSettings;
-  /** Terminal configuration settings */
-  terminalSettings?: TerminalSettings;
   /** Access level configuration */
   accessLevelSettings?: AccessLevelSettings;
   /** Browser security settings */
   browserSettings?: BrowserSettings;
-  /** Inline autocomplete settings */
-  autocompleteSettings?: AutocompleteSettings;
   /** Task-based model routing configuration */
   taskRoutingSettings?: TaskRoutingSettings;
   /** Editor AI settings (inline completions, code actions) */
   editorAISettings?: EditorAISettings;
   /** Autonomous feature flags */
   autonomousFeatureFlags?: AutonomousFeatureFlags;
-
+  /** Claude Code subscription authentication (OAuth-based) */
+  claudeSubscription?: ClaudeSubscription;
 }
 
 /**
@@ -2751,8 +2654,6 @@ export type SandboxMode = 'strict' | 'limited' | 'standard' | 'privileged';
 export interface SandboxConfig {
   /** Execution mode */
   mode: SandboxMode;
-  /** Memory limit in bytes */
-  memoryLimitBytes: number;
   /** CPU time limit in milliseconds */
   cpuTimeLimitMs: number;
   /** I/O operations limit */
@@ -2775,7 +2676,6 @@ export interface SandboxExecutionResult {
   error?: string;
   /** Resource usage */
   resourceUsage: {
-    memoryBytes: number;
     cpuTimeMs: number;
     ioOperations: number;
   };
@@ -2914,7 +2814,18 @@ export interface WorkflowProgressEvent {
   timestamp: number;
 }
 
-export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | WorkflowProgressEvent | FileChangedEvent;
+/**
+ * Claude subscription status change event
+ */
+export interface ClaudeSubscriptionEvent {
+  type: 'claude-subscription';
+  eventType: 'auto-imported' | 'credentials-changed' | 'token-refreshed' | 'token-refresh-failed' | 'token-expiring-soon' | 'disconnected';
+  message: string;
+  tier?: ClaudeSubscriptionTier;
+  subscription?: ClaudeSubscription;
+}
+
+export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | WorkflowProgressEvent | FileChangedEvent | ClaudeSubscriptionEvent;
 
 
 export interface StartSessionPayload {
@@ -3053,6 +2964,9 @@ export interface AgentStatusEvent {
     runStartedAt?: number;
     avgIterationTimeMs?: number;
     paused?: boolean;
+    // Provider/model info for current iteration
+    provider?: string;
+    modelId?: string;
   };
 }
 
@@ -3300,7 +3214,6 @@ export interface HealthStatusEvent {
   metrics?: {
     errorRate: number;
     latencyP95: number;
-    memoryUsage: number;
     activeAgents: number;
   };
 }
@@ -3897,7 +3810,7 @@ export interface TaskPlan {
 /**
  * Types of resources that can be allocated
  */
-export type ResourceType = 'tokens' | 'agents' | 'files' | 'terminals' | 'time' | 'memory' | 'api-calls';
+export type ResourceType = 'tokens' | 'agents' | 'files' | 'terminals' | 'time' | 'api-calls';
 
 /**
  * Strategy for resource allocation
@@ -4482,7 +4395,7 @@ export interface SafetyState {
  * Performance bottleneck info
  */
 export interface PerformanceBottleneck {
-  type: 'slow-operation' | 'memory-pressure' | 'high-frequency' | 'blocking';
+  type: 'slow-operation' | 'high-frequency' | 'blocking';
   severity: 'low' | 'medium' | 'high' | 'critical';
   operation: string;
   description: string;
@@ -4490,7 +4403,6 @@ export interface PerformanceBottleneck {
   metrics: {
     avgDurationMs?: number;
     callCount?: number;
-    memoryImpact?: number;
     blockingTimeMs?: number;
   };
 }
@@ -4508,8 +4420,6 @@ export interface PerformanceReport {
     p99DurationMs: number;
     slowestOperation: string;
     fastestOperation: string;
-    memoryPeakMb: number;
-    memoryAvgMb: number;
   };
   bottlenecks: PerformanceBottleneck[];
   recommendations: string[];

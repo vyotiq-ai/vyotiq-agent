@@ -155,7 +155,7 @@ export const browserClickTool: ToolDefinition<ClickArgs> = {
 - Use text content: button:contains("Submit")`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {

@@ -6,14 +6,11 @@ const logger = createLogger('UIProvider');
 interface UIContextType {
   settingsOpen: boolean;
   shortcutsOpen: boolean;
-  terminalPanelOpen: boolean;
-  terminalPanelHeight: number;
   undoHistoryOpen: boolean;
   browserPanelOpen: boolean;
   browserPanelWidth: number;
   commandPaletteOpen: boolean;
   metricsDashboardOpen: boolean;
-  memoryPanelOpen: boolean;
 
   openSettings: () => void;
   closeSettings: () => void;
@@ -21,10 +18,6 @@ interface UIContextType {
   openShortcuts: () => void;
   closeShortcuts: () => void;
   toggleShortcuts: () => void;
-  openTerminalPanel: () => void;
-  closeTerminalPanel: () => void;
-  toggleTerminalPanel: () => void;
-  setTerminalPanelHeight: (height: number) => void;
   openUndoHistory: () => void;
   closeUndoHistory: () => void;
   toggleUndoHistory: () => void;
@@ -38,35 +31,9 @@ interface UIContextType {
   openMetricsDashboard: () => void;
   closeMetricsDashboard: () => void;
   toggleMetricsDashboard: () => void;
-  openMemoryPanel: () => void;
-  closeMemoryPanel: () => void;
-  toggleMemoryPanel: () => void;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
-
-// Persist terminal panel preferences
-const TERMINAL_PANEL_KEY = 'vyotiq-terminal-panel';
-const loadTerminalPanelPrefs = () => {
-  try {
-    const stored = localStorage.getItem(TERMINAL_PANEL_KEY);
-    return stored ? JSON.parse(stored) : { open: false, height: 200 };
-  } catch (err) {
-    logger.debug('Failed to load terminal panel prefs', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return { open: false, height: 200 };
-  }
-};
-const saveTerminalPanelPrefs = (prefs: { open: boolean; height: number }) => {
-  try {
-    localStorage.setItem(TERMINAL_PANEL_KEY, JSON.stringify(prefs));
-  } catch (err) {
-    logger.debug('Failed to save terminal panel prefs', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-};
 
 // Persist browser panel preferences
 const BROWSER_PANEL_KEY = 'vyotiq-browser-panel';
@@ -96,11 +63,6 @@ const saveBrowserPanelPrefs = (prefs: { open: boolean; width: number }) => {
 export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  
-  // Terminal panel state with persistence
-  const terminalPrefs = loadTerminalPanelPrefs();
-  const [terminalPanelOpen, setTerminalPanelOpen] = useState(terminalPrefs.open);
-  const [terminalPanelHeight, setTerminalPanelHeightState] = useState(terminalPrefs.height);
 
   // Browser panel state with persistence
   const browserPrefs = loadBrowserPanelPrefs();
@@ -109,9 +71,6 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   // Metrics dashboard state (modal)
   const [metricsDashboardOpen, setMetricsDashboardOpen] = useState(false);
-
-  // Memory panel state
-  const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
 
 
 
@@ -122,30 +81,6 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const toggleShortcuts = useCallback(() => setShortcutsOpen((prev) => !prev), []);
-
-  // Terminal panel callbacks
-  const openTerminalPanel = useCallback(() => {
-    setTerminalPanelOpen(true);
-    saveTerminalPanelPrefs({ open: true, height: terminalPanelHeight });
-  }, [terminalPanelHeight]);
-  
-  const closeTerminalPanel = useCallback(() => {
-    setTerminalPanelOpen(false);
-    saveTerminalPanelPrefs({ open: false, height: terminalPanelHeight });
-  }, [terminalPanelHeight]);
-  
-  const toggleTerminalPanel = useCallback(() => {
-    setTerminalPanelOpen((prev: boolean) => {
-      const newValue = !prev;
-      saveTerminalPanelPrefs({ open: newValue, height: terminalPanelHeight });
-      return newValue;
-    });
-  }, [terminalPanelHeight]);
-  
-  const setTerminalPanelHeight = useCallback((height: number) => {
-    setTerminalPanelHeightState(height);
-    saveTerminalPanelPrefs({ open: terminalPanelOpen, height });
-  }, [terminalPanelOpen]);
 
   // Browser panel callbacks
   const openBrowserPanel = useCallback(() => {
@@ -175,11 +110,6 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const openMetricsDashboard = useCallback(() => setMetricsDashboardOpen(true), []);
   const closeMetricsDashboard = useCallback(() => setMetricsDashboardOpen(false), []);
   const toggleMetricsDashboard = useCallback(() => setMetricsDashboardOpen(prev => !prev), []);
-
-  // Memory panel callbacks
-  const openMemoryPanel = useCallback(() => setMemoryPanelOpen(true), []);
-  const closeMemoryPanel = useCallback(() => setMemoryPanelOpen(false), []);
-  const toggleMemoryPanel = useCallback(() => setMemoryPanelOpen(prev => !prev), []);
 
   // Undo history panel state
   const [undoHistoryOpen, setUndoHistoryOpen] = useState(false);
@@ -214,12 +144,6 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         setSettingsOpen(true);
       }
       
-      // Ctrl/Cmd + ` to toggle terminal panel
-      if ((e.ctrlKey || e.metaKey) && e.key === '`') {
-        e.preventDefault();
-        toggleTerminalPanel();
-      }
-      
       // Ctrl/Cmd + Shift + H to toggle undo history
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'H') {
         e.preventDefault();
@@ -243,12 +167,6 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         e.preventDefault();
         toggleMetricsDashboard();
       }
-
-      // Ctrl/Cmd + Shift + Y to toggle memory panel
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Y') {
-        e.preventDefault();
-        toggleMemoryPanel();
-      }
       
       // Note: Ctrl+E for editor toggle, Ctrl+S for save, Ctrl+W for close tab,
       // and Ctrl+D for diff are handled in EditorView.tsx
@@ -256,30 +174,23 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settingsOpen, shortcutsOpen, toggleTerminalPanel, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard, toggleMemoryPanel]);
+  }, [settingsOpen, shortcutsOpen, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard]);
 
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = useMemo(() => ({ 
     settingsOpen, 
     shortcutsOpen,
-    terminalPanelOpen,
-    terminalPanelHeight,
     undoHistoryOpen,
     browserPanelOpen,
     browserPanelWidth,
     commandPaletteOpen,
     metricsDashboardOpen,
-    memoryPanelOpen,
     openSettings, 
     closeSettings, 
     toggleSettings,
     openShortcuts,
     closeShortcuts,
     toggleShortcuts,
-    openTerminalPanel,
-    closeTerminalPanel,
-    toggleTerminalPanel,
-    setTerminalPanelHeight,
     openUndoHistory,
     closeUndoHistory,
     toggleUndoHistory,
@@ -293,30 +204,20 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     openMetricsDashboard,
     closeMetricsDashboard,
     toggleMetricsDashboard,
-    openMemoryPanel,
-    closeMemoryPanel,
-    toggleMemoryPanel,
   }), [
     settingsOpen, 
     shortcutsOpen,
-    terminalPanelOpen,
-    terminalPanelHeight,
     undoHistoryOpen,
     browserPanelOpen,
     browserPanelWidth,
     commandPaletteOpen,
     metricsDashboardOpen,
-    memoryPanelOpen,
     openSettings, 
     closeSettings, 
     toggleSettings,
     openShortcuts,
     closeShortcuts,
     toggleShortcuts,
-    openTerminalPanel,
-    closeTerminalPanel,
-    toggleTerminalPanel,
-    setTerminalPanelHeight,
     openUndoHistory,
     closeUndoHistory,
     toggleUndoHistory,
@@ -330,9 +231,6 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     openMetricsDashboard,
     closeMetricsDashboard,
     toggleMetricsDashboard,
-    openMemoryPanel,
-    closeMemoryPanel,
-    toggleMemoryPanel,
   ]);
 
   return (

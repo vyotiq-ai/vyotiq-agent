@@ -384,23 +384,12 @@ export const ChatArea: React.FC = () => {
   }, [activeSession, activeBranchId]);
 
   const handleRunCode = useCallback(async (code: string, language: string) => {
-    // Run shell commands in terminal
+    // Shell commands should be run through the agent's terminal tools, not directly
+    // This is a UI-only action that shows the code - actual execution happens via agent
     if (['bash', 'sh', 'shell', 'zsh', 'cmd', 'powershell', 'ps1'].includes(language.toLowerCase())) {
-      try {
-        const result = await window.vyotiq?.terminal?.run({
-          command: code,
-          cwd: activeWorkspacePath,
-          waitForExit: true,
-          timeout: 60000,
-        });
-        if (!result?.success) {
-          logger.error('Failed to run command', { error: result?.error, language });
-        }
-      } catch (err) {
-        logger.error('Error running code', { error: err, language });
-      }
+      logger.info('Code block run requested - use agent to execute shell commands', { language, codeLength: code.length });
     }
-  }, [activeWorkspacePath]);
+  }, []);
 
   // Handle message reactions
   const handleReaction = useCallback((messageId: string, reaction: MessageReaction) => {
@@ -569,11 +558,11 @@ export const ChatArea: React.FC = () => {
             <div
               key={`group-${groupIdx}`}
               className={cn(
-                'rounded-xl overflow-hidden transition-all duration-150',
+                'rounded-lg overflow-hidden transition-all duration-150',
                 isGroupRunning
-                  ? 'border border-[var(--color-warning)]/25'
-                  : 'border border-[var(--color-border-subtle)]',
-                'bg-[var(--color-surface-1)]/15'
+                  ? 'border border-[var(--color-warning)]/20 shadow-sm shadow-[var(--color-warning)]/5'
+                  : 'border border-[var(--color-border-subtle)]/60',
+                'bg-[var(--color-surface-1)]/10'
               )}
             >
               {/* Clickable header to toggle collapse */}
@@ -582,19 +571,19 @@ export const ChatArea: React.FC = () => {
                 onClick={() => toggleRunCollapse(runKey)}
                 className={cn(
                   "w-full text-left transition-colors",
-                  "hover:bg-[var(--color-surface-2)]/30",
-                  "focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/40"
+                  "hover:bg-[var(--color-surface-2)]/20",
+                  "focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30"
                 )}
               >
                 <div className="flex items-center">
                   <div className={cn(
-                    "flex items-center justify-center w-6 sm:w-8 flex-shrink-0 self-stretch",
-                    "border-r border-[var(--color-border-subtle)]/50"
+                    "flex items-center justify-center w-7 flex-shrink-0 self-stretch",
+                    "border-r border-[var(--color-border-subtle)]/30"
                   )}>
                     {collapsed ? (
-                      <ChevronRight size={12} className="text-[var(--color-text-muted)] transition-transform" />
+                      <ChevronRight size={12} className="text-[var(--color-text-dim)] transition-transform" />
                     ) : (
-                      <ChevronDown size={12} className="text-[var(--color-text-muted)] transition-transform" />
+                      <ChevronDown size={12} className="text-[var(--color-text-dim)] transition-transform" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -610,7 +599,7 @@ export const ChatArea: React.FC = () => {
 
               {/* Collapsible content */}
               {!collapsed && (
-                <div className="px-3 sm:px-4 py-2.5 sm:py-3 space-y-2.5 sm:space-y-3 border-t border-[var(--color-border-subtle)]/30">
+                <div className="px-3 sm:px-4 py-2 sm:py-3 space-y-1 border-t border-[var(--color-border-subtle)]/20">
                 {group.messages.map((message, msgIdx) => {
                   const isLastMsg = msgIdx === group.messages.length - 1 && isLastGroup;
                   const isStreaming = isLastMsg && message.role === 'assistant' && isRunning;
@@ -636,34 +625,39 @@ export const ChatArea: React.FC = () => {
                     const isLastAssistantInGroup = !group.messages.slice(msgIdx + 1).some(m => m.role === 'assistant');
                     const toolMessages = hasToolCalls ? getToolMessagesForAssistant(message) : [];
 
+                    // Check if this is the first assistant message in the group (show full branding)
+                    // or a continuation (show minimal header)
+                    const previousAssistantIdx = group.messages.slice(0, msgIdx).findLastIndex(m => m.role === 'assistant');
+                    const isFirstAssistantInGroup = previousAssistantIdx === -1;
+
                     // Messages to pass to ToolExecution: this assistant + its tool results
                     const messagesForToolExecution = hasToolCalls ? [message, ...toolMessages] : [];
 
                     return (
-                      <div key={message.id} className="space-y-1.5">
-                        <MessageLine
-                          message={message}
-                          type="assistant"
-                          isStreaming={isStreaming}
-                          onFork={handleForkMessage}
-                          onRunCode={handleRunCode}
-                          onInsertCode={handleInsertCode}
-                          routingInfo={routingInfo}
-                          onReaction={handleReaction}
-                          reaction={message.reaction}
-                          isSearchMatch={isMessageSearchMatch}
-                          isCurrentSearchMatch={isCurrentMatch}
-                        />
+                      <MessageLine
+                        key={message.id}
+                        message={message}
+                        type="assistant"
+                        isStreaming={isStreaming}
+                        onFork={handleForkMessage}
+                        onRunCode={handleRunCode}
+                        onInsertCode={handleInsertCode}
+                        routingInfo={routingInfo}
+                        onReaction={handleReaction}
+                        reaction={message.reaction}
+                        isSearchMatch={isMessageSearchMatch}
+                        isCurrentSearchMatch={isCurrentMatch}
+                        showBranding={isFirstAssistantInGroup}
+                      >
                         {hasToolCalls && (
                           <ToolExecution
                             messages={messagesForToolExecution}
                             isRunning={isGroupRunning && isLastAssistantInGroup}
                             toolResults={getToolResultsForRun(group.runId)}
                             sessionId={activeSession?.id}
-                            className="ml-3"
                           />
                         )}
-                      </div>
+                      </MessageLine>
                     );
                   }
 

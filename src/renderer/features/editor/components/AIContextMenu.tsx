@@ -1,11 +1,10 @@
 /**
  * AIContextMenu Component
  * 
- * AI-powered actions submenu for the editor context menu.
- * Provides quick access to AI features like explain, refactor, fix, etc.
+ * AI-powered actions submenu for the editor context menu with terminal-style aesthetics.
  */
 
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useState, useEffect, useRef } from 'react';
 import {
   Sparkles,
   MessageSquare,
@@ -15,7 +14,6 @@ import {
   FileText,
   Zap,
   Search,
-  ArrowRight,
   Loader2,
   ChevronRight,
 } from 'lucide-react';
@@ -43,60 +41,60 @@ interface AIMenuItem {
 const aiMenuItems: AIMenuItem[] = [
   {
     action: 'explain',
-    label: 'Explain Code',
-    icon: <MessageSquare size={14} />,
+    label: 'explain code',
+    icon: <MessageSquare size={12} />,
     description: 'Get a clear explanation of what this code does',
     requiresSelection: true,
   },
   {
     action: 'refactor',
-    label: 'Refactor',
-    icon: <Wand2 size={14} />,
+    label: 'refactor',
+    icon: <Wand2 size={12} />,
     description: 'Improve code quality and readability',
     requiresSelection: true,
     divider: true,
   },
   {
     action: 'fix-errors',
-    label: 'Fix Errors',
-    icon: <Bug size={14} />,
+    label: 'fix errors',
+    icon: <Bug size={12} />,
     description: 'Identify and fix bugs in the code',
     requiresSelection: true,
   },
   {
     action: 'optimize',
-    label: 'Optimize',
-    icon: <Zap size={14} />,
+    label: 'optimize',
+    icon: <Zap size={12} />,
     description: 'Improve performance and efficiency',
     requiresSelection: true,
     divider: true,
   },
   {
     action: 'generate-tests',
-    label: 'Generate Tests',
-    icon: <TestTube size={14} />,
+    label: 'generate tests',
+    icon: <TestTube size={12} />,
     description: 'Create unit tests for this code',
     requiresSelection: true,
   },
   {
     action: 'add-documentation',
-    label: 'Add Documentation',
-    icon: <FileText size={14} />,
+    label: 'add documentation',
+    icon: <FileText size={12} />,
     description: 'Generate JSDoc/TSDoc comments',
     requiresSelection: true,
     divider: true,
   },
   {
     action: 'find-issues',
-    label: 'Find Issues',
-    icon: <Search size={14} />,
+    label: 'find issues',
+    icon: <Search size={12} />,
     description: 'Scan for potential bugs and improvements',
     requiresSelection: false,
   },
   {
     action: 'summarize-file',
-    label: 'Summarize File',
-    icon: <FileText size={14} />,
+    label: 'summarize file',
+    icon: <FileText size={12} />,
     description: 'Get an overview of what this file does',
     requiresSelection: false,
   },
@@ -110,7 +108,66 @@ export const AIContextMenu: React.FC<AIContextMenuProps> = memo(({
   onClose,
   isLoading = false,
 }) => {
-  const [hoveredItem, setHoveredItem] = useState<EditorAIAction | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  // Close on escape key
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 50);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onClose]);
+
+  // Adjust position to stay within viewport
+  useEffect(() => {
+    if (!isOpen || !menuRef.current) return;
+
+    const menu = menuRef.current;
+    const rect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let adjustedX = position.x;
+    let adjustedY = position.y;
+
+    if (position.x + rect.width > viewportWidth) {
+      adjustedX = viewportWidth - rect.width - 8;
+    }
+
+    if (position.y + rect.height > viewportHeight) {
+      adjustedY = viewportHeight - rect.height - 8;
+    }
+
+    menu.style.left = `${Math.max(8, adjustedX)}px`;
+    menu.style.top = `${Math.max(8, adjustedY)}px`;
+  }, [isOpen, position]);
 
   const handleItemClick = useCallback((action: EditorAIAction, disabled: boolean) => {
     if (disabled || isLoading) return;
@@ -122,63 +179,71 @@ export const AIContextMenu: React.FC<AIContextMenuProps> = memo(({
 
   return (
     <div
+      ref={menuRef}
       className={cn(
-        'fixed z-[60] min-w-[220px] py-1',
-        'bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]',
-        'rounded-md shadow-xl font-mono text-[11px]',
-        'animate-in fade-in-0 zoom-in-95 duration-100'
+        'fixed z-[60] min-w-[160px] max-w-[220px] max-h-[60vh] overflow-y-auto',
+        'bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)]',
+        'shadow-2xl font-mono text-[11px]',
+        'animate-in fade-in-0 slide-in-from-top-1 duration-100',
+        'scrollbar-thin scrollbar-thumb-[var(--color-border-subtle)] scrollbar-track-transparent'
       )}
       style={{ left: position.x, top: position.y }}
       role="menu"
       aria-label="AI actions menu"
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[var(--color-border-subtle)]">
-        <Sparkles size={12} className="text-[var(--color-accent-primary)]" />
-        <span className="text-[var(--color-text-primary)] font-medium">AI Actions</span>
-        {isLoading && (
-          <Loader2 size={12} className="ml-auto animate-spin text-[var(--color-accent-primary)]" />
-        )}
+      <div className="sticky top-0 px-2.5 py-1.5 bg-[var(--color-surface-base)] border-b border-[var(--color-border-subtle)]">
+        <div className="flex items-center gap-1.5">
+          <Sparkles size={10} className="text-[var(--color-accent-primary)]" />
+          <span className="text-[var(--color-text-muted)] text-[9px] uppercase tracking-wide">
+            ai actions
+          </span>
+          {isLoading && (
+            <Loader2 size={10} className="ml-auto animate-spin text-[var(--color-accent-primary)]" />
+          )}
+        </div>
       </div>
 
       {/* Menu items */}
       <div className="py-1">
-        {aiMenuItems.map((item) => {
+        {aiMenuItems.map((item, index) => {
           const isDisabled = item.requiresSelection && !hasSelection;
-          const isHovered = hoveredItem === item.action;
+          const isHovered = hoveredIndex === index;
 
           return (
             <React.Fragment key={item.action}>
               <button
                 type="button"
                 className={cn(
-                  'w-full flex items-center gap-2 px-3 py-1.5 text-left',
-                  'text-[var(--color-text-secondary)] transition-colors',
-                  !isDisabled && 'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
+                  'w-full flex items-center gap-2 px-2.5 py-1 text-left transition-colors duration-75',
                   'focus-visible:outline-none focus-visible:bg-[var(--color-surface-2)]',
-                  isDisabled && 'opacity-40 cursor-not-allowed',
-                  isLoading && 'pointer-events-none'
+                  isDisabled 
+                    ? 'text-[var(--color-text-dim)] cursor-not-allowed' 
+                    : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
+                  isHovered && !isDisabled && 'bg-[var(--color-surface-2)] text-[var(--color-text-primary)]',
+                  isLoading && 'pointer-events-none opacity-50'
                 )}
                 onClick={() => handleItemClick(item.action, isDisabled)}
-                onMouseEnter={() => setHoveredItem(item.action)}
-                onMouseLeave={() => setHoveredItem(null)}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseLeave={() => setHoveredIndex(null)}
                 disabled={isDisabled || isLoading}
                 role="menuitem"
                 title={item.description}
               >
                 <span className={cn(
-                  'shrink-0',
-                  isHovered && !isDisabled ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-dim)]'
+                  'shrink-0 transition-colors duration-75',
+                  isDisabled 
+                    ? 'text-[var(--color-text-dim)]' 
+                    : isHovered
+                      ? 'text-[var(--color-accent-primary)]'
+                      : 'text-[var(--color-text-muted)]'
                 )}>
                   {item.icon}
                 </span>
-                <span className="flex-1">{item.label}</span>
-                {isHovered && !isDisabled && (
-                  <ArrowRight size={10} className="text-[var(--color-text-placeholder)]" />
-                )}
+                <span className="flex-1 truncate">{item.label}</span>
               </button>
               {item.divider && (
-                <div className="my-1 border-t border-[var(--color-border-subtle)]" />
+                <div className="my-0.5 mx-2 border-t border-[var(--color-border-subtle)]/50" />
               )}
             </React.Fragment>
           );
@@ -187,9 +252,9 @@ export const AIContextMenu: React.FC<AIContextMenuProps> = memo(({
 
       {/* Footer hint */}
       {!hasSelection && (
-        <div className="px-3 py-1.5 border-t border-[var(--color-border-subtle)]">
+        <div className="sticky bottom-0 px-2.5 py-1 bg-[var(--color-surface-base)] border-t border-[var(--color-border-subtle)]">
           <span className="text-[9px] text-[var(--color-text-placeholder)]">
-            Select code for more actions
+            select code for more actions
           </span>
         </div>
       )}
@@ -220,20 +285,20 @@ export const AISubmenuTrigger: React.FC<AISubmenuTriggerProps> = memo(({
     <button
       type="button"
       className={cn(
-        'w-full flex items-center gap-2 px-3 py-1.5 text-left',
+        'w-full flex items-center gap-2.5 px-3 py-1.5 text-left',
         'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]',
         'hover:text-[var(--color-text-primary)] transition-colors',
-        'focus-visible:outline-none focus-visible:bg-[var(--color-surface-2)]'
+        'focus-visible:outline-none'
       )}
       onMouseEnter={handleMouseEnter}
       role="menuitem"
     >
-      <Sparkles size={14} className="text-[var(--color-accent-primary)] shrink-0" />
-      <span className="flex-1">AI Actions</span>
+      <Sparkles size={12} className="text-[var(--color-accent-primary)] shrink-0" />
+      <span className="flex-1">ai actions</span>
       {isLoading ? (
-        <Loader2 size={12} className="animate-spin text-[var(--color-accent-primary)]" />
+        <Loader2 size={10} className="animate-spin text-[var(--color-accent-primary)]" />
       ) : (
-        <ChevronRight size={12} className="text-[var(--color-text-placeholder)]" />
+        <ChevronRight size={10} className="text-[var(--color-text-placeholder)]" />
       )}
     </button>
   );

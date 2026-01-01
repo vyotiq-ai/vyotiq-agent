@@ -17,8 +17,18 @@
  */
 
 import type { InternalSession } from './types';
-import type { PromptSettings, ContextInjectionCondition, AccessLevelSettings, TerminalSettings } from '../../shared/types';
+import type { PromptSettings, ContextInjectionCondition, AccessLevelSettings } from '../../shared/types';
 import { ACCESS_LEVEL_DEFAULTS, ACCESS_LEVEL_DESCRIPTIONS, DEFAULT_PROMPT_SETTINGS } from '../../shared/types';
+
+/**
+ * Minimal terminal settings for AI context (internal use only)
+ * These are hardcoded defaults since terminal settings UI was removed
+ */
+export interface InternalTerminalSettings {
+  defaultShell: 'system' | 'powershell' | 'cmd' | 'bash' | 'zsh' | 'fish';
+  defaultTimeout: number;
+  maxConcurrentProcesses: number;
+}
 import type { Logger } from '../logger';
 import { 
   CORE_IDENTITY, 
@@ -27,7 +37,6 @@ import {
   TOOL_HINTS, 
   OUTPUT_FORMATTING 
 } from './prompts';
-import type { MemoryEntry } from './memory/types';
 
 /**
  * Tool definition for system prompt (minimal interface)
@@ -63,8 +72,8 @@ export interface TerminalProcessInfo {
 export interface TerminalContextInfo {
   /** List of active/recent terminal processes */
   processes: TerminalProcessInfo[];
-  /** Terminal settings */
-  settings: TerminalSettings;
+  /** Terminal settings (internal defaults) */
+  settings: InternalTerminalSettings;
   /** Default shell being used */
   defaultShell: string;
   /** Current working directory (if known) */
@@ -171,8 +180,6 @@ export interface SystemPromptContext {
   taskAnalysis?: TaskAnalysisContext;
   /** Workspace structure for better navigation */
   workspaceStructure?: WorkspaceStructureContext;
-  /** Agent memories for context */
-  memories?: MemoryEntry[];
   /** Logger instance */
   logger?: Logger;
 }
@@ -888,49 +895,6 @@ export function buildWorkspaceStructureContext(workspaceStructure?: WorkspaceStr
 }
 
 /**
- * Build memory context section for system prompt
- * Injects relevant memories to provide persistent context across sessions
- */
-export function buildMemoryContext(memories?: MemoryEntry[]): string {
-  if (!memories || memories.length === 0) {
-    return '';
-  }
-
-  const parts: string[] = [];
-  parts.push('<agent_memory>');
-  parts.push('  <description>These are memories from previous sessions. Use them to maintain context and consistency.</description>');
-
-  // Group by category for better organization
-  const pinned = memories.filter(m => m.isPinned);
-  const unpinned = memories.filter(m => !m.isPinned);
-
-  if (pinned.length > 0) {
-    parts.push('  <pinned_memories>');
-    for (const mem of pinned) {
-      parts.push(`    <memory category="${mem.category}" importance="${mem.importance}">`);
-      parts.push(`      ${escapeXml(mem.content)}`);
-      parts.push('    </memory>');
-    }
-    parts.push('  </pinned_memories>');
-  }
-
-  if (unpinned.length > 0) {
-    parts.push('  <recent_memories>');
-    for (const mem of unpinned.slice(0, 10)) {
-      parts.push(`    <memory category="${mem.category}" importance="${mem.importance}">`);
-      parts.push(`      ${escapeXml(mem.content)}`);
-      parts.push('    </memory>');
-    }
-    parts.push('  </recent_memories>');
-  }
-
-  parts.push('  <hint>Use the memory tool to store important context, decisions, and patterns for future sessions.</hint>');
-  parts.push('</agent_memory>');
-
-  return '\n' + parts.join('\n');
-}
-
-/**
  * Evaluate context injection condition
  */
 export function evaluateContextInjectionCondition(
@@ -1120,7 +1084,6 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
       accessLevel: accessLevelSettings?.level,
       hasTaskAnalysis: !!context.taskAnalysis,
       hasWorkspaceStructure: !!context.workspaceStructure,
-      hasMemories: !!context.memories?.length,
     });
   }
 
@@ -1129,7 +1092,6 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
   const workspaceStructureSection = buildWorkspaceStructureContext(context.workspaceStructure);
   const taskAnalysisSection = buildTaskAnalysisContext(context.taskAnalysis);
   const accessLevelSection = buildAccessLevelSection(accessLevelSettings);
-  const memorySection = buildMemoryContext(context.memories);
   const coreTools = buildCoreTools(context.toolsList, context.toolDefinitions);
   const personaSection = buildPersonaSection(promptSettings, logger);
   const customPromptSection = buildCustomPromptSection(promptSettings);
@@ -1154,7 +1116,6 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
     hasAccessLevelSection: !!accessLevelSection,
     hasTaskAnalysis: !!taskAnalysisSection,
     hasWorkspaceStructure: !!workspaceStructureSection,
-    hasMemorySection: !!memorySection,
     responseFormatTone: promptSettings.responseFormat?.tone,
   });
 
@@ -1167,18 +1128,17 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
     workspaceStructureSection,  // 4. Workspace structure (project type, directories)
     taskAnalysisSection,        // 5. Task analysis (intent, complexity, scope)
     accessLevelSection,         // 6. Access level and permissions
-    memorySection,              // 7. Agent memories (persistent context)
-    coreTools,                  // 8. Available tools list
-    TOOL_WORKFLOWS,             // 9. Tool workflows and patterns
-    TOOL_HINTS,                 // 10. Tool-specific parameter guidance
-    OUTPUT_FORMATTING,          // 11. Response formatting guidelines
-    personaSection,             // 12. Persona/custom instructions
-    customPromptSection,        // 13. Custom user prompt
-    communicationStyle,         // 14. Communication style (tone)
-    additionalInstructions,     // 15. Additional instructions
-    injectedContext,            // 16. Dynamic injected context
-    IMPORTANT_REMINDERS,        // 17. Pre-action checklist
-    CLOSING_REMINDER,           // 18. Final verification (recency effect)
+    coreTools,                  // 7. Available tools list
+    TOOL_WORKFLOWS,             // 8. Tool workflows and patterns
+    TOOL_HINTS,                 // 9. Tool-specific parameter guidance
+    OUTPUT_FORMATTING,          // 10. Response formatting guidelines
+    personaSection,             // 11. Persona/custom instructions
+    customPromptSection,        // 12. Custom user prompt
+    communicationStyle,         // 13. Communication style (tone)
+    additionalInstructions,     // 14. Additional instructions
+    injectedContext,            // 15. Dynamic injected context
+    IMPORTANT_REMINDERS,        // 16. Pre-action checklist
+    CLOSING_REMINDER,           // 17. Final verification (recency effect)
   ].filter(Boolean).join('\n');
 
 

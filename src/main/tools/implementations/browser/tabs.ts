@@ -130,7 +130,7 @@ export const browserTabsTool: ToolDefinition<TabsArgs> = {
 **Note:** Currently operates in single-tab mode. Use browser_navigate for page changes.`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {

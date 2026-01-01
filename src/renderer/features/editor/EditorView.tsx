@@ -21,6 +21,7 @@ import { Loader2, Save, Settings, FolderOpen, FileText, GitBranch, RotateCcw, La
 import { cn } from '../../utils/cn';
 import { useEditor } from '../../state/EditorProvider';
 import { useAgentSelector } from '../../state/AgentProvider';
+import { useUndoHistory } from '../undo/useUndoHistory';
 import {
   EditorTabBar,
   MonacoEditor,
@@ -38,6 +39,7 @@ import {
 import type { Command } from './components/CommandPalette';
 import type { QuickOpenFile } from './components/QuickOpen';
 import type { DocumentSymbol } from './components/GoToSymbol';
+import type { HistoryChangeEntry } from './types';
 import { useEditorAI, type EditorAIAction } from './hooks/useEditorAI';
 import { useKeyboardShortcuts as _useKeyboardShortcuts, formatShortcut } from './hooks/useKeyboardShortcuts';
 import { useDocumentSymbols as _useDocumentSymbols } from './hooks/useDocumentSymbols';
@@ -85,11 +87,48 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     setDiffViewMode,
     showDiff,
     showGitDiff,
+    showUndoHistoryDiff,
     hideOperationDiff,
     openOperationDiffFile,
     hasUnsavedChanges,
     getFileDiff,
   } = useEditor();
+  
+  // Get active session ID for undo history
+  const activeSessionId = useAgentSelector(
+    (state) => state.activeSessionId,
+    (a, b) => a === b,
+  );
+  
+  // Undo history hook for undo/redo operations on history diffs
+  const { undoChange, redoChange, refresh: refreshUndoHistory, history: undoHistoryList } = useUndoHistory({
+    sessionId: activeSessionId,
+  });
+
+  // Get file-specific history for the current diff
+  const fileHistory = useMemo((): HistoryChangeEntry[] => {
+    if (!diff?.path || !diff.undoChangeId) return [];
+    return undoHistoryList
+      .filter(h => h.filePath === diff.path)
+      .map(h => ({
+        id: h.id,
+        filePath: h.filePath,
+        changeType: h.changeType,
+        previousContent: h.previousContent,
+        newContent: h.newContent,
+        description: h.description,
+        timestamp: h.timestamp,
+        status: h.status,
+        runId: h.runId,
+      }));
+  }, [diff?.path, diff?.undoChangeId, undoHistoryList]);
+
+  // Current history index based on the diff's undoChangeId
+  const currentHistoryIndex = useMemo(() => {
+    if (!diff?.undoChangeId || fileHistory.length === 0) return 0;
+    const idx = fileHistory.findIndex(h => h.id === diff.undoChangeId);
+    return idx >= 0 ? idx : 0;
+  }, [diff?.undoChangeId, fileHistory]);
   
   // Track loading state for files
   const isLoading = tabs.some(t => t.isLoading);
@@ -180,16 +219,27 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
   );
 
   // Sync with streaming diff for live updates during tool execution
+  // Only auto-switch if not viewing a user-selected diff (different toolCallId)
   useEffect(() => {
     if (streamingDiff && isEditorVisible) {
+      // Don't auto-switch if user is viewing a specific diff from a different tool call
+      // This preserves the user's selected diff when the agent edits the same file again
+      if (isDiffVisible && diff?.toolCallId && diff.toolCallId !== streamingDiff.toolCallId) {
+        // User is viewing a specific diff, don't overwrite it
+        // The diff will be stored when the user explicitly clicks to view it
+        return;
+      }
+      
       // Auto-switch to diff view for streaming edits
+      // Pass toolCallId to preserve diff history for each tool execution
       showDiff(
         streamingDiff.path,
         streamingDiff.originalContent,
-        streamingDiff.modifiedContent
+        streamingDiff.modifiedContent,
+        streamingDiff.toolCallId
       );
     }
-  }, [streamingDiff, showDiff, isEditorVisible]);
+  }, [streamingDiff, showDiff, isEditorVisible, isDiffVisible, diff?.toolCallId]);
   
   // Handle content change
   const handleContentChange = useCallback((content: string) => {
@@ -230,6 +280,40 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
       showDiff(activeTab.path, activeTab.originalContent, activeTab.content);
     }
   }, [activeTab, diff, showDiff]);
+
+  // Handle undo for undo history diffs
+  const handleUndoHistoryUndo = useCallback(async () => {
+    if (!diff?.undoChangeId) return;
+    const result = await undoChange(diff.undoChangeId);
+    if (result.success) {
+      await refreshUndoHistory();
+      hideDiff();
+    }
+  }, [diff?.undoChangeId, undoChange, refreshUndoHistory, hideDiff]);
+
+  // Handle redo for undo history diffs
+  const handleUndoHistoryRedo = useCallback(async () => {
+    if (!diff?.undoChangeId) return;
+    const result = await redoChange(diff.undoChangeId);
+    if (result.success) {
+      await refreshUndoHistory();
+      hideDiff();
+    }
+  }, [diff?.undoChangeId, redoChange, refreshUndoHistory, hideDiff]);
+
+  // Handle history navigation in diff editor
+  const handleHistoryNavigate = useCallback((change: HistoryChangeEntry) => {
+    showUndoHistoryDiff({
+      id: change.id,
+      filePath: change.filePath,
+      previousContent: change.previousContent,
+      newContent: change.newContent,
+      status: change.status,
+      description: change.description,
+      timestamp: change.timestamp,
+      runId: change.runId,
+    });
+  }, [showUndoHistoryDiff]);
 
   // Handle AI action from tab menu
   const handleTabAIAction = useCallback(async (tabId: string, action: EditorAIAction) => {
@@ -672,9 +756,8 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
             onClose={hideOperationDiff}
             onOpenFile={openOperationDiffFile}
           />
-        ) : tabs.length === 0 ? (
-          <EditorEmptyState />
         ) : isDiffVisible && diff ? (
+          /* Priority 2: Regular diff view (git diff, streaming diff, undo history diff) */
           <DiffEditor
             diff={diff}
             settings={settings}
@@ -682,7 +765,14 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
             onViewModeChange={setDiffViewMode}
             onClose={hideDiff}
             onRefresh={handleRefreshDiff}
+            onUndo={diff.undoChangeId && diff.undoStatus === 'undoable' ? handleUndoHistoryUndo : undefined}
+            onRedo={diff.undoChangeId && diff.undoStatus === 'undone' ? handleUndoHistoryRedo : undefined}
+            fileHistory={fileHistory}
+            currentHistoryIndex={currentHistoryIndex}
+            onHistoryNavigate={handleHistoryNavigate}
           />
+        ) : tabs.length === 0 ? (
+          <EditorEmptyState />
         ) : activeTab ? (
           <MonacoEditor
             tab={activeTab}

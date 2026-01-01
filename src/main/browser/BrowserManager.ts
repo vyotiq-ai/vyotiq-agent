@@ -539,7 +539,7 @@ export class BrowserManager extends EventEmitter {
   async navigate(url: string, options?: { retries?: number; timeout?: number }): Promise<NavigationResult> {
     const view = this.ensureBrowserView();
     const startTime = Date.now();
-    const maxRetries = options?.retries ?? 1;
+    const maxRetries = options?.retries ?? 2; // Default to 2 retries for temporary network issues
     const timeout = options?.timeout ?? this.navigationTimeout;
 
     // Normalize URL
@@ -676,6 +676,11 @@ export class BrowserManager extends EventEmitter {
       return new Error(`Connection timed out - the site may be slow or unavailable`);
     }
     
+    // Connection reset (temporary network issue - retryable)
+    if (errorCode === -101 || errorDescription.includes('ERR_CONNECTION_RESET')) {
+      return new Error(`Connection reset - the site closed the connection unexpectedly (temporary network issue)`);
+    }
+    
     // SSL/TLS errors
     if (errorCode === -200 || errorDescription.includes('ERR_CERT')) {
       return new Error(`Security certificate error - the site's certificate may be invalid or expired`);
@@ -689,6 +694,11 @@ export class BrowserManager extends EventEmitter {
     // Connection refused
     if (errorCode === -102 || errorDescription.includes('ERR_CONNECTION_REFUSED')) {
       return new Error(`Connection refused - the site may be down or blocking connections`);
+    }
+    
+    // Connection failed (general network error - retryable)
+    if (errorCode === -100 || errorDescription.includes('ERR_CONNECTION_CLOSED')) {
+      return new Error(`Connection closed - the site terminated the connection (temporary network issue)`);
     }
     
     // Default: return original error with code
@@ -706,8 +716,11 @@ export class BrowserManager extends EventEmitter {
       return true;
     }
     
-    // Retry on temporary network issues
-    if (message.includes('temporary') || message.includes('connection reset')) {
+    // Retry on temporary network issues (connection reset, connection closed)
+    if (message.includes('temporary') || 
+        message.includes('connection reset') || 
+        message.includes('connection closed') ||
+        message.includes('closed the connection')) {
       return true;
     }
     
@@ -723,6 +736,11 @@ export class BrowserManager extends EventEmitter {
     
     // Don't retry blocked requests - policy won't change
     if (message.includes('blocked')) {
+      return false;
+    }
+    
+    // Don't retry connection refused - server is explicitly rejecting
+    if (message.includes('connection refused')) {
       return false;
     }
     

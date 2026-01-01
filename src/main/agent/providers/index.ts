@@ -180,13 +180,16 @@ export function buildProviderMap(settings: AgentSettings): ProviderMap {
   // Anthropic
   const anthropicSettings = getSettings('anthropic');
   const anthropicApiKey = settings.apiKeys.anthropic;
+  const claudeSubscriptionToken = settings.claudeSubscription?.accessToken;
+  const hasAnthropicAuth = Boolean(anthropicApiKey?.trim()) || Boolean(claudeSubscriptionToken);
   providers.set('anthropic', {
     provider: new AnthropicProvider(
       anthropicApiKey,
       anthropicSettings.baseUrl,
-      anthropicSettings.model?.modelId
+      anthropicSettings.model?.modelId,
+      claudeSubscriptionToken
     ),
-    hasApiKey: Boolean(anthropicApiKey?.trim()),
+    hasApiKey: hasAnthropicAuth,
     enabled: anthropicSettings.enabled,
     priority: anthropicSettings.priority,
   });

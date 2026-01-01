@@ -591,12 +591,13 @@ export class LSPManager extends EventEmitter {
 
   private async detectInstalledServers(): Promise<void> {
     const { execSync } = await import('node:child_process');
+    const isWindows = process.platform === 'win32';
     
     for (const [language, config] of Object.entries(LANGUAGE_SERVER_CONFIGS)) {
       try {
         // Try to find the command
-        const cmd = process.platform === 'win32' ? 'where' : 'which';
-        execSync(`${cmd} ${config.command}`, { stdio: 'ignore' });
+        const cmd = isWindows ? 'where' : 'which';
+        execSync(`${cmd} ${config.command}`, { stdio: 'ignore', shell: isWindows ? 'cmd.exe' : undefined });
         this.installedServers.add(language as SupportedLanguage);
       } catch {
         // Server not installed
@@ -606,10 +607,10 @@ export class LSPManager extends EventEmitter {
     // TypeScript server is often available via npx
     if (!this.installedServers.has('typescript')) {
       try {
-        const { execSync } = await import('node:child_process');
         execSync('npx --yes typescript-language-server --version', { 
           stdio: 'ignore',
           timeout: 10000,
+          shell: isWindows ? 'cmd.exe' : undefined,
         });
         this.installedServers.add('typescript');
         this.installedServers.add('javascript');

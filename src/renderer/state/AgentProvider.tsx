@@ -417,6 +417,9 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
                 maxIterations: statusEvent.metadata?.maxIterations,
                 runStartedAt: statusEvent.metadata?.runStartedAt,
                 avgIterationTimeMs: statusEvent.metadata?.avgIterationTimeMs,
+                // Provider/model info for current iteration
+                provider: statusEvent.metadata?.provider,
+                modelId: statusEvent.metadata?.modelId,
               },
             },
           });
@@ -862,8 +865,19 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   }, []);
 
   const updateSessionConfig = useCallback(async (sessionId: string, config: Partial<AgentSessionState['config']>) => {
-    if (!window.vyotiq?.agent) return;
-    await window.vyotiq.agent.updateConfig({ sessionId, config });
+    if (!window.vyotiq?.agent) {
+      logger.warn('No agent API available for updateSessionConfig');
+      return;
+    }
+    try {
+      await window.vyotiq.agent.updateConfig({ sessionId, config });
+    } catch (error) {
+      logger.error('Failed to update session config', { 
+        sessionId, 
+        config,
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
   }, []);
 
   const cancelRun = useCallback(async (sessionId: string) => {

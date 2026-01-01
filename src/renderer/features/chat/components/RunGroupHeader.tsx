@@ -1,5 +1,5 @@
 import React, { memo, useMemo } from 'react';
-import { CheckCircle2, XCircle, Loader2, Wrench } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Wrench, Clock, Cpu } from 'lucide-react';
 
 import type { ChatMessage, ToolResultEvent } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
@@ -35,13 +35,6 @@ function getDurationMsFromToolResult(result?: ToolResultEvent): number | undefin
   return undefined;
 }
 
-function getFileChangeCountFromToolResult(result?: ToolResultEvent): number {
-  const meta = result?.result.metadata as Record<string, unknown> | undefined;
-  const fileChanges = meta?.fileChanges as Array<{ path?: unknown; action?: unknown }> | undefined;
-  if (!Array.isArray(fileChanges)) return 0;
-  return fileChanges.filter(fc => typeof fc?.path === 'string').length;
-}
-
 function formatDurationMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   const s = Math.round(ms / 100) / 10;
@@ -51,8 +44,29 @@ function formatDurationMs(ms: number): string {
   return `${m}m ${rem}s`;
 }
 
+/** Extract provider/model info from the first assistant message in a run */
+function getRunModelInfo(messages: ChatMessage[]): { provider?: string; modelId?: string } | null {
+  const firstAssistant = messages.find(m => m.role === 'assistant' && m.provider);
+  if (!firstAssistant) return null;
+  return {
+    provider: firstAssistant.provider,
+    modelId: firstAssistant.modelId,
+  };
+}
+
+/** Format model ID for compact display */
+function formatModelIdShort(modelId: string): string {
+  // Remove provider prefix if present (e.g., "openai/gpt-4" -> "gpt-4")
+  const withoutPrefix = modelId.split('/').pop() || modelId;
+  // For long model names, take first 2-3 segments
+  const parts = withoutPrefix.split('-');
+  if (parts.length > 3) {
+    return parts.slice(0, 3).join('-');
+  }
+  return withoutPrefix;
+}
+
 export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
-  runId,
   messages,
   toolResults,
   isRunning = false,
@@ -61,14 +75,15 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
   const firstUser = messages.find(m => m.role === 'user');
 
   const lastAssistantPreview = useMemo(() => {
-    // Prefer a non-summary assistant message when possible.
     const reversed = [...messages].reverse();
     const nonSummary = reversed.find(m => m.role === 'assistant' && !m.isSummary && typeof m.content === 'string' && m.content.trim().length > 0);
     const anyAssistant = reversed.find(m => m.role === 'assistant' && typeof m.content === 'string' && m.content.trim().length > 0);
     const msg = nonSummary ?? anyAssistant;
     if (!msg?.content) return null;
-    return truncateOneLine(msg.content, 120);
+    return truncateOneLine(msg.content, 100);
   }, [messages]);
+
+  const modelInfo = useMemo(() => getRunModelInfo(messages), [messages]);
 
   const toolCallCount = useMemo(() => {
     let count = 0;
@@ -91,7 +106,6 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
   const aggregate = useMemo(() => {
     let durationMsTotal = 0;
     let durationCount = 0;
-    let fileChangesTotal = 0;
 
     if (toolResults) {
       for (const [, result] of toolResults) {
@@ -100,17 +114,14 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
           durationMsTotal += d;
           durationCount += 1;
         }
-        fileChangesTotal += getFileChangeCountFromToolResult(result);
       }
     }
 
     return {
       durationMsTotal: durationCount > 0 ? durationMsTotal : undefined,
-      fileChangesTotal: fileChangesTotal > 0 ? fileChangesTotal : undefined,
     };
   }, [toolResults]);
 
-  // Token/cost summary for the run
   const costSummary = useMemo(() => {
     const summary = calculateSessionCost(messages);
     const totalTokens = summary.totalInputTokens + summary.totalOutputTokens;
@@ -121,104 +132,123 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
     };
   }, [messages]);
 
-  const statusIcon = isRunning
-    ? <Loader2 size={12} className="animate-spin text-[var(--color-warning)]" />
-    : toolOutcome.error > 0
-      ? <XCircle size={12} className="text-[var(--color-error)]" />
-      : <CheckCircle2 size={12} className="text-[var(--color-success)]" />;
-
-  const statusText = isRunning
-    ? 'running'
-    : toolOutcome.error > 0
-      ? 'completed with errors'
-      : 'completed';
-
   return (
     <div className={cn(
       'px-3 sm:px-4 py-2',
-      'bg-[var(--color-surface-1)]/40',
-      'backdrop-blur-sm overflow-hidden'
+      'bg-[var(--color-surface-1)]/30',
+      'overflow-hidden'
     )}>
-      <div className="flex items-start justify-between gap-3 min-w-0">
+      <div className="flex items-center justify-between gap-3 min-w-0">
+        {/* Left: Status + Request preview */}
         <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="flex items-center gap-2 font-mono text-[10px] text-[var(--color-text-muted)] min-w-0">
-            {statusIcon}
-            <span className="truncate min-w-0">
-              {runId ? `run ${runId.slice(0, 8)}` : 'run'} • {statusText}
+          <div className="flex items-center gap-2 min-w-0">
+            {/* Status indicator */}
+            <span className={cn(
+              'flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0',
+              isRunning && 'bg-[var(--color-warning)]/10',
+              !isRunning && toolOutcome.error > 0 && 'bg-[var(--color-error)]/10',
+              !isRunning && toolOutcome.error === 0 && 'bg-[var(--color-success)]/10',
+            )}>
+              {isRunning ? (
+                <Loader2 size={12} className="animate-spin text-[var(--color-warning)]" />
+              ) : toolOutcome.error > 0 ? (
+                <XCircle size={11} className="text-[var(--color-error)]" />
+              ) : (
+                <CheckCircle2 size={11} className="text-[var(--color-success)]" />
+              )}
             </span>
-            {typeof startAt === 'number' && (
-              <span className="flex-shrink-0 text-[var(--color-text-dim)]">[{formatTime(startAt)}]</span>
-            )}
+
+            {/* Request text */}
+            <div className="min-w-0 flex-1 overflow-hidden">
+              {firstUser?.content ? (
+                <span className="text-[11px] text-[var(--color-text-secondary)] truncate block">
+                  {truncateOneLine(firstUser.content, 80)}
+                </span>
+              ) : (
+                <span className="text-[11px] text-[var(--color-text-muted)] italic">
+                  {isRunning ? 'Processing...' : 'Completed'}
+                </span>
+              )}
+            </div>
           </div>
 
-          {firstUser?.content && (
-            <div className="mt-1 text-[11px] text-[var(--color-text-secondary)] leading-snug">
-              <span className="text-[var(--color-text-dim)] font-mono mr-1">request:</span>
-              <span className="break-words">{truncateOneLine(firstUser.content, 110)}</span>
-            </div>
-          )}
-
+          {/* Result preview - only when not running */}
           {!isRunning && lastAssistantPreview && (
-            <div className="mt-1 text-[11px] text-[var(--color-text-secondary)] leading-snug">
-              <span className="text-[var(--color-text-dim)] font-mono mr-1">result:</span>
-              <span className="break-words">{lastAssistantPreview}</span>
+            <div className="mt-1 ml-7 text-[10px] text-[var(--color-text-muted)] truncate">
+              {lastAssistantPreview}
             </div>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          {toolCallCount > 0 && (
-            <span className={cn(
-              'inline-flex items-center gap-1 rounded-md px-2 py-1',
-              'border border-[var(--color-border-subtle)]',
-              'bg-[var(--color-surface-2)]/50',
-              'text-[9px] font-mono text-[var(--color-text-muted)]'
-            )}>
-              <Wrench size={10} className="text-[var(--color-text-dim)]" />
-              <span>{toolCallCount} tool{toolCallCount === 1 ? '' : 's'}</span>
-              {toolOutcome.completed > 0 && (
-                <span className="text-[var(--color-text-dim)]">• {toolOutcome.success}/{toolOutcome.completed}</span>
+        {/* Right: Stats badges */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Time */}
+          {typeof startAt === 'number' && (
+            <span className="text-[9px] font-mono text-[var(--color-text-dim)] tabular-nums">
+              {formatTime(startAt)}
+            </span>
+          )}
+
+          {/* Model info */}
+          {modelInfo?.provider && (
+            <span 
+              className={cn(
+                'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
+                'bg-[var(--color-surface-2)]/60',
+                'text-[9px] font-mono text-[var(--color-text-muted)]'
               )}
-              {toolOutcome.error > 0 && (
-                <span className="text-[var(--color-error)]">• err {toolOutcome.error}</span>
+              title={modelInfo.modelId ? `${modelInfo.provider}/${modelInfo.modelId}` : modelInfo.provider}
+            >
+              <Cpu size={9} className="text-[var(--color-accent-secondary)]" />
+              <span className="text-[var(--color-text-secondary)]">{modelInfo.provider}</span>
+              {modelInfo.modelId && (
+                <>
+                  <span className="text-[var(--color-text-dim)]">/</span>
+                  <span className="text-[var(--color-text-dim)]">{formatModelIdShort(modelInfo.modelId)}</span>
+                </>
               )}
             </span>
           )}
 
+          {/* Tools count */}
+          {toolCallCount > 0 && (
+            <span className={cn(
+              'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
+              'bg-[var(--color-surface-2)]/60',
+              'text-[9px] font-mono text-[var(--color-text-muted)]'
+            )}>
+              <Wrench size={9} className="text-[var(--color-text-dim)]" />
+              <span>{toolCallCount}</span>
+              {toolOutcome.error > 0 && (
+                <span className="text-[var(--color-error)]">({toolOutcome.error} err)</span>
+              )}
+            </span>
+          )}
+
+          {/* Tokens + Cost */}
           {costSummary.hasUsage && (
             <span 
               className={cn(
-                'inline-flex items-center gap-1 rounded-md px-2 py-1',
-                'border border-[var(--color-border-subtle)]',
-                'bg-[var(--color-surface-2)]/50',
+                'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
+                'bg-[var(--color-surface-2)]/60',
                 'text-[9px] font-mono text-[var(--color-text-muted)]'
               )}
               title={`Input: ${formatTokenCount(costSummary.totalInputTokens)} • Output: ${formatTokenCount(costSummary.totalOutputTokens)}`}
             >
-              <span>{formatTokenCount(costSummary.totalTokens)} tok</span>
+              <span>{formatTokenCount(costSummary.totalTokens)}</span>
               <span className="text-[var(--color-accent-primary)]">${formatCost(costSummary.totalCost)}</span>
             </span>
           )}
 
+          {/* Duration */}
           {typeof aggregate.durationMsTotal === 'number' && (
             <span className={cn(
-              'inline-flex items-center rounded-md px-2 py-1',
-              'border border-[var(--color-border-subtle)]',
-              'bg-[var(--color-surface-2)]/50',
+              'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
+              'bg-[var(--color-surface-2)]/60',
               'text-[9px] font-mono text-[var(--color-text-muted)]'
             )}>
+              <Clock size={9} className="text-[var(--color-text-dim)]" />
               {formatDurationMs(aggregate.durationMsTotal)}
-            </span>
-          )}
-
-          {typeof aggregate.fileChangesTotal === 'number' && (
-            <span className={cn(
-              'inline-flex items-center rounded-md px-2 py-1',
-              'border border-[var(--color-border-subtle)]',
-              'bg-[var(--color-surface-2)]/50',
-              'text-[9px] font-mono text-[var(--color-text-muted)]'
-            )}>
-              {aggregate.fileChangesTotal} file change{aggregate.fileChangesTotal === 1 ? '' : 's'}
             </span>
           )}
         </div>

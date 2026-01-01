@@ -57,7 +57,7 @@ export const browserBackTool: ToolDefinition<Record<string, unknown>> = {
   description: 'Navigate back in browser history (like clicking the back button).',
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {
@@ -129,7 +129,7 @@ export const browserForwardTool: ToolDefinition<Record<string, unknown>> = {
   description: 'Navigate forward in browser history (like clicking the forward button).',
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {
@@ -193,7 +193,7 @@ export const browserReloadTool: ToolDefinition<Record<string, unknown>> = {
   description: 'Reload the current page in the browser.',
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {

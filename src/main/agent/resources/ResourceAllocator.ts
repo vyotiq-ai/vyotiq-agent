@@ -26,7 +26,7 @@ import type {
   AllocationEvent,
   ResourceAllocatorDeps,
 } from './types';
-import { DEFAULT_ALLOCATOR_CONFIG } from './types';
+import { DEFAULT_ALLOCATOR_CONFIG, getResourceMaxLimit } from './types';
 import { ResourcePool } from './ResourcePool';
 import { ResourceBudgetManager, createDefaultBudgetConfig } from './ResourceBudget';
 
@@ -57,7 +57,7 @@ export class ResourceAllocator extends EventEmitter {
     this.budgetManager = new ResourceBudgetManager();
 
     // Initialize queues and stats for each resource type
-    const resourceTypes: ResourceType[] = ['tokens', 'agents', 'files', 'terminals', 'time', 'memory', 'api-calls'];
+    const resourceTypes: ResourceType[] = ['tokens', 'agents', 'files', 'terminals', 'time', 'api-calls'];
     for (const type of resourceTypes) {
       this.queues.set(type, []);
       this.usageStats.set(type, {
@@ -432,26 +432,7 @@ export class ResourceAllocator extends EventEmitter {
   }
 
   private getMaxForType(type: ResourceType): number {
-    // const flags = this.getFeatureFlags(); // TODO: Use flags when needed
-
-    switch (type) {
-      case 'agents':
-        return 10; // Max 10 concurrent agents
-      case 'tokens':
-        return 1000000; // 1M tokens max
-      case 'files':
-        return 100;
-      case 'terminals':
-        return 10;
-      case 'time':
-        return 3600000; // 1 hour
-      case 'memory':
-        return 200000; // 200k context tokens
-      case 'api-calls':
-        return 1000; // Per minute
-      default:
-        return 100;
-    }
+    return getResourceMaxLimit(type);
   }
 
   private buildUsageReport(type: ResourceType): ResourceUsageMetrics {

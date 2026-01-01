@@ -45,7 +45,13 @@ export class TerminalEventHandler {
         // Handle terminal error events (timeouts, spawn failures, etc.)
         // This is critical - unhandled 'error' events on EventEmitter cause uncaught exceptions
         this.terminalManager.on('error', ({ pid, error }: { pid: number; error: string }) => {
-            this.logger.error('Terminal process error', { pid, error });
+            // Use warn level for timeouts (expected behavior), error for actual failures
+            const isTimeout = error.toLowerCase().includes('timed out');
+            if (isTimeout) {
+                this.logger.warn('Terminal process timed out', { pid, error });
+            } else {
+                this.logger.error('Terminal process error', { pid, error });
+            }
             this.emitEvent({
                 type: 'terminal-error',
                 pid,

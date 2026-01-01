@@ -151,15 +151,28 @@ export class ContextWindowManager {
   }
 
   /**
-   * Update configuration (e.g., when switching providers)
+   * Update configuration (e.g., when switching providers or models)
+   * @param provider - The provider name
+   * @param customConfig - Optional custom config overrides
+   * @param modelContextWindow - Optional model-specific context window (takes precedence over provider default)
    */
-  updateConfig(provider: LLMProviderName, customConfig?: Partial<ContextWindowConfig>): void {
+  updateConfig(
+    provider: LLMProviderName, 
+    customConfig?: Partial<ContextWindowConfig>,
+    modelContextWindow?: number
+  ): void {
     const providerConfig = PROVIDER_CONTEXT_CONFIGS[provider] ?? {};
     this.config = {
       ...DEFAULT_CONFIG,
       ...providerConfig,
       ...customConfig,
     };
+    
+    // Use model-specific context window if provided (more accurate than provider default)
+    if (modelContextWindow && modelContextWindow > 0) {
+      this.config.maxContextTokens = modelContextWindow;
+    }
+    
     // Clear cache when config changes
     this.tokenCache.clear();
   }

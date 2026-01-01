@@ -37,23 +37,7 @@ const emitToRenderer = (event: RendererEvent): void => {
   // Primary event stream for the renderer (AgentProvider subscribes here)
   mainWindow.webContents.send('agent:event', event);
 
-  // Compatibility stream for the embedded terminal panel.
-  // The terminal UI listens on these channels via preload (window.vyotiq.terminal.on*).
-  // Without this, terminal:run works but the UI never receives streaming output.
-  if (event.type === 'terminal-output') {
-    const payload = event as unknown as { pid: number; data: string; stream: 'stdout' | 'stderr' };
-    mainWindow.webContents.send('terminal:output', {
-      pid: payload.pid,
-      data: payload.data,
-      stream: payload.stream,
-    });
-  } else if (event.type === 'terminal-exit') {
-    const payload = event as unknown as { pid: number; code: number };
-    mainWindow.webContents.send('terminal:exit', { pid: payload.pid, code: payload.code });
-  } else if (event.type === 'terminal-error') {
-    const payload = event as unknown as { pid: number; error: string };
-    mainWindow.webContents.send('terminal:error', { pid: payload.pid, error: payload.error });
-  } else if (event.type === 'browser-state') {
+  if (event.type === 'browser-state') {
     // Real-time browser state updates for the browser panel
     mainWindow.webContents.send('browser:state-changed', event.state);
   } else if (event.type === 'file-changed') {
@@ -111,6 +95,68 @@ const bootstrapInfrastructure = async () => {
       });
     }
     
+    // Auto-import Claude Code credentials if not already connected
+    if (!settings.claudeSubscription) {
+      try {
+        const { autoImportCredentials, setSubscriptionUpdateCallback, setStatusChangeCallback } = await import('./main/agent/claudeAuth');
+        
+        // Set callback to emit status changes to renderer
+        setStatusChangeCallback((event) => {
+          emitToRenderer({
+            type: 'claude-subscription',
+            eventType: event.type,
+            message: event.message,
+            tier: event.tier,
+          });
+        });
+        
+        const subscription = await autoImportCredentials();
+        if (subscription) {
+          await settingsStore.update({ claudeSubscription: subscription });
+          
+          // Set callback to auto-save refreshed tokens
+          setSubscriptionUpdateCallback(async (updated) => {
+            await settingsStore.update({ claudeSubscription: updated });
+            emitToRenderer({ type: 'settings-update', settings: settingsStore.get() });
+            logger.debug('Claude subscription auto-updated after refresh');
+          });
+          
+          logger.info('Claude Code credentials auto-imported', { tier: subscription.tier });
+        }
+      } catch (err) {
+        logger.debug('Claude Code auto-import skipped', { 
+          error: err instanceof Error ? err.message : String(err) 
+        });
+      }
+    } else {
+      // Start background refresh for existing subscription
+      try {
+        const { startBackgroundRefresh, setSubscriptionUpdateCallback, setStatusChangeCallback } = await import('./main/agent/claudeAuth');
+        
+        // Set callback to emit status changes to renderer
+        setStatusChangeCallback((event) => {
+          emitToRenderer({
+            type: 'claude-subscription',
+            eventType: event.type,
+            message: event.message,
+            tier: event.tier,
+          });
+        });
+        
+        setSubscriptionUpdateCallback(async (updated) => {
+          await settingsStore.update({ claudeSubscription: updated });
+          emitToRenderer({ type: 'settings-update', settings: settingsStore.get() });
+          logger.debug('Claude subscription auto-updated after refresh');
+        });
+        startBackgroundRefresh(settings.claudeSubscription);
+        logger.info('Claude Code background refresh started');
+      } catch (err) {
+        logger.debug('Failed to start Claude background refresh', { 
+          error: err instanceof Error ? err.message : String(err) 
+        });
+      }
+    }
+    
     // Create orchestrator AFTER settings are fully loaded
     orchestrator = new AgentOrchestrator({ 
       settingsStore, 
@@ -126,11 +172,6 @@ const bootstrapInfrastructure = async () => {
     const { initLSPManager, getLSPManager, initLSPBridge, getLSPBridge } = await import('./main/lsp');
     initLSPManager(logger);
     logger.info('LSP manager initialized');
-    
-    // Initialize memory storage for persistent agent memory
-    const { initMemoryStorage } = await import('./main/agent/memory');
-    await initMemoryStorage();
-    logger.info('Memory storage initialized');
     
     // Initialize LSP bridge for real-time file change synchronization
     const lspBridge = initLSPBridge(logger);
@@ -287,6 +328,12 @@ app.on('before-quit', async (event) => {
   if (orchestrator) {
     event.preventDefault();
     try {
+      // Stop Claude background refresh and file watcher
+      const { stopBackgroundRefresh, stopCredentialsWatcher } = await import('./main/agent/claudeAuth');
+      stopBackgroundRefresh();
+      stopCredentialsWatcher();
+      logger.info('Claude background refresh stopped');
+      
       // Stop file watcher
       await stopWatching();
       logger.info('File watcher stopped');

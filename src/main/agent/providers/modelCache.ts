@@ -17,6 +17,7 @@ import type { ModelInfo } from '../../../shared/providers/types';
 import { DEFAULT_MODELS } from '../../../shared/providers/models';
 import { lookupModelPricing } from '../../../shared/providers/pricing';
 import { createLogger } from '../../logger';
+import type { LLMProvider } from './baseProvider';
 
 const logger = createLogger('ModelCache');
 
@@ -48,6 +49,9 @@ const NON_CHAT_MODEL_PATTERNS = [
   /babbage-/i,        // Legacy models
   /davinci-/i,        // Legacy completion models (not chat)
   /curie-/i,          // Legacy models
+  /^gemma-/i,         // Gemma models (not valid for Gemini API chat endpoint)
+  /learnlm/i,         // LearnLM models (specialized)
+  /aqa/i,             // Attributed QA models
 ];
 
 /**
@@ -412,4 +416,55 @@ export function getCacheStatus(): Record<LLMProviderName, { count: number; age: 
   }
   
   return status as Record<LLMProviderName, { count: number; age: number } | null>;
+}
+
+/**
+ * Ensure models are cached for a provider before routing decisions.
+ * Fetches models from the provider API if not already cached.
+ * 
+ * @param provider - The LLM provider instance with fetchModels() method
+ * @param providerName - The provider name for caching
+ * @returns true if models are now cached, false if fetch failed
+ */
+export async function ensureModelsCached(
+  provider: LLMProvider,
+  providerName: LLMProviderName
+): Promise<boolean> {
+  // Check if already cached and valid
+  const existing = getCachedModels(providerName);
+  if (existing && existing.length > 0) {
+    return true;
+  }
+  
+  // Fetch models from provider API
+  try {
+    if (typeof provider.fetchModels !== 'function') {
+      logger.debug('Provider does not support fetchModels', { provider: providerName });
+      return false;
+    }
+    
+    const rawModels = await provider.fetchModels();
+    if (!rawModels || rawModels.length === 0) {
+      logger.debug('No models returned from provider', { provider: providerName });
+      return false;
+    }
+    
+    // Normalize and cache models
+    const normalized = rawModels.map(m => 
+      normalizeApiModel(m as unknown as Record<string, unknown>, providerName)
+    );
+    setCachedModels(providerName, normalized);
+    
+    logger.info('Fetched and cached models for routing', { 
+      provider: providerName, 
+      count: normalized.length 
+    });
+    return true;
+  } catch (error) {
+    logger.warn('Failed to fetch models for routing', { 
+      provider: providerName, 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    return false;
+  }
 }

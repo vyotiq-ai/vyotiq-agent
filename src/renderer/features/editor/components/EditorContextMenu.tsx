@@ -1,12 +1,10 @@
 /**
  * EditorContextMenu Component
  * 
- * Custom right-click context menu for the code editor.
- * Matches the application's design system and provides standard editor actions.
- * Includes AI actions submenu trigger.
+ * Custom right-click context menu for the code editor with terminal-style aesthetics.
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import {
     Copy,
     Scissors,
@@ -38,37 +36,40 @@ interface ContextMenuItem {
     disabled?: boolean;
     divider?: boolean;
     isSubmenu?: boolean;
+    highlight?: boolean;
 }
 
 interface EditorContextMenuProps {
     isOpen: boolean;
     position: { x: number; y: number };
     canSave: boolean;
+    fileName?: string;
     onAction: (action: EditorContextMenuAction) => void;
     onClose: () => void;
 }
 
 const menuItems: ContextMenuItem[] = [
-    { action: 'cut', label: 'Cut', icon: <Scissors size={14} />, shortcut: 'Ctrl+X' },
-    { action: 'copy', label: 'Copy', icon: <Copy size={14} />, shortcut: 'Ctrl+C' },
-    { action: 'paste', label: 'Paste', icon: <Clipboard size={14} />, shortcut: 'Ctrl+V', divider: true },
-    { action: 'selectAll', label: 'Select All', icon: <MousePointer2 size={14} />, shortcut: 'Ctrl+A', divider: true },
-    { action: 'aiActions', label: 'AI Actions', icon: <Sparkles size={14} className="text-[var(--color-accent-primary)]" />, shortcut: 'Ctrl+Shift+A', isSubmenu: true, divider: true },
-    { action: 'save', label: 'Save', icon: <Save size={14} />, shortcut: 'Ctrl+S' },
-    { action: 'format', label: 'Format Document', icon: <Type size={14} />, divider: true },
-    { action: 'showDiff', label: 'Show Changes', icon: <FileCode size={14} />, shortcut: 'Ctrl+D' },
+    { action: 'cut', label: 'cut', icon: <Scissors size={12} />, shortcut: 'Ctrl+X' },
+    { action: 'copy', label: 'copy', icon: <Copy size={12} />, shortcut: 'Ctrl+C' },
+    { action: 'paste', label: 'paste', icon: <Clipboard size={12} />, shortcut: 'Ctrl+V', divider: true },
+    { action: 'selectAll', label: 'select all', icon: <MousePointer2 size={12} />, shortcut: 'Ctrl+A', divider: true },
+    { action: 'aiActions', label: 'ai actions', icon: <Sparkles size={12} />, shortcut: 'Ctrl+Shift+A', isSubmenu: true, highlight: true, divider: true },
+    { action: 'save', label: 'save', icon: <Save size={12} />, shortcut: 'Ctrl+S' },
+    { action: 'format', label: 'format document', icon: <Type size={12} />, divider: true },
+    { action: 'showDiff', label: 'show changes', icon: <FileCode size={12} />, shortcut: 'Ctrl+D' },
 ];
 
 export const EditorContextMenu: React.FC<EditorContextMenuProps> = ({
     isOpen,
     position,
     canSave,
+    fileName,
     onAction,
     onClose,
 }) => {
     const menuRef = useRef<HTMLDivElement>(null);
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
-    // Close on escape key
     useEffect(() => {
         if (!isOpen) return;
 
@@ -82,7 +83,6 @@ export const EditorContextMenu: React.FC<EditorContextMenuProps> = ({
         return () => document.removeEventListener('keydown', handleEscape);
     }, [isOpen, onClose]);
 
-    // Close on click outside
     useEffect(() => {
         if (!isOpen) return;
 
@@ -102,7 +102,6 @@ export const EditorContextMenu: React.FC<EditorContextMenuProps> = ({
         };
     }, [isOpen, onClose]);
 
-    // Adjust position to stay within viewport
     useEffect(() => {
         if (!isOpen || !menuRef.current) return;
 
@@ -122,8 +121,8 @@ export const EditorContextMenu: React.FC<EditorContextMenuProps> = ({
             adjustedY = viewportHeight - rect.height - 8;
         }
 
-        menu.style.left = `${adjustedX}px`;
-        menu.style.top = `${adjustedY}px`;
+        menu.style.left = `${Math.max(8, adjustedX)}px`;
+        menu.style.top = `${Math.max(8, adjustedY)}px`;
     }, [isOpen, position]);
 
     const handleItemClick = useCallback((action: EditorContextMenuAction, disabled?: boolean) => {
@@ -138,54 +137,77 @@ export const EditorContextMenu: React.FC<EditorContextMenuProps> = ({
         <div
             ref={menuRef}
             className={cn(
-                'fixed z-50 min-w-[180px] py-1',
-                'bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]',
-                'rounded-md shadow-lg font-mono text-[11px]',
-                'animate-in fade-in-0 zoom-in-95 duration-100'
+                'fixed z-50 min-w-[160px] max-w-[240px] max-h-[60vh] overflow-y-auto',
+                'bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)]',
+                'shadow-2xl font-mono text-[11px]',
+                'animate-in fade-in-0 slide-in-from-top-1 duration-100',
+                'scrollbar-thin scrollbar-thumb-[var(--color-border-subtle)] scrollbar-track-transparent'
             )}
             style={{ left: position.x, top: position.y }}
             role="menu"
             aria-label="Editor context menu"
         >
-            {menuItems.map((item, index) => {
-                const isDisabled = item.disabled || (item.action === 'save' && !canSave);
+            {/* Header */}
+            {fileName && (
+                <div className="sticky top-0 px-2.5 py-1.5 bg-[var(--color-surface-base)] border-b border-[var(--color-border-subtle)]">
+                    <span className="text-[var(--color-text-muted)] text-[9px] uppercase tracking-wide">
+                        editor
+                    </span>
+                    <div className="text-[var(--color-text-primary)] truncate text-[10px] mt-0.5 max-w-[200px]" title={fileName}>
+                        {fileName}
+                    </div>
+                </div>
+            )}
 
-                return (
-                    <React.Fragment key={`${item.action}-${index}`}>
-                        <button
-                            type="button"
-                            className={cn(
-                                'w-full flex items-center gap-2 px-3 py-1.5 text-left',
-                                'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]',
-                                'hover:text-[var(--color-text-primary)] transition-colors',
-                                'focus-visible:outline-none focus-visible:bg-[var(--color-surface-2)]',
-                                isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
-                            )}
-                            onClick={() => handleItemClick(item.action, isDisabled)}
-                            disabled={isDisabled}
-                            role="menuitem"
-                        >
-                            <span className={cn(
-                                'shrink-0',
-                                item.action === 'aiActions' ? '' : 'text-[var(--color-text-dim)]'
-                            )}>
-                                {item.icon}
-                            </span>
-                            <span className="flex-1">{item.label}</span>
-                            {item.isSubmenu ? (
-                                <ChevronRight size={12} className="text-[var(--color-text-placeholder)]" />
-                            ) : item.shortcut && (
-                                <span className="text-[9px] text-[var(--color-text-placeholder)] shrink-0 ml-4">
-                                    {item.shortcut}
+            <div className="py-1">
+                {menuItems.map((item, index) => {
+                    const isDisabled = item.disabled || (item.action === 'save' && !canSave);
+                    const isHovered = hoveredIndex === index;
+
+                    return (
+                        <React.Fragment key={`${item.action}-${index}`}>
+                            <button
+                                type="button"
+                                className={cn(
+                                    'w-full flex items-center gap-2 px-2.5 py-1 text-left transition-colors duration-75',
+                                    'focus-visible:outline-none focus-visible:bg-[var(--color-surface-2)]',
+                                    isDisabled 
+                                        ? 'text-[var(--color-text-dim)] cursor-not-allowed' 
+                                        : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
+                                    isHovered && !isDisabled && 'bg-[var(--color-surface-2)] text-[var(--color-text-primary)]'
+                                )}
+                                onClick={() => handleItemClick(item.action, isDisabled)}
+                                onMouseEnter={() => setHoveredIndex(index)}
+                                onMouseLeave={() => setHoveredIndex(null)}
+                                disabled={isDisabled}
+                                role="menuitem"
+                            >
+                                <span className={cn(
+                                    'shrink-0 transition-colors duration-75',
+                                    isDisabled 
+                                        ? 'text-[var(--color-text-dim)]' 
+                                        : item.highlight
+                                            ? 'text-[var(--color-accent-primary)]'
+                                            : 'text-[var(--color-text-muted)]'
+                                )}>
+                                    {item.icon}
                                 </span>
+                                <span className="flex-1 truncate">{item.label}</span>
+                                {item.isSubmenu ? (
+                                    <ChevronRight size={10} className="text-[var(--color-text-placeholder)] opacity-60" />
+                                ) : item.shortcut && (
+                                    <span className="text-[9px] shrink-0 ml-2 text-[var(--color-text-placeholder)] opacity-60">
+                                        {item.shortcut}
+                                    </span>
+                                )}
+                            </button>
+                            {item.divider && (
+                                <div className="my-0.5 mx-2 border-t border-[var(--color-border-subtle)]/50" />
                             )}
-                        </button>
-                        {item.divider && (
-                            <div className="my-1 border-t border-[var(--color-border-subtle)]" />
-                        )}
-                    </React.Fragment>
-                );
-            })}
+                        </React.Fragment>
+                    );
+                })}
+            </div>
         </div>
     );
 };

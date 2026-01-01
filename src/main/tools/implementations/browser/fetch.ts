@@ -185,7 +185,7 @@ export const browserFetchTool: ToolDefinition<FetchWebArgs> = {
 This is the fastest way to get web content into context.`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-read',
   riskLevel: 'safe',
 
   schema: {

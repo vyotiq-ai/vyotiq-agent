@@ -57,7 +57,7 @@ export { useLocalStorage, useSessionStorage } from './useLocalStorage';
 export { useSessionList } from '../features/sessions/hooks/useSessionList';
 export { useStreamingBuffer } from './useStreamingBuffer';
 export { useWorkspaceList } from './useWorkspaceList';
-export { useAvailableProviders } from './useAvailableProviders';
+export { useAvailableProviders, type ProviderCooldownInfo } from './useAvailableProviders';
 
 // =============================================================================
 // Cost Hooks

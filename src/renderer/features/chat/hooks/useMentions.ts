@@ -129,21 +129,15 @@ export interface UseMentionsReturn {
   isLoading: boolean;
   /** Whether search returned no results */
   noResults: boolean;
+  /** Current search query (for display) */
+  searchQuery: string;
+  /** Total available files count */
+  totalFiles: number;
 }
 
 // =============================================================================
 // Constants
 // =============================================================================
-
-/** Prompt shown when user types @ to start file mention */
-const FILE_MENTION_PROMPT: MentionItem = {
-  id: 'mention-file-prompt',
-  type: 'file',
-  label: '@file',
-  description: 'Type to search files in workspace',
-  icon: 'file',
-  value: '@file ',
-};
 
 /** Regex to detect @ mention trigger */
 const MENTION_TRIGGER_REGEX = /@(\w*)$/;
@@ -209,25 +203,40 @@ function toRelativePath(fullPath: string, workspacePath?: string): string {
 }
 
 /**
- * Fuzzy match score for filtering
+ * Fuzzy match score for filtering - prioritizes exact matches and filename matches
  */
 function fuzzyMatch(query: string, target: string): number {
   const q = query.toLowerCase();
   const t = target.toLowerCase();
   
-  // Exact match at start
+  // Exact match
+  if (t === q) return 1000;
+  
+  // Exact match at start of filename (highest priority for file search)
+  const fileName = t.split(/[/\\]/).pop() ?? t;
+  if (fileName.startsWith(q)) return 200;
+  if (fileName === q) return 500;
+  
+  // Exact match at start of path
   if (t.startsWith(q)) return 100;
   
-  // Contains match
+  // Contains match in filename
+  if (fileName.includes(q)) return 75;
+  
+  // Contains match in path
   if (t.includes(q)) return 50;
   
   // Fuzzy character match
   let score = 0;
   let queryIdx = 0;
+  let consecutiveBonus = 0;
   for (let i = 0; i < t.length && queryIdx < q.length; i++) {
     if (t[i] === q[queryIdx]) {
-      score += 1;
+      score += 1 + consecutiveBonus;
+      consecutiveBonus += 0.5; // Bonus for consecutive matches
       queryIdx++;
+    } else {
+      consecutiveBonus = 0;
     }
   }
   
@@ -290,44 +299,58 @@ export function useMentions(options: UseMentionsOptions): UseMentionsReturn {
     return detectActiveMention(message, cursorPosition);
   }, [message, cursorPosition, enabled]);
 
-  // Build file suggestions from workspace files (includes files and directories)
+  // Build file suggestions from workspace files (prioritize files over directories)
   const fileSuggestions = useMemo((): MentionItem[] => {
-    return workspaceFiles.map((file, idx) => {
+    // Separate files and directories, files first
+    const files: MentionItem[] = [];
+    const directories: MentionItem[] = [];
+    
+    workspaceFiles.forEach((file, idx) => {
       const isDirectory = file.type === 'directory';
       const fileName = getFileName(file.path);
       const relativePath = toRelativePath(file.path, workspacePath);
       
-      return {
+      const item: MentionItem = {
         id: `file-${idx}`,
         type: 'file' as MentionType,
         label: fileName,
         description: relativePath,
         icon: getFileIcon(file.path, isDirectory),
-        value: `@file ${file.path}`,
-        filePath: file.path,
+        value: relativePath,
+        filePath: relativePath,
       };
+      
+      if (isDirectory) {
+        directories.push(item);
+      } else {
+        files.push(item);
+      }
     });
+    
+    // Return files first, then directories
+    return [...files, ...directories];
   }, [workspaceFiles, workspacePath]);
 
   // Filter suggestions based on active mention query
-  const { items: suggestions, noResults } = useMemo((): { items: MentionItem[]; noResults: boolean } => {
-    if (!activeMention) return { items: [], noResults: false };
+  const { items: suggestions, noResults, searchQuery } = useMemo((): { items: MentionItem[]; noResults: boolean; searchQuery: string } => {
+    if (!activeMention) return { items: [], noResults: false, searchQuery: '' };
 
     const query = activeMention.query.toLowerCase();
     let items: MentionItem[] = [];
     let isSearching = false;
+    let effectiveQuery = '';
 
-    // If just typed @, show the file prompt hint
-    if (query.length === 0) {
-      items = [FILE_MENTION_PROMPT];
-    } else if (query === 'f' || query === 'fi' || query === 'fil' || query === 'file') {
-      // Typing 'file' - show prompt and some files
-      items = [FILE_MENTION_PROMPT, ...fileSuggestions.slice(0, maxSuggestions - 1)];
+    // If just typed @ or typing 'file', show files directly
+    if (query.length === 0 || query === 'f' || query === 'fi' || query === 'fil' || query === 'file') {
+      // Show files directly - no prompt needed
+      items = fileSuggestions.slice(0, maxSuggestions);
+      effectiveQuery = '';
     } else if (query.startsWith('file ') || activeMention.type === 'file') {
       // File search mode - filter workspace files
       const fileQuery = query.replace(/^file\s*/, '');
-      isSearching = true;
-      if (fileQuery.length > 0) {
+      effectiveQuery = fileQuery;
+      isSearching = fileQuery.length > 0;
+      if (isSearching) {
         items = fileSuggestions
           .map(item => ({
             item,
@@ -346,27 +369,27 @@ export function useMentions(options: UseMentionsOptions): UseMentionsReturn {
       }
     } else {
       // Search files by query (direct typing after @)
-      isSearching = query.length >= 1;
-      if (isSearching) {
-        items = fileSuggestions
-          .map(item => ({
-            item,
-            score: Math.max(
-              fuzzyMatch(query, item.label),
-              fuzzyMatch(query, item.description ?? ''),
-              fuzzyMatch(query, item.filePath ?? '')
-            ),
-          }))
-          .filter(({ score }) => score > 0)
-          .sort((a, b) => b.score - a.score)
-          .map(({ item }) => item);
-      }
+      effectiveQuery = query;
+      isSearching = true;
+      items = fileSuggestions
+        .map(item => ({
+          item,
+          score: Math.max(
+            fuzzyMatch(query, item.label),
+            fuzzyMatch(query, item.description ?? ''),
+            fuzzyMatch(query, item.filePath ?? '')
+          ),
+        }))
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(({ item }) => item);
     }
 
     const limitedItems = items.slice(0, maxSuggestions);
     return { 
       items: limitedItems, 
-      noResults: isSearching && limitedItems.length === 0 && fileSuggestions.length > 0 
+      noResults: isSearching && limitedItems.length === 0 && fileSuggestions.length > 0,
+      searchQuery: effectiveQuery,
     };
   }, [activeMention, fileSuggestions, maxSuggestions]);
 
@@ -384,8 +407,8 @@ export function useMentions(options: UseMentionsOptions): UseMentionsReturn {
     const before = message.slice(0, activeMention.startIndex);
     const after = message.slice(cursorPosition);
     
-    // Add space after file mention with path
-    const insertValue = item.filePath ? item.value + ' ' : item.value;
+    // Insert just the file path with a space after
+    const insertValue = item.value + ' ';
     const newMessage = before + insertValue + after;
     const newCursorPos = activeMention.startIndex + insertValue.length;
 
@@ -444,5 +467,7 @@ export function useMentions(options: UseMentionsOptions): UseMentionsReturn {
     shouldHandleKeyboard,
     isLoading: filesLoading,
     noResults,
+    searchQuery,
+    totalFiles: fileSuggestions.length,
   };
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, Save, X, PlugZap, Layers, Bot, SlidersHorizontal, Palette, ShieldAlert, Gauge, Bug, MessageSquare, Terminal, ShieldCheck, Shield, Globe, GitBranch, Sparkles } from 'lucide-react';
+import { Loader2, Save, X, PlugZap, Layers, Bot, SlidersHorizontal, Palette, ShieldAlert, Gauge, Bug, MessageSquare, ShieldCheck, Shield, Globe, GitBranch, Sparkles } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { SettingsProviders } from './components/SettingsProviders';
 import { SettingsModels } from './components/SettingsModels';
@@ -12,9 +12,7 @@ import { SettingsAccess } from './components/SettingsAccess';
 import { SettingsPerformance } from './components/SettingsPerformance';
 import { SettingsDebugging } from './components/SettingsDebugging';
 import { SettingsPrompts } from './components/SettingsPrompts';
-import { SettingsTerminal } from './components/SettingsTerminal';
 import { SettingsBrowser } from './components/SettingsBrowser';
-import { SettingsAutocomplete } from './components/SettingsAutocomplete';
 import { SettingsRouting } from './components/SettingsRouting';
 import { SettingsEditorAI } from './components/SettingsEditorAI';
 
@@ -26,7 +24,7 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-type SettingsTab = 'providers' | 'models' | 'routing' | 'agent' | 'prompts' | 'editor-ai' | 'terminal' | 'browser' | 'access' | 'safety' | 'compliance' | 'performance' | 'debugging' | 'appearance' | 'advanced';
+type SettingsTab = 'providers' | 'models' | 'routing' | 'agent' | 'prompts' | 'editor-ai' | 'browser' | 'access' | 'safety' | 'compliance' | 'performance' | 'debugging' | 'appearance' | 'advanced';
 
 interface TabConfig {
   id: SettingsTab;
@@ -42,7 +40,6 @@ const tabs: TabConfig[] = [
   { id: 'agent', label: 'Agent', command: 'agent', icon: <Bot size={14} /> },
   { id: 'prompts', label: 'Prompts', command: 'prompts', icon: <MessageSquare size={14} /> },
   { id: 'editor-ai', label: 'Editor AI', command: 'editor-ai', icon: <Sparkles size={14} /> },
-  { id: 'terminal', label: 'Terminal', command: 'terminal', icon: <Terminal size={14} /> },
   { id: 'browser', label: 'Browser', command: 'browser', icon: <Globe size={14} /> },
   { id: 'access', label: 'Access', command: 'access', icon: <Shield size={14} /> },
   { id: 'safety', label: 'Safety', command: 'safety', icon: <ShieldAlert size={14} /> },
@@ -73,9 +70,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     updateCacheSetting,
     updateDebugSetting,
     updatePromptSetting,
-    updateTerminalSetting,
     updateBrowserSetting,
-    updateAutocompleteSetting,
     updateTaskRoutingSetting,
     updateTaskMapping,
     updateEditorAISetting,
@@ -133,19 +128,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
         );
       case 'prompts':
         return localSettings.promptSettings ? (
-          <div className="space-y-6">
-            <SettingsPrompts
-              settings={localSettings.promptSettings}
-              onChange={updatePromptSetting}
-            />
-            {/* Autocomplete settings */}
-            {localSettings.autocompleteSettings && (
-              <SettingsAutocomplete
-                settings={localSettings.autocompleteSettings}
-                onChange={updateAutocompleteSetting}
-              />
-            )}
-          </div>
+          <SettingsPrompts
+            settings={localSettings.promptSettings}
+            onChange={updatePromptSetting}
+          />
         ) : (
           <div className="text-[10px] text-[var(--color-text-muted)] font-mono">
             # loading prompt settings...
@@ -156,13 +142,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
           <SettingsEditorAI
             settings={localSettings.editorAISettings}
             onChange={updateEditorAISetting}
-          />
-        );
-      case 'terminal':
-        return (
-          <SettingsTerminal
-            settings={localSettings.terminalSettings}
-            onChange={updateTerminalSetting}
           />
         );
       case 'browser':

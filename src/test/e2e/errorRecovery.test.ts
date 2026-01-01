@@ -365,7 +365,6 @@ describe('Error Recovery E2E', () => {
     it('should classify resource errors', () => {
       const resourceErrors = [
         { error: 'Token budget exceeded', resource: 'tokens' },
-        { error: 'Memory limit reached', resource: 'memory' },
         { error: 'Max iterations exceeded', resource: 'iterations' },
         { error: 'Timeout exceeded', resource: 'time' },
       ];

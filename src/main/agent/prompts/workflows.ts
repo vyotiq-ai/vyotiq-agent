@@ -137,11 +137,17 @@ kill_terminal(12345)   ← Stop when done
 |-----------|-----------|--------|
 | \`read\` × N files | ✅ YES | Independent reads |
 | \`glob\` + \`grep\` | ✅ YES | Discovery phase |
-| \`browser_fetch\` × N | ✅ YES | Independent requests |
+| \`browser_fetch\` × N | ✅ YES | Independent HTTP requests |
+| \`browser_extract\` × N | ✅ YES | Independent extractions |
+| \`browser_console\` + \`browser_network\` | ✅ YES | Read-only debugging |
 | \`lsp_hover\` × N positions | ✅ YES | Independent queries |
 | \`lsp_references\` × N symbols | ✅ YES | Independent queries |
-| \`edit\` × N files | ❌ NO | Order matters for dependencies |
+| \`lsp_definition\` × N | ✅ YES | Independent queries |
+| \`lsp_symbols\` × N | ✅ YES | Independent queries |
+| \`edit\` × N different files | ✅ YES | Different targets |
+| \`edit\` × same file | ❌ NO | Same target, order matters |
 | \`run\` × N commands | ❌ NO | Side effects, race conditions |
+| \`browser_click\` → \`browser_type\` | ❌ NO | State-changing, sequential |
 | \`edit\` → \`read_lints\` | ❌ NO | Sequential dependency |
 
 **Rule of thumb:** If operation B needs A's result → Sequential. Otherwise → Parallel.

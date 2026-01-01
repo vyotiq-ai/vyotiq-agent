@@ -7,16 +7,11 @@ import { useEditor } from './state/EditorProvider';
 import { KeyboardShortcutsModal } from './components/ui/KeyboardShortcutsModal';
 import { CommandPalette, CommandIcons, type CommandItem } from './components/ui/CommandPalette';
 import { useFirstRun } from './hooks/useFirstRun';
-import { Loader2, Code, Save, X, GitCompare, Brain } from 'lucide-react';
+import { Loader2, Code, Save, X, GitCompare } from 'lucide-react';
 
 // Lazy load the Settings panel for better initial load performance
 const SettingsPanel = lazy(() => 
   import('./features/settings').then(module => ({ default: module.SettingsPanel }))
-);
-
-// Lazy load the Terminal panel
-const TerminalPanel = lazy(() =>
-  import('./features/terminal/TerminalPanel').then(module => ({ default: module.TerminalPanel }))
 );
 
 // Lazy load the Browser panel
@@ -39,25 +34,11 @@ const MetricsDashboard = lazy(() =>
   import('./features/settings').then(module => ({ default: module.MetricsDashboard }))
 );
 
-// Lazy load the Memory panel
-const MemoryPanel = lazy(() =>
-  import('./features/memory').then(module => ({ default: module.MemoryPanel }))
-);
-
 const SettingsLoader: React.FC = () => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
     <div className="flex items-center gap-3 text-[var(--color-text-secondary)]">
       <Loader2 className="animate-spin" size={24} />
       <span className="text-xs font-medium">Loading settings...</span>
-    </div>
-  </div>
-);
-
-const TerminalLoader: React.FC = () => (
-  <div className="h-full flex items-center justify-center bg-[var(--color-surface-base)]">
-    <div className="flex items-center gap-3 text-[var(--color-text-secondary)]">
-      <Loader2 className="animate-spin" size={16} />
-      <span className="text-xs font-medium">Loading terminal...</span>
     </div>
   </div>
 );
@@ -89,15 +70,6 @@ const MetricsLoader: React.FC = () => (
   </div>
 );
 
-const MemoryLoader: React.FC = () => (
-  <div className="fixed right-0 top-8 bottom-0 w-96 z-40 bg-[var(--color-surface-base)] border-l border-[var(--color-border-subtle)] flex items-center justify-center">
-    <div className="flex items-center gap-3 text-[var(--color-text-secondary)]">
-      <Loader2 className="animate-spin" size={16} />
-      <span className="text-xs font-medium">Loading memory...</span>
-    </div>
-  </div>
-);
-
 const App: React.FC = () => {
   const { 
     settingsOpen, 
@@ -106,16 +78,11 @@ const App: React.FC = () => {
     shortcutsOpen, 
     openShortcuts,
     closeShortcuts,
-    terminalPanelOpen,
-    openTerminalPanel,
-    closeTerminalPanel,
-    terminalPanelHeight,
     browserPanelOpen,
     openBrowserPanel,
     closeBrowserPanel,
     browserPanelWidth,
     setBrowserPanelWidth,
-    setTerminalPanelHeight,
     undoHistoryOpen,
     openUndoHistory,
     closeUndoHistory,
@@ -124,9 +91,6 @@ const App: React.FC = () => {
     metricsDashboardOpen,
     openMetricsDashboard,
     closeMetricsDashboard,
-    memoryPanelOpen,
-    openMemoryPanel,
-    closeMemoryPanel,
   } = useUI();
 
   const actions = useAgentActions();
@@ -210,7 +174,6 @@ const App: React.FC = () => {
   }, [completeFirstRun]);
 
   const [isResizingBrowser, setIsResizingBrowser] = useState(false);
-  const [isResizingTerminal, setIsResizingTerminal] = useState(false);
 
   // Command palette commands
   const commands = useMemo<CommandItem[]>(() => [
@@ -252,15 +215,6 @@ const App: React.FC = () => {
     },
     // Panel commands
     {
-      id: 'toggle-terminal',
-      label: terminalPanelOpen ? 'Close Terminal' : 'Open Terminal',
-      description: 'Toggle the terminal panel',
-      icon: CommandIcons.terminal,
-      shortcut: 'Ctrl+`',
-      category: 'Panels',
-      action: terminalPanelOpen ? closeTerminalPanel : openTerminalPanel,
-    },
-    {
       id: 'toggle-browser',
       label: browserPanelOpen ? 'Close Browser' : 'Open Browser',
       description: 'Toggle the browser panel',
@@ -287,15 +241,6 @@ const App: React.FC = () => {
       shortcut: 'Ctrl+Shift+M',
       category: 'Panels',
       action: openMetricsDashboard,
-    },
-    {
-      id: 'toggle-memory',
-      label: memoryPanelOpen ? 'Close Memory Panel' : 'Open Memory Panel',
-      description: 'View and manage agent memories',
-      icon: <Brain size={14} />,
-      shortcut: 'Ctrl+Shift+Y',
-      category: 'Panels',
-      action: memoryPanelOpen ? closeMemoryPanel : openMemoryPanel,
     },
     // Action commands
     {
@@ -455,22 +400,16 @@ const App: React.FC = () => {
   ], [
     agentSnapshot.activeSessionId,
     agentSnapshot.activeSessionStatus,
-    terminalPanelOpen,
     browserPanelOpen,
     undoHistoryOpen,
     actions,
     openSettings,
     openShortcuts,
-    openTerminalPanel,
-    closeTerminalPanel,
     openBrowserPanel,
     closeBrowserPanel,
     openUndoHistory,
     closeUndoHistory,
     openMetricsDashboard,
-    memoryPanelOpen,
-    openMemoryPanel,
-    closeMemoryPanel,
     // Editor dependencies
     isEditorVisible,
     isDiffVisible,
@@ -490,11 +429,6 @@ const App: React.FC = () => {
   const startBrowserResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizingBrowser(true);
-  }, []);
-
-  const startTerminalResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizingTerminal(true);
   }, []);
 
   useEffect(() => {
@@ -523,33 +457,6 @@ const App: React.FC = () => {
       document.body.style.userSelect = '';
     };
   }, [isResizingBrowser, setBrowserPanelWidth]);
-
-  useEffect(() => {
-    if (!isResizingTerminal) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const minHeight = 160;
-      const maxHeight = Math.min(700, Math.max(160, window.innerHeight - 120));
-      const nextHeight = Math.max(minHeight, Math.min(maxHeight, window.innerHeight - e.clientY));
-      setTerminalPanelHeight(nextHeight);
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingTerminal(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'row-resize';
-    document.body.style.userSelect = 'none';
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizingTerminal, setTerminalPanelHeight]);
 
   return (
     <MainLayout onOpenSettings={openSettings}>
@@ -585,31 +492,6 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
-        {/* Terminal panel at the bottom */}
-        {terminalPanelOpen && (
-          <div 
-            className="flex-shrink-0 border-t border-[var(--color-border-subtle)] animate-slide-in-bottom"
-            style={{ height: terminalPanelHeight }}
-          >
-            {/* Resize handle */}
-            <div
-              className={
-                'h-1.5 -mt-1.5 cursor-row-resize z-30 relative ' +
-                (isResizingTerminal ? 'bg-[var(--color-accent-primary)]/30' : 'hover:bg-[var(--color-accent-primary)]/20')
-              }
-              onMouseDown={startTerminalResize}
-              aria-label="Resize terminal panel"
-              role="separator"
-              aria-orientation="horizontal"
-            />
-            <Suspense fallback={<TerminalLoader />}>
-              <TerminalPanel 
-                isOpen={terminalPanelOpen} 
-                onClose={closeTerminalPanel}
-              />
-            </Suspense>
-          </div>
-        )}
       </div>
       {settingsOpen && (
         <Suspense fallback={<SettingsLoader />}>
@@ -622,14 +504,6 @@ const App: React.FC = () => {
             isOpen={undoHistoryOpen} 
             onClose={closeUndoHistory}
             sessionId={agentSnapshot.activeSessionId}
-          />
-        </Suspense>
-      )}
-      {memoryPanelOpen && (
-        <Suspense fallback={<MemoryLoader />}>
-          <MemoryPanel 
-            isOpen={memoryPanelOpen} 
-            onClose={closeMemoryPanel}
           />
         </Suspense>
       )}

@@ -108,10 +108,12 @@ export class LSPClient extends EventEmitter {
 
     try {
       // Spawn the language server process
+      // Use shell: true on Windows to properly resolve npx and other commands
       this.process = spawn(this.config.command, this.config.args, {
         cwd: this.workspaceRoot,
         env: { ...process.env, ...this.config.env },
         stdio: ['pipe', 'pipe', 'pipe'],
+        shell: process.platform === 'win32',
       });
 
       if (!this.process.stdout || !this.process.stdin) {

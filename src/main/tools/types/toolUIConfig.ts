@@ -210,6 +210,38 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   bulk: 'file-write',
   diff: 'file-read',
   watch: 'file-read',
+  // LSP tools
+  lsp_hover: 'code-intelligence',
+  lsp_definition: 'code-intelligence',
+  lsp_references: 'code-intelligence',
+  lsp_symbols: 'code-intelligence',
+  lsp_diagnostics: 'code-intelligence',
+  lsp_completions: 'code-intelligence',
+  lsp_code_actions: 'code-intelligence',
+  lsp_rename: 'code-intelligence',
+  // Browser read-only tools
+  browser_fetch: 'browser-read',
+  browser_extract: 'browser-read',
+  browser_console: 'browser-read',
+  browser_network: 'browser-read',
+  browser_snapshot: 'browser-read',
+  browser_state: 'browser-read',
+  browser_security_status: 'browser-read',
+  browser_check_url: 'browser-read',
+  browser_screenshot: 'browser-read',
+  // Browser state-changing tools
+  browser_click: 'browser-write',
+  browser_type: 'browser-write',
+  browser_navigate: 'browser-write',
+  browser_scroll: 'browser-write',
+  browser_fill_form: 'browser-write',
+  browser_hover: 'browser-write',
+  browser_evaluate: 'browser-write',
+  browser_back: 'browser-write',
+  browser_forward: 'browser-write',
+  browser_reload: 'browser-write',
+  browser_tabs: 'browser-write',
+  browser_wait: 'browser-write',
 };
 
 // Default fallback config

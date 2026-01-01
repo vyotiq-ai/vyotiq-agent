@@ -1,7 +1,7 @@
 /**
  * ResourceManager
  *
- * Manages resource budgets for memory, CPU, tokens, and API calls.
+ * Manages resource budgets for CPU, tokens, and API calls.
  * Enables adaptive resource allocation and enforcement.
  */
 
@@ -65,18 +65,6 @@ export class ResourceManager extends EventEmitter {
    * Initialize resource budgets
    */
   private initializeBudgets(): void {
-    // Memory budget
-    this.budgets.set('memory', {
-      type: 'memory',
-      max: this.config.memoryBudget,
-      current: 0,
-      reserved: 0,
-      available: this.config.memoryBudget,
-      warningThreshold: 0.7,
-      criticalThreshold: 0.9,
-      unit: 'bytes',
-    });
-
     // CPU budget (percentage)
     this.budgets.set('cpu', {
       type: 'cpu',
@@ -460,14 +448,8 @@ export class ResourceManager extends EventEmitter {
    * Update resource usage from system
    */
   private updateResourceUsage(): void {
-    // Update memory
-    const memUsage = process.memoryUsage();
-    const memoryBudget = this.budgets.get('memory');
-    if (memoryBudget) {
-      memoryBudget.current = memUsage.heapUsed;
-      memoryBudget.available = memoryBudget.max - memoryBudget.current - memoryBudget.reserved;
-      this.checkThresholds(memoryBudget);
-    }
+    // CPU usage would be updated here if needed
+    // Currently no automatic system resource monitoring for CPU
   }
 
   /**

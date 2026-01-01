@@ -69,7 +69,6 @@ const CORE_TOOLS = [
   'grep',
   'glob',
   'run',
-  'memory',
 ];
 
 /**

@@ -1,5 +1,46 @@
 
 /**
+ * Check if error is a transient/network error that may resolve on retry
+ */
+export function isTransientError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('timeout') ||
+      message.includes('econnreset') ||
+      message.includes('econnrefused') ||
+      message.includes('socket hang up') ||
+      message.includes('network') ||
+      message.includes('502') ||
+      message.includes('503') ||
+      message.includes('504')
+    );
+  }
+  return false;
+}
+
+/**
+ * Extract Retry-After value from rate limit error (if present)
+ * Returns seconds to wait, or null if not found
+ */
+export function extractRetryAfter(error: unknown): number | null {
+  if (error instanceof Error) {
+    // Look for Retry-After in error message (some providers include it)
+    const retryMatch = error.message.match(/retry.?after[:\s]+(\d+)/i);
+    if (retryMatch) {
+      return parseInt(retryMatch[1], 10);
+    }
+
+    // Look for seconds pattern
+    const secondsMatch = error.message.match(/(\d+)\s*seconds?/i);
+    if (secondsMatch) {
+      return parseInt(secondsMatch[1], 10);
+    }
+  }
+  return null;
+}
+
+/**
  * Check if error is a rate limit error
  */
 export function isRateLimitError(error: unknown): boolean {
@@ -90,9 +131,25 @@ export function isMaxOutputTokensError(error: unknown): boolean {
 }
 
 /**
- * Determine if an error warrants trying the fallback provider
+ * Check if error is an OpenRouter data policy error
+ * This happens when the user's privacy settings don't allow certain models
  */
-export function shouldTryFallback(error: unknown): boolean {
+export function isDataPolicyError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('no endpoints found matching your data policy') ||
+    message.includes('data policy') ||
+    message.includes('free model training')
+  );
+}
+
+/**
+ * Determine if an error warrants trying the fallback provider
+ * @param error - The error that occurred
+ * @param isAutoMode - Whether the system is in Auto mode (tries all providers)
+ */
+export function shouldTryFallback(error: unknown, isAutoMode = false): boolean {
   if (!(error instanceof Error)) return false;
 
   const message = error.message.toLowerCase();
@@ -100,11 +157,17 @@ export function shouldTryFallback(error: unknown): boolean {
   // Don't fallback for context overflow (already handled by pruning)
   if (isContextOverflowError(error)) return false;
 
-  // Don't fallback for rate limits (retry with same provider)
-  if (isRateLimitError(error)) return false;
-
   // Don't fallback for tool support errors (user needs to select a different model)
   if (isToolSupportError(error)) return false;
+
+  // Don't fallback for data policy errors (user needs to change OpenRouter settings)
+  if (isDataPolicyError(error)) return false;
+
+  // In Auto mode, also try fallback for rate limits (other providers may be available)
+  if (isAutoMode && isRateLimitError(error)) return true;
+
+  // Don't fallback for rate limits in non-auto mode (retry with same provider)
+  if (isRateLimitError(error)) return false;
 
   // Try fallback for these errors:
   return (
@@ -135,7 +198,6 @@ export function shouldTryFallback(error: unknown): boolean {
     message.includes('provider returned error') ||
     message.includes('upstream error') ||
     message.includes('no endpoints available') ||
-    message.includes('no endpoints found') ||
     message.includes('all providers failed')
   );
 }

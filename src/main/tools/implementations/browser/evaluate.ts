@@ -138,7 +138,7 @@ export const browserEvaluateTool: ToolDefinition<EvaluateArgs> = {
 **Security:** Scripts run in page context with full DOM access.`,
 
   requiresApproval: false, // Read-only by default
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'moderate', // Can modify page
 
   schema: {

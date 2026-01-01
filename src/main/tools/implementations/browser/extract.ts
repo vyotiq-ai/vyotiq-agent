@@ -147,7 +147,7 @@ export const browserExtractTool: ToolDefinition<ExtractArgs> = {
 Always use after browser_navigate to read the page content.`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-read',
   riskLevel: 'safe',
 
   schema: {

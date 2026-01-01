@@ -30,8 +30,3 @@ export {
   type UseWorkspaceFilesOptions,
   type UseWorkspaceFilesReturn,
 } from './useWorkspaceFiles';
-export {
-  useAutoComplete,
-  type UseAutoCompleteOptions,
-  type UseAutoCompleteReturn,
-} from './useAutoComplete';

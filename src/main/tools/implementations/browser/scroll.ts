@@ -181,7 +181,7 @@ export const browserScrollTool: ToolDefinition<ScrollArgs> = {
 - smooth: Use smooth animation`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {

@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { safeStorage } from 'electron';
 import type { AgentConfig, AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, AutonomousFeatureFlags } from '../../shared/types';
-import { DEFAULT_CACHE_SETTINGS, DEFAULT_DEBUG_SETTINGS, DEFAULT_PROMPT_SETTINGS, DEFAULT_COMPLIANCE_SETTINGS, DEFAULT_TERMINAL_SETTINGS, DEFAULT_ACCESS_LEVEL_SETTINGS, DEFAULT_BROWSER_SETTINGS, DEFAULT_AUTOCOMPLETE_SETTINGS, DEFAULT_TASK_ROUTING_SETTINGS, DEFAULT_EDITOR_AI_SETTINGS, DEFAULT_AUTONOMOUS_FEATURE_FLAGS, DEFAULT_TOOL_CONFIG_SETTINGS } from '../../shared/types';
+import { DEFAULT_CACHE_SETTINGS, DEFAULT_DEBUG_SETTINGS, DEFAULT_PROMPT_SETTINGS, DEFAULT_COMPLIANCE_SETTINGS, DEFAULT_ACCESS_LEVEL_SETTINGS, DEFAULT_BROWSER_SETTINGS, DEFAULT_TASK_ROUTING_SETTINGS, DEFAULT_EDITOR_AI_SETTINGS, DEFAULT_AUTONOMOUS_FEATURE_FLAGS, DEFAULT_TOOL_CONFIG_SETTINGS } from '../../shared/types';
 import { getDefaultModel, PROVIDER_ORDER } from '../../shared/providers';
 import { createLogger } from '../logger';
 
@@ -109,10 +109,8 @@ const defaultSettings: AgentSettings = {
   debugSettings: defaultDebugSettings,
   promptSettings: DEFAULT_PROMPT_SETTINGS,
   complianceSettings: DEFAULT_COMPLIANCE_SETTINGS,
-  terminalSettings: DEFAULT_TERMINAL_SETTINGS,
   accessLevelSettings: DEFAULT_ACCESS_LEVEL_SETTINGS,
   browserSettings: DEFAULT_BROWSER_SETTINGS,
-  autocompleteSettings: DEFAULT_AUTOCOMPLETE_SETTINGS,
   taskRoutingSettings: DEFAULT_TASK_ROUTING_SETTINGS,
   editorAISettings: DEFAULT_EDITOR_AI_SETTINGS,
   autonomousFeatureFlags: DEFAULT_AUTONOMOUS_FEATURE_FLAGS,
@@ -211,10 +209,8 @@ export class SettingsStore {
         cacheSettings: { ...defaultSettings.cacheSettings, ...(parsed.cacheSettings ?? {}) },
         debugSettings: { ...defaultSettings.debugSettings, ...(parsed.debugSettings ?? {}) },
         complianceSettings: { ...defaultSettings.complianceSettings, ...(parsed.complianceSettings ?? {}) },
-        terminalSettings: { ...defaultSettings.terminalSettings, ...(parsed.terminalSettings ?? {}) },
         browserSettings: { ...defaultSettings.browserSettings, ...(parsed.browserSettings ?? {}) },
         accessLevelSettings: { ...defaultSettings.accessLevelSettings, ...(parsed.accessLevelSettings ?? {}) },
-        autocompleteSettings: { ...defaultSettings.autocompleteSettings, ...(parsed.autocompleteSettings ?? {}) },
         editorAISettings: { ...defaultSettings.editorAISettings, ...(parsed.editorAISettings ?? {}) },
         taskRoutingSettings: { 
           ...defaultSettings.taskRoutingSettings, 
@@ -362,10 +358,8 @@ export class SettingsStore {
       cacheSettings: { ...this.settings.cacheSettings, ...(settings.cacheSettings ?? {}) },
       debugSettings: { ...this.settings.debugSettings, ...(settings.debugSettings ?? {}) },
       complianceSettings: { ...this.settings.complianceSettings, ...(settings.complianceSettings ?? {}) },
-      terminalSettings: { ...this.settings.terminalSettings, ...(settings.terminalSettings ?? {}) },
       browserSettings: { ...this.settings.browserSettings, ...(settings.browserSettings ?? {}) },
       accessLevelSettings: { ...this.settings.accessLevelSettings, ...(settings.accessLevelSettings ?? {}) },
-      autocompleteSettings: { ...this.settings.autocompleteSettings, ...(settings.autocompleteSettings ?? {}) },
       editorAISettings: { ...this.settings.editorAISettings, ...(settings.editorAISettings ?? {}) },
       promptSettings: mergedPromptSettings,
       autonomousFeatureFlags: mergedAutonomousFlags,
@@ -430,10 +424,8 @@ export class SettingsStore {
       cacheSettings: { ...this.settings.cacheSettings, ...(partial.cacheSettings ?? {}) },
       debugSettings: { ...this.settings.debugSettings, ...(partial.debugSettings ?? {}) },
       complianceSettings: { ...this.settings.complianceSettings, ...(partial.complianceSettings ?? {}) },
-      terminalSettings: { ...this.settings.terminalSettings, ...(partial.terminalSettings ?? {}) },
       browserSettings: { ...this.settings.browserSettings, ...(partial.browserSettings ?? {}) },
       accessLevelSettings: { ...this.settings.accessLevelSettings, ...(partial.accessLevelSettings ?? {}) },
-      autocompleteSettings: { ...this.settings.autocompleteSettings, ...(partial.autocompleteSettings ?? {}) },
       editorAISettings: { ...this.settings.editorAISettings, ...(partial.editorAISettings ?? {}) },
       promptSettings: mergedPromptSettings,
       autonomousFeatureFlags: mergedAutonomousFlags,

@@ -65,13 +65,14 @@ export const SessionWelcome: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[200px] font-mono px-4">
-      <div className="text-center space-y-6 max-w-lg w-full">
-        {/* Lambda icon */}
-        <div className="text-4xl text-[var(--color-accent-primary)] opacity-40">λ</div>
-        
+      <div className="text-center space-y-5 max-w-lg w-full">
+        {/* Lambda brand mark */}
+        <div className="flex items-center justify-center mb-1">
+          <span className="text-[var(--color-accent-primary)] text-3xl font-medium leading-none opacity-80">λ</span>
+        </div>
+
         {/* Typewriter prompt */}
         <div className="flex items-center justify-center gap-1.5 text-xs min-w-0 overflow-hidden">
-          <span className="text-[var(--color-accent-primary)] flex-shrink-0">›</span>
           <span className="text-[var(--color-text-secondary)] min-w-0 text-left truncate">{displayedText}</span>
           <span className={cn(
             "w-[8px] h-[16px] bg-[var(--color-accent-primary)] rounded-[1px] flex-shrink-0",

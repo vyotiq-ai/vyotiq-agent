@@ -144,7 +144,7 @@ export const browserScreenshotTool: ToolDefinition<ScreenshotArgs> = {
 - Record visual content for reports or audits`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-read',
   riskLevel: 'safe',
 
   schema: {

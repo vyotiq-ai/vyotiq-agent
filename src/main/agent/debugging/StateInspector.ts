@@ -58,7 +58,6 @@ export interface QueuedMessage {
 }
 
 export interface ResourceUsage {
-  memoryMB: number;
   cpuPercent: number;
   activeConnections: number;
   pendingOperations: number;
@@ -447,7 +446,6 @@ export class StateInspector extends EventEmitter {
 
   private createEmptyResourceUsage(): ResourceUsage {
     return {
-      memoryMB: 0,
       cpuPercent: 0,
       activeConnections: 0,
       pendingOperations: 0,

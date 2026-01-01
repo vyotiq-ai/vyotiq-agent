@@ -105,7 +105,7 @@ export const browserNavigateTool: ToolDefinition<NavigateArgs> = {
 - Search: https://www.google.com/search?q=query`,
 
   requiresApproval: false,
-  category: 'other',
+  category: 'browser-write',
   riskLevel: 'safe',
 
   schema: {

@@ -28,9 +28,6 @@ export { InputDropZone } from './InputDropZone';
 export { MentionAutocomplete } from './MentionAutocomplete';
 export { DraftIndicator } from './DraftIndicator';
 
-// Ghost text for autocomplete
-export { GhostText } from './GhostText';
-
 // Types
 export type { InputHeaderProps } from './InputHeader';
 export type { InputTextareaProps } from './InputTextarea';
@@ -39,4 +36,3 @@ export type { InputActionsProps } from './InputActions';
 export type { InputStatusBarProps } from './InputStatusBar';
 export type { MentionAutocompleteProps } from './MentionAutocomplete';
 export type { DraftIndicatorProps } from './DraftIndicator';
-export type { GhostTextProps } from './GhostText';

@@ -79,16 +79,41 @@ export class AnthropicProvider extends BaseLLMProvider {
   private cachedModels: AnthropicModel[] | null = null;
   private modelsCacheTime: number = 0;
   private readonly modelsCacheTTL = 5 * 60 * 1000; // 5 minutes
+  private subscriptionToken?: string;
+  private apiKeyFallback?: string;
   
   /** Valid Anthropic model ID patterns */
   private static readonly VALID_MODEL_PATTERNS = [
     /^claude-/,  // All Claude models start with 'claude-'
   ];
 
-  constructor(apiKey?: string, baseUrl?: string, defaultModel?: string) {
+  constructor(apiKey?: string, baseUrl?: string, defaultModel?: string, subscriptionToken?: string) {
     super(apiKey);
     this.baseUrl = baseUrl || 'https://api.anthropic.com/v1';
     this.defaultModel = defaultModel || DEFAULT_MODELS.anthropic;
+    this.subscriptionToken = subscriptionToken;
+    this.apiKeyFallback = apiKey;
+  }
+
+  /**
+   * Set subscription token for OAuth-based authentication
+   */
+  setSubscriptionToken(token: string | undefined): void {
+    this.subscriptionToken = token;
+  }
+
+  /**
+   * Check if provider has valid authentication
+   */
+  hasValidAuth(): boolean {
+    return !!(this.subscriptionToken || this.apiKeyFallback);
+  }
+
+  /**
+   * Clear subscription token (fallback to API key if available)
+   */
+  clearSubscriptionToken(): void {
+    this.subscriptionToken = undefined;
   }
 
   /**
@@ -101,14 +126,21 @@ export class AnthropicProvider extends BaseLLMProvider {
       return this.cachedModels;
     }
 
-    const apiKey = this.assertApiKey();
+    const headers: Record<string, string> = {
+      'anthropic-version': '2023-06-01',
+    };
+    
+    // Use subscription token if available, otherwise use API key
+    if (this.subscriptionToken) {
+      headers['Authorization'] = `Bearer ${this.subscriptionToken}`;
+    } else {
+      const apiKey = this.assertApiKey();
+      headers['x-api-key'] = apiKey;
+    }
     
     const response = await fetch(`${this.baseUrl}/models?limit=100`, {
       method: 'GET',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers,
       signal,
     });
 
@@ -289,12 +321,18 @@ export class AnthropicProvider extends BaseLLMProvider {
    * Build headers for the API request
    */
   private buildHeaders(request: ProviderRequest): Record<string, string> {
-    const apiKey = this.assertApiKey();
     const headers: Record<string, string> = {
-      'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     };
+    
+    // Use subscription token (OAuth) if available, otherwise use API key
+    if (this.subscriptionToken) {
+      headers['Authorization'] = `Bearer ${this.subscriptionToken}`;
+    } else {
+      const apiKey = this.assertApiKey();
+      headers['x-api-key'] = apiKey;
+    }
     
     if (request.cache?.cacheSystemPrompt || request.cache?.cacheFileContexts || request.cache?.cacheTools) {
       headers['anthropic-beta'] = 'prompt-caching-2024-07-31';

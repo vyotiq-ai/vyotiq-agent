@@ -5,6 +5,7 @@ import { PROVIDERS, PROVIDER_ORDER, type ProviderInfo } from '../../../../shared
 import { Toggle } from '../../../components/ui/Toggle';
 import { ProviderIcon } from '../../../components/ui/ProviderIcons';
 import { cn } from '../../../utils/cn';
+import { SettingsClaudeSubscription } from './SettingsClaudeSubscription';
 
 interface SettingsProvidersProps {
   apiKeys: AgentSettings['apiKeys'];
@@ -174,36 +175,45 @@ export const SettingsProviders: React.FC<SettingsProvidersProps> = ({
   onProviderSettingChange,
 }) => {
   return (
-    <section className="space-y-3 font-mono">
-      <header>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[var(--color-accent-primary)] text-[11px]">#</span>
-          <h3 className="text-[11px] text-[var(--color-text-primary)]">providers</h3>
+    <div className="space-y-6">
+      {/* Claude Code Subscription Section */}
+      <SettingsClaudeSubscription />
+
+      {/* Divider */}
+      <div className="h-px bg-[var(--color-border-subtle)]" />
+
+      {/* API Key Providers Section */}
+      <section className="space-y-3 font-mono">
+        <header>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[var(--color-accent-primary)] text-[11px]">#</span>
+            <h3 className="text-[11px] text-[var(--color-text-primary)]">providers</h3>
+          </div>
+          <p className="text-[10px] text-[var(--color-text-dim)]">
+            # Configure LLM providers. Keys encrypted locally.
+          </p>
+        </header>
+
+        <div className="space-y-1.5">
+          {PROVIDER_ORDER.map((providerId) => {
+            const provider = PROVIDERS[providerId];
+            const settings = providerSettings[providerId];
+
+            return (
+              <ProviderCard
+                key={providerId}
+                provider={provider}
+                apiKey={apiKeys[providerId] ?? ''}
+                isEnabled={settings?.enabled ?? true}
+                priority={settings?.priority ?? 1}
+                onApiKeyChange={(value) => onApiKeyChange(providerId, value)}
+                onToggleEnabled={() => onProviderSettingChange(providerId, 'enabled', !(settings?.enabled ?? true))}
+                onPriorityChange={(priority) => onProviderSettingChange(providerId, 'priority', priority)}
+              />
+            );
+          })}
         </div>
-        <p className="text-[10px] text-[var(--color-text-dim)]">
-          # Configure LLM providers. Keys encrypted locally.
-        </p>
-      </header>
-
-      <div className="space-y-1.5">
-        {PROVIDER_ORDER.map((providerId) => {
-          const provider = PROVIDERS[providerId];
-          const settings = providerSettings[providerId];
-
-          return (
-            <ProviderCard
-              key={providerId}
-              provider={provider}
-              apiKey={apiKeys[providerId] ?? ''}
-              isEnabled={settings?.enabled ?? true}
-              priority={settings?.priority ?? 1}
-              onApiKeyChange={(value) => onApiKeyChange(providerId, value)}
-              onToggleEnabled={() => onProviderSettingChange(providerId, 'enabled', !(settings?.enabled ?? true))}
-              onPriorityChange={(priority) => onProviderSettingChange(providerId, 'priority', priority)}
-            />
-          );
-        })}
-      </div>
-    </section>
+      </section>
+    </div>
   );
 };

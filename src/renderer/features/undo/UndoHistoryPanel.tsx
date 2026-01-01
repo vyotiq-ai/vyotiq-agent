@@ -2,6 +2,7 @@
  * Undo History Panel Component
  * 
  * Displays file changes made by the agent with undo/redo capabilities.
+ * Uses the editor's DiffEditor for viewing diffs instead of a modal.
  */
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -23,7 +24,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useUndoHistory } from './useUndoHistory';
-import { DiffPreview } from './components/DiffPreview';
+import { useEditor } from '../../state/EditorProvider';
 import { ContentPreview } from './components/ContentPreview';
 import type { FileChange, RunChangeGroup } from './types';
 
@@ -191,10 +192,10 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDiff, setSelectedDiff] = useState<FileChange | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const { groupedHistory, undoableCount, isLoading, error, refresh, undoChange, redoChange, undoRun, clearHistory, undoLastChange, undoAllSession } = useUndoHistory({ sessionId, refreshInterval: 5000 });
+  const { showUndoHistoryDiff } = useEditor();
 
   const showStatus = useCallback((type: 'success' | 'error', text: string) => { setStatusMessage({ type, text }); setTimeout(() => setStatusMessage(null), 3000); }, []);
 
@@ -203,6 +204,20 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
   const handleUndoRun = useCallback(async (runId: string) => { setIsProcessing(true); try { const r = await undoRun(runId); showStatus(r.success ? 'success' : 'error', r.message); } finally { setIsProcessing(false); } }, [undoRun, showStatus]);
   const handleUndoAllSession = useCallback(async () => { if (!confirm(`Undo all ${undoableCount} changes?`)) return; setIsProcessing(true); try { const r = await undoAllSession(); showStatus(r.success ? 'success' : 'error', r.message); } finally { setIsProcessing(false); } }, [undoAllSession, undoableCount, showStatus]);
   const handleClearHistory = useCallback(async () => { if (!confirm('Clear all history?')) return; setIsProcessing(true); try { await clearHistory(); showStatus('success', 'Cleared'); } catch { showStatus('error', 'Failed'); } finally { setIsProcessing(false); } }, [clearHistory, showStatus]);
+
+  // Show diff in editor instead of modal
+  const handleShowDiff = useCallback((change: FileChange) => {
+    showUndoHistoryDiff({
+      id: change.id,
+      filePath: change.filePath,
+      previousContent: change.previousContent,
+      newContent: change.newContent,
+      status: change.status,
+      description: change.description,
+      timestamp: change.timestamp,
+      runId: change.runId,
+    });
+  }, [showUndoHistoryDiff]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -214,12 +229,11 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
           void undoLastChange().then(r => r && showStatus(r.success ? 'success' : 'error', r.message));
         }
       }
-      if (e.key === 'Escape' && selectedDiff) { e.preventDefault(); setSelectedDiff(null); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); searchInputRef.current?.focus(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, undoableCount, undoLastChange, showStatus, selectedDiff]);
+  }, [isOpen, undoableCount, undoLastChange, showStatus]);
 
   const filteredHistory = useMemo(() => {
     if (!searchQuery.trim()) return groupedHistory;
@@ -230,8 +244,7 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
   if (!isOpen) return null;
 
   return (
-    <>
-      <div className={cn('fixed right-0 top-0 bottom-0 w-80 z-40 bg-[var(--color-surface-base)] border-l border-[var(--color-border-subtle)] flex flex-col shadow-xl animate-slide-in-right')}>
+    <div className={cn('fixed right-0 top-0 bottom-0 w-80 z-40 bg-[var(--color-surface-base)] border-l border-[var(--color-border-subtle)] flex flex-col shadow-xl animate-slide-in-right')}>
         <div className="h-10 flex items-center justify-between px-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
           <div className="flex items-center gap-2"><History size={14} className="text-[var(--color-accent-primary)]" /><span className="text-xs font-medium">Undo History</span>{undoableCount > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]">{undoableCount}</span>}</div>
           <div className="flex items-center gap-1">
@@ -248,12 +261,10 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
           : isLoading && groupedHistory.length === 0 ? <div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-[var(--color-text-muted)]" /></div>
           : error ? <div className="flex flex-col items-center justify-center h-full p-4"><p className="text-xs text-[var(--color-error)]">{error}</p><button onClick={() => void refresh()} className="mt-2 text-[10px] text-[var(--color-accent-primary)] hover:underline">Retry</button></div>
           : filteredHistory.length === 0 ? <div className="flex flex-col items-center justify-center h-full p-4"><History size={32} className="text-[var(--color-text-dim)] mb-2" /><p className="text-xs text-[var(--color-text-muted)]">{searchQuery ? 'No matches' : 'No changes'}</p></div>
-          : filteredHistory.map(g => <RunGroup key={g.runId} group={g} onUndoChange={handleUndoChange} onRedoChange={handleRedoChange} onUndoRun={handleUndoRun} onShowDiff={setSelectedDiff} isProcessing={isProcessing} searchQuery={searchQuery} />)}
+          : filteredHistory.map(g => <RunGroup key={g.runId} group={g} onUndoChange={handleUndoChange} onRedoChange={handleRedoChange} onUndoRun={handleUndoRun} onShowDiff={handleShowDiff} isProcessing={isProcessing} searchQuery={searchQuery} />)}
         </div>
         {groupedHistory.length > 0 && <div className="px-3 py-2 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"><p className="text-[9px] text-[var(--color-text-dim)]">{groupedHistory.length} runs • {undoableCount} undoable • Ctrl+Z quick undo</p></div>}
-      </div>
-      {selectedDiff && <DiffPreview change={selectedDiff} onClose={() => setSelectedDiff(null)} />}
-    </>
+    </div>
   );
 });
 UndoHistoryPanel.displayName = 'UndoHistoryPanel';
