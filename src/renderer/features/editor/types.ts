@@ -127,46 +127,6 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   contextLinesAfter: 10,
 };
 
-/** Diff view mode */
-export type DiffViewMode = 'inline' | 'side-by-side';
-
-/** Diff state for a file */
-export interface FileDiff {
-  /** File path */
-  path: string;
-  /** Original content */
-  original: string;
-  /** Modified content */
-  modified: string;
-  /** Whether diff is loading */
-  isLoading: boolean;
-  /** Tool call ID for tracking which diff is being viewed */
-  toolCallId?: string;
-  /** Undo history change ID (when viewing from undo history) */
-  undoChangeId?: string;
-  /** Undo history change status */
-  undoStatus?: 'undoable' | 'undone' | 'redoable';
-  /** Description of the change */
-  description?: string;
-  /** Timestamp of the change */
-  timestamp?: number;
-  /** Run ID this change belongs to */
-  runId?: string;
-}
-
-/** History change entry for navigation */
-export interface HistoryChangeEntry {
-  id: string;
-  filePath: string;
-  changeType: 'create' | 'modify' | 'delete';
-  previousContent: string | null;
-  newContent: string | null;
-  description: string;
-  timestamp: number;
-  status: 'undoable' | 'undone' | 'redoable';
-  runId: string;
-}
-
 /** Editor context menu action */
 export type EditorContextAction =
   | 'cut'

@@ -3,14 +3,14 @@
  *
  * Tests for error handling, recovery strategies, and resilience.
  */
-import { describe, it, expect, beforeEach, afterEach, vi as _vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  createDefaultFeatureFlags as _createDefaultFeatureFlags,
+  createDefaultFeatureFlags,
   delay,
 } from '../helpers';
 import { createMockEventEmitter, type MockEventEmitter } from '../mocks/mockEventEmitter';
 import { createMockToolExecutor, type MockToolExecutor } from '../mocks/mockToolExecutor';
-import { createMockProvider, createErrorProvider as _createErrorProvider, type MockProvider } from '../mocks/mockProvider';
+import { createMockProvider, createErrorProvider, type MockProvider } from '../mocks/mockProvider';
 
 describe('Error Recovery E2E', () => {
   let emitter: MockEventEmitter;
@@ -411,7 +411,7 @@ describe('Error Recovery E2E', () => {
     });
 
     it('should implement error aggregation', async () => {
-      const _errors: Array<{ type: string; count: number }> = [];
+      const errors: Array<{ type: string; count: number }> = [];
       
       // Simulate multiple similar errors
       for (let i = 0; i < 5; i++) {
@@ -425,6 +425,7 @@ describe('Error Recovery E2E', () => {
       for (const event of toolErrors) {
         const key = (event.data as { error: string }).error;
         errorCounts.set(key, (errorCounts.get(key) ?? 0) + 1);
+        errors.push({ type: key, count: errorCounts.get(key) ?? 0 });
       }
       
       emitter.emit({
@@ -433,9 +434,11 @@ describe('Error Recovery E2E', () => {
         totalErrors: toolErrors.length,
         mostCommon: 'File not found',
         count: errorCounts.get('File not found'),
+        aggregatedErrors: errors,
       });
       
       expect(emitter.wasEmitted('errors-aggregated')).toBe(true);
+      expect(errors.length).toBe(5);
     });
   });
 
@@ -482,6 +485,63 @@ describe('Error Recovery E2E', () => {
       }
       
       expect(emitter.wasEmitted('health-alert')).toBe(true);
+    });
+  });
+
+  describe('Feature Flag Integration', () => {
+    it('should respect safety framework feature flags', () => {
+      const flags = createDefaultFeatureFlags();
+      
+      expect(flags.enableSafetyFramework).toBe(true);
+      expect(flags.enableDynamicTools).toBe(true);
+    });
+
+    it('should disable safety framework when flag is off', () => {
+      const flags = createDefaultFeatureFlags({ enableSafetyFramework: false });
+      
+      expect(flags.enableSafetyFramework).toBe(false);
+    });
+
+    it('should respect custom dynamic tools limit', () => {
+      const flags = createDefaultFeatureFlags({ maxDynamicToolsPerSession: 5 });
+      
+      expect(flags.maxDynamicToolsPerSession).toBe(5);
+    });
+  });
+
+  describe('Error Provider Integration', () => {
+    it('should create error provider with specific error', async () => {
+      const errorProvider = createErrorProvider('Custom API error');
+      
+      try {
+        await errorProvider.complete({ messages: [{ role: 'user', content: 'Test' }] });
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect((error as Error).message).toBe('Custom API error');
+      }
+    });
+
+    it('should handle error provider in failover scenario', async () => {
+      const errorProvider = createErrorProvider('Primary provider unavailable');
+      const fallbackProvider = createMockProvider();
+      
+      emitter.emit({ type: 'provider-attempt', provider: 'error-provider' });
+      
+      try {
+        await errorProvider.complete({ messages: [{ role: 'user', content: 'Test' }] });
+      } catch {
+        emitter.emit({ type: 'provider-failed', provider: 'error-provider', error: 'Primary provider unavailable' });
+        
+        // Fallback to working provider
+        emitter.emit({ type: 'provider-attempt', provider: 'fallback-provider' });
+        const result = await fallbackProvider.complete({ messages: [{ role: 'user', content: 'Test' }] });
+        
+        expect(result).toBeDefined();
+        emitter.emit({ type: 'provider-success', provider: 'fallback-provider' });
+      }
+      
+      expect(emitter.wasEmitted('provider-failed')).toBe(true);
+      expect(emitter.wasEmitted('provider-success')).toBe(true);
     });
   });
 });

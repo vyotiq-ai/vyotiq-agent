@@ -552,6 +552,19 @@ Enable in Settings → Debug:
 - Add JSDoc for public APIs
 - Use interfaces for object shapes
 
+#### Raw File Imports
+
+Import text files as raw strings using the `?raw` suffix (useful for system prompts, templates):
+
+```typescript
+// Import a .txt file as a raw string
+import systemPrompt from './prompts/system-prompt.txt?raw';
+
+// Type declarations are in forge.env.d.ts
+```
+
+*Last updated: 2026-01-01*
+
 ```typescript
 // ✅ Good
 interface UserConfig {

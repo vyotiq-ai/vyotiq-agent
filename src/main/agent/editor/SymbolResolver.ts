@@ -314,9 +314,15 @@ export class SymbolResolver extends EventEmitter {
       const lines = content.split('\n');
 
       const symbols: Symbol[] = [];
-      const _ext = filePath.split('.').pop()?.toLowerCase();
+      const ext = filePath.split('.').pop()?.toLowerCase();
 
-      // Simple regex-based symbol extraction (ext can be used for language-specific parsing)
+      // Skip non-code files
+      const codeExtensions = ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'java', 'go', 'rs', 'c', 'cpp', 'h', 'hpp'];
+      if (ext && !codeExtensions.includes(ext)) {
+        return symbols;
+      }
+
+      // Simple regex-based symbol extraction with language-specific patterns
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 

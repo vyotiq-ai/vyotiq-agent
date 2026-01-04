@@ -7,7 +7,7 @@ import { useEditor } from './state/EditorProvider';
 import { KeyboardShortcutsModal } from './components/ui/KeyboardShortcutsModal';
 import { CommandPalette, CommandIcons, type CommandItem } from './components/ui/CommandPalette';
 import { useFirstRun } from './hooks/useFirstRun';
-import { Loader2, Code, Save, X, GitCompare } from 'lucide-react';
+import { Loader2, Code, Save, X } from 'lucide-react';
 
 // Lazy load the Settings panel for better initial load performance
 const SettingsPanel = lazy(() => 
@@ -116,14 +116,11 @@ const App: React.FC = () => {
     activeTabId,
     activeTab,
     isEditorVisible,
-    isDiffVisible,
     saveFile,
     saveAllFiles,
     closeTab,
     closeAllTabs,
     toggleEditor,
-    showGitDiff,
-    hideDiff,
     hasUnsavedChanges,
   } = useEditor();
 
@@ -381,22 +378,6 @@ const App: React.FC = () => {
       action: closeAllTabs,
       disabled: tabs.length === 0,
     },
-    {
-      id: 'show-git-diff',
-      label: isDiffVisible ? 'Hide Diff' : 'Show Git Diff',
-      description: 'Show git diff for current file',
-      icon: <GitCompare size={14} />,
-      shortcut: 'Ctrl+D',
-      category: 'Editor',
-      action: () => {
-        if (isDiffVisible) {
-          hideDiff();
-        } else if (activeTab) {
-          void showGitDiff(activeTab.path);
-        }
-      },
-      disabled: !activeTab && !isDiffVisible,
-    },
   ], [
     agentSnapshot.activeSessionId,
     agentSnapshot.activeSessionStatus,
@@ -412,7 +393,6 @@ const App: React.FC = () => {
     openMetricsDashboard,
     // Editor dependencies
     isEditorVisible,
-    isDiffVisible,
     activeTabId,
     activeTab,
     tabs.length,
@@ -421,8 +401,6 @@ const App: React.FC = () => {
     saveAllFiles,
     closeTab,
     closeAllTabs,
-    showGitDiff,
-    hideDiff,
     hasUnsavedChanges,
   ]);
 

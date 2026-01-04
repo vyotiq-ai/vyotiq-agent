@@ -4,8 +4,6 @@
 
 export * from './EditorTabBar';
 export * from './MonacoEditor';
-export * from './DiffEditor';
-export * from './OperationDiffEditor';
 export * from './EditorStatusBar';
 export * from './EditorSettingsMenu';
 export * from './EditorEmptyState';

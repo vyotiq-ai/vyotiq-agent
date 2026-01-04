@@ -168,8 +168,8 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         toggleMetricsDashboard();
       }
       
-      // Note: Ctrl+E for editor toggle, Ctrl+S for save, Ctrl+W for close tab,
-      // and Ctrl+D for diff are handled in EditorView.tsx
+      // Note: Ctrl+E for editor toggle, Ctrl+S for save, Ctrl+W for close tab
+      // are handled in EditorView.tsx
     };
 
     window.addEventListener('keydown', handleKeyDown);

@@ -11,12 +11,13 @@ import type {
 
 // Type alias for API compatibility
 type ConversationMessage = ChatMessage;
-import { CORE_IDENTITY } from './identity';
-import { CRITICAL_RULES } from './rules';
-import { TOOL_WORKFLOWS } from './workflows';
-import { TOOL_HINTS } from './toolHints';
-import { OUTPUT_FORMATTING } from './formatting';
-// Coordination imports removed - system no longer exists
+
+// Import from new consolidated systemPrompt module
+import {
+  CORE_IDENTITY,
+  CRITICAL_RULES,
+  TOOL_CHAINING,
+} from '../systemPrompt';
 
 // =============================================================================
 // Types
@@ -109,22 +110,10 @@ export class DynamicPromptBuilder {
     sections.push(CRITICAL_RULES);
     currentTokens += estimateTokens(CRITICAL_RULES);
 
-    // Add workflows if requested and space permits
-    if (options.includeWorkflows !== false && currentTokens + estimateTokens(TOOL_WORKFLOWS) < maxTokens * 0.8) {
-      sections.push(TOOL_WORKFLOWS);
-      currentTokens += estimateTokens(TOOL_WORKFLOWS);
-    }
-
-    // Add tool hints if requested and space permits
-    if (options.includeToolHints !== false && currentTokens + estimateTokens(TOOL_HINTS) < maxTokens * 0.9) {
-      sections.push(TOOL_HINTS);
-      currentTokens += estimateTokens(TOOL_HINTS);
-    }
-
-    // Add formatting rules if requested and space permits
-    if (options.includeFormatting !== false && currentTokens + estimateTokens(OUTPUT_FORMATTING) < maxTokens * 0.95) {
-      sections.push(OUTPUT_FORMATTING);
-      currentTokens += estimateTokens(OUTPUT_FORMATTING);
+    // Add tool chaining if requested and space permits
+    if (options.includeWorkflows !== false && currentTokens + estimateTokens(TOOL_CHAINING) < maxTokens * 0.9) {
+      sections.push(TOOL_CHAINING);
+      currentTokens += estimateTokens(TOOL_CHAINING);
     }
 
     // Add custom sections

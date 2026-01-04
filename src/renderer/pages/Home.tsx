@@ -6,7 +6,6 @@
 import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { ChatArea, ChatInput } from '../features/chat';
 import { useEditor } from '../state/EditorProvider';
-import { useFileOperationDiff } from '../hooks';
 import { cn } from '../utils/cn';
 import { Loader2 } from 'lucide-react';
 import { FeatureErrorBoundary } from '../components/layout/ErrorBoundary';
@@ -28,15 +27,12 @@ const EditorLoader: React.FC = () => (
 );
 
 export const Home: React.FC = () => {
-  const { tabs, isEditorVisible, isOperationDiffVisible, isDiffVisible } = useEditor();
+  const { tabs, isEditorVisible } = useEditor();
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isResizing, setIsResizing] = useState(false);
   
-  // Auto-open modified files in a new tab when the agent edits them
-  useFileOperationDiff({ enabled: true, autoOpenEditor: true });
-  
-  // Show editor panel when there are open tabs OR when there's a diff visible
-  const showEditor = isEditorVisible && (tabs.length > 0 || isOperationDiffVisible || isDiffVisible);
+  // Show editor panel when there are open tabs
+  const showEditor = isEditorVisible && tabs.length > 0;
   
   // Handle resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {

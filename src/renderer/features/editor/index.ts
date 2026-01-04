@@ -5,7 +5,6 @@
  * - Tab management
  * - Syntax highlighting
  * - File editing and saving
- * - Diff viewing
  * - Custom themes
  */
 

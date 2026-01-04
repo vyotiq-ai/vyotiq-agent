@@ -3,9 +3,8 @@
  *
  * Tests for dynamic tool creation, validation, and execution.
  */
-import { describe, it, expect, beforeEach, afterEach, vi as _vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createMockEventEmitter } from '../mocks/mockEventEmitter';
-import { createMockToolExecutor as _createMockToolExecutor } from '../mocks/mockToolExecutor';
 import { createDefaultFeatureFlags } from '../helpers';
 import {
   templateToolSpec,
@@ -25,7 +24,7 @@ import {
   createCodeToolSpec,
   createCompositeToolSpec,
 } from '../fixtures/toolSpecs';
-import type { ToolSpecification as _ToolSpecification } from '../../shared/types';
+import type { ToolSpecification } from '../../shared/types';
 
 describe('Dynamic Tools Integration', () => {
   beforeEach(() => {
@@ -405,6 +404,36 @@ describe('Dynamic Tools Integration', () => {
       const uniqueIds = new Set(ids);
       
       expect(uniqueIds.size).toBe(ids.length);
+    });
+  });
+
+  describe('Tool Specification Type Validation', () => {
+    it('should validate tool specification structure', () => {
+      const spec: ToolSpecification = createToolSpec({
+        name: 'typed_tool',
+        description: 'A typed tool specification',
+        riskLevel: 'safe',
+      });
+      
+      // Verify the spec conforms to ToolSpecification type
+      expect(spec.name).toBe('typed_tool');
+      expect(spec.description).toBe('A typed tool specification');
+      expect(spec.riskLevel).toBe('safe');
+      expect(spec.id).toBeDefined();
+      expect(spec.executionType).toBeDefined();
+    });
+
+    it('should enforce required fields in ToolSpecification', () => {
+      const spec: ToolSpecification = templateToolSpec;
+      
+      // Required fields must be present
+      expect(spec.id).toBeDefined();
+      expect(spec.name).toBeDefined();
+      expect(spec.description).toBeDefined();
+      expect(spec.executionType).toBeDefined();
+      expect(spec.inputSchema).toBeDefined();
+      expect(spec.riskLevel).toBeDefined();
+      expect(spec.requiredCapabilities).toBeDefined();
     });
   });
 });

@@ -121,7 +121,7 @@ export async function timeOperation<T>(
  * Check if resources are available
  */
 export function hasResources(
-  type: 'memory' | 'cpu' | 'tokens' | 'api-calls' | 'connections',
+  type: 'cpu' | 'tokens' | 'api-calls' | 'connections',
   amount: number
 ): boolean {
   return getResourceManager().hasAvailable(type, amount);

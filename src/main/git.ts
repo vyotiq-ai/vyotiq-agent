@@ -1,4 +1,4 @@
-import simpleGit, { SimpleGit, StatusResult, LogResult, type DiffResult } from 'simple-git';
+import simpleGit, { SimpleGit, StatusResult, LogResult } from 'simple-git';
 import { createLogger } from './logger';
 import type { GitCommit as SharedGitCommit } from '../shared/types';
 
@@ -260,37 +260,6 @@ class GitService {
   }
 
   /**
-   * Get diff for a file or all files
-   */
-  async diff(filePath?: string, staged?: boolean): Promise<string> {
-    if (!this.git || !this._isRepo) return '';
-
-    try {
-      const options = staged ? ['--cached'] : [];
-      if (filePath) {
-        options.push('--', filePath);
-      }
-      return await this.git.diff(options);
-    } catch (error) {
-      if (this.isUnbornRepoError(error)) {
-        logger.debug('Diff skipped (repo has no commits yet)', {
-          filePath,
-          staged,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return '';
-      }
-
-      logger.error('Failed to get diff', {
-        filePath,
-        staged,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return '';
-    }
-  }
-
-  /**
    * Stage files
    */
   async stage(paths: string[]): Promise<boolean> {
@@ -475,36 +444,6 @@ class GitService {
         error: error instanceof Error ? error.message : String(error),
       });
       return [];
-    }
-  }
-
-  /**
-   * Get diff between two refs
-   */
-  async diffRefs(ref1: string, ref2?: string): Promise<string> {
-    if (!this.git || !this._isRepo) return '';
-
-    try {
-      if (!(await this.hasCommits())) return '';
-
-      const refs = ref2 ? [ref1, ref2] : [ref1];
-      return await this.git.diff(refs);
-    } catch (error) {
-      if (this.isUnbornRepoError(error)) {
-        logger.debug('Diff refs skipped (repo has no commits yet)', {
-          ref1,
-          ref2,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return '';
-      }
-
-      logger.error('Failed to get diff between refs', {
-        ref1,
-        ref2,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return '';
     }
   }
 
@@ -928,37 +867,6 @@ class GitService {
         error: error instanceof Error ? error.message : String(error),
       });
       return false;
-    }
-  }
-
-  /**
-   * Get structured diff summary between refs or for working directory
-   * Returns detailed diff result with file changes
-   */
-  async diffSummary(ref1?: string, ref2?: string): Promise<DiffResult | null> {
-    if (!this.git || !this._isRepo) return null;
-
-    try {
-      if (!(await this.hasCommits())) return null;
-
-      const refs = ref1 ? (ref2 ? [ref1, ref2] : [ref1]) : [];
-      return await this.git.diffSummary(refs);
-    } catch (error) {
-      if (this.isUnbornRepoError(error)) {
-        logger.debug('Diff summary skipped (repo has no commits yet)', {
-          ref1,
-          ref2,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      }
-
-      logger.error('Failed to get diff summary', {
-        ref1,
-        ref2,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
     }
   }
 }

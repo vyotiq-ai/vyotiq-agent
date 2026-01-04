@@ -8,9 +8,13 @@ import { WorkspaceContextProvider } from './state/WorkspaceContextProvider';
 import { EditorProvider } from './state/EditorProvider';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { ThemeProvider } from './utils/themeMode.tsx';
+import { ensureMonacoEnvironment } from './features/editor/utils/monacoEnvironment';
 import '../index.css';
 // KaTeX CSS for math rendering
 import 'katex/dist/katex.min.css';
+
+// Initialize Monaco environment before any editors are created
+ensureMonacoEnvironment();
 
 // Handle unhandled promise rejections from Monaco editor
 // Monaco throws "Canceled" errors when disposed while async operations are pending
@@ -19,6 +23,11 @@ window.addEventListener('unhandledrejection', (event) => {
   const error = event.reason;
   if (error instanceof Error && error.message === 'Canceled') {
     // Suppress Monaco's "Canceled" errors - they're expected during disposal
+    event.preventDefault();
+    return;
+  }
+  // Monaco diff worker errors - suppress "no diff result available" errors
+  if (error instanceof Error && error.message === 'no diff result available') {
     event.preventDefault();
     return;
   }

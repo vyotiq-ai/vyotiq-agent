@@ -1562,10 +1562,6 @@ export const registerIpcHandlers = (context: IpcContext) => {
     return getGitService().currentBranch();
   });
 
-  ipcMain.handle('git:diff', async (_event, filePath?: string, staged?: boolean) => {
-    return getGitService().diff(filePath, staged);
-  });
-
   ipcMain.handle('git:show-file', async (_event, filePath: string, ref?: string) => {
     return getGitService().showFile(filePath, ref);
   });
@@ -1588,10 +1584,6 @@ export const registerIpcHandlers = (context: IpcContext) => {
 
   ipcMain.handle('git:log', async (_event, options?: { maxCount?: number; skip?: number; filePath?: string }) => {
     return getGitService().log(options);
-  });
-
-  ipcMain.handle('git:diff-refs', async (_event, ref1: string, ref2?: string) => {
-    return getGitService().diffRefs(ref1, ref2);
   });
 
   ipcMain.handle('git:branches', async (_event, all?: boolean) => {

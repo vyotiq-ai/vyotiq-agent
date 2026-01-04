@@ -112,7 +112,7 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const runningStartTimesRef = useRef<Map<string, number>>(new Map());
-  const { showDiff, showEditor, openFile } = useEditor();
+  const { showEditor, openFile } = useEditor();
   
   const toggleExpanded = useCallback((callId: string) => {
     setExpandedTools(prev => {
@@ -137,12 +137,6 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
       return next;
     });
   }, []);
-
-  // Handle opening diff in the full editor with toolCallId for history tracking
-  const handleOpenDiffEditor = useCallback((path: string, original: string, modified: string, toolCallId?: string) => {
-    showDiff(path, original, modified, toolCallId);
-    showEditor();
-  }, [showDiff, showEditor]);
 
   // Handle opening file in editor
   const handleOpenFile = useCallback((path: string) => {
@@ -208,7 +202,6 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
                 isExpanded={expandedTools.has(item.tool.callId)}
                 onToggle={() => toggleExpanded(item.tool.callId)}
                 isLast={idx === groupedTools.length - 1}
-                onOpenDiffEditor={handleOpenDiffEditor}
                 onOpenFile={handleOpenFile}
               />
             );
@@ -223,7 +216,6 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
                 onToggle={() => toggleGroupExpanded(idx)}
                 expandedTools={expandedTools}
                 onToggleTool={toggleExpanded}
-                onOpenDiffEditor={handleOpenDiffEditor}
                 onOpenFile={handleOpenFile}
                 isLast={idx === groupedTools.length - 1}
               />
@@ -348,10 +340,9 @@ const FileOperationGroup: React.FC<{
   onToggle: () => void;
   expandedTools: Set<string>;
   onToggleTool: (callId: string) => void;
-  onOpenDiffEditor?: (path: string, original: string, modified: string, toolCallId?: string) => void;
   onOpenFile?: (path: string) => void;
   isLast: boolean;
-}> = memo(({ tools, isExpanded, onToggle, expandedTools, onToggleTool, onOpenDiffEditor, onOpenFile, isLast }) => {
+}> = memo(({ tools, isExpanded, onToggle, expandedTools, onToggleTool, onOpenFile, isLast }) => {
   // Compute aggregate stats
   const stats = useMemo(() => {
     let added = 0;
@@ -467,7 +458,6 @@ const FileOperationGroup: React.FC<{
               isExpanded={expandedTools.has(tool.callId)}
               onToggle={() => onToggleTool(tool.callId)}
               isLast={idx === tools.length - 1}
-              onOpenDiffEditor={onOpenDiffEditor}
               onOpenFile={onOpenFile}
             />
           ))}

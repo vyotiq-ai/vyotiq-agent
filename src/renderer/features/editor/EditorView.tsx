@@ -5,9 +5,6 @@
  * Can be placed anywhere in the app layout.
  * Includes loading states and revert functionality.
  * 
- * Syncs with agent's streaming diff state to show real-time
- * file change diffs during tool execution.
- * 
  * VS Code Features:
  * - Command Palette (Ctrl+Shift+P)
  * - Quick Open / Go to File (Ctrl+P)
@@ -17,16 +14,12 @@
  */
 
 import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
-import { Loader2, Save, Settings, FolderOpen, FileText, GitBranch, RotateCcw, Layout, Code, Terminal, Moon, Type, Keyboard } from 'lucide-react';
+import { Loader2, Save, Settings, FolderOpen, FileText, RotateCcw, Layout, Code, Terminal, Moon, Type, Keyboard } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useEditor } from '../../state/EditorProvider';
-import { useAgentSelector } from '../../state/AgentProvider';
-import { useUndoHistory } from '../undo/useUndoHistory';
 import {
   EditorTabBar,
   MonacoEditor,
-  DiffEditor,
-  OperationDiffEditor,
   EditorStatusBar,
   EditorSettingsMenu,
   EditorEmptyState,
@@ -39,13 +32,11 @@ import {
 import type { Command } from './components/CommandPalette';
 import type { QuickOpenFile } from './components/QuickOpen';
 import type { DocumentSymbol } from './components/GoToSymbol';
-import type { HistoryChangeEntry } from './types';
 import { useEditorAI, type EditorAIAction } from './hooks/useEditorAI';
 import { useKeyboardShortcuts as _useKeyboardShortcuts, formatShortcut } from './hooks/useKeyboardShortcuts';
 import { useDocumentSymbols as _useDocumentSymbols } from './hooks/useDocumentSymbols';
 import { useActiveWorkspace } from '../../hooks/useActiveWorkspace';
 
-// Re-export formatShortcut for external use
 export { formatShortcut };
 
 interface EditorViewProps {
@@ -59,11 +50,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     activeTab,
     settings,
     isEditorVisible,
-    diff,
-    isDiffVisible,
-    diffViewMode,
-    operationDiff,
-    isOperationDiffVisible,
     pendingNavigation,
     clearPendingNavigation,
     openFile,
@@ -82,103 +68,30 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     updateSettings,
     nextTab,
     prevTab,
-    goToPosition,
-    hideDiff,
-    setDiffViewMode,
-    showDiff,
-    showGitDiff,
-    showUndoHistoryDiff,
-    hideOperationDiff,
-    openOperationDiffFile,
+    goToFileAndLine,
     hasUnsavedChanges,
-    getFileDiff,
   } = useEditor();
   
-  // Get active session ID for undo history
-  const activeSessionId = useAgentSelector(
-    (state) => state.activeSessionId,
-    (a, b) => a === b,
-  );
-  
-  // Undo history hook for undo/redo operations on history diffs
-  const { undoChange, redoChange, refresh: refreshUndoHistory, history: undoHistoryList } = useUndoHistory({
-    sessionId: activeSessionId,
-  });
-
-  // Get file-specific history for the current diff
-  const fileHistory = useMemo((): HistoryChangeEntry[] => {
-    if (!diff?.path || !diff.undoChangeId) return [];
-    return undoHistoryList
-      .filter(h => h.filePath === diff.path)
-      .map(h => ({
-        id: h.id,
-        filePath: h.filePath,
-        changeType: h.changeType,
-        previousContent: h.previousContent,
-        newContent: h.newContent,
-        description: h.description,
-        timestamp: h.timestamp,
-        status: h.status,
-        runId: h.runId,
-      }));
-  }, [diff?.path, diff?.undoChangeId, undoHistoryList]);
-
-  // Current history index based on the diff's undoChangeId
-  const currentHistoryIndex = useMemo(() => {
-    if (!diff?.undoChangeId || fileHistory.length === 0) return 0;
-    const idx = fileHistory.findIndex(h => h.id === diff.undoChangeId);
-    return idx >= 0 ? idx : 0;
-  }, [diff?.undoChangeId, fileHistory]);
-  
-  // Track loading state for files
   const isLoading = tabs.some(t => t.isLoading);
-  const isDiffLoading = diff?.isLoading ?? false;
   
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [showAIResult, setShowAIResult] = useState(false);
   
-  // VS Code feature states
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [goToSymbolOpen, setGoToSymbolOpen] = useState(false);
   
-  // Monaco editor ref for symbol extraction (reserved for future use with useDocumentSymbols)
   const _editorRef = useRef<{ getEditor: () => unknown } | null>(null);
   
-  // Track previous active tab to detect tab switches
-  const prevActiveTabIdRef = useRef<string | undefined>(activeTabId);
-  
-  // Restore diff when switching tabs (if there's a stored diff for the new tab)
-  useEffect(() => {
-    // Only trigger on tab change, not on mount
-    if (prevActiveTabIdRef.current === activeTabId) return;
-    prevActiveTabIdRef.current = activeTabId;
-    
-    if (!activeTab?.path) return;
-    
-    // Check if there's a stored diff for this file
-    const storedDiff = getFileDiff(activeTab.path);
-    if (storedDiff) {
-      // Restore the diff view for this file
-      showDiff(activeTab.path, storedDiff.original, storedDiff.modified);
-    }
-  }, [activeTabId, activeTab?.path, getFileDiff, showDiff]);
-  
-  // File list for Quick Open (from workspace context if available)
   const [workspaceFiles, setWorkspaceFiles] = useState<QuickOpenFile[]>([]);
-  
-  // Get active workspace from context
   const activeWorkspace = useActiveWorkspace();
   
-  // Load workspace files
   useEffect(() => {
     const loadFiles = async () => {
       try {
-        // Get files from the active workspace
         if (activeWorkspace?.path) {
           const result = await window.vyotiq?.files?.listDir?.(activeWorkspace.path, { recursive: true, maxDepth: 5 });
           if (result?.success && result.files) {
-            // Flatten and filter to only files (not directories)
             const flattenFiles = (files: Array<{ name: string; path: string; type: 'file' | 'directory'; children?: unknown[] }>): Array<{ name: string; path: string }> => {
               const result: Array<{ name: string; path: string }> = [];
               for (const f of files) {
@@ -205,117 +118,36 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     loadFiles();
   }, [activeWorkspace?.path]);
 
-  // AI hook for tab-level actions
   const {
     actionState,
     executeAction,
     clearActionResult,
   } = useEditorAI();
-
-  // Get streaming diff from agent state for real-time file change display
-  const streamingDiff = useAgentSelector(
-    (s) => s.streamingDiff,
-    (a, b) => a === b,
-  );
-
-  // Sync with streaming diff for live updates during tool execution
-  // Only auto-switch if not viewing a user-selected diff (different toolCallId)
-  useEffect(() => {
-    if (streamingDiff && isEditorVisible) {
-      // Don't auto-switch if user is viewing a specific diff from a different tool call
-      // This preserves the user's selected diff when the agent edits the same file again
-      if (isDiffVisible && diff?.toolCallId && diff.toolCallId !== streamingDiff.toolCallId) {
-        // User is viewing a specific diff, don't overwrite it
-        // The diff will be stored when the user explicitly clicks to view it
-        return;
-      }
-      
-      // Auto-switch to diff view for streaming edits
-      // Pass toolCallId to preserve diff history for each tool execution
-      showDiff(
-        streamingDiff.path,
-        streamingDiff.originalContent,
-        streamingDiff.modifiedContent,
-        streamingDiff.toolCallId
-      );
-    }
-  }, [streamingDiff, showDiff, isEditorVisible, isDiffVisible, diff?.toolCallId]);
   
-  // Handle content change
   const handleContentChange = useCallback((content: string) => {
     if (activeTabId) {
       updateContent(activeTabId, content);
-      
-      // Update diff if visible
-      if (isDiffVisible && diff && activeTab) {
-        showDiff(activeTab.path, activeTab.originalContent, content);
-      }
     }
-  }, [activeTabId, updateContent, isDiffVisible, diff, activeTab, showDiff]);
+  }, [activeTabId, updateContent]);
   
-  // Handle save
   const handleSave = useCallback(async () => {
     if (activeTabId) {
       await saveFile(activeTabId);
     }
   }, [activeTabId, saveFile]);
   
-  // Handle view state change
   const handleViewStateChange = useCallback((viewState: Parameters<typeof updateViewState>[1]) => {
     if (activeTabId) {
       updateViewState(activeTabId, viewState);
     }
   }, [activeTabId, updateViewState]);
   
-  // Handle cursor change
   const handleCursorChange = useCallback((position: { lineNumber: number; column: number }) => {
     if (activeTabId) {
       updateCursorPosition(activeTabId, position);
     }
   }, [activeTabId, updateCursorPosition]);
-  
-  // Handle refresh diff
-  const handleRefreshDiff = useCallback(() => {
-    if (activeTab && diff) {
-      showDiff(activeTab.path, activeTab.originalContent, activeTab.content);
-    }
-  }, [activeTab, diff, showDiff]);
 
-  // Handle undo for undo history diffs
-  const handleUndoHistoryUndo = useCallback(async () => {
-    if (!diff?.undoChangeId) return;
-    const result = await undoChange(diff.undoChangeId);
-    if (result.success) {
-      await refreshUndoHistory();
-      hideDiff();
-    }
-  }, [diff?.undoChangeId, undoChange, refreshUndoHistory, hideDiff]);
-
-  // Handle redo for undo history diffs
-  const handleUndoHistoryRedo = useCallback(async () => {
-    if (!diff?.undoChangeId) return;
-    const result = await redoChange(diff.undoChangeId);
-    if (result.success) {
-      await refreshUndoHistory();
-      hideDiff();
-    }
-  }, [diff?.undoChangeId, redoChange, refreshUndoHistory, hideDiff]);
-
-  // Handle history navigation in diff editor
-  const handleHistoryNavigate = useCallback((change: HistoryChangeEntry) => {
-    showUndoHistoryDiff({
-      id: change.id,
-      filePath: change.filePath,
-      previousContent: change.previousContent,
-      newContent: change.newContent,
-      status: change.status,
-      description: change.description,
-      timestamp: change.timestamp,
-      runId: change.runId,
-    });
-  }, [showUndoHistoryDiff]);
-
-  // Handle AI action from tab menu
   const handleTabAIAction = useCallback(async (tabId: string, action: EditorAIAction) => {
     const tab = tabs.find(t => t.id === tabId);
     if (!tab) return;
@@ -329,33 +161,24 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     });
   }, [tabs, executeAction]);
 
-  // Handle revert file to original content
   const handleRevertFile = useCallback(() => {
     if (activeTabId && activeTab?.isDirty) {
       revertFile(activeTabId);
-      // Hide diff if showing the reverted file
-      if (isDiffVisible && diff?.path === activeTab.path) {
-        hideDiff();
-      }
     }
-  }, [activeTabId, activeTab, revertFile, isDiffVisible, diff, hideDiff]);
+  }, [activeTabId, activeTab, revertFile]);
 
-  // Handle Quick Open file selection - uses the openFile from useEditor
   const handleQuickOpenSelect = useCallback((path: string) => {
     openFile(path);
   }, [openFile]);
 
-  // Handle Go to Symbol selection
   const handleSymbolSelect = useCallback((symbol: DocumentSymbol) => {
     if (activeTab) {
-      goToPosition(activeTab.path, symbol.line, symbol.column);
+      goToFileAndLine(activeTab.path, symbol.line, symbol.column);
     }
-  }, [activeTab, goToPosition]);
+  }, [activeTab, goToFileAndLine]);
 
-  // Symbols for current file (simple extraction - will be enhanced with useDocumentSymbols)
   const [documentSymbols, setDocumentSymbols] = useState<DocumentSymbol[]>([]);
 
-  // Extract symbols from active file content (basic implementation)
   useEffect(() => {
     if (!activeTab?.content) {
       setDocumentSymbols([]);
@@ -365,7 +188,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     const symbols: DocumentSymbol[] = [];
     const lines = activeTab.content.split('\n');
     
-    // Simple regex patterns for common patterns
     const patterns = [
       { regex: /^(?:export\s+)?(?:async\s+)?function\s+(\w+)/gm, kind: 'function' as const },
       { regex: /^(?:export\s+)?class\s+(\w+)/gm, kind: 'class' as const },
@@ -395,9 +217,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     setDocumentSymbols(symbols);
   }, [activeTab?.content]);
 
-  // Command palette commands
   const commands = useMemo<Command[]>(() => [
-    // File commands
     {
       id: 'file.save',
       label: 'Save',
@@ -439,8 +259,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
       action: closeAllTabs,
       when: () => tabs.length > 0,
     },
-
-    // Navigation commands
     {
       id: 'nav.quickOpen',
       label: 'Go to File...',
@@ -474,23 +292,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
       action: prevTab,
       when: () => tabs.length > 1,
     },
-
-    // View commands
-    {
-      id: 'view.diff',
-      label: isDiffVisible ? 'Hide Diff' : 'Show Git Diff',
-      icon: GitBranch,
-      category: 'View',
-      shortcut: 'Ctrl+D',
-      action: () => {
-        if (isDiffVisible) {
-          hideDiff();
-        } else if (activeTab) {
-          showGitDiff(activeTab.path);
-        }
-      },
-      when: () => !!activeTab,
-    },
     {
       id: 'view.settings',
       label: 'Open Editor Settings',
@@ -498,8 +299,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
       category: 'View',
       action: () => setSettingsMenuOpen(true),
     },
-
-    // Editor commands
     {
       id: 'editor.fontSize.increase',
       label: 'Increase Font Size',
@@ -526,8 +325,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
       category: 'Editor',
       action: () => updateSettings({ wordWrap: settings.wordWrap === 'on' ? 'off' : 'on' }),
     },
-
-    // Workspace commands
     {
       id: 'workspace.openFolder',
       label: 'Open Folder...',
@@ -535,67 +332,45 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
       category: 'Workspace',
       action: () => window.vyotiq?.workspace?.add?.(),
     },
-
-    // Layout commands
     {
       id: 'layout.toggle',
       label: 'Toggle Layout',
       icon: Layout,
       category: 'View',
-      action: () => {
-        // Toggle between different editor layouts
-        updateSettings({ 
-          minimap: !settings.minimap 
-        });
-      },
+      action: () => updateSettings({ minimap: !settings.minimap }),
     },
-
-    // Terminal commands
     {
       id: 'terminal.toggle',
       label: 'Toggle Terminal',
       icon: Terminal,
       category: 'View',
       shortcut: 'Ctrl+`',
-      action: () => {
-        // This would be connected to terminal panel toggle
-        console.log('Toggle terminal requested');
-      },
+      action: () => console.log('Toggle terminal requested'),
     },
-
-    // Theme commands
     {
       id: 'theme.toggle',
       label: 'Toggle Dark/Light Theme',
       icon: Moon,
       category: 'Preferences',
       action: () => {
-        // Toggle editor theme
         const newTheme = settings.theme === 'vyotiq-dark' ? 'vs' : 'vyotiq-dark';
         updateSettings({ theme: newTheme });
       },
     },
-
-    // Keyboard shortcuts
     {
       id: 'keyboard.showShortcuts',
       label: 'Show Keyboard Shortcuts',
       icon: Keyboard,
       category: 'Help',
       shortcut: 'Ctrl+K Ctrl+S',
-      action: () => {
-        // Open keyboard shortcuts panel
-        console.log('Show keyboard shortcuts requested');
-      },
+      action: () => console.log('Show keyboard shortcuts requested'),
     },
   ], [
-    activeTab, activeTabId, tabs, settings, isDiffVisible,
+    activeTab, activeTabId, tabs, settings,
     handleSave, saveAllFiles, handleRevertFile, closeTab, closeAllTabs,
-    nextTab, prevTab, hideDiff, showGitDiff,
-    updateSettings,
+    nextTab, prevTab, updateSettings,
   ]);
   
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -637,47 +412,31 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
         prevTab();
         return;
       }
-      
-      // Ctrl/Cmd + D to show git diff
-      if (modKey && e.key === 'd' && !e.shiftKey) {
-        e.preventDefault();
-        if (isDiffVisible) {
-          hideDiff();
-        } else if (activeTab) {
-          showGitDiff(activeTab.path);
-        }
-        return;
-      }
 
-      // Ctrl/Cmd + Z + Shift - Revert file (discard changes)
       if (modKey && e.shiftKey && e.key === 'z') {
         e.preventDefault();
         handleRevertFile();
         return;
       }
 
-      // Ctrl/Cmd + Shift + P - Command Palette
       if (modKey && e.shiftKey && e.key.toLowerCase() === 'p') {
         e.preventDefault();
         setCommandPaletteOpen(true);
         return;
       }
 
-      // Ctrl/Cmd + P - Quick Open
       if (modKey && !e.shiftKey && e.key.toLowerCase() === 'p') {
         e.preventDefault();
         setQuickOpenOpen(true);
         return;
       }
 
-      // Ctrl/Cmd + Shift + O - Go to Symbol
       if (modKey && e.shiftKey && e.key.toLowerCase() === 'o') {
         e.preventDefault();
         setGoToSymbolOpen(true);
         return;
       }
 
-      // F1 - Command Palette (alternative)
       if (e.key === 'F1') {
         e.preventDefault();
         setCommandPaletteOpen(true);
@@ -687,9 +446,8 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTabId, handleSave, saveAllFiles, closeTab, nextTab, prevTab, isDiffVisible, hideDiff, activeTab, showGitDiff, handleRevertFile]);
+  }, [activeTabId, handleSave, saveAllFiles, closeTab, nextTab, prevTab, handleRevertFile]);
   
-  // Warn before closing with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges()) {
@@ -708,7 +466,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
   
   return (
     <div className={cn('flex flex-col h-full bg-[var(--color-surface-base)]', className)}>
-      {/* Tab bar */}
       <EditorTabBar
         tabs={tabs}
         activeTabId={activeTabId}
@@ -722,56 +479,26 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
         enableAI={settings.enableAI !== false}
       />
 
-      {/* Breadcrumbs - file path and symbol navigation */}
       {activeTab && (
         <Breadcrumbs
           filePath={activeTab.path}
-          symbols={documentSymbols.slice(0, 3)} // Show top-level symbols only
+          symbols={documentSymbols.slice(0, 3)}
           onSymbolClick={handleSymbolSelect}
           onShowSymbolPicker={() => setGoToSymbolOpen(true)}
         />
       )}
       
-      {/* Editor area */}
       <div className="flex-1 min-h-0 relative">
-        {/* Global loading overlay */}
-        {(isLoading || isDiffLoading) && (
+        {isLoading && (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--color-surface-base)]/80 backdrop-blur-sm">
             <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
               <Loader2 size={16} className="animate-spin" />
-              <span className="text-[11px] font-mono">
-                {isDiffLoading ? 'Loading diff...' : 'Loading...'}
-              </span>
+              <span className="text-[11px] font-mono">Loading...</span>
             </div>
           </div>
         )}
         
-        {/* Priority 1: Operation diff (file operation results) */}
-        {isOperationDiffVisible && operationDiff ? (
-          <OperationDiffEditor
-            operationDiff={operationDiff}
-            settings={settings}
-            viewMode={diffViewMode}
-            onViewModeChange={setDiffViewMode}
-            onClose={hideOperationDiff}
-            onOpenFile={openOperationDiffFile}
-          />
-        ) : isDiffVisible && diff ? (
-          /* Priority 2: Regular diff view (git diff, streaming diff, undo history diff) */
-          <DiffEditor
-            diff={diff}
-            settings={settings}
-            viewMode={diffViewMode}
-            onViewModeChange={setDiffViewMode}
-            onClose={hideDiff}
-            onRefresh={handleRefreshDiff}
-            onUndo={diff.undoChangeId && diff.undoStatus === 'undoable' ? handleUndoHistoryUndo : undefined}
-            onRedo={diff.undoChangeId && diff.undoStatus === 'undone' ? handleUndoHistoryRedo : undefined}
-            fileHistory={fileHistory}
-            currentHistoryIndex={currentHistoryIndex}
-            onHistoryNavigate={handleHistoryNavigate}
-          />
-        ) : tabs.length === 0 ? (
+        {tabs.length === 0 ? (
           <EditorEmptyState />
         ) : activeTab ? (
           <MonacoEditor
@@ -787,7 +514,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
         ) : null}
       </div>
       
-      {/* Status bar */}
       <EditorStatusBar
         tab={activeTab}
         settings={settings}
@@ -796,7 +522,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
         isLoading={isLoading}
       />
       
-      {/* Settings menu */}
       <EditorSettingsMenu
         isOpen={settingsMenuOpen}
         settings={settings}
@@ -804,7 +529,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
         onSettingsChange={updateSettings}
       />
 
-      {/* AI Result Panel (floating) */}
       {showAIResult && (
         <div className="absolute bottom-16 right-4 w-[420px] z-50">
           <AIResultPanel
@@ -823,7 +547,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
         </div>
       )}
 
-      {/* Command Palette (Ctrl+Shift+P) */}
       <CommandPalette
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
@@ -831,23 +554,20 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
         placeholder="Type a command..."
       />
 
-      {/* Quick Open (Ctrl+P) */}
       <QuickOpen
         isOpen={quickOpenOpen}
         onClose={() => setQuickOpenOpen(false)}
         files={workspaceFiles}
         recentFiles={tabs.map(t => t.path)}
         onFileSelect={handleQuickOpenSelect}
-        onGoToLine={(line) => activeTab && goToPosition(activeTab.path, line, 1)}
+        onGoToLine={(line) => activeTab && goToFileAndLine(activeTab.path, line, 1)}
       />
 
-      {/* Go to Symbol (Ctrl+Shift+O) */}
       <GoToSymbol
         isOpen={goToSymbolOpen}
         onClose={() => setGoToSymbolOpen(false)}
         symbols={documentSymbols}
         onSymbolSelect={handleSymbolSelect}
-        currentLine={activeTab ? 1 : undefined}
       />
     </div>
   );

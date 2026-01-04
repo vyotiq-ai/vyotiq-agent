@@ -169,13 +169,6 @@ export const TOOL_UI_CONFIG: Record<string, ToolUIMetadata> = {
     runningLabel: 'Processing Files',
     completedLabel: 'Processed Files',
   },
-  diff: {
-    icon: 'GitCompare',
-    label: 'Diff',
-    color: 'text-pink-400',
-    runningLabel: 'Comparing',
-    completedLabel: 'Compared',
-  },
   watch: {
     icon: 'Eye',
     label: 'Watch',
@@ -208,7 +201,6 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   references: 'code-intelligence',
   diagnostics: 'code-intelligence',
   bulk: 'file-write',
-  diff: 'file-read',
   watch: 'file-read',
   // LSP tools
   lsp_hover: 'code-intelligence',

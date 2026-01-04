@@ -15,6 +15,7 @@ import * as monaco from 'monaco-editor';
 import { cn } from '../../../utils/cn';
 import { RendererLogger } from '../../../utils/logger';
 import { registerCustomThemes } from '../utils/themeUtils';
+import { ensureMonacoEnvironment } from '../utils/monacoEnvironment';
 import { registerAIInlineCompletionProvider, registerAICodeActionProvider, registerAICodeLensProvider, setAIActionCallback } from '../utils/monacoAIProvider';
 import { registerMonacoLSPProviders } from '../utils/monacoLSPProvider';
 import type { EditorSettings, EditorTab } from '../types';
@@ -27,31 +28,8 @@ import { useEditorAI, type EditorAIAction } from '../hooks/useEditorAI';
 
 const logger = new RendererLogger('monaco-editor');
 
-// Import workers for different language services
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
-import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
-import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
-import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
-
-// Configure Monaco environment with local workers
-self.MonacoEnvironment = {
-  getWorker(_, label) {
-    if (label === 'json') {
-      return new jsonWorker();
-    }
-    if (label === 'css' || label === 'scss' || label === 'less') {
-      return new cssWorker();
-    }
-    if (label === 'html' || label === 'handlebars' || label === 'razor') {
-      return new htmlWorker();
-    }
-    if (label === 'typescript' || label === 'javascript') {
-      return new tsWorker();
-    }
-    return new editorWorker();
-  },
-};
+// Ensure Monaco environment is configured
+ensureMonacoEnvironment();
 
 // TypeScript language service types - use type assertion to avoid deprecated marker issue
 // The monaco.languages.typescript module is functional but types are marked deprecated
@@ -841,19 +819,6 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
       case 'format':
         editor.getAction('editor.action.formatDocument')?.run();
         break;
-      case 'showDiff': {
-        // Trigger the keyboard shortcut event for showing diff
-        // Use userAgentData if available, fallback to userAgent check
-        const isMac = navigator.userAgent.toLowerCase().includes('mac');
-        const event = new KeyboardEvent('keydown', {
-          key: 'd',
-          ctrlKey: !isMac,
-          metaKey: isMac,
-          bubbles: true
-        });
-        window.dispatchEvent(event);
-        break;
-      }
       case 'aiActions': {
         // Close main context menu and open AI context menu at the same position
         setContextMenu(prev => ({ ...prev, isOpen: false }));

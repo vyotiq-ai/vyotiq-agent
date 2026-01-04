@@ -161,12 +161,31 @@ export class LSPClient extends EventEmitter {
 
       return true;
     } catch (error) {
-      this.logger.error(`[${this.config.language}] Failed to start server`, {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check for common recoverable errors
+      const isTypeScriptNotInstalled = errorMessage.includes('Could not find a valid TypeScript installation') ||
+                                        errorMessage.includes('typescript') && errorMessage.includes('not found');
+      
+      if (isTypeScriptNotInstalled) {
+        // This is expected when workspace doesn't have TypeScript - log as warning, not error
+        this.logger.warn(`[${this.config.language}] TypeScript not installed in workspace - LSP features disabled`, {
+          workspaceRoot: this.workspaceRoot,
+        });
+      } else {
+        this.logger.error(`[${this.config.language}] Failed to start server`, { error: errorMessage });
+      }
+      
       this.state = 'error';
       this.emit('state-change', this.state);
       this.emit('error', error);
+      
+      // Clean up the process if it's still running
+      if (this.process && !this.process.killed) {
+        this.process.kill('SIGTERM');
+      }
+      this.process = null;
+      
       return false;
     }
   }

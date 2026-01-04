@@ -84,9 +84,6 @@ function getToolActivityDescription(toolName: string): string {
   if (normalizedTool.includes('git_status')) {
     return 'checking git status';
   }
-  if (normalizedTool.includes('git_diff')) {
-    return 'getting diff';
-  }
   if (normalizedTool.includes('git_commit')) {
     return 'committing changes';
   }

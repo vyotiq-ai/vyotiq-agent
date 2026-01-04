@@ -116,7 +116,7 @@ export class IterationRunner {
     let initialSessionStateSent = false;
     let isReceivingThinking = false;
     const streamState = createStreamState();
-    let _streamedContentLength = 0;
+    let streamedContentLength = 0;
 
     const onStreamOutput = (chunk: string, isThinking = false, storeAsReasoningContent = false) => {
       if (typeof chunk !== 'string') return;
@@ -143,15 +143,15 @@ export class IterationRunner {
           isReceivingThinking = false;
         }
         assistantMessage.content = (assistantMessage.content || '') + chunk;
-        _streamedContentLength += chunk.length;
+        streamedContentLength += chunk.length;
 
-        if (_streamedContentLength > 200) {
+        if (streamedContentLength > 200) {
           if (detectRepetition(assistantMessage.content || '', streamState)) {
             streamState.repetitionDetected = true;
             this.logger.warn('Repetition detected in LLM output, truncating response', {
               sessionId: session.state.id,
               runId,
-              contentLength: _streamedContentLength,
+              contentLength: streamedContentLength,
             });
             assistantMessage.content += '\n\n[Response truncated due to repetitive content. Please try rephrasing your request.]';
           }
@@ -394,8 +394,8 @@ export class IterationRunner {
         const toolCalls: ToolCallPayload[] = [];
         const pendingToolCalls = new Map<number, ToolCallPayload>();
         let streamedContent = '';
-        let _streamedThinking = '';
-        let _lastThoughtSignature: string | undefined;
+        let streamedThinking = '';
+        let lastThoughtSignature: string | undefined;
         let streamInputTokens = 0;
         let streamOutputTokens = 0;
 
@@ -409,12 +409,12 @@ export class IterationRunner {
           }
 
           if (chunk.thinkingDelta) {
-            _streamedThinking += chunk.thinkingDelta;
+            streamedThinking += chunk.thinkingDelta;
             onStreamOutput(chunk.thinkingDelta, true, chunk.storeAsThinking);
           }
 
           if (chunk.thoughtSignature) {
-            _lastThoughtSignature = chunk.thoughtSignature;
+            lastThoughtSignature = chunk.thoughtSignature;
           }
 
           if (chunk.delta) {
@@ -422,7 +422,7 @@ export class IterationRunner {
             onStreamOutput(chunk.delta, false, chunk.storeAsThinking);
 
             if (chunk.storeAsThinking) {
-              _streamedThinking += chunk.delta;
+              streamedThinking += chunk.delta;
             }
           }
 
@@ -499,9 +499,11 @@ export class IterationRunner {
         }
 
         // Log streaming metrics for debugging
-        if (streamedContent.length > 0) {
+        if (streamedContent.length > 0 || streamedThinking.length > 0) {
           this.logger.debug('Stream completed', {
             contentLength: streamedContent.length,
+            thinkingLength: streamedThinking.length,
+            hasThoughtSignature: !!lastThoughtSignature,
             toolCallCount: toolCalls.length,
             inputTokens: streamInputTokens,
             outputTokens: streamOutputTokens,

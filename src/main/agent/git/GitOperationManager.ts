@@ -29,7 +29,6 @@ export interface GitOperationRequest {
 
 export type GitOperationType =
   | 'status'
-  | 'diff'
   | 'log'
   | 'blame'
   | 'branch-list'
@@ -312,9 +311,6 @@ export class GitOperationManager extends EventEmitter {
       case 'status':
         return git.status();
 
-      case 'diff':
-        return git.diff(params.filePath as string | undefined, params.staged as boolean | undefined);
-
       case 'log':
         return git.log({
           maxCount: params.maxCount as number | undefined,
@@ -385,7 +381,6 @@ export class GitOperationManager extends EventEmitter {
   private getRequiredAccessLevel(operation: GitOperationType): GitAccessLevel {
     switch (operation) {
       case 'status':
-      case 'diff':
       case 'log':
       case 'blame':
       case 'branch-list':

@@ -109,7 +109,6 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   // Other
   txt: 'plaintext',
   log: 'log',
-  diff: 'diff',
   patch: 'diff',
 };
 
@@ -235,7 +234,6 @@ export function getLanguageDisplayName(languageId: string): string {
     toml: 'TOML',
     ignore: 'Ignore',
     log: 'Log',
-    diff: 'Diff',
   };
   return displayNames[languageId] || languageId;
 }

@@ -84,6 +84,7 @@ src/main/
 │   ├── compliance/           # Safety & compliance checks
 │   ├── recovery/             # Error recovery & self-healing
 │   ├── debugging/            # Execution tracing & debugging
+│   ├── systemPrompt/         # System prompt building & caching
 │   ├── settingsStore.ts      # Settings persistence
 │   └── providerManager.ts    # Provider lifecycle management
 │
@@ -231,6 +232,47 @@ The context system handles:
 - **Prompt Caching**: Provider-specific caching (Anthropic, OpenAI, Gemini, DeepSeek)
 - **Tool Result Caching**: Configurable TTL-based caching for tool outputs
 
+### System Prompt Module
+
+*Last updated: January 2026*
+
+The `systemPrompt/` module provides a modular, cached system for building system prompts:
+
+```
+src/main/agent/systemPrompt/
+├── index.ts              # Re-exports (backward compatible)
+├── builder.ts            # Main prompt assembly
+├── sections.ts           # Static prompt sections (cached)
+├── dynamicSections.ts    # Context-aware sections (per-request)
+├── contextInjection.ts   # Rule-based context injection
+├── cache.ts              # Prompt caching for performance
+└── types.ts              # Type definitions
+```
+
+```typescript
+import { buildSystemPrompt, getSystemPromptCache, PROMPT_SECTIONS } from './systemPrompt';
+
+// Build a system prompt with full context
+const prompt = buildSystemPrompt({
+  session,
+  providerName: 'anthropic',
+  modelId: 'claude-4.5-sonnet',
+  workspace: { id: 'ws-1', path: '/project', name: 'MyProject' },
+  toolsList: 'read, write, edit, run',
+  promptSettings: { /* ... */ },
+});
+
+// Use caching for performance
+const cache = getSystemPromptCache();
+const staticPrompt = cache.getStaticPrompt();
+```
+
+Key features:
+- **Modular Architecture**: Separated static sections (cached) from dynamic sections (per-request)
+- **Dynamic Context Injection**: Workspace, terminal, editor, and diagnostics context
+- **Provider-Level Caching**: Static content cached with hash-based invalidation
+- **XML-Structured Output**: Clear parsing for LLM consumption
+
 ---
 
 ## Renderer Process (React)
@@ -302,15 +344,13 @@ const {
 Manages:
 - Open tabs and active tab
 - File content and dirty state
-- Diff view state
 - Undo/redo history
 
 ```typescript
 const { 
   tabs, 
   activeTabId, 
-  isDiffVisible,
-  actions: { openFile, saveFile, showDiff }
+  actions: { openFile, saveFile }
 } = useEditor();
 ```
 
@@ -357,7 +397,6 @@ features/
 ├── editor/
 │   ├── EditorPanel.tsx       # Editor container
 │   ├── TabBar.tsx            # Tab management
-│   ├── DiffView.tsx          # Diff visualization
 │   └── hooks/                # Feature-specific hooks
 │
 └── ... (other features)

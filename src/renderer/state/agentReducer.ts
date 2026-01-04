@@ -142,13 +142,6 @@ export interface AgentUIState {
   // Real-time terminal output streaming by PID
   // Structure: pid -> terminal state
   terminalStreams: Record<number, TerminalStreamState>;
-  // Real-time diff streaming for file operations
-  streamingDiff?: {
-    path: string;
-    originalContent: string;
-    modifiedContent: string;
-    toolCallId: string;
-  };
   // Phase 4: Communication state
   pendingQuestions: Array<{
     id: string;
@@ -493,7 +486,6 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
     case 'STREAM_DELTA_BATCH': {
       // Optimized delta handling - only update what's needed
       let sessions = state.sessions;
-      let streamingDiff = state.streamingDiff;
 
       if (action.payload.delta) {
         sessions = updateAssistantMessageContent(
@@ -506,20 +498,19 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
 
       if (action.payload.toolCall) {
         const result = updateAssistantMessageToolCall(
-          state,
+          sessions,
           action.payload.sessionId,
           action.payload.messageId,
           action.payload.toolCall
         );
-        sessions = result.sessions;
-        streamingDiff = result.streamingDiff;
+        sessions = result;
       }
 
       // Track streaming state
       const streamingSessions = safeCreateSet(state.streamingSessions);
       streamingSessions.add(action.payload.sessionId);
 
-      return { ...state, sessions, streamingSessions, streamingDiff };
+      return { ...state, sessions, streamingSessions };
     }
     case 'STREAM_THINKING_DELTA': {
       // Handle thinking/reasoning content from thinking models (Gemini 2.5/3)
@@ -572,8 +563,7 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
         }
       }
 
-      const streamingDiff = shouldClearStreaming ? undefined : state.streamingDiff;
-      return { ...state, sessions, streamingSessions, streamingDiff };
+      return { ...state, sessions, streamingSessions };
     }
     case 'WORKSPACES_UPDATE': {
       return { ...state, workspaces: action.payload };
@@ -771,9 +761,6 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
       const { runId, sessionId, callId, toolName, result } = action.payload;
       const runResults = state.toolResults[runId] || {};
 
-      // Clear streaming diff when tool result is received
-      const streamingDiff = state.streamingDiff?.toolCallId === callId ? undefined : state.streamingDiff;
-
       // Update the corresponding message in the session with resultMetadata
       let updatedSessions = state.sessions;
       const sessionIndex = updatedSessions.findIndex(s => s.id === sessionId);
@@ -816,7 +803,6 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
             },
           },
         },
-        streamingDiff,
       };
 
       logger.debug('New toolResults keys', { keys: Object.keys(newState.toolResults) });

@@ -9,6 +9,9 @@ import type { LLMProviderName } from '../../shared/types';
 import type { ModelInfo } from '../../shared/providers/types';
 import { DEFAULT_MODELS } from '../../shared/providers/models';
 import { lookupModelPricing } from '../../shared/providers/pricing';
+import { createLogger } from './logger';
+
+const logger = createLogger('Models');
 
 // Re-export OpenRouter filter utilities
 export {
@@ -193,7 +196,7 @@ export async function fetchRawOpenRouterModels(): Promise<OpenRouterApiModel[]> 
       return _rawOpenRouterCache.models;
     }
   } catch (err) {
-    console.error('Failed to fetch raw OpenRouter models:', err);
+    logger.error('Failed to fetch raw OpenRouter models', { error: err });
   }
   
   return [];
@@ -249,7 +252,7 @@ export async function fetchProviderModels(provider: LLMProviderName): Promise<Mo
       return models;
     }
   } catch (err) {
-    console.error(`Failed to fetch models for ${provider}:`, err);
+    logger.error(`Failed to fetch models for ${provider}`, { error: err, provider });
   }
   
   return [];

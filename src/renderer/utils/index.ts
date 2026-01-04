@@ -4,17 +4,6 @@ export * from './constants';
 export * from './tools';
 export * from './styles';
 
-// Diff utilities
-export {
-  computeDiff,
-  computeDiffStats,
-  formatDiffSummary,
-  filterDiffWithContext,
-  getFileExtension,
-  getFileName,
-} from './diff';
-export type { DiffLine, DiffStats } from './diff';
-
 // ANSI escape code utilities
 export {
   stripAnsi,

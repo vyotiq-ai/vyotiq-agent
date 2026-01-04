@@ -51,7 +51,7 @@
 | 🤖 **Autonomous Agents** | Advanced task execution with tool confirmation and safety guardrails |
 | 💻 **Integrated IDE** | Monaco editor, xterm.js terminal, and browser automation |
 | 🧠 **Context-Aware** | Smart summarization, prompt caching, and context window optimization |
-| 📊 **Real-Time Diffs** | Watch AI changes in your code with live diff preview |
+| 📊 **Git Integration** | Review changes with git diff and commit directly |
 | 🔒 **Local-First** | All data stays on your machine—complete privacy |
 
 ---
@@ -102,7 +102,6 @@
 
 - **Full VS Code Experience**: Syntax highlighting for 50+ languages
 - **Multi-Tab Editing**: Work on multiple files with tab management
-- **Real-Time Diff View**: Watch AI changes with inline diff preview
 - **Git Integration**: View diffs, stage changes, commit directly
 - **IntelliSense**: Auto-completion and hover documentation via LSP
 - **Command Palette**: Quick access to all editor commands (Ctrl+Shift+P)
@@ -296,8 +295,8 @@ Type your request in the chat input:
 
 ### 4. Review & Apply Changes
 
-- AI-generated code appears in the **diff view**
-- Click **Apply** to accept changes or **Reject** to discard
+- AI-generated code appears in the editor with syntax highlighting
+- Review changes in the editor before committing
 - Use the **Undo History** panel to revert any changes
 
 ---

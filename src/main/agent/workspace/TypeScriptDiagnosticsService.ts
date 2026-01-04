@@ -110,14 +110,16 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
       );
 
       if (!configPath) {
-        this.logger.warn('No tsconfig.json found, diagnostics service disabled', { workspacePath });
+        // No tsconfig.json - this is expected for non-TypeScript projects
+        this.logger.info('No tsconfig.json found - TypeScript diagnostics disabled for this workspace', { workspacePath });
         return false;
       }
 
       // Parse tsconfig
       const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
       if (configFile.error) {
-        this.logger.error('Failed to read tsconfig.json', {
+        this.logger.warn('Failed to read tsconfig.json - TypeScript diagnostics disabled', {
+          workspacePath,
           error: ts.flattenDiagnosticMessageText(configFile.error.messageText, '\n'),
         });
         return false;
@@ -129,9 +131,28 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
         path.dirname(configPath)
       );
 
+      // Validate that we have files to analyze
+      if (parsedConfig.fileNames.length === 0) {
+        this.logger.info('No TypeScript files found in project - diagnostics disabled', { workspacePath });
+        return false;
+      }
+
+      // Limit the number of files to prevent performance issues
+      const maxFiles = 500;
+      const fileNames = parsedConfig.fileNames.length > maxFiles 
+        ? parsedConfig.fileNames.slice(0, maxFiles)
+        : parsedConfig.fileNames;
+      
+      if (parsedConfig.fileNames.length > maxFiles) {
+        this.logger.warn('Large project detected - limiting diagnostics to first 500 files', {
+          totalFiles: parsedConfig.fileNames.length,
+          analyzedFiles: maxFiles,
+        });
+      }
+
       // Create language service host
       this.languageServiceHost = new TypeScriptLanguageServiceHost(
-        parsedConfig.fileNames,
+        fileNames,
         parsedConfig.options,
         workspacePath,
         this.logger
@@ -146,7 +167,7 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
       this.isInitialized = true;
       this.logger.info('TypeScript Diagnostics Service initialized', {
         workspacePath,
-        fileCount: parsedConfig.fileNames.length,
+        fileCount: fileNames.length,
       });
 
       // Initial diagnostics collection

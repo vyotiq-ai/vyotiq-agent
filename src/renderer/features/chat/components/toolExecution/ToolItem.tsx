@@ -5,7 +5,6 @@ import {
   ChevronRight,
   Loader2,
   X as XIcon,
-  ExternalLink,
   FileText,
   Copy,
 } from 'lucide-react';
@@ -27,6 +26,7 @@ import { LiveFetchPreview } from './LiveFetchPreview';
 import { AutoFetchPreview } from './AutoFetchPreview';
 import { TerminalOutputPreview } from './TerminalOutputPreview';
 import { DynamicToolIndicator } from '../DynamicToolIndicator';
+import { FileChangeDiff } from './FileChangeDiff';
 
 import type { ToolCall } from './types';
 
@@ -40,30 +40,7 @@ function getErrorPreview(output: string): string | null {
   return firstLine.length > 60 ? firstLine.slice(0, 57) + '...' : firstLine;
 }
 
-/** Compute diff stats for file operations */
-function computeDiffStats(originalContent: string | null, newContent: string) {
-  const originalLines = originalContent?.split('\n') || [];
-  const newLines = newContent?.split('\n') || [];
-  
-  if (!originalContent || originalContent.length === 0) {
-    return { added: newLines.length, removed: 0, isNew: true };
-  }
-  
-  const originalSet = new Set(originalLines);
-  const newSet = new Set(newLines);
-  
-  let added = 0;
-  let removed = 0;
-  
-  for (const line of newLines) {
-    if (!originalSet.has(line)) added++;
-  }
-  for (const line of originalLines) {
-    if (!newSet.has(line)) removed++;
-  }
-  
-  return { added, removed, isNew: false };
-}
+
 
 /**
  * Single tool item component
@@ -73,9 +50,8 @@ export const ToolItem: React.FC<{
   isExpanded: boolean;
   onToggle: () => void;
   isLast: boolean;
-  onOpenDiffEditor?: (path: string, original: string, modified: string, toolCallId?: string) => void;
   onOpenFile?: (path: string) => void;
-}> = memo(({ tool, isExpanded, onToggle, isLast, onOpenDiffEditor, onOpenFile }) => {
+}> = memo(({ tool, isExpanded, onToggle, isLast, onOpenFile }) => {
   const Icon = getToolIconComponent(tool.name);
   const target = getToolTarget(tool.arguments, tool.name, tool._argsJson);
   const isActive = tool.status === 'running';
@@ -139,16 +115,25 @@ export const ToolItem: React.FC<{
     const path = (tool.resultMetadata.filePath as string) || 
                  (tool.resultMetadata.path as string) || 
                  (tool.arguments?.file_path as string) || '';
-    const originalContent = (tool.resultMetadata.originalContent as string) || null;
     const newContent = (tool.resultMetadata.newContent as string) || 
                        (tool.resultMetadata.content as string) || '';
     const action = tool.resultMetadata.action as string;
     
-    const stats = computeDiffStats(originalContent, newContent);
-    const actionLabel = stats.isNew ? 'Created' : (action === 'edit' ? 'Edited' : 'Modified');
+    const isNew = !tool.resultMetadata.originalContent || (tool.resultMetadata.originalContent as string).length === 0;
+    const actionLabel = isNew ? 'Created' : (action === 'edit' ? 'Edited' : 'Modified');
     
-    return { path, originalContent, newContent, stats, actionLabel };
+    return { path, newContent, actionLabel, isNew };
   }, [isFileOperation, isSuccess, tool.resultMetadata, tool.arguments]);
+
+  // Check if file operation has diff data available
+  const hasDiffData = useMemo(() => {
+    if (!isFileOperation || !isSuccess || !tool.resultMetadata) return false;
+    const hasContent = Boolean(
+      tool.resultMetadata.newContent || 
+      tool.resultMetadata.content
+    );
+    return hasContent;
+  }, [isFileOperation, isSuccess, tool.resultMetadata]);
 
   // Determine if tool has expandable content
   const hasExpandableDetails = Boolean(
@@ -156,16 +141,9 @@ export const ToolItem: React.FC<{
     tool.resultMetadata?.type === 'web_content' ||
     tool.resultMetadata?.type === 'auto_fetch_result' ||
     (isTerminalTool && fullOutput) ||
-    (isActive && isTerminalTool),
+    (isActive && isTerminalTool) ||
+    hasDiffData,
   );
-
-  // File operation action handlers
-  const handleOpenDiff = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (fileOpMeta && onOpenDiffEditor) {
-      onOpenDiffEditor(fileOpMeta.path, fileOpMeta.originalContent || '', fileOpMeta.newContent, tool.callId);
-    }
-  }, [fileOpMeta, onOpenDiffEditor, tool.callId]);
 
   const handleOpenFile = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -292,25 +270,11 @@ export const ToolItem: React.FC<{
               {/* Action badge */}
               <span className={cn(
                 'text-[9px] px-1.5 py-0.5 rounded font-medium',
-                fileOpMeta.stats.isNew 
+                fileOpMeta.isNew 
                   ? 'bg-[var(--color-success)]/15 text-[var(--color-success)]' 
                   : 'bg-[var(--color-warning)]/15 text-[var(--color-warning)]'
               )}>
                 {fileOpMeta.actionLabel}
-              </span>
-              
-              {/* Diff stats */}
-              <span className="flex items-center gap-1 text-[9px] font-mono">
-                {fileOpMeta.stats.added > 0 && (
-                  <span className="text-[var(--color-success)]">
-                    +{fileOpMeta.stats.added}
-                  </span>
-                )}
-                {fileOpMeta.stats.removed > 0 && (
-                  <span className="text-[var(--color-error)]">
-                    -{fileOpMeta.stats.removed}
-                  </span>
-                )}
               </span>
 
               {/* Copy path */}
@@ -340,22 +304,6 @@ export const ToolItem: React.FC<{
                   title="Open file"
                 >
                   <FileText size={10} />
-                </button>
-              )}
-              
-              {/* Open diff */}
-              {onOpenDiffEditor && (
-                <button
-                  type="button"
-                  onClick={handleOpenDiff}
-                  className={cn(
-                    'p-1 rounded text-[var(--color-text-muted)]',
-                    'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
-                    'transition-colors opacity-0 group-hover/tool:opacity-100'
-                  )}
-                  title="View diff"
-                >
-                  <ExternalLink size={10} />
                 </button>
               )}
             </>
@@ -431,6 +379,15 @@ export const ToolItem: React.FC<{
           output={fullOutput}
           exitCode={tool.resultMetadata?.exitCode as number}
           hasError={hasError}
+        />
+      )}
+
+      {/* File change diff display - auto-rendered for file operations */}
+      {hasDiffData && (
+        <FileChangeDiff
+          tool={tool}
+          showActions={true}
+          defaultCollapsed={!isExpanded}
         />
       )}
     </div>

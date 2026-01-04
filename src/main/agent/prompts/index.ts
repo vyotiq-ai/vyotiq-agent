@@ -2,25 +2,15 @@
  * Prompt Modules Index
  * 
  * Central export for all prompt components used in system prompt construction.
- * Each module serves a specific purpose in steering agent behavior.
+ * Core prompt sections are now in ../systemPrompt/ module.
  */
 
-// Core identity - who the agent is
-export { CORE_IDENTITY } from './identity';
-
-// Critical rules - highest priority execution guidelines
-export { CRITICAL_RULES } from './rules';
-
-// Tool workflows - patterns for using tools effectively
-export { TOOL_WORKFLOWS } from './workflows';
-
-// Tool hints - specific parameter guidance for commonly misused tools
-export { TOOL_HINTS } from './toolHints';
-
-// Output formatting - response structure and code formatting rules
-export { OUTPUT_FORMATTING } from './formatting';
-
-// Sub-agent prompts have been removed
+// Core prompt sections - re-export from systemPrompt module
+export {
+  CORE_IDENTITY,
+  CRITICAL_RULES,
+  TOOL_CHAINING,
+} from '../systemPrompt';
 
 // Tool creation prompts - dynamic tool creation guidance
 export {

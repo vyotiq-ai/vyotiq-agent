@@ -22,7 +22,6 @@ import type {
   WatchOptions as _WatchOptions,
   WorkspaceEntry,
   GitRepoStatus,
-  GitFileDiff,
   GitCommit,
   GitBranch,
   GitStash,
@@ -463,8 +462,6 @@ declare global {
         status: () => Promise<GitRepoStatus | { error: string }>;
         isRepo: () => Promise<{ isRepo: boolean; error?: string }>;
         currentBranch: () => Promise<string | { error: string }>;
-        // Diff operations
-        diff: (filePath?: string, staged?: boolean) => Promise<GitFileDiff[] | { error: string }>;
         // Get file content from git at a specific ref
         showFile: (filePath: string, ref?: string) => Promise<{ content: string | null; error?: string }>;
         // Staging operations
@@ -474,7 +471,6 @@ declare global {
         // Commit operations
         commit: (message: string, options?: { amend?: boolean; all?: boolean }) => Promise<{ success: boolean; commit?: GitCommit; error?: string }>;
         log: (options?: { maxCount?: number; skip?: number; filePath?: string }) => Promise<GitCommit[] | { error: string }>;
-        diffRefs: (ref1: string, ref2?: string) => Promise<GitFileDiff[] | { error: string }>;
         // Branch operations
         branches: (all?: boolean) => Promise<GitBranch[] | { error: string }>;
         createBranch: (name: string, startPoint?: string) => Promise<{ success: boolean; error?: string }>;

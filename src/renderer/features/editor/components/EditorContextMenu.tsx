@@ -10,7 +10,6 @@ import {
     Scissors,
     Clipboard,
     Save,
-    FileCode,
     Type,
     MousePointer2,
     Sparkles,
@@ -25,7 +24,6 @@ export type EditorContextMenuAction =
     | 'selectAll'
     | 'save'
     | 'format'
-    | 'showDiff'
     | 'aiActions';
 
 interface ContextMenuItem {
@@ -56,7 +54,6 @@ const menuItems: ContextMenuItem[] = [
     { action: 'aiActions', label: 'ai actions', icon: <Sparkles size={12} />, shortcut: 'Ctrl+Shift+A', isSubmenu: true, highlight: true, divider: true },
     { action: 'save', label: 'save', icon: <Save size={12} />, shortcut: 'Ctrl+S' },
     { action: 'format', label: 'format document', icon: <Type size={12} />, divider: true },
-    { action: 'showDiff', label: 'show changes', icon: <FileCode size={12} />, shortcut: 'Ctrl+D' },
 ];
 
 export const EditorContextMenu: React.FC<EditorContextMenuProps> = ({

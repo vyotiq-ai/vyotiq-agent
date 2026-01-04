@@ -1,9 +1,7 @@
 import type {
     AgentSessionState,
-    ChatMessage,
     StreamDeltaEvent,
 } from '../../shared/types';
-import type { AgentUIState } from './agentReducer';
 
 /**
  * Safely create a Set from streamingSessions, handling cases where
@@ -58,7 +56,6 @@ export const updateAssistantMessageById = (
     return newSessions;
 };
 
-// Helper function to update message content efficiently
 export const updateAssistantMessageContent = (
     sessions: AgentSessionState[],
     sessionId: string,
@@ -74,7 +71,6 @@ export const updateAssistantMessageContent = (
         if (updated !== sessions) return updated;
     }
 
-    // Fallback to last assistant message
     const sessionIndex = sessions.findIndex(s => s.id === sessionId);
     if (sessionIndex === -1) return sessions;
     const session = sessions[sessionIndex];
@@ -94,35 +90,12 @@ export const updateAssistantMessageContent = (
     return newSessions;
 };
 
-/**
- * Find the original content of a file from previous tool results in the session
- */
-export const findOriginalContent = (messages: ChatMessage[], filePath: string): string | undefined => {
-    // Search backwards for the most recent read tool result for this file
-    for (let i = messages.length - 1; i >= 0; i--) {
-        const msg = messages[i];
-        if (msg.role === 'tool' && msg.toolName?.includes('read')) {
-            // Check if the path matches
-            const msgPath = (msg.resultMetadata?.path || msg.resultMetadata?.file_path) as string | undefined;
-            // Also try to match filename if full path doesn't match exactly (e.g. relative vs absolute)
-            if (msgPath === filePath || (msgPath && filePath.endsWith(msgPath.replace(/\\/g, '/')))) {
-                return msg.content;
-            }
-        }
-    }
-    return undefined;
-};
-
-// Helper function to update tool calls on an assistant message
 export const updateAssistantMessageToolCall = (
-    state: AgentUIState,
+    sessions: AgentSessionState[],
     sessionId: string,
     messageId: string | undefined,
     toolCallDelta: NonNullable<StreamDeltaEvent['toolCall']>
-): { sessions: AgentSessionState[]; streamingDiff?: AgentUIState['streamingDiff'] } => {
-    const sessions = state.sessions;
-    let streamingDiff = state.streamingDiff;
-
+): AgentSessionState[] => {
     const updatedSessions = updateAssistantMessageById(sessions, sessionId, messageId || '', (message) => {
         const toolCalls = [...(message.toolCalls || [])];
         const { index, callId, name, argsJson, argsComplete, thoughtSignature } = toolCallDelta;
@@ -136,45 +109,6 @@ export const updateAssistantMessageToolCall = (
                 thoughtSignature: thoughtSignature || existing.thoughtSignature,
                 _argsJson: argsComplete ? argsJson : (existing._argsJson || '') + (argsJson || ''),
             };
-
-            // Update streaming diff if it's an edit/write tool
-            const tool = toolCalls[index];
-            if (tool.name === 'edit' || tool.name === 'write' || tool.name === 'create_file') {
-                const json = tool._argsJson || '';
-                const pathMatch = json.match(/"(?:path|file_path|file|filePath)"\s*:\s*"([^"]*)"/);
-                const path = pathMatch ? pathMatch[1] : undefined;
-
-                if (path) {
-                    const sessionIndex = sessions.findIndex(s => s.id === sessionId);
-                    if (sessionIndex !== -1) {
-                        const originalContent = findOriginalContent(sessions[sessionIndex].messages, path);
-                        if (originalContent !== undefined) {
-                            let modifiedContent = originalContent;
-                            if (tool.name === 'write' || tool.name === 'create_file') {
-                                const contentMatch = json.match(/"content"\s*:\s*"([^"]*)"/);
-                                if (contentMatch) {
-                                    modifiedContent = contentMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-                                }
-                            } else if (tool.name === 'edit') {
-                                const oldMatch = json.match(/"old_string"\s*:\s*"([^"]*)"/);
-                                const newMatch = json.match(/"new_string"\s*:\s*"([^"]*)"/);
-                                if (oldMatch && newMatch) {
-                                    const oldStr = oldMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-                                    const newStr = newMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-                                    modifiedContent = originalContent.replace(oldStr, newStr);
-                                }
-                            }
-
-                            streamingDiff = {
-                                path,
-                                originalContent,
-                                modifiedContent,
-                                toolCallId: tool.callId || `stream-${index}`,
-                            };
-                        }
-                    }
-                }
-            }
         } else {
             toolCalls[index] = {
                 name: name || '',
@@ -192,7 +126,6 @@ export const updateAssistantMessageToolCall = (
         };
     });
 
-    // If updateAssistantMessageById didn't find the message, try fallback to last message
     if (updatedSessions === sessions && !messageId) {
         const sessionIndex = sessions.findIndex(s => s.id === sessionId);
         if (sessionIndex !== -1) {
@@ -200,39 +133,34 @@ export const updateAssistantMessageToolCall = (
             const lastIndex = session.messages.length - 1;
             const lastMessage = session.messages[lastIndex];
             if (lastMessage && lastMessage.role === 'assistant') {
-                return {
-                    sessions: updateAssistantMessageById(sessions, sessionId, lastMessage.id || '', (m) => {
-                        // Re-use logic above (simplified for brevity here, should ideally be shared)
-                        const toolCalls = [...(m.toolCalls || [])];
-                        const { index, callId, name, argsJson, argsComplete, thoughtSignature } = toolCallDelta;
-                        if (toolCalls[index]) {
-                            const existing = toolCalls[index];
-                            toolCalls[index] = {
-                                ...existing,
-                                name: name || existing.name,
-                                callId: callId || existing.callId,
-                                thoughtSignature: thoughtSignature || existing.thoughtSignature,
-                                _argsJson: argsComplete ? argsJson : (existing._argsJson || '') + (argsJson || ''),
-                            };
-                            // (Redundant streamingDiff logic omitted for brevity as it's a fallback)
-                        } else {
-                            toolCalls[index] = {
-                                name: name || '',
-                                arguments: {},
-                                callId: callId,
-                                _argsJson: argsJson || '',
-                                thoughtSignature: thoughtSignature,
-                            };
-                        }
-                        return { ...m, toolCalls, isThinkingStreaming: false };
-                    }),
-                    streamingDiff
-                };
+                return updateAssistantMessageById(sessions, sessionId, lastMessage.id || '', (m) => {
+                    const toolCalls = [...(m.toolCalls || [])];
+                    const { index, callId, name, argsJson, argsComplete, thoughtSignature } = toolCallDelta;
+                    if (toolCalls[index]) {
+                        const existing = toolCalls[index];
+                        toolCalls[index] = {
+                            ...existing,
+                            name: name || existing.name,
+                            callId: callId || existing.callId,
+                            thoughtSignature: thoughtSignature || existing.thoughtSignature,
+                            _argsJson: argsComplete ? argsJson : (existing._argsJson || '') + (argsJson || ''),
+                        };
+                    } else {
+                        toolCalls[index] = {
+                            name: name || '',
+                            arguments: {},
+                            callId: callId,
+                            _argsJson: argsJson || '',
+                            thoughtSignature: thoughtSignature,
+                        };
+                    }
+                    return { ...m, toolCalls, isThinkingStreaming: false };
+                });
             }
         }
     }
 
-    return { sessions: updatedSessions, streamingDiff };
+    return updatedSessions;
 };
 
 export const updateLastAssistantThinking = (
@@ -254,7 +182,6 @@ export const updateLastAssistantThinking = (
         return sessions;
     }
 
-    // Create new references only for what changed
     const newMessage = {
         ...lastMessage,
         thinking: (lastMessage.thinking || '') + delta,
@@ -290,6 +217,5 @@ export const updateAssistantMessageThinking = (
         if (updated !== sessions) return updated;
     }
 
-    // Fallback to last assistant message
     return updateLastAssistantThinking(sessions, sessionId, delta);
 };

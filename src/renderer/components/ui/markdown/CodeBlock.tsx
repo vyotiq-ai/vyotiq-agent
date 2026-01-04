@@ -58,7 +58,6 @@ const LANGUAGE_INFO: Record<string, { name: string; color: string; icon?: string
   docker: { name: 'Docker', color: 'text-[#384d54]', icon: 'DOCKER' },
   graphql: { name: 'GraphQL', color: 'text-[#e10098]', icon: 'GQL' },
   ini: { name: 'INI', color: 'text-[var(--color-text-muted)]', icon: 'INI' },
-  diff: { name: 'Diff', color: 'text-[var(--color-success)]', icon: 'DIFF' },
   patch: { name: 'Patch', color: 'text-[var(--color-success)]', icon: 'PATCH' },
   log: { name: 'Log', color: 'text-[var(--color-text-muted)]', icon: 'LOG' },
   text: { name: 'Text', color: 'text-[var(--color-text-muted)]', icon: 'TXT' },

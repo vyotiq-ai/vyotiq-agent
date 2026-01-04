@@ -230,12 +230,98 @@ Get file content.
 const content = await window.vyotiq.editor.getContent(filePath: string);
 ```
 
-#### `editor:getDiff`
+### Editor Commands
 
-Get git diff for a file.
+*Last updated: January 2026*
+
+The editor provides commands accessible via the Command Palette (Ctrl+Shift+P / Cmd+Shift+P).
+
+### EditorContext Diff Viewer API
+
+*Last updated: January 2026*
+
+The `EditorContext` provides a built-in diff viewer for comparing file changes. Access via the `useEditor()` hook.
+
+#### Diff State
 
 ```typescript
-const diff = await window.vyotiq.editor.getDiff(filePath: string);
+interface DiffState {
+  isVisible: boolean;
+  original: string;
+  modified: string;
+  filePath?: string;
+  language?: string;
+  originalLabel?: string;
+  modifiedLabel?: string;
+  viewMode: 'split' | 'unified';
+}
+```
+
+#### `showDiff`
+
+Display the diff viewer with original and modified content.
+
+```typescript
+const { showDiff } = useEditor();
+
+showDiff({
+  original: 'const x = 1;',
+  modified: 'const x = 2;',
+  filePath: '/path/to/file.ts',      // optional
+  language: 'typescript',             // optional, for syntax highlighting
+  originalLabel: 'Before',            // optional, defaults to 'Original'
+  modifiedLabel: 'After',             // optional, defaults to 'Modified'
+});
+```
+
+#### `hideDiff`
+
+Close the diff viewer.
+
+```typescript
+const { hideDiff } = useEditor();
+hideDiff();
+```
+
+#### `setDiffViewMode`
+
+Switch between split (side-by-side) and unified (inline) view modes.
+
+```typescript
+const { setDiffViewMode } = useEditor();
+setDiffViewMode('split');   // side-by-side view
+setDiffViewMode('unified'); // inline view
+```
+
+#### `acceptDiff`
+
+Accept all changes (use modified content).
+
+```typescript
+const { acceptDiff } = useEditor();
+acceptDiff();
+```
+
+#### `rejectDiff`
+
+Reject all changes (keep original content).
+
+```typescript
+const { rejectDiff } = useEditor();
+rejectDiff();
+```
+
+#### `diffState`
+
+Access current diff viewer state.
+
+```typescript
+const { diffState } = useEditor();
+
+if (diffState.isVisible) {
+  console.log('Viewing diff for:', diffState.filePath);
+  console.log('View mode:', diffState.viewMode);
+}
 ```
 
 ### Terminal Operations
@@ -1327,6 +1413,168 @@ interface CacheSettings {
     defaultTtlMs: number;
   };
   promptCacheStrategy: 'aggressive' | 'moderate' | 'conservative';
+}
+```
+
+### System Prompt Module
+
+*Last updated: January 2026*
+
+The system prompt module provides modular, cached prompt generation with dynamic context injection.
+
+#### Module Structure
+
+```
+src/main/agent/systemPrompt/
+├── index.ts              # Re-exports (backward compatible)
+├── builder.ts            # Main prompt assembly
+├── sections.ts           # Static prompt sections (cached)
+├── dynamicSections.ts    # Context-aware sections (per-request)
+├── contextInjection.ts   # Rule-based context injection
+├── cache.ts              # Prompt caching for performance
+└── types.ts              # Type definitions
+```
+
+#### Core Exports
+
+*Last updated: January 2026*
+
+```typescript
+// Import from either location (backward compatible)
+import { 
+  // Main builder
+  buildSystemPrompt,
+  
+  // Cache
+  SystemPromptCache, 
+  getSystemPromptCache,
+  
+  // Static sections
+  PROMPT_SECTIONS,
+  getStaticSections,
+  getStaticContent,
+  CORE_IDENTITY,
+  CAPABILITIES,
+  RESPONSE_STYLE,
+  CODING_QUESTIONS,
+  RULES,
+  KEY_FEATURES,
+  TOOLS_REFERENCE,
+  TOOL_WORKFLOWS,
+  GOAL,
+  SUBAGENTS,
+  IMPORTANT_REMINDERS,
+  CLOSING_REMINDER,
+  
+  // Legacy aliases (backward compatible)
+  CRITICAL_RULES,      // alias for RULES
+  TOOL_HINTS,          // alias for TOOL_WORKFLOWS
+  OUTPUT_FORMATTING,   // alias for RESPONSE_STYLE
+  
+  // Dynamic section builders
+  buildCoreContext,
+  buildCoreTools,
+  buildTerminalContext,
+  buildEditorContext,
+  buildWorkspaceDiagnosticsContext,
+  buildTaskAnalysisContext,
+  buildWorkspaceStructureContext,
+  buildAccessLevelSection,
+  buildPersonaSection,
+  buildCustomPromptSection,
+  buildAdditionalInstructions,
+  buildCommunicationStyle,
+  
+  // Context injection
+  buildInjectedContext,
+  evaluateContextInjectionCondition,
+  processContextRuleTemplate,
+  
+  // Settings
+  DEFAULT_PROMPT_SETTINGS,
+  
+  // Types
+  type SystemPromptContext,
+  type PromptSection,
+  type CachedPrompt,
+  type ToolDefForPrompt,
+  type TerminalProcessInfo,
+  type TerminalContextInfo,
+  type EditorContextInfo,
+  type WorkspaceDiagnosticsInfo,
+  type TaskAnalysisContext,
+  type WorkspaceStructureContext,
+  type InternalTerminalSettings,
+} from '@/main/agent/systemPrompt';
+```
+
+#### Building System Prompts
+
+```typescript
+// Build complete system prompt with context
+const prompt = buildSystemPrompt({
+  session,
+  providerName: 'anthropic',
+  modelId: 'claude-4-sonnet',
+  workspace: { id: 'ws-1', path: '/project' },
+  toolsList: 'read, write, edit, run',
+  promptSettings,
+  accessLevelSettings,
+  terminalContext,
+  editorContext,
+});
+```
+
+#### Cache Management
+
+```typescript
+const cache = getSystemPromptCache();
+
+// Get cached static content
+const cached = cache.getStaticPrompt();
+
+// Build prompt with dynamic sections
+const prompt = cache.buildPrompt(['<context>...</context>']);
+
+// Check cache status
+cache.isValid();
+cache.getEstimatedTokens();
+cache.invalidate();
+```
+
+#### Core Types
+
+```typescript
+interface SystemPromptContext {
+  session: InternalSession;
+  providerName: string;
+  modelId: string;
+  workspace?: { id: string; path: string; name?: string };
+  toolsList: string;
+  toolDefinitions?: ToolDefForPrompt[];
+  promptSettings: PromptSettings;
+  accessLevelSettings?: AccessLevelSettings;
+  terminalContext?: TerminalContextInfo;
+  editorContext?: EditorContextInfo;
+  workspaceDiagnostics?: WorkspaceDiagnosticsInfo;
+  taskAnalysis?: TaskAnalysisContext;
+  workspaceStructure?: WorkspaceStructureContext;
+  logger?: Logger;
+}
+
+interface CachedPrompt {
+  staticContent: string;
+  staticHash: string;
+  createdAt: number;
+  estimatedTokens: number;
+}
+
+interface PromptSection {
+  id: string;
+  name: string;
+  priority: number;
+  isStatic: boolean;
+  content: string | ((context: SystemPromptContext) => string);
 }
 ```
 

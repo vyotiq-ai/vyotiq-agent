@@ -8,6 +8,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as monaco from 'monaco-editor';
 import type { DocumentSymbol, SymbolKind } from '../components/GoToSymbol';
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('DocumentSymbols');
 
 interface UseDocumentSymbolsOptions {
   /** The Monaco editor instance */
@@ -192,7 +195,7 @@ export function useDocumentSymbols(options: UseDocumentSymbolsOptions): UseDocum
         setSymbolPath(getSymbolPath(symbols, position.lineNumber));
       }
     } catch (error) {
-      console.error('Failed to get document symbols:', error);
+      logger.error('Failed to get document symbols', { error });
     } finally {
       setIsLoading(false);
     }

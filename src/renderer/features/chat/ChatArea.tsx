@@ -72,7 +72,7 @@ export const ChatArea: React.FC = () => {
   const routingDecision = useAgentSelector((state) => (state.activeSessionId ? state.routingDecisions?.[state.activeSessionId] : undefined));
   const toolResultsByRun = useAgentSelector((state) => state.toolResults);
   const _agentStatus = useAgentSelector((state) => (state.activeSessionId ? state.agentStatus[state.activeSessionId] : undefined));
-  const activeWorkspacePath = useAgentSelector((state) => state.workspaces.find((w) => w.isActive)?.path);
+  const _activeWorkspacePath = useAgentSelector((state) => state.workspaces.find((w) => w.isActive)?.path);
 
   // Branch state
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);

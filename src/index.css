@@ -1684,3 +1684,92 @@ html.light .chat-input-redesigned:focus-within {
   animation: scanline 8s linear infinite;
 }
 
+
+/* ========== Monaco Diff Editor Styling ========== */
+/* Diff viewer container */
+.diff-viewer-container {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Monaco diff editor overrides for consistent theming */
+.monaco-diff-editor {
+  background-color: var(--color-surface-editor) !important;
+}
+
+.monaco-diff-editor .editor.original,
+.monaco-diff-editor .editor.modified {
+  background-color: var(--color-surface-editor) !important;
+}
+
+/* Diff gutter styling */
+.monaco-diff-editor .insert-sign,
+.monaco-diff-editor .char-insert {
+  background-color: rgba(52, 211, 153, 0.2) !important;
+}
+
+.monaco-diff-editor .delete-sign,
+.monaco-diff-editor .char-delete {
+  background-color: rgba(248, 113, 113, 0.2) !important;
+}
+
+/* Line highlighting for changes */
+.monaco-diff-editor .line-insert {
+  background-color: rgba(52, 211, 153, 0.08) !important;
+}
+
+.monaco-diff-editor .line-delete {
+  background-color: rgba(248, 113, 113, 0.08) !important;
+}
+
+/* Inline diff (unified view) styling */
+.monaco-diff-editor .inline-added-margin-view-zone {
+  background-color: rgba(52, 211, 153, 0.1) !important;
+}
+
+.monaco-diff-editor .inline-deleted-margin-view-zone {
+  background-color: rgba(248, 113, 113, 0.1) !important;
+}
+
+/* Word-level diff highlighting */
+.monaco-diff-editor .word-insert {
+  background-color: rgba(52, 211, 153, 0.3) !important;
+  border-radius: 2px;
+}
+
+.monaco-diff-editor .word-delete {
+  background-color: rgba(248, 113, 113, 0.3) !important;
+  border-radius: 2px;
+}
+
+/* Diff overview ruler (minimap) */
+.monaco-diff-editor .diffOverviewRuler {
+  background-color: var(--color-surface-1) !important;
+}
+
+/* Light mode overrides */
+html.light .monaco-diff-editor .insert-sign,
+html.light .monaco-diff-editor .char-insert {
+  background-color: rgba(5, 150, 105, 0.2) !important;
+}
+
+html.light .monaco-diff-editor .delete-sign,
+html.light .monaco-diff-editor .char-delete {
+  background-color: rgba(220, 38, 38, 0.2) !important;
+}
+
+html.light .monaco-diff-editor .line-insert {
+  background-color: rgba(5, 150, 105, 0.08) !important;
+}
+
+html.light .monaco-diff-editor .line-delete {
+  background-color: rgba(220, 38, 38, 0.08) !important;
+}
+
+html.light .monaco-diff-editor .word-insert {
+  background-color: rgba(5, 150, 105, 0.25) !important;
+}
+
+html.light .monaco-diff-editor .word-delete {
+  background-color: rgba(220, 38, 38, 0.25) !important;
+}

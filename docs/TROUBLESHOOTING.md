@@ -500,6 +500,34 @@ npm start
    - Check workspace path is valid
    - Try opening different workspace
 
+### TypeScript LSP Not Working
+
+**Symptoms:**
+- Warning: "TypeScript not installed in workspace - LSP features disabled"
+- No TypeScript diagnostics or IntelliSense
+- LSP works for other languages but not TypeScript
+
+**Solutions:**
+
+1. **Install TypeScript in your workspace:**
+   ```bash
+   npm install typescript --save-dev
+   ```
+
+2. **Verify TypeScript installation:**
+   ```bash
+   npx tsc --version
+   ```
+
+3. **Check for global TypeScript (fallback):**
+   ```bash
+   npm install -g typescript
+   ```
+
+> **Note:** This is expected behavior when opening a workspace without TypeScript. The LSP client logs this as a warning (not an error) and gracefully disables TypeScript features. Other LSP features remain functional.
+
+*Last updated: January 2026*
+
 ### File Save Issues
 
 **Symptoms:**

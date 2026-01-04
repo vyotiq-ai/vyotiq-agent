@@ -3592,31 +3592,7 @@ export interface GitBlameEntry {
   content: string;
 }
 
-/** Git diff hunk */
-export interface GitDiffHunk {
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  content: string;
-  lines: Array<{
-    type: 'add' | 'remove' | 'context';
-    content: string;
-    oldLine?: number;
-    newLine?: number;
-  }>;
-}
 
-/** Git file diff */
-export interface GitFileDiff {
-  path: string;
-  oldPath?: string;
-  status: GitFileStatus;
-  hunks: GitDiffHunk[];
-  additions: number;
-  deletions: number;
-  isBinary: boolean;
-}
 
 // =============================================================================
 // Project Analysis Types

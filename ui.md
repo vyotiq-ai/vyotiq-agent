@@ -40,31 +40,16 @@ Show:
 
 5. Add "Open file" action to FileOperationSummary
 
-Add a button to open the file directly in the editor (not just the diff view). This would make it easier to see and edit the file directly, without having to switch to the diff view.
+Add a button to open the file directly in the editor. This would make it easier to see and edit the file directly.
 
 6. Clean up unused code (Code Quality)
 
 getOutputPreview function is now unused (was for args/output display) outputPreview variable is only used for research/fetch previews Some imports may be unused after removing args/output section
 
-7. Improve the UI/UX of the diff's editor
+7. Improve and add missing features and functionalities
 
-The diff editor UI could be improved to make it easier to read and understand the diff. For example, the diff could be displayed in a more readable format, with colors and highlighting, and the UI could be improved to make it easier to navigate and understand the diff. 
-- Currently, the diff's are not staying presistent at all and not automatically scrolling to the diff's and etc...  which is not good user experience at all.
-
-8. Improve and add missing features and functionalities
-
-9. Make the chat area more interactive and user-friendly and structured and organized and etc...
+8. Make the chat area more interactive and user-friendly and structured and organized and etc...
 - Currently, the chat area is not interactive and user-friendly and structured and organized and etc... which is not good user experience at all.
-
-10. Add a feature to show the diff's in a better way in the editor and etc...
-
-
-
-
-
-
-
-
 
 Before creating any new files, check if there are existing files that already provide the same or similar functionality. If such files exist, update and enhance those existing files instead of creating duplicates. Specifically:
 

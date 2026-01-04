@@ -3,5 +3,5 @@
  */
 export { default as UndoHistoryPanel } from './UndoHistoryPanel';
 export { useUndoHistory } from './useUndoHistory';
-export { DiffPreview, ContentPreview } from './components';
+export { ContentPreview } from './components';
 export * from './types';
