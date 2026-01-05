@@ -5,9 +5,10 @@
  * Uses Monaco's built-in diff editor - zero new dependencies.
  * 
  * Features:
- * - Split/Unified view mode toggle with persistence
- * - Word-level highlighting for exact character changes
- * - Collapsible context with "Show N more lines" expanders
+ * - Split view: Side-by-side with synchronized scroll
+ * - Unified view: Single column, additions/deletions inline (GitHub PR style)
+ * - Inline annotations: Hover to see old value without switching views
+ * - Collapsible unchanged regions: Show only changed hunks with expandable context
  * - Accept/Reject/Edit actions per change with persistence
  */
 import React, { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react';
@@ -21,6 +22,7 @@ import { cn } from '../../../../utils/cn';
 import { useEditor } from '../../../../state/EditorProvider';
 import { getLanguageFromPath } from '../../../editor/utils/languageUtils';
 import { registerCustomThemes } from '../../../editor/utils/themeUtils';
+import { computeDiffStats, computeDiffHunks, computeInlineDiff, type DiffHunk } from './diffUtils';
 
 // Ensure theme is registered once
 let themeRegistered = false;
@@ -58,45 +60,12 @@ export interface DiffViewerProps {
   diffId?: string;
 }
 
-function computeDiffStats(original: string, modified: string): { added: number; removed: number; changed: number } {
-  const originalLines = original.split('\n');
-  const modifiedLines = modified.split('\n');
-  
-  let added = 0;
-  let removed = 0;
-  
-  const originalSet = new Map<string, number>();
-  for (const line of originalLines) {
-    originalSet.set(line, (originalSet.get(line) || 0) + 1);
-  }
-  
-  for (const line of modifiedLines) {
-    const count = originalSet.get(line) || 0;
-    if (count > 0) {
-      originalSet.set(line, count - 1);
-    } else {
-      added++;
-    }
-  }
-  
-  for (const [, count] of originalSet) {
-    removed += count;
-  }
-  
-  const changed = Math.min(added, removed);
-  return { 
-    added: Math.max(0, added - changed), 
-    removed: Math.max(0, removed - changed), 
-    changed 
-  };
-}
-
 function getStoredViewMode(): DiffViewMode {
   try {
     const stored = localStorage.getItem(DIFF_VIEW_MODE_KEY);
     if (stored === 'split' || stored === 'unified') return stored;
   } catch { /* ignore */ }
-  return 'split';
+  return 'unified';
 }
 
 function setStoredViewMode(mode: DiffViewMode): void {
@@ -178,11 +147,35 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
     return { totalLines, unchangedLines: totalLines - changedLines };
   }, [originalContent, modifiedContent, stats]);
   
+  // Compute diff hunks for unified view
+  const diffHunks: DiffHunk[] = useMemo(() => 
+    computeDiffHunks(originalContent, modifiedContent, 3),
+    [originalContent, modifiedContent]
+  );
+  
+  // Track expanded context regions
+  const [expandedRegions, setExpandedRegions] = useState<Set<number>>(new Set());
+  
+  // Inline annotation hover state
+  const [hoveredLine, setHoveredLine] = useState<{ lineNum: number; oldValue: string } | null>(null);
+  
   const handleViewModeToggle = useCallback(() => {
     const newMode = viewMode === 'split' ? 'unified' : 'split';
     setViewMode(newMode);
     setStoredViewMode(newMode);
   }, [viewMode]);
+  
+  const toggleRegionExpanded = useCallback((regionIdx: number) => {
+    setExpandedRegions(prev => {
+      const next = new Set(prev);
+      if (next.has(regionIdx)) {
+        next.delete(regionIdx);
+      } else {
+        next.add(regionIdx);
+      }
+      return next;
+    });
+  }, []);
   
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(modifiedContent);
@@ -241,7 +234,8 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
 
   
   useEffect(() => {
-    if (!containerRef.current || isCollapsed) return;
+    // Only use Monaco for split view
+    if (!containerRef.current || isCollapsed || viewMode === 'unified') return;
     
     // Ensure theme is registered before creating editor
     ensureThemeRegistered();
@@ -257,7 +251,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
     const editor = monaco.editor.createDiffEditor(containerRef.current, {
       theme: 'vyotiq-dark',
       readOnly: true,
-      renderSideBySide: viewMode === 'split',
+      renderSideBySide: true,
       enableSplitViewResizing: true,
       ignoreTrimWhitespace: false,
       renderIndicators: true,
@@ -282,7 +276,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
       padding: { top: 4, bottom: 4 },
       diffWordWrap: 'on',
       renderWhitespace: 'none',
-      useInlineViewWhenSpaceIsLimited: true,
+      useInlineViewWhenSpaceIsLimited: false,
       diffAlgorithm: 'advanced',
     });
     
@@ -301,13 +295,262 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
   }, [originalContent, modifiedContent, language, viewMode, isCollapsed, contextCollapsed]);
   
   useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.updateOptions({ renderSideBySide: viewMode === 'split' });
+    if (editorRef.current && viewMode === 'split') {
+      editorRef.current.updateOptions({ renderSideBySide: true });
     }
   }, [viewMode]);
 
   const showActions = (onAccept || onReject || onEdit) && actionState === 'pending';
   const showActionFeedback = actionState !== 'pending';
+  
+  // Render unified diff view (GitHub PR style)
+  const renderUnifiedDiff = useCallback(() => {
+    const originalLines = originalContent.split('\n');
+    const modifiedLines = modifiedContent.split('\n');
+    
+    // Build unified diff display
+    const diffLines: Array<{
+      type: 'context' | 'added' | 'removed' | 'hunk-header' | 'expand';
+      content: string;
+      oldLineNum?: number;
+      newLineNum?: number;
+      inlineDiff?: { oldParts: Array<{ text: string; changed: boolean }>; newParts: Array<{ text: string; changed: boolean }> };
+      expandInfo?: { before: number; after: number; regionIdx: number };
+    }> = [];
+    
+    let lastOrigEnd = 0;
+    let lastModEnd = 0;
+    
+    diffHunks.forEach((hunk, hunkIdx) => {
+      // Add collapsed region indicator if there's a gap
+      const gapOrig = hunk.originalStart - lastOrigEnd;
+      const gapMod = hunk.modifiedStart - lastModEnd;
+      
+      if (gapOrig > 0 || gapMod > 0) {
+        const gapLines = Math.max(gapOrig, gapMod);
+        if (gapLines > 0 && !expandedRegions.has(hunkIdx)) {
+          diffLines.push({
+            type: 'expand',
+            content: `${gapLines} unchanged line${gapLines !== 1 ? 's' : ''}`,
+            expandInfo: { before: lastOrigEnd, after: hunk.originalStart, regionIdx: hunkIdx }
+          });
+        } else if (expandedRegions.has(hunkIdx)) {
+          // Show expanded context
+          for (let i = lastOrigEnd; i < hunk.originalStart; i++) {
+            diffLines.push({
+              type: 'context',
+              content: originalLines[i] || '',
+              oldLineNum: i + 1,
+              newLineNum: lastModEnd + (i - lastOrigEnd) + 1
+            });
+          }
+        }
+      }
+      
+      // Add hunk header
+      diffLines.push({
+        type: 'hunk-header',
+        content: `@@ -${hunk.originalStart + 1},${hunk.originalEnd - hunk.originalStart} +${hunk.modifiedStart + 1},${hunk.modifiedEnd - hunk.modifiedStart} @@`
+      });
+      
+      // Process hunk lines - interleave removed and added for better readability
+      const origHunkLines = hunk.originalLines;
+      const modHunkLines = hunk.modifiedLines;
+      
+      // Find matching pairs for inline diff
+      let origIdx = 0;
+      let modIdx = 0;
+      
+      while (origIdx < origHunkLines.length || modIdx < modHunkLines.length) {
+        const origLine = origIdx < origHunkLines.length ? origHunkLines[origIdx] : null;
+        const modLine = modIdx < modHunkLines.length ? modHunkLines[modIdx] : null;
+        
+        // Check if lines are equal (context)
+        if (origLine !== null && modLine !== null && origLine === modLine) {
+          diffLines.push({
+            type: 'context',
+            content: origLine,
+            oldLineNum: hunk.originalStart + origIdx + 1,
+            newLineNum: hunk.modifiedStart + modIdx + 1
+          });
+          origIdx++;
+          modIdx++;
+        } else {
+          // Show removed lines first, then added
+          if (origLine !== null && (modLine === null || origLine !== modLine)) {
+            const inlineDiff = modLine !== null ? computeInlineDiff(origLine, modLine) : undefined;
+            diffLines.push({
+              type: 'removed',
+              content: origLine,
+              oldLineNum: hunk.originalStart + origIdx + 1,
+              inlineDiff
+            });
+            origIdx++;
+          }
+          if (modLine !== null && (origLine === null || origLine !== modLine)) {
+            const inlineDiff = origLine !== null ? computeInlineDiff(origHunkLines[origIdx - 1] || '', modLine) : undefined;
+            diffLines.push({
+              type: 'added',
+              content: modLine,
+              newLineNum: hunk.modifiedStart + modIdx + 1,
+              inlineDiff
+            });
+            modIdx++;
+          }
+        }
+      }
+      
+      lastOrigEnd = hunk.originalEnd;
+      lastModEnd = hunk.modifiedEnd;
+    });
+    
+    // Add trailing collapsed region
+    const trailingOrig = originalLines.length - lastOrigEnd;
+    const trailingMod = modifiedLines.length - lastModEnd;
+    const trailingGap = Math.max(trailingOrig, trailingMod);
+    
+    if (trailingGap > 0 && !expandedRegions.has(diffHunks.length)) {
+      diffLines.push({
+        type: 'expand',
+        content: `${trailingGap} unchanged line${trailingGap !== 1 ? 's' : ''}`,
+        expandInfo: { before: lastOrigEnd, after: originalLines.length, regionIdx: diffHunks.length }
+      });
+    } else if (expandedRegions.has(diffHunks.length) && trailingGap > 0) {
+      for (let i = lastOrigEnd; i < originalLines.length; i++) {
+        diffLines.push({
+          type: 'context',
+          content: originalLines[i] || '',
+          oldLineNum: i + 1,
+          newLineNum: lastModEnd + (i - lastOrigEnd) + 1
+        });
+      }
+    }
+    
+    return (
+      <div 
+        className="font-mono text-[11px] leading-relaxed overflow-auto scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent"
+        style={{ maxHeight }}
+      >
+        {diffLines.map((line, idx) => {
+          if (line.type === 'expand') {
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => line.expandInfo && toggleRegionExpanded(line.expandInfo.regionIdx)}
+                className={cn(
+                  'w-full flex items-center justify-center gap-2 py-1 px-3',
+                  'text-[9px] font-mono text-[var(--color-text-muted)]',
+                  'bg-[var(--color-surface-1)]/30 hover:bg-[var(--color-surface-2)]/50',
+                  'border-y border-[var(--color-border-subtle)]/30 transition-colors'
+                )}
+              >
+                <ChevronDown size={10} />
+                <span>{line.content}</span>
+                <ChevronDown size={10} />
+              </button>
+            );
+          }
+          
+          if (line.type === 'hunk-header') {
+            return (
+              <div
+                key={idx}
+                className="px-3 py-0.5 text-[9px] text-[var(--color-info)] bg-[var(--color-info)]/5 border-y border-[var(--color-border-subtle)]/20"
+              >
+                {line.content}
+              </div>
+            );
+          }
+          
+          const isRemoved = line.type === 'removed';
+          const isAdded = line.type === 'added';
+          const isContext = line.type === 'context';
+          
+          return (
+            <div
+              key={idx}
+              className={cn(
+                'flex items-stretch group relative',
+                isRemoved && 'bg-[#e06c75]/8',
+                isAdded && 'bg-[#98c379]/8',
+                isContext && 'hover:bg-[var(--color-surface-2)]/30'
+              )}
+              onMouseEnter={() => {
+                if (isAdded && line.inlineDiff) {
+                  const oldValue = line.inlineDiff.oldParts.map(p => p.text).join('');
+                  if (oldValue.trim()) {
+                    setHoveredLine({ lineNum: line.newLineNum || 0, oldValue });
+                  }
+                }
+              }}
+              onMouseLeave={() => setHoveredLine(null)}
+            >
+              {/* Line numbers */}
+              <div className="flex-shrink-0 w-[60px] flex text-[9px] text-[var(--color-text-dim)] select-none border-r border-[var(--color-border-subtle)]/20">
+                <span className={cn(
+                  'w-[30px] text-right pr-1',
+                  isRemoved && 'bg-[#e06c75]/15'
+                )}>
+                  {line.oldLineNum || ''}
+                </span>
+                <span className={cn(
+                  'w-[30px] text-right pr-1',
+                  isAdded && 'bg-[#98c379]/15'
+                )}>
+                  {line.newLineNum || ''}
+                </span>
+              </div>
+              
+              {/* Change indicator */}
+              <div className={cn(
+                'flex-shrink-0 w-[20px] text-center select-none',
+                isRemoved && 'text-[var(--color-error)] bg-[#e06c75]/10',
+                isAdded && 'text-[var(--color-success)] bg-[#98c379]/10',
+                isContext && 'text-[var(--color-text-dim)]'
+              )}>
+                {isRemoved ? '-' : isAdded ? '+' : ' '}
+              </div>
+              
+              {/* Line content */}
+              <div className={cn(
+                'flex-1 px-2 whitespace-pre overflow-x-auto',
+                isRemoved && 'text-[var(--color-text-secondary)]',
+                isAdded && 'text-[var(--color-text-primary)]',
+                isContext && 'text-[var(--color-text-secondary)]'
+              )}>
+                {line.inlineDiff && (isAdded || isRemoved) ? (
+                  <span>
+                    {(isRemoved ? line.inlineDiff.oldParts : line.inlineDiff.newParts).map((part, pIdx) => (
+                      <span
+                        key={pIdx}
+                        className={cn(
+                          part.changed && isRemoved && 'bg-[#e06c75]/25 rounded-sm',
+                          part.changed && isAdded && 'bg-[#98c379]/25 rounded-sm'
+                        )}
+                      >
+                        {part.text}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  line.content || '\u00A0'
+                )}
+              </div>
+              
+              {/* Inline annotation tooltip */}
+              {hoveredLine && hoveredLine.lineNum === line.newLineNum && isAdded && (
+                <div className="absolute right-2 z-10 px-2 py-1 rounded bg-[var(--color-surface-3)] border border-[var(--color-border-default)] shadow-lg text-[9px] text-[var(--color-text-muted)] max-w-[200px] truncate">
+                  <span className="text-[var(--color-text-dim)]">was: </span>
+                  <span className="text-[var(--color-error)]">{hoveredLine.oldValue}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [originalContent, modifiedContent, diffHunks, expandedRegions, maxHeight, hoveredLine, toggleRegionExpanded]);
 
 
   return (
@@ -405,7 +648,11 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
       
       {/* Diff editor container */}
       {!isCollapsed && (
-        <div ref={containerRef} style={{ height: maxHeight }} className="w-full" />
+        viewMode === 'unified' ? (
+          renderUnifiedDiff()
+        ) : (
+          <div ref={containerRef} style={{ height: maxHeight }} className="w-full" />
+        )
       )}
 
       
