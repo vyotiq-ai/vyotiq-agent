@@ -429,31 +429,308 @@ function tryHeuristicParsing(
     const stringPattern = /"([^"]+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
     const numberPattern = /"([^"]+)"\s*:\s*(-?\d+(?:\.\d+)?)/g;
     const boolPattern = /"([^"]+)"\s*:\s*(true|false)/gi;
+    const nullPattern = /"([^"]+)"\s*:\s*null/gi;
+    
+    // Also try unquoted keys (common LLM mistake)
+    const unquotedKeyStringPattern = /(\w+)\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+    const unquotedKeyNumberPattern = /(\w+)\s*:\s*(-?\d+(?:\.\d+)?)/g;
+    const unquotedKeyBoolPattern = /(\w+)\s*:\s*(true|false)/gi;
     
     let match;
     
-    // Extract string values
+    // Extract string values (quoted keys)
     while ((match = stringPattern.exec(input)) !== null) {
-      result[match[1]] = match[2].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      result[match[1]] = match[2].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
     }
     
-    // Extract number values
+    // Extract string values (unquoted keys)
+    while ((match = unquotedKeyStringPattern.exec(input)) !== null) {
+      if (!(match[1] in result)) {
+        result[match[1]] = match[2].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      }
+    }
+    
+    // Extract number values (quoted keys)
     while ((match = numberPattern.exec(input)) !== null) {
       if (!(match[1] in result)) {
         result[match[1]] = parseFloat(match[2]);
       }
     }
     
-    // Extract boolean values
+    // Extract number values (unquoted keys)
+    while ((match = unquotedKeyNumberPattern.exec(input)) !== null) {
+      if (!(match[1] in result)) {
+        result[match[1]] = parseFloat(match[2]);
+      }
+    }
+    
+    // Extract boolean values (quoted keys)
     while ((match = boolPattern.exec(input)) !== null) {
       if (!(match[1] in result)) {
         result[match[1]] = match[2].toLowerCase() === 'true';
       }
     }
     
+    // Extract boolean values (unquoted keys)
+    while ((match = unquotedKeyBoolPattern.exec(input)) !== null) {
+      if (!(match[1] in result)) {
+        result[match[1]] = match[2].toLowerCase() === 'true';
+      }
+    }
+    
+    // Extract null values
+    while ((match = nullPattern.exec(input)) !== null) {
+      if (!(match[1] in result)) {
+        result[match[1]] = null;
+      }
+    }
+    
+    // Try to extract arrays (common for todo tool)
+    const arrayPattern = /"([^"]+)"\s*:\s*\[/g;
+    while ((match = arrayPattern.exec(input)) !== null) {
+      const key = match[1];
+      if (!(key in result)) {
+        const arrayContent = extractArrayContent(input, match.index + match[0].length - 1);
+        if (arrayContent) {
+          try {
+            const parsed = JSON.parse(arrayContent);
+            if (Array.isArray(parsed)) {
+              result[key] = parsed;
+            }
+          } catch {
+            // Try to extract array items heuristically
+            const items = extractArrayItemsHeuristically(arrayContent);
+            if (items.length > 0) {
+              result[key] = items;
+            }
+          }
+        }
+      }
+    }
+    
+    // Special handling for TodoWrite/todo tool - if we found todo item fields but no todos array,
+    // try to construct the todos array from the individual items
+    const isTodoTool = toolName.toLowerCase().includes('todo') || toolName === 'TodoWrite';
+    if (isTodoTool && !result.todos && !result.todo && !result.tasks) {
+      const todoItems = extractTodoItemsFromFlatKeys(result, input);
+      if (todoItems.length > 0) {
+        result.todos = todoItems;
+        logger.info('Reconstructed todos array from flat keys', {
+          tool: toolName,
+          itemCount: todoItems.length,
+        });
+      }
+    }
+    
     return Object.keys(result).length > 0 ? result : null;
   } catch (e) {
     logger.debug('Heuristic parsing failed', { toolName, error: (e as Error).message });
+    return null;
+  }
+}
+
+/**
+ * Extract todo items from flat keys when the array structure is broken
+ * This handles cases where the LLM sends individual todo fields without proper array structure
+ */
+function extractTodoItemsFromFlatKeys(
+  result: Record<string, unknown>,
+  input: string
+): Array<{ id: string; content: string; status: string }> {
+  const items: Array<{ id: string; content: string; status: string }> = [];
+  
+  // Check if we have individual todo fields (id, content, status)
+  const hasId = 'id' in result;
+  const hasContent = 'content' in result || 'text' in result || 'description' in result;
+  const hasStatus = 'status' in result;
+  
+  if (hasId && hasContent && hasStatus) {
+    // Single todo item case
+    items.push({
+      id: String(result.id || `todo-${Date.now()}`),
+      content: String(result.content || result.text || result.description || ''),
+      status: String(result.status || 'pending'),
+    });
+    
+    // Remove the flat keys since we've moved them to the array
+    delete result.id;
+    delete result.content;
+    delete result.text;
+    delete result.description;
+    delete result.status;
+  }
+  
+  // Try to find multiple todo objects in the raw input
+  // Pattern: objects with id, content, status fields
+  const todoObjectPattern = /\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"([^"]+)"\s*,\s*"status"\s*:\s*"([^"]+)"/g;
+  let match;
+  
+  while ((match = todoObjectPattern.exec(input)) !== null) {
+    const [, id, content, status] = match;
+    // Avoid duplicates
+    if (!items.some(item => item.id === id)) {
+      items.push({ id, content, status });
+    }
+  }
+  
+  // Also try alternative field order
+  const altPattern = /\{\s*"content"\s*:\s*"([^"]+)"\s*,\s*"id"\s*:\s*"([^"]+)"\s*,\s*"status"\s*:\s*"([^"]+)"/g;
+  while ((match = altPattern.exec(input)) !== null) {
+    const [, content, id, status] = match;
+    if (!items.some(item => item.id === id)) {
+      items.push({ id, content, status });
+    }
+  }
+  
+  // Try yet another order (status first)
+  const statusFirstPattern = /\{\s*"status"\s*:\s*"([^"]+)"\s*,\s*"id"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"([^"]+)"/g;
+  while ((match = statusFirstPattern.exec(input)) !== null) {
+    const [, status, id, content] = match;
+    if (!items.some(item => item.id === id)) {
+      items.push({ id, content, status });
+    }
+  }
+  
+  return items;
+}
+
+/**
+ * Extract array content from a string starting at the opening bracket
+ */
+function extractArrayContent(input: string, startIndex: number): string | null {
+  if (input[startIndex] !== '[') return null;
+  
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  
+  for (let i = startIndex; i < input.length; i++) {
+    const char = input[i];
+    
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (inString) continue;
+    
+    if (char === '[') depth++;
+    if (char === ']') {
+      depth--;
+      if (depth === 0) {
+        return input.slice(startIndex, i + 1);
+      }
+    }
+  }
+  
+  // Try to close unclosed array
+  const partial = input.slice(startIndex);
+  // Count unclosed brackets
+  let unclosedBrackets = 0;
+  let unclosedBraces = 0;
+  inString = false;
+  escaped = false;
+  
+  for (const char of partial) {
+    if (escaped) { escaped = false; continue; }
+    if (char === '\\') { escaped = true; continue; }
+    if (char === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (char === '[') unclosedBrackets++;
+    if (char === ']') unclosedBrackets--;
+    if (char === '{') unclosedBraces++;
+    if (char === '}') unclosedBraces--;
+  }
+  
+  // Try to repair by closing brackets
+  let repaired = partial;
+  while (unclosedBraces > 0) { repaired += '}'; unclosedBraces--; }
+  while (unclosedBrackets > 0) { repaired += ']'; unclosedBrackets--; }
+  
+  try {
+    JSON.parse(repaired);
+    return repaired;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract array items heuristically when JSON parsing fails
+ */
+function extractArrayItemsHeuristically(arrayContent: string): unknown[] {
+  const items: unknown[] = [];
+  
+  // Try to find object patterns within the array
+  const objectPattern = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
+  let match;
+  
+  while ((match = objectPattern.exec(arrayContent)) !== null) {
+    try {
+      const obj = JSON.parse(match[0]);
+      items.push(obj);
+    } catch {
+      // Try to repair the object
+      const repaired = attemptObjectRepair(match[0]);
+      if (repaired) {
+        try {
+          items.push(JSON.parse(repaired));
+        } catch {
+          // Skip this item
+        }
+      }
+    }
+  }
+  
+  return items;
+}
+
+/**
+ * Attempt to repair a malformed JSON object
+ */
+function attemptObjectRepair(input: string): string | null {
+  let repaired = input.trim();
+  
+  // Remove trailing commas
+  repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
+  
+  // Ensure proper closing
+  if (!repaired.endsWith('}')) {
+    // Count braces
+    let braceCount = 0;
+    let inString = false;
+    let escaped = false;
+    
+    for (const char of repaired) {
+      if (escaped) { escaped = false; continue; }
+      if (char === '\\') { escaped = true; continue; }
+      if (char === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (char === '{') braceCount++;
+      if (char === '}') braceCount--;
+    }
+    
+    // Close unclosed braces
+    while (braceCount > 0) {
+      repaired += '}';
+      braceCount--;
+    }
+  }
+  
+  try {
+    JSON.parse(repaired);
+    return repaired;
+  } catch {
     return null;
   }
 }

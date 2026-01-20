@@ -31,61 +31,84 @@ const logger = new RendererLogger('monaco-editor');
 // Ensure Monaco environment is configured
 ensureMonacoEnvironment();
 
-// TypeScript language service types - use type assertion to avoid deprecated marker issue
-// The monaco.languages.typescript module is functional but types are marked deprecated
+// TypeScript language service types
+// Monaco v0.55.0+ moved typescript to top-level: monaco.typescript
+// Fallback to monaco.languages.typescript for compatibility
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getTypescriptLanguages = () => (monaco.languages as any).typescript;
+const getTypescriptAPI = () => (monaco as any).typescript || (monaco.languages as any).typescript;
 
 // Configure TypeScript/JavaScript diagnostics once
 let diagnosticsConfigured = false;
 function ensureDiagnosticsConfigured() {
-  if (diagnosticsConfigured) return;
-  
-  const ts = getTypescriptLanguages();
+  const ts = getTypescriptAPI();
   if (!ts) return;
   
   try {
-    // Enable TypeScript diagnostics - this makes Monaco generate markers for errors
+    // Disable Monaco's built-in semantic validation for TypeScript/JavaScript
+    // Monaco's web worker doesn't have access to node_modules/@types, so it will
+    // report false errors like "Cannot find name 'Promise'" for projects with type
+    // definitions. Instead, we rely on our backend TypeScript Diagnostics Service
+    // which has full file system access and can properly resolve type definitions.
+    // 
+    // We keep syntax validation enabled (fast, doesn't need types) but disable
+    // semantic validation (slow, requires type resolution).
+    //
+    // NOTE: We call this every time (not just once) because Monaco's TypeScript
+    // worker initializes asynchronously and might reset our settings.
     ts.typescriptDefaults.setDiagnosticsOptions({
-      noSemanticValidation: false,
-      noSyntaxValidation: false,
-      noSuggestionDiagnostics: false,
+      noSemanticValidation: true,  // Disable - backend service handles this
+      noSyntaxValidation: false,   // Keep - doesn't need types
+      noSuggestionDiagnostics: true, // Disable - backend service handles this
     });
     
     ts.javascriptDefaults.setDiagnosticsOptions({
-      noSemanticValidation: false,
-      noSyntaxValidation: false,
-      noSuggestionDiagnostics: false,
+      noSemanticValidation: true,  // Disable - backend service handles this
+      noSyntaxValidation: false,   // Keep - doesn't need types
+      noSuggestionDiagnostics: true, // Disable - backend service handles this
     });
 
-    // Set compiler options for better error detection
-    ts.typescriptDefaults.setCompilerOptions({
-      target: ts.ScriptTarget.ESNext,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeJs,
-      allowNonTsExtensions: true,
-      allowJs: true,
-      checkJs: true,
-      strict: false, // Don't be too strict - let the project's tsconfig control this
-      noEmit: true,
-      esModuleInterop: true,
-      jsx: ts.JsxEmit.ReactJSX,
-    });
+    // Only set compiler options once
+    if (!diagnosticsConfigured) {
+      ts.typescriptDefaults.setCompilerOptions({
+        target: ts.ScriptTarget.ESNext,
+        module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeJs,
+        allowNonTsExtensions: true,
+        allowJs: true,
+        checkJs: true,
+        strict: false, // Don't be too strict - let the project's tsconfig control this
+        noEmit: true,
+        esModuleInterop: true,
+        jsx: ts.JsxEmit.ReactJSX,
+      });
 
-    ts.javascriptDefaults.setCompilerOptions({
-      target: ts.ScriptTarget.ESNext,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeJs,
-      allowNonTsExtensions: true,
-      allowJs: true,
-      checkJs: true,
-      noEmit: true,
-      esModuleInterop: true,
-      jsx: ts.JsxEmit.ReactJSX,
-    });
+      ts.javascriptDefaults.setCompilerOptions({
+        target: ts.ScriptTarget.ESNext,
+        module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeJs,
+        allowNonTsExtensions: true,
+        allowJs: true,
+        checkJs: true,
+        noEmit: true,
+        esModuleInterop: true,
+        jsx: ts.JsxEmit.ReactJSX,
+      });
 
-    diagnosticsConfigured = true;
-    logger.debug('TypeScript/JavaScript diagnostics configured');
+      // Clear any existing TypeScript/JavaScript markers from all models
+      // This ensures stale semantic errors don't persist after we disable semantic validation
+      const models = monaco.editor.getModels();
+      for (const model of models) {
+        const uri = model.uri;
+        const path = uri.path.toLowerCase();
+        if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.js') || path.endsWith('.jsx')) {
+          monaco.editor.setModelMarkers(model, 'typescript', []);
+          monaco.editor.setModelMarkers(model, 'javascript', []);
+        }
+      }
+
+      diagnosticsConfigured = true;
+      logger.debug('TypeScript/JavaScript diagnostics configured - semantic validation disabled');
+    }
   } catch (err) {
     logger.warn('Failed to configure TypeScript diagnostics:', err);
   }
@@ -155,9 +178,13 @@ function ensureLSPProvidersRegistered() {
   }
 }
 
-// Cleanup function for AI providers (called on app unmount if needed)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _disposeAIProviders() {
+/**
+ * Cleanup function for Monaco AI providers
+ * Call this on app unmount to properly dispose of AI provider resources
+ * Note: This is specifically for Monaco editor instance providers,
+ * separate from the monacoAIProvider utility's disposeAIProviders
+ */
+export function disposeMonacoAIProviders(): void {
   aiProviderDisposables.forEach(d => d.dispose());
   aiProviderDisposables.length = 0;
   aiProvidersRegistered = false;
@@ -195,8 +222,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
   const enableAI = useMemo(() => enableAIProp && settings.enableAI !== false, [enableAIProp, settings.enableAI]);
   const enableInlineCompletions = useMemo(() => enableAI && settings.enableInlineCompletions !== false, [enableAI, settings.enableInlineCompletions]);
   const enableSelectionToolbar = useMemo(() => enableAI && settings.enableSelectionToolbar !== false, [enableAI, settings.enableSelectionToolbar]);
-  // Code Lens is controlled at the provider level, but we track the setting for future use
-  const _enableCodeLens = useMemo(() => enableAI && settings.enableCodeLens !== false, [enableAI, settings.enableCodeLens]);
+  // Code Lens is controlled both at provider level and editor option level
+  const enableCodeLens = useMemo(() => enableAI && settings.enableCodeLens !== false, [enableAI, settings.enableCodeLens]);
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const isRestoringViewState = useRef(false);
@@ -254,6 +281,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
   const onChangeRef = useRef(onChange);
   const onCursorChangeRef = useRef(onCursorChange);
   const onViewStateChangeRef = useRef(onViewStateChange);
+  const settingsRef = useRef(settings);
 
   // Keep refs updated
   useEffect(() => {
@@ -261,7 +289,8 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
     onChangeRef.current = onChange;
     onCursorChangeRef.current = onCursorChange;
     onViewStateChangeRef.current = onViewStateChange;
-  }, [onSave, onChange, onCursorChange, onViewStateChange]);
+    settingsRef.current = settings;
+  }, [onSave, onChange, onCursorChange, onViewStateChange, settings]);
 
   // Initialize editor
   useEffect(() => {
@@ -304,42 +333,255 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
       tabSize: settings.tabSize,
       insertSpaces: settings.insertSpaces,
       wordWrap: settings.wordWrap,
-      minimap: { enabled: settings.minimap },
+      minimap: { 
+        enabled: settings.minimap,
+        autohide: 'none' as const,
+        renderCharacters: false,
+        maxColumn: 120,
+        scale: 1,
+        showSlider: 'mouseover',
+      },
       lineNumbers: settings.lineNumbers,
       renderWhitespace: settings.renderWhitespace,
-      bracketPairColorization: { enabled: settings.bracketPairColorization },
+      bracketPairColorization: { 
+        enabled: settings.bracketPairColorization,
+        independentColorPoolPerBracketType: true,
+      },
       smoothScrolling: settings.smoothScrolling,
       cursorBlinking: settings.cursorBlinking,
       cursorStyle: settings.cursorStyle,
       automaticLayout: true,
       scrollBeyondLastLine: false,
       padding: { top: 8, bottom: 8 },
+      
+      // Folding configuration - VSCode feature
       folding: true,
-      foldingStrategy: 'indentation',
+      foldingStrategy: 'auto', // Use language-aware folding when available
       showFoldingControls: 'mouseover',
+      foldingHighlight: true,
+      foldingImportsByDefault: false,
+      unfoldOnClickAfterEndOfLine: true,
+      
+      // Sticky scroll - VSCode feature for keeping context visible
+      stickyScroll: {
+        enabled: settings.stickyScroll ?? true,
+        maxLineCount: 5,
+        defaultModel: 'outlineModel',
+        scrollWithEditor: true,
+      },
+      
+      // Enhanced matching and selection
       matchBrackets: 'always',
-      renderLineHighlight: 'line',
+      renderLineHighlight: 'all', // Highlight full line including gutter
+      renderLineHighlightOnlyWhenFocus: false,
       selectOnLineNumbers: true,
       roundedSelection: true,
       cursorSmoothCaretAnimation: 'on',
       mouseWheelZoom: true,
       contextmenu: false, // Disable native context menu
-      quickSuggestions: true,
+      
+      // Multi-cursor support - VSCode feature
+      multiCursorModifier: 'ctrlCmd',
+      multiCursorMergeOverlapping: true,
+      multiCursorPaste: 'spread',
+      columnSelection: false, // Enable via Alt+Shift+Click
+      
+      // Suggestions and completions
+      quickSuggestions: {
+        other: 'on',
+        comments: 'off',
+        strings: 'on',
+      },
       suggestOnTriggerCharacters: true,
       acceptSuggestionOnEnter: 'on',
       snippetSuggestions: 'inline',
       wordBasedSuggestions: 'currentDocument',
-      parameterHints: { enabled: true },
-      formatOnPaste: true,
-      formatOnType: true,
+      wordBasedSuggestionsOnlySameLanguage: true,
+      parameterHints: { 
+        enabled: true,
+        cycle: true,
+      },
+      suggest: {
+        preview: true,
+        previewMode: 'prefix',
+        showMethods: true,
+        showFunctions: true,
+        showConstructors: true,
+        showFields: true,
+        showVariables: true,
+        showClasses: true,
+        showStructs: true,
+        showInterfaces: true,
+        showModules: true,
+        showProperties: true,
+        showEvents: true,
+        showOperators: true,
+        showUnits: true,
+        showValues: true,
+        showConstants: true,
+        showEnums: true,
+        showEnumMembers: true,
+        showKeywords: true,
+        showWords: true,
+        showColors: true,
+        showFiles: true,
+        showReferences: true,
+        showFolders: true,
+        showTypeParameters: true,
+        showSnippets: true,
+        showUsers: true,
+        showIssues: true,
+        insertMode: 'insert',
+        filterGraceful: true,
+        snippetsPreventQuickSuggestions: false,
+        localityBonus: true,
+        shareSuggestSelections: true,
+        selectionMode: 'always',
+      },
+      
+      // Formatting options
+      formatOnPaste: settings.formatOnPaste ?? true,
+      formatOnType: settings.formatOnType ?? true,
+      
+      // Auto-closing and surrounding
       autoClosingBrackets: 'always',
       autoClosingQuotes: 'always',
+      autoClosingDelete: 'always',
+      autoClosingOvertype: 'always',
       autoSurround: 'languageDefined',
+      
+      // Links and decorators
       links: true,
       colorDecorators: true,
+      colorDecoratorsActivatedOn: 'clickAndHover',
+      
+      // Indent and bracket guides - enhanced VSCode feature
       guides: {
-        bracketPairs: true,
+        bracketPairs: 'active', // Highlight active bracket pair
+        bracketPairsHorizontal: 'active',
+        highlightActiveBracketPair: true,
         indentation: true,
+        highlightActiveIndentation: 'always',
+      },
+      
+      // Font ligatures - VSCode feature
+      fontLigatures: settings.fontLigatures ?? true,
+      fontVariations: false,
+      
+      // Inlay hints - VSCode feature for parameter names, types
+      inlayHints: {
+        enabled: 'on',
+        fontSize: settings.fontSize ? Math.round(settings.fontSize * 0.85) : 11,
+        fontFamily: settings.fontFamily,
+        padding: true,
+      },
+      
+      // Hover configuration
+      hover: {
+        enabled: true,
+        delay: 300,
+        sticky: true,
+        above: true,
+      },
+      
+      // Definition peek - go to definition
+      gotoLocation: {
+        multiple: 'peek',
+        multipleDefinitions: 'peek',
+        multipleTypeDefinitions: 'peek',
+        multipleDeclarations: 'peek',
+        multipleImplementations: 'peek',
+        multipleReferences: 'peek',
+        alternativeDefinitionCommand: 'editor.action.goToReferences',
+        alternativeTypeDefinitionCommand: 'editor.action.goToReferences',
+        alternativeDeclarationCommand: 'editor.action.goToReferences',
+        alternativeImplementationCommand: 'editor.action.goToReferences',
+        alternativeReferenceCommand: '',
+      },
+      
+      // Occurrences highlight
+      occurrencesHighlight: 'singleFile',
+      
+      // Selection highlight
+      selectionHighlight: true,
+      
+      // Render control characters
+      renderControlCharacters: false,
+      
+      // Drop into editor
+      dropIntoEditor: {
+        enabled: true,
+        showDropSelector: 'afterDrop',
+      },
+      
+      // Experimental whitespace rendering
+      experimentalWhitespaceRendering: 'svg',
+      
+      // Linked editing - rename paired tags
+      linkedEditing: settings.linkedEditing ?? true,
+      
+      // Code Lens - shows inline actions like "Run Test", "References", etc.
+      codeLens: enableCodeLens,
+      
+      // Render final newline
+      renderFinalNewline: 'on',
+      
+      // Screenreader support
+      accessibilitySupport: 'auto',
+      
+      // Editor scrollbar
+      scrollbar: {
+        vertical: 'auto',
+        horizontal: 'auto',
+        useShadows: true,
+        verticalHasArrows: false,
+        horizontalHasArrows: false,
+        verticalScrollbarSize: 10,
+        horizontalScrollbarSize: 10,
+        arrowSize: 11,
+        scrollByPage: false,
+      },
+      
+      // Overscroll behavior
+      overviewRulerBorder: false,
+      overviewRulerLanes: 3,
+      
+      // Hide cursor in overview ruler
+      hideCursorInOverviewRuler: false,
+      
+      // Unicode highlighting - configured to allow common special characters
+      // This prevents Monaco from highlighting box-drawing characters, emojis, etc. as "ambiguous"
+      unicodeHighlight: {
+        ambiguousCharacters: false, // Disable - causes issues with box-drawing chars
+        invisibleCharacters: true,
+        nonBasicASCII: false, // Don't highlight non-ASCII as suspicious
+        includeComments: false, // Don't highlight in comments
+        includeStrings: false, // Don't highlight in strings
+        allowedCharacters: {
+          // Box-drawing characters
+          '\u251C': true, '\u2502': true, '\u2514': true, '\u2500': true, '\u250C': true, '\u2510': true,
+          '\u2518': true, '\u2524': true, '\u252C': true, '\u2534': true, '\u253C': true,
+          '\u2554': true, '\u2557': true, '\u255A': true, '\u255D': true, '\u2551': true, '\u2550': true,
+          // Common symbols - arrows
+          '\u2192': true, '\u2190': true, '\u2191': true, '\u2193': true, '\u21D2': true, '\u21D0': true,
+          // Check marks and crosses
+          '\u2713': true, '\u2717': true, '\u2714': true, '\u2718': true,
+          // Bullets
+          '\u2022': true, '\u25E6': true, '\u25AA': true, '\u25AB': true,
+          // Copyright, trademark
+          '\u00A9': true, '\u00AE': true, '\u2122': true,
+          // Math symbols
+          '\u00B0': true, '\u00B1': true, '\u00D7': true, '\u00F7': true,
+          // Punctuation
+          '\u2026': true, '\u2014': true, '\u2013': true,
+          // Smart quotes
+          '\u2018': true, '\u2019': true, '\u201C': true, '\u201D': true,
+          // Guillemets
+          '\u00AB': true, '\u00BB': true,
+          // Currency
+          '\u20AC': true, '\u00A3': true, '\u00A5': true,
+        },
+        allowedLocales: { _os: true, _vscode: true },
       },
     });
 
@@ -398,9 +640,408 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
     // Focus editor
     editor.focus();
 
-    // Add Ctrl+S shortcut
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+    // =============================================
+    // VSCode-like keyboard shortcuts and commands
+    // =============================================
+
+    // Ctrl+S - Save with format on save and trim trailing whitespace
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+      const currentSettings = settingsRef.current;
+      const model = editor.getModel();
+      
+      // Apply pre-save transformations
+      if (model) {
+        const edits: monaco.editor.IIdentifiedSingleEditOperation[] = [];
+        
+        // Trim trailing whitespace
+        if (currentSettings.trimTrailingWhitespace) {
+          const lineCount = model.getLineCount();
+          for (let i = 1; i <= lineCount; i++) {
+            const line = model.getLineContent(i);
+            const trimmed = line.trimEnd();
+            if (line !== trimmed) {
+              edits.push({
+                range: new monaco.Range(i, trimmed.length + 1, i, line.length + 1),
+                text: '',
+              });
+            }
+          }
+        }
+        
+        // Insert final newline
+        if (currentSettings.insertFinalNewline) {
+          const lineCount = model.getLineCount();
+          const lastLine = model.getLineContent(lineCount);
+          if (lastLine.length > 0) {
+            edits.push({
+              range: new monaco.Range(lineCount, lastLine.length + 1, lineCount, lastLine.length + 1),
+              text: model.getEOL(),
+            });
+          }
+        }
+        
+        // Apply edits if any
+        if (edits.length > 0) {
+          model.pushEditOperations([], edits, () => null);
+        }
+        
+        // Format document on save
+        if (currentSettings.formatOnSave) {
+          try {
+            const formatAction = editor.getAction('editor.action.formatDocument');
+            if (formatAction) {
+              await formatAction.run();
+            }
+          } catch {
+            // Formatting may fail if no formatter is available, continue with save
+          }
+        }
+      }
+      
       onSaveRef.current();
+    });
+
+    // Ctrl+D - Add selection to next find match (multi-cursor)
+    editor.addAction({
+      id: 'vyotiq.addSelectionToNextFindMatch',
+      label: 'Add Selection To Next Find Match',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD],
+      run: (ed) => {
+        ed.getAction('editor.action.addSelectionToNextFindMatch')?.run();
+      }
+    });
+
+    // Alt+Click - Add cursor (handled by Monaco default)
+
+    // Ctrl+Shift+L - Select all occurrences of find match
+    editor.addAction({
+      id: 'vyotiq.selectAllOccurrences',
+      label: 'Select All Occurrences of Find Match',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyL],
+      run: (ed) => {
+        ed.getAction('editor.action.selectHighlights')?.run();
+      }
+    });
+
+    // Ctrl+/ - Toggle line comment
+    editor.addAction({
+      id: 'vyotiq.toggleLineComment',
+      label: 'Toggle Line Comment',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash],
+      run: (ed) => {
+        ed.getAction('editor.action.commentLine')?.run();
+      }
+    });
+
+    // Ctrl+Shift+/ or Ctrl+Shift+A - Toggle block comment
+    editor.addAction({
+      id: 'vyotiq.toggleBlockComment',
+      label: 'Toggle Block Comment',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Slash],
+      run: (ed) => {
+        ed.getAction('editor.action.blockComment')?.run();
+      }
+    });
+
+    // Alt+Up - Move line up
+    editor.addAction({
+      id: 'vyotiq.moveLineUp',
+      label: 'Move Line Up',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.UpArrow],
+      run: (ed) => {
+        ed.getAction('editor.action.moveLinesUpAction')?.run();
+      }
+    });
+
+    // Alt+Down - Move line down
+    editor.addAction({
+      id: 'vyotiq.moveLineDown',
+      label: 'Move Line Down',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.DownArrow],
+      run: (ed) => {
+        ed.getAction('editor.action.moveLinesDownAction')?.run();
+      }
+    });
+
+    // Alt+Shift+Up - Copy line up
+    editor.addAction({
+      id: 'vyotiq.copyLineUp',
+      label: 'Copy Line Up',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.UpArrow],
+      run: (ed) => {
+        ed.getAction('editor.action.copyLinesUpAction')?.run();
+      }
+    });
+
+    // Alt+Shift+Down - Copy line down
+    editor.addAction({
+      id: 'vyotiq.copyLineDown',
+      label: 'Copy Line Down',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.DownArrow],
+      run: (ed) => {
+        ed.getAction('editor.action.copyLinesDownAction')?.run();
+      }
+    });
+
+    // Ctrl+Shift+K - Delete line
+    editor.addAction({
+      id: 'vyotiq.deleteLine',
+      label: 'Delete Line',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyK],
+      run: (ed) => {
+        ed.getAction('editor.action.deleteLines')?.run();
+      }
+    });
+
+    // Ctrl+Enter - Insert line below
+    editor.addAction({
+      id: 'vyotiq.insertLineBelow',
+      label: 'Insert Line Below',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      run: (ed) => {
+        ed.getAction('editor.action.insertLineAfter')?.run();
+      }
+    });
+
+    // Ctrl+Shift+Enter - Insert line above
+    editor.addAction({
+      id: 'vyotiq.insertLineAbove',
+      label: 'Insert Line Above',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter],
+      run: (ed) => {
+        ed.getAction('editor.action.insertLineBefore')?.run();
+      }
+    });
+
+    // Ctrl+Shift+\ - Jump to matching bracket
+    editor.addAction({
+      id: 'vyotiq.jumpToBracket',
+      label: 'Go to Bracket',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Backslash],
+      run: (ed) => {
+        ed.getAction('editor.action.jumpToBracket')?.run();
+      }
+    });
+
+    // Ctrl+] - Indent line
+    editor.addAction({
+      id: 'vyotiq.indentLine',
+      label: 'Indent Line',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.BracketRight],
+      run: (ed) => {
+        ed.getAction('editor.action.indentLines')?.run();
+      }
+    });
+
+    // Ctrl+[ - Outdent line
+    editor.addAction({
+      id: 'vyotiq.outdentLine',
+      label: 'Outdent Line',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.BracketLeft],
+      run: (ed) => {
+        ed.getAction('editor.action.outdentLines')?.run();
+      }
+    });
+
+    // Ctrl+K Ctrl+0 - Fold all
+    editor.addAction({
+      id: 'vyotiq.foldAll',
+      label: 'Fold All',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Digit0 | monaco.KeyMod.Alt],
+      run: (ed) => {
+        ed.getAction('editor.foldAll')?.run();
+      }
+    });
+
+    // Ctrl+K Ctrl+J - Unfold all
+    editor.addAction({
+      id: 'vyotiq.unfoldAll',
+      label: 'Unfold All',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ | monaco.KeyMod.Alt],
+      run: (ed) => {
+        ed.getAction('editor.unfoldAll')?.run();
+      }
+    });
+
+    // Ctrl+Shift+[ - Fold region
+    editor.addAction({
+      id: 'vyotiq.foldRegion',
+      label: 'Fold',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.BracketLeft],
+      run: (ed) => {
+        ed.getAction('editor.fold')?.run();
+      }
+    });
+
+    // Ctrl+Shift+] - Unfold region
+    editor.addAction({
+      id: 'vyotiq.unfoldRegion',
+      label: 'Unfold',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.BracketRight],
+      run: (ed) => {
+        ed.getAction('editor.unfold')?.run();
+      }
+    });
+
+    // F12 - Go to definition
+    editor.addAction({
+      id: 'vyotiq.goToDefinition',
+      label: 'Go to Definition',
+      keybindings: [monaco.KeyCode.F12],
+      run: (ed) => {
+        ed.getAction('editor.action.revealDefinition')?.run();
+      }
+    });
+
+    // Alt+F12 - Peek definition
+    editor.addAction({
+      id: 'vyotiq.peekDefinition',
+      label: 'Peek Definition',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.F12],
+      run: (ed) => {
+        ed.getAction('editor.action.peekDefinition')?.run();
+      }
+    });
+
+    // Shift+F12 - Go to references
+    editor.addAction({
+      id: 'vyotiq.goToReferences',
+      label: 'Go to References',
+      keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.F12],
+      run: (ed) => {
+        ed.getAction('editor.action.goToReferences')?.run();
+      }
+    });
+
+    // F2 - Rename symbol
+    editor.addAction({
+      id: 'vyotiq.renameSymbol',
+      label: 'Rename Symbol',
+      keybindings: [monaco.KeyCode.F2],
+      run: (ed) => {
+        ed.getAction('editor.action.rename')?.run();
+      }
+    });
+
+    // Ctrl+. - Quick fix
+    editor.addAction({
+      id: 'vyotiq.quickFix',
+      label: 'Quick Fix',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Period],
+      run: (ed) => {
+        ed.getAction('editor.action.quickFix')?.run();
+      }
+    });
+
+    // Shift+Alt+F - Format document
+    editor.addAction({
+      id: 'vyotiq.formatDocument',
+      label: 'Format Document',
+      keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
+      run: (ed) => {
+        ed.getAction('editor.action.formatDocument')?.run();
+      }
+    });
+
+    // Ctrl+K Ctrl+F - Format selection
+    editor.addAction({
+      id: 'vyotiq.formatSelection',
+      label: 'Format Selection',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
+      run: (ed) => {
+        ed.getAction('editor.action.formatSelection')?.run();
+      }
+    });
+
+    // Ctrl+Space - Trigger suggestion
+    editor.addAction({
+      id: 'vyotiq.triggerSuggest',
+      label: 'Trigger Suggest',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space],
+      run: (ed) => {
+        ed.getAction('editor.action.triggerSuggest')?.run();
+      }
+    });
+
+    // Ctrl+Shift+Space - Trigger parameter hints
+    editor.addAction({
+      id: 'vyotiq.triggerParameterHints',
+      label: 'Trigger Parameter Hints',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Space],
+      run: (ed) => {
+        ed.getAction('editor.action.triggerParameterHints')?.run();
+      }
+    });
+
+    // Ctrl+K Ctrl+X - Trim trailing whitespace
+    editor.addAction({
+      id: 'vyotiq.trimTrailingWhitespace',
+      label: 'Trim Trailing Whitespace',
+      keybindings: [],
+      run: (ed) => {
+        ed.getAction('editor.action.trimTrailingWhitespace')?.run();
+      }
+    });
+
+    // Ctrl+L - Select line
+    editor.addAction({
+      id: 'vyotiq.selectLine',
+      label: 'Select Line',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyL],
+      run: (ed) => {
+        const selection = ed.getSelection();
+        if (selection) {
+          const lineNumber = selection.startLineNumber;
+          const model = ed.getModel();
+          if (model) {
+            ed.setSelection(new monaco.Selection(
+              lineNumber, 1,
+              lineNumber + 1, 1
+            ));
+          }
+        }
+      }
+    });
+
+    // Ctrl+Shift+D - Duplicate line/selection
+    editor.addAction({
+      id: 'vyotiq.duplicateLine',
+      label: 'Duplicate Line',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyD],
+      run: (ed) => {
+        const selection = ed.getSelection();
+        const model = ed.getModel();
+        if (selection && model) {
+          if (selection.isEmpty()) {
+            // Duplicate entire line
+            const lineNumber = selection.startLineNumber;
+            const lineContent = model.getLineContent(lineNumber);
+            ed.executeEdits('duplicate', [{
+              range: new monaco.Range(lineNumber, model.getLineMaxColumn(lineNumber), lineNumber, model.getLineMaxColumn(lineNumber)),
+              text: '\n' + lineContent,
+              forceMoveMarkers: true,
+            }]);
+          } else {
+            // Duplicate selection
+            const text = model.getValueInRange(selection);
+            ed.executeEdits('duplicate', [{
+              range: new monaco.Range(selection.endLineNumber, selection.endColumn, selection.endLineNumber, selection.endColumn),
+              text: text,
+              forceMoveMarkers: true,
+            }]);
+          }
+        }
+      }
+    });
+
+    // Ctrl+U - Undo cursor
+    editor.addAction({
+      id: 'vyotiq.undoCursor',
+      label: 'Cursor Undo',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyU],
+      run: (ed) => {
+        ed.getAction('cursorUndo')?.run();
+      }
     });
 
     // Handle context menu
@@ -521,7 +1162,27 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
       }
     });
 
+    // Listen for custom editor commands from command palette
+    const handleFind = () => {
+      editor.getAction('actions.find')?.run();
+    };
+    const handleReplace = () => {
+      editor.getAction('editor.action.startFindReplaceAction')?.run();
+    };
+    const handleFormat = () => {
+      editor.getAction('editor.action.formatDocument')?.run();
+    };
+
+    document.addEventListener('vyotiq:editor:find', handleFind);
+    document.addEventListener('vyotiq:editor:replace', handleReplace);
+    document.addEventListener('vyotiq:editor:formatDocument', handleFormat);
+
     return () => {
+      // Remove custom event listeners
+      document.removeEventListener('vyotiq:editor:find', handleFind);
+      document.removeEventListener('vyotiq:editor:replace', handleReplace);
+      document.removeEventListener('vyotiq:editor:formatDocument', handleFormat);
+
       // Clear the AI action callback when editor is disposed
       if (enableAI) {
         setAIActionCallback(null);
@@ -549,7 +1210,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
       safeDispose(editor);
       editorRef.current = null;
     };
-  }, [tab.id, tab.isLoading, tab.hasError, enableAI]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab.id, tab.isLoading, tab.hasError, enableAI, enableCodeLens]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update content when tab changes (but not on initial mount)
   // Optimized to only update when tab switches, not on every content change
@@ -627,13 +1288,45 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
         tabSize: settings.tabSize,
         insertSpaces: settings.insertSpaces,
         wordWrap: settings.wordWrap,
-        minimap: { enabled: settings.minimap },
+        minimap: { 
+          enabled: settings.minimap,
+          autohide: 'none' as const,
+          renderCharacters: false,
+          maxColumn: 120,
+          scale: 1,
+          showSlider: 'mouseover',
+        },
         lineNumbers: settings.lineNumbers,
         renderWhitespace: settings.renderWhitespace,
-        bracketPairColorization: { enabled: settings.bracketPairColorization },
+        bracketPairColorization: { 
+          enabled: settings.bracketPairColorization,
+          independentColorPoolPerBracketType: true,
+        },
         smoothScrolling: settings.smoothScrolling,
         cursorBlinking: settings.cursorBlinking,
         cursorStyle: settings.cursorStyle,
+        // VSCode features
+        stickyScroll: {
+          enabled: settings.stickyScroll ?? true,
+          maxLineCount: 5,
+        },
+        fontLigatures: settings.fontLigatures ?? true,
+        formatOnPaste: settings.formatOnPaste ?? true,
+        formatOnType: settings.formatOnType ?? true,
+        linkedEditing: settings.linkedEditing ?? true,
+        inlayHints: {
+          enabled: (settings.inlayHints ?? true) ? 'on' : 'off',
+          fontSize: settings.fontSize ? Math.round(settings.fontSize * 0.85) : 11,
+          fontFamily: settings.fontFamily,
+          padding: true,
+        },
+        guides: {
+          bracketPairs: 'active',
+          bracketPairsHorizontal: 'active',
+          highlightActiveBracketPair: true,
+          indentation: settings.renderIndentGuides ?? true,
+          highlightActiveIndentation: (settings.highlightActiveIndentGuide ?? true) ? 'always' : false,
+        },
       });
     }
   }, [settings]);

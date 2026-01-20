@@ -10,7 +10,9 @@ import type {
   RendererEvent,
   AgentEvent,
   AccessLevelSettings,
+  ToolConfigSettings,
 } from '../../../shared/types';
+import { DEFAULT_TOOL_CONFIG_SETTINGS } from '../../../shared/types';
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
 import type { ToolRegistry, TerminalManager, ToolExecutionContext } from '../../tools';
@@ -24,7 +26,12 @@ import { getAccessLevelCategory, checkAccessLevelPermission } from '../utils/acc
 import { getLoopDetector } from '../loopDetection';
 import { getSessionHealthMonitor } from '../sessionHealth';
 import { agentMetrics } from '../metrics';
-import { executeToolsParallel, canBenefitFromParallel, DEFAULT_PARALLEL_CONFIG } from '../../tools/executor';
+import { executeToolsParallel, canBenefitFromParallel, DEFAULT_PARALLEL_CONFIG, type ParallelExecutionConfig } from '../../tools/executor';
+import { recordToolError, recordToolSuccess } from '../context/ToolContextManager';
+import { getToolResultCache } from '../cache/ToolResultCache';
+import { getErrorRecoveryManager } from '../recovery/ErrorRecoveryManager';
+import { getToolExecutionLogger, createToolSpecificLogger } from '../logging/ToolExecutionLogger';
+import { getOutputTruncator } from '../output/OutputTruncator';
 import type { EnhancedToolResult } from '../../tools/types';
 
 export class ToolQueueProcessor {
@@ -38,6 +45,7 @@ export class ToolQueueProcessor {
   private readonly complianceValidator: ComplianceValidator;
   private readonly updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void;
   private readonly getAccessLevelSettings: () => AccessLevelSettings | undefined;
+  private readonly getToolSettings: () => ToolConfigSettings | undefined;
   private readonly activeControllers: Map<string, AbortController>;
   private readonly safetyManagers = new Map<string, SafetyManager>();
 
@@ -52,7 +60,8 @@ export class ToolQueueProcessor {
     complianceValidator: ComplianceValidator,
     updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void,
     getAccessLevelSettings: () => AccessLevelSettings | undefined,
-    activeControllers: Map<string, AbortController>
+    activeControllers: Map<string, AbortController>,
+    getToolSettings?: () => ToolConfigSettings | undefined
   ) {
     this.toolRegistry = toolRegistry;
     this.terminalManager = terminalManager;
@@ -65,6 +74,20 @@ export class ToolQueueProcessor {
     this.updateSessionState = updateSessionState;
     this.getAccessLevelSettings = getAccessLevelSettings;
     this.activeControllers = activeControllers;
+    this.getToolSettings = getToolSettings ?? (() => undefined);
+  }
+
+  /**
+   * Get the parallel execution configuration based on current settings
+   */
+  private getParallelConfig(): ParallelExecutionConfig {
+    const toolSettings = this.getToolSettings();
+    const maxConcurrency = toolSettings?.maxConcurrentTools ?? DEFAULT_TOOL_CONFIG_SETTINGS.maxConcurrentTools;
+    
+    return {
+      ...DEFAULT_PARALLEL_CONFIG,
+      maxConcurrency,
+    };
   }
 
   /**
@@ -167,12 +190,14 @@ export class ToolQueueProcessor {
     signal?: AbortSignal
   ): Promise<void> {
     const startTime = Date.now();
+    const parallelConfig = this.getParallelConfig();
 
     this.logger.info('Starting parallel tool execution', {
       sessionId: session.state.id,
       runId,
       toolCount: tools.length,
       tools: tools.map(t => t.name),
+      maxConcurrency: parallelConfig.maxConcurrency,
     });
 
     for (const tool of tools) {
@@ -194,12 +219,25 @@ export class ToolQueueProcessor {
         const toolResult = await this.executeToolAndGetResult(session, tool, runId);
         return toolResult;
       },
-      DEFAULT_PARALLEL_CONFIG,
+      parallelConfig,
       signal
     );
 
     const duration = Date.now() - startTime;
 
+    // Log parallel execution results with time savings using structured logger
+    const toolExecutionLogger = getToolExecutionLogger();
+    toolExecutionLogger.logParallelExecution(session.state.id, runId, {
+      toolCount: tools.length,
+      tools: tools.map(t => t.name),
+      totalDurationMs: result.totalDurationMs,
+      timeSavedMs: result.timeSavedMs,
+      wasParallel: result.wasParallel,
+      succeeded: result.succeeded.length,
+      failed: result.failed.length,
+    });
+
+    // Also log to the instance logger for backward compatibility
     this.logger.info('Parallel tool execution completed', {
       sessionId: session.state.id,
       runId,
@@ -211,12 +249,29 @@ export class ToolQueueProcessor {
       failed: result.failed.length,
     });
 
+    // Log individual tool failures - failed tools don't block other independent tools
+    if (result.failed.length > 0) {
+      this.logger.warn('Some tools failed during parallel execution (other tools continued)', {
+        sessionId: session.state.id,
+        runId,
+        failedTools: result.failed,
+        succeededTools: result.succeeded,
+        message: 'Failed tools did not block execution of other independent tools',
+      });
+    }
+
+    // Emit time savings notification to the UI
     if (result.wasParallel && result.timeSavedMs > 0) {
+      const timeSavedSeconds = (result.timeSavedMs / 1000).toFixed(1);
+      const percentageSaved = result.totalDurationMs > 0 
+        ? ((result.timeSavedMs / (result.totalDurationMs + result.timeSavedMs)) * 100).toFixed(0)
+        : '0';
+      
       this.emitEvent({
         type: 'agent-status',
         sessionId: session.state.id,
         status: 'executing',
-        message: `Parallel execution saved ${Math.round(result.timeSavedMs / 1000)}s`,
+        message: `Parallel execution saved ${timeSavedSeconds}s (${percentageSaved}% faster)`,
         timestamp: Date.now(),
       });
     }
@@ -347,6 +402,17 @@ export class ToolQueueProcessor {
     const toolDetail = this.describeToolTarget(tool);
     const progressId = this.progressTracker.startToolProgress(session, runId, tool, toolDetail);
 
+    // Log tool execution start with structured logging
+    const toolExecutionLogger = getToolExecutionLogger();
+    const args = tool.arguments && typeof tool.arguments === 'object' ? tool.arguments : {};
+    toolExecutionLogger.logStart({
+      sessionId: session.state.id,
+      runId,
+      toolName: tool.name,
+      args: args as Record<string, unknown>,
+      iteration: session.agenticContext?.iteration,
+    });
+
     this.emitEvent({
       type: 'agent-status',
       sessionId: session.state.id,
@@ -382,21 +448,26 @@ export class ToolQueueProcessor {
       const safetyManager = this.getOrCreateSafetyManager(runId);
       const accessSettings = this.getAccessLevelSettings();
 
+      // Create a tool-specific logger that includes tool context in all log messages
+      const toolSpecificLogger = createToolSpecificLogger(
+        this.logger,
+        tool.name,
+        session.state.id,
+        runId
+      );
+
       const context: ToolExecutionContext = {
         workspacePath: workspace.path,
         cwd: workspace.path,
         terminalManager: this.terminalManager,
-        logger: {
-          info: (msg: string, meta?: Record<string, unknown>) => this.logger.info(`[tool] ${msg}`, meta),
-          warn: (msg: string, meta?: Record<string, unknown>) => this.logger.warn(`[tool] ${msg}`, meta),
-          error: (msg: string, meta?: Record<string, unknown>) => this.logger.error(`[tool] ${msg}`, meta),
-        },
+        logger: toolSpecificLogger,
         safetyManager,
         runId,
         sessionId: session.state.id,
         yoloMode: session.state.config.yoloMode,
         allowOutsideWorkspace: accessSettings?.allowOutsideWorkspace ?? false,
         signal,
+        emitEvent: this.emitEvent,
       };
 
       const args = tool.arguments && typeof tool.arguments === 'object' ? tool.arguments : {};
@@ -479,18 +550,100 @@ export class ToolQueueProcessor {
       const result = await this.toolRegistry.execute(tool.name, args, context);
       const duration = Date.now() - startTime;
 
+      // Check if result was from cache
+      const fromCache = result.metadata?.fromCache === true;
+      const tokensSaved = result.metadata?.estimatedTokensSaved as number | undefined;
+
+      // Apply intelligent output truncation if output exceeds token limit
+      const outputTruncator = getOutputTruncator();
+      const truncationResult = outputTruncator.truncate(result.output, tool.name);
+      
+      // Log truncation if it occurred
+      if (truncationResult.wasTruncated) {
+        this.logger.info('Tool output truncated', {
+          tool: tool.name,
+          sessionId: session.state.id,
+          runId,
+          originalTokens: truncationResult.originalTokens,
+          finalTokens: truncationResult.finalTokens,
+          originalLines: truncationResult.originalLines,
+          linesRemoved: truncationResult.linesRemoved,
+          summary: truncationResult.summary,
+        });
+      }
+
+      // Build tool result content, adding recovery suggestions for failures
+      let toolResultContent = truncationResult.content;
+      
+      // Add truncation summary if output was truncated
+      if (truncationResult.wasTruncated && truncationResult.summary) {
+        toolResultContent += `\n\n📊 ${truncationResult.summary}`;
+      }
+      
+      if (!result.success) {
+        // Get recovery suggestion with alternative approach if error is repeated
+        const errorRecoveryManager = getErrorRecoveryManager();
+        const recoverySuggestion = errorRecoveryManager.analyzeError(
+          result.output,
+          tool.name,
+          session.state.id
+        );
+        
+        // Add recovery suggestion if available
+        if (recoverySuggestion.confidence > 0.3) {
+          toolResultContent += `\n\n💡 Recovery suggestion: ${recoverySuggestion.suggestedAction}`;
+          if (recoverySuggestion.suggestedTools.length > 0) {
+            toolResultContent += `\n   Suggested tools: ${recoverySuggestion.suggestedTools.join(', ')}`;
+          }
+          
+          // Add alternative approach warning if this is a repeated error
+          if (recoverySuggestion.isAlternative) {
+            toolResultContent += `\n\n⚠️ This error has occurred repeatedly. Consider trying a different approach.`;
+          }
+        }
+      }
+
       const toolResultMessage: ChatMessage = {
         id: randomUUID(),
         role: 'tool',
-        content: result.output,
+        content: toolResultContent,
         toolCallId: tool.callId,
         toolName: tool.name,
         toolSuccess: result.success,
-        resultMetadata: result.metadata,
+        resultMetadata: {
+          ...result.metadata,
+          truncated: truncationResult.wasTruncated,
+          truncationInfo: truncationResult.wasTruncated ? {
+            originalTokens: truncationResult.originalTokens,
+            finalTokens: truncationResult.finalTokens,
+            originalLines: truncationResult.originalLines,
+            linesRemoved: truncationResult.linesRemoved,
+          } : undefined,
+        },
         createdAt: Date.now(),
         runId,
       };
       session.state.messages.push(toolResultMessage);
+
+      // Track tool success/error for context-aware tool selection
+      if (result.success) {
+        recordToolSuccess(session.state.id, tool.name);
+      } else {
+        recordToolError(session.state.id, tool.name, result.output.slice(0, 500));
+        // Also record to ErrorRecoveryManager for session error history tracking
+        getErrorRecoveryManager().recordError(
+          session.state.id,
+          tool.name,
+          result.output.slice(0, 500)
+        );
+      }
+
+      // Update loop detector with actual result (for failure pattern detection)
+      // Extract failure reason for specific error types (e.g., identical edit strings)
+      if (!result.success) {
+        const failureReason = result.output.includes('identical') ? 'identical' : undefined;
+        loopDetector.recordToolCall(runId, tool, iteration, false, failureReason);
+      }
 
       if (session.agenticContext) {
         session.agenticContext.toolCallCount++;
@@ -519,11 +672,40 @@ export class ToolQueueProcessor {
         timestamp: Date.now(),
       });
 
-      this.logger.debug(result.success ? 'Tool executed successfully' : 'Tool executed with failure', {
-        tool: tool.name,
-        duration,
-        success: result.success,
-      });
+      // Log tool completion with structured logging
+      toolExecutionLogger.logComplete(
+        {
+          sessionId: session.state.id,
+          runId,
+          toolName: tool.name,
+          args: args as Record<string, unknown>,
+          iteration: session.agenticContext?.iteration,
+        },
+        {
+          success: result.success,
+          output: result.output,
+          metadata: result.metadata,
+        },
+        duration
+      );
+
+      // Log cache event if applicable
+      if (fromCache) {
+        toolExecutionLogger.logCacheEvent(tool.name, true, tokensSaved);
+        this.logger.debug('Tool result served from cache', {
+          tool: tool.name,
+          duration,
+          tokensSaved,
+          cacheStats: getToolResultCache().getStats(),
+        });
+      } else {
+        toolExecutionLogger.logCacheEvent(tool.name, false);
+        this.logger.debug(result.success ? 'Tool executed successfully' : 'Tool executed with failure', {
+          tool: tool.name,
+          duration,
+          success: result.success,
+        });
+      }
 
       agentMetrics.recordToolExecution(runId, result.success, false, tool.name);
       this.progressTracker.finishToolProgress(session, runId, progressId, toolLabel, toolDetail, result.success ? 'success' : 'error');
@@ -535,6 +717,38 @@ export class ToolQueueProcessor {
       const duration = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : String(error);
 
+      // Track error for context-aware tool selection
+      recordToolError(session.state.id, tool.name, errorMsg);
+      // Also record to ErrorRecoveryManager for session error history tracking
+      getErrorRecoveryManager().recordError(
+        session.state.id,
+        tool.name,
+        errorMsg
+      );
+
+      // Get recovery suggestion with alternative approach if error is repeated
+      const errorRecoveryManager = getErrorRecoveryManager();
+      const recoverySuggestion = errorRecoveryManager.analyzeError(
+        errorMsg,
+        tool.name,
+        session.state.id
+      );
+
+      // Log tool error with structured logging including recovery suggestions
+      const toolExecutionLoggerForError = getToolExecutionLogger();
+      toolExecutionLoggerForError.logError(
+        {
+          sessionId: session.state.id,
+          runId,
+          toolName: tool.name,
+          args: args as Record<string, unknown>,
+          iteration: session.agenticContext?.iteration,
+        },
+        error instanceof Error ? error : new Error(errorMsg),
+        duration,
+        recoverySuggestion.confidence > 0.3 ? recoverySuggestion : undefined
+      );
+
       this.logger.error('Tool execution failed', {
         tool: tool.name,
         error: errorMsg,
@@ -544,10 +758,26 @@ export class ToolQueueProcessor {
       agentMetrics.recordToolExecution(runId, false, false, tool.name);
       this.progressTracker.finishToolProgress(session, runId, progressId, toolLabel, toolDetail, 'error');
 
+      // Build error message with recovery suggestion
+      let errorContent = `Error: ${errorMsg}`;
+      
+      // Add recovery suggestion if available
+      if (recoverySuggestion.confidence > 0.3) {
+        errorContent += `\n\n💡 Recovery suggestion: ${recoverySuggestion.suggestedAction}`;
+        if (recoverySuggestion.suggestedTools.length > 0) {
+          errorContent += `\n   Suggested tools: ${recoverySuggestion.suggestedTools.join(', ')}`;
+        }
+        
+        // Add alternative approach warning if this is a repeated error
+        if (recoverySuggestion.isAlternative) {
+          errorContent += `\n\n⚠️ This error has occurred repeatedly. Consider trying a different approach.`;
+        }
+      }
+
       const errorMessage: ChatMessage = {
         id: randomUUID(),
         role: 'tool',
-        content: `Error: ${errorMsg}`,
+        content: errorContent,
         toolCallId: tool.callId,
         toolName: tool.name,
         toolSuccess: false,

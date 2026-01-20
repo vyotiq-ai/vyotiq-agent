@@ -44,10 +44,11 @@ const MODE_INTERVALS: Record<StreamingMode, number> = {
  * and flushes them at a controlled rate for smooth rendering.
  * 
  * Performance optimizations:
- * - Uses requestAnimationFrame ONLY when there's content to flush (idle otherwise)
+ * - Uses setTimeout instead of RAF for more predictable batching
  * - Adaptive batching based on incoming character rate
  * - Multiple streaming modes for different use cases
  * - Efficient buffer management with automatic cleanup
+ * - Idle detection to stop flush loop when not needed
  */
 export const useStreamingBuffer = (options: StreamingBufferOptions) => {
   const {
@@ -66,9 +67,9 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
 
   // Keyed by `${sessionId}:${messageId}`
   const buffersRef = useRef<Map<string, BufferState>>(new Map());
-  const flushTimerRef = useRef<number | null>(null);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onFlushRef = useRef(onFlush);
-  const isActiveRef = useRef(false); // Track if we have active content to flush
+  const isActiveRef = useRef(false);
   
   // Track high-throughput sessions for adaptive batching
   const highThroughputRef = useRef<Set<string>>(new Set());
@@ -90,7 +91,7 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
     let effectiveInterval = flushInterval;
     if (adaptiveBatching) {
       const timeSinceCount = now - buffer.recentCharsTimestamp;
-      if (timeSinceCount < 1000) {
+      if (timeSinceCount < 1000 && timeSinceCount > 0) {
         // Calculate characters per second
         const charsPerSecond = buffer.recentCharsCount / (timeSinceCount / 1000);
         
@@ -131,27 +132,26 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
     return hasContent;
   }, [flush]);
 
-  // Start the RAF loop when needed, stop when idle
+  // PERFORMANCE OPTIMIZATION: Use setTimeout instead of RAF for more predictable batching
+  // RAF runs at 60fps which is too frequent for text streaming
   const startFlushLoop = useCallback(() => {
     if (flushTimerRef.current !== null) return; // Already running
     
     const tick = () => {
-      const hasRemainingContent = flushAll(false);
+      flushAll(false);
       
       // Check if any buffer still has content
-      let stillActive = hasRemainingContent;
-      if (!stillActive) {
-        for (const buffer of buffersRef.current.values()) {
-          if (buffer.content.length > 0) {
-            stillActive = true;
-            break;
-          }
+      let stillActive = false;
+      for (const buffer of buffersRef.current.values()) {
+        if (buffer.content.length > 0) {
+          stillActive = true;
+          break;
         }
       }
       
       // Only continue the loop if there's still content to flush
       if (stillActive) {
-        flushTimerRef.current = requestAnimationFrame(tick);
+        flushTimerRef.current = setTimeout(tick, flushInterval);
       } else {
         flushTimerRef.current = null;
         isActiveRef.current = false;
@@ -159,14 +159,14 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
     };
     
     isActiveRef.current = true;
-    flushTimerRef.current = requestAnimationFrame(tick);
-  }, [flushAll]);
+    flushTimerRef.current = setTimeout(tick, flushInterval);
+  }, [flushAll, flushInterval]);
 
   // Cleanup on unmount only
   useEffect(() => {
     return () => {
       if (flushTimerRef.current) {
-        cancelAnimationFrame(flushTimerRef.current);
+        clearTimeout(flushTimerRef.current);
         flushTimerRef.current = null;
       }
       // Flush any remaining content on unmount

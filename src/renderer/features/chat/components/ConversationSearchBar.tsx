@@ -5,7 +5,7 @@
  * Shows match count and navigation controls when search is active.
  */
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { memo, useRef, useEffect, useCallback } from 'react';
 import { cn } from '../../../utils/cn';
 import { useHotkey } from '../../../hooks/useKeyboard';
 
@@ -30,7 +30,7 @@ interface ConversationSearchBarProps {
   className?: string;
 }
 
-export const ConversationSearchBar: React.FC<ConversationSearchBarProps> = ({
+const ConversationSearchBarComponent: React.FC<ConversationSearchBarProps> = ({
   searchQuery,
   onSearchChange,
   matchCount,
@@ -186,4 +186,5 @@ export const ConversationSearchBar: React.FC<ConversationSearchBarProps> = ({
   );
 };
 
+export const ConversationSearchBar = memo(ConversationSearchBarComponent);
 export default ConversationSearchBar;

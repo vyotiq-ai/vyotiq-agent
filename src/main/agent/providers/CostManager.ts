@@ -330,6 +330,9 @@ export class CostManager {
       openai: 0,
       deepseek: 0,
       gemini: 0,
+      xai: 0,
+      mistral: 0,
+      glm: 0,
       openrouter: 0,
     };
     const byModel: Record<string, number> = {};

@@ -32,6 +32,7 @@ export { RunGroupHeader } from './components/RunGroupHeader';
 export { RunProgress } from './components/RunProgress';
 export { SessionWelcome } from './components/SessionWelcome';
 export { ThinkingPanel } from './components/ThinkingPanel';
+export { TodoProgress } from './components/TodoProgress';
 
 // UI Components (reused from other features)
 export { ModelSelector } from './components/ModelSelector';

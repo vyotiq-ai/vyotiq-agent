@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { BaseLLMProvider, type ProviderRequest, type ProviderMessage, APIError, withRetry } from './baseProvider';
+import { BaseLLMProvider, type ProviderRequest, type ProviderMessage, APIError, withRetry, fetchStreamWithRetry } from './baseProvider';
 import type { ProviderResponse, ToolCallPayload, ProviderResponseChunk } from '../../../shared/types';
 import { createLogger } from '../../logger';
 import { parseToolArguments } from '../../utils';
@@ -481,20 +481,26 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   async *stream(request: ProviderRequest): AsyncGenerator<ProviderResponseChunk> {
     const apiKey = this.assertApiKey();
-    const response = await fetch(`${this.baseUrl}/responses`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    // Use fetchStreamWithRetry for automatic retry on network errors
+    const response = await fetchStreamWithRetry(
+      `${this.baseUrl}/responses`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(this.buildBody(request, true)),
+        timeout: 120000, // 2 minute timeout for streaming requests
       },
-      body: JSON.stringify(this.buildBody(request, true)),
-      signal: request.signal, // Support abort signal
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw APIError.fromResponse(response, errorText);
-    }
+      request.signal,
+      {
+        maxRetries: 3,
+        initialDelayMs: 3000,
+        maxDelayMs: 15000,
+        backoffMultiplier: 2,
+      }
+    );
 
     if (!response.body) throw new Error('No response body');
 

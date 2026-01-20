@@ -65,7 +65,7 @@ export const ToolItem: React.FC<{
   const readMetaInfo = getReadMetadataInfo(tool.resultMetadata, tool.name);
   const durationMs = getDurationMsFromMetadata(tool.resultMetadata);
 
-  // Elapsed time for running tools
+  // Elapsed time for running tools - updates every 100ms for smooth display
   const [elapsed, setElapsed] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
@@ -74,7 +74,8 @@ export const ToolItem: React.FC<{
 
     const updateElapsed = () => setElapsed(formatElapsed(tool.startTime!));
     updateElapsed();
-    const interval = setInterval(updateElapsed, 1000);
+    // Update every 100ms for smoother elapsed time display
+    const interval = setInterval(updateElapsed, 100);
     return () => clearInterval(interval);
   }, [isActive, tool.startTime]);
 
@@ -163,180 +164,182 @@ export const ToolItem: React.FC<{
 
   return (
     <div className={cn('group/tool min-w-0 overflow-hidden', !isLast && 'mb-px')}>
-      {/* Tool header row - using div with role="button" to avoid nested button issue */}
-      <div
-        role={hasExpandableDetails ? 'button' : undefined}
-        tabIndex={hasExpandableDetails ? 0 : undefined}
-        className={cn(
-          'flex items-center gap-2 py-1 min-w-0 w-full',
-          'hover:bg-[var(--color-surface-2)]/40 rounded px-2 -mx-2',
-          'transition-all duration-150',
-          'outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30',
-          hasExpandableDetails ? 'cursor-pointer' : 'cursor-default',
-        )}
-        onClick={hasExpandableDetails ? onToggle : undefined}
-        onKeyDown={(e) => {
-          if (!hasExpandableDetails) return;
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onToggle();
-          }
-        }}
-        aria-expanded={hasExpandableDetails ? isExpanded : undefined}
-      >
-        {/* Status indicator with subtle background */}
-        <span className={cn(
-          'flex items-center justify-center w-4 h-4 rounded flex-shrink-0',
-          isActive && 'bg-[var(--color-warning)]/10',
-          hasError && 'bg-[var(--color-error)]/10',
-          isSuccess && 'bg-[var(--color-success)]/10',
-        )}>
-          {isActive ? (
-            <Loader2 size={10} className="text-[var(--color-warning)] animate-spin" />
-          ) : hasError ? (
-            <XIcon size={10} className="text-[var(--color-error)]" />
-          ) : (
-            <Check size={10} className="text-[var(--color-success)]" />
-          )}
-        </span>
-
-        {/* Tool icon */}
-        <Icon
-          size={12}
+      {/* Tool header row - hidden for file operations with diff data (DiffViewer has its own header) */}
+      {!(hasDiffData && isFileOperation) && (
+        <div
+          role={hasExpandableDetails ? 'button' : undefined}
+          tabIndex={hasExpandableDetails ? 0 : undefined}
           className={cn(
-            'flex-shrink-0',
-            isActive && 'text-[var(--color-warning)]',
-            hasError && 'text-[var(--color-error)]',
-            isSuccess && 'text-[var(--color-text-muted)]',
+            'flex items-center gap-2 py-1 min-w-0 w-full',
+            'hover:bg-[var(--color-surface-2)]/40 rounded px-2 -mx-2',
+            'transition-all duration-150',
+            'outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30',
+            hasExpandableDetails ? 'cursor-pointer' : 'cursor-default',
           )}
-        />
-
-        {/* Tool name */}
-        <span
-          className={cn(
-            'text-[11px] font-medium flex-shrink-0',
-            isActive && 'text-[var(--color-warning)]',
-            hasError && 'text-[var(--color-error)]',
-            isSuccess && 'text-[var(--color-text-secondary)]',
-          )}
+          onClick={hasExpandableDetails ? onToggle : undefined}
+          onKeyDown={(e) => {
+            if (!hasExpandableDetails) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onToggle();
+            }
+          }}
+          aria-expanded={hasExpandableDetails ? isExpanded : undefined}
         >
-          {tool.name}
-        </span>
+          {/* Status indicator with subtle background */}
+          <span className={cn(
+            'flex items-center justify-center w-4 h-4 rounded flex-shrink-0',
+            isActive && 'bg-[var(--color-warning)]/10',
+            hasError && 'bg-[var(--color-error)]/10',
+            isSuccess && 'bg-[var(--color-success)]/10',
+          )}>
+            {isActive ? (
+              <Loader2 size={10} className="text-[var(--color-warning)] animate-spin" />
+            ) : hasError ? (
+              <XIcon size={10} className="text-[var(--color-error)]" />
+            ) : (
+              <Check size={10} className="text-[var(--color-success)]" />
+            )}
+          </span>
 
-        {/* Dynamic tool indicator */}
-        {tool.isDynamic && (
-          <DynamicToolIndicator
-            toolName={tool.name}
-            createdBy={tool.dynamicToolInfo?.createdBy}
-            usageCount={tool.dynamicToolInfo?.usageCount}
-            successRate={tool.dynamicToolInfo?.successRate}
-            status={tool.dynamicToolInfo?.status}
+          {/* Tool icon */}
+          <Icon
+            size={12}
+            className={cn(
+              'flex-shrink-0',
+              isActive && 'text-[var(--color-warning)]',
+              hasError && 'text-[var(--color-error)]',
+              isSuccess && 'text-[var(--color-text-muted)]',
+            )}
           />
-        )}
 
-        {/* Target/context - styled as a subtle tag */}
-        {target && (
+          {/* Tool name */}
           <span
             className={cn(
-              'text-[10px] text-[var(--color-text-muted)] truncate min-w-0',
-              'px-1.5 py-0.5 rounded bg-[var(--color-surface-2)]/50',
-              'max-w-[30vw] sm:max-w-[35vw] md:max-w-[280px]',
+              'text-[11px] font-medium flex-shrink-0',
+              isActive && 'text-[var(--color-warning)]',
+              hasError && 'text-[var(--color-error)]',
+              isSuccess && 'text-[var(--color-text-secondary)]',
             )}
-            title={target}
           >
-            {target}
+            {tool.name}
           </span>
-        )}
 
-        {/* Read operation metadata */}
-        {isSuccess && readMetaInfo && (
-          <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-dim)] font-mono flex-shrink-0">
-            {readMetaInfo}
-          </span>
-        )}
+          {/* Dynamic tool indicator */}
+          {tool.isDynamic && (
+            <DynamicToolIndicator
+              toolName={tool.name}
+              createdBy={tool.dynamicToolInfo?.createdBy}
+              usageCount={tool.dynamicToolInfo?.usageCount}
+              successRate={tool.dynamicToolInfo?.successRate}
+              status={tool.dynamicToolInfo?.status}
+            />
+          )}
 
-        {/* Expand indicator for expandable items */}
-        {hasExpandableDetails && (
-          <span className="text-[var(--color-text-dim)]/50 flex-shrink-0 ml-auto mr-1">
-            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          </span>
-        )}
+          {/* Target/context - styled as a subtle tag */}
+          {target && (
+            <span
+              className={cn(
+                'text-[10px] text-[var(--color-text-muted)] truncate min-w-0',
+                'px-1.5 py-0.5 rounded bg-[var(--color-surface-2)]/50',
+                'max-w-[30vw] sm:max-w-[35vw] md:max-w-[280px]',
+              )}
+              title={target}
+            >
+              {target}
+            </span>
+          )}
 
-        {/* Right side: file op info OR timing/error */}
-        <span className={cn('flex items-center gap-1.5 flex-shrink-0', !hasExpandableDetails && 'ml-auto')}>
-          {/* File operation: Modified badge + stats + actions */}
-          {fileOpMeta && (
-            <>
-              {/* Action badge */}
-              <span className={cn(
-                'text-[9px] px-1.5 py-0.5 rounded font-medium',
-                fileOpMeta.isNew 
-                  ? 'bg-[var(--color-success)]/15 text-[var(--color-success)]' 
-                  : 'bg-[var(--color-warning)]/15 text-[var(--color-warning)]'
-              )}>
-                {fileOpMeta.actionLabel}
-              </span>
+          {/* Read operation metadata */}
+          {isSuccess && readMetaInfo && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-dim)] font-mono flex-shrink-0">
+              {readMetaInfo}
+            </span>
+          )}
 
-              {/* Copy path */}
-              <button
-                type="button"
-                onClick={handleCopyPath}
-                className={cn(
-                  'p-1 rounded text-[var(--color-text-muted)]',
-                  'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
-                  'transition-colors opacity-0 group-hover/tool:opacity-100'
-                )}
-                title={copied ? 'Copied!' : 'Copy path'}
-              >
-                <Copy size={10} className={copied ? 'text-[var(--color-success)]' : ''} />
-              </button>
-              
-              {/* Open file */}
-              {onOpenFile && (
+          {/* Expand indicator for expandable items */}
+          {hasExpandableDetails && (
+            <span className="text-[var(--color-text-dim)]/50 flex-shrink-0 ml-auto mr-1">
+              {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
+          )}
+
+          {/* Right side: file op info OR timing/error */}
+          <span className={cn('flex items-center gap-1.5 flex-shrink-0', !hasExpandableDetails && 'ml-auto')}>
+            {/* File operation: Modified badge + stats + actions */}
+            {fileOpMeta && (
+              <>
+                {/* Action badge */}
+                <span className={cn(
+                  'text-[9px] px-1.5 py-0.5 rounded font-medium',
+                  fileOpMeta.isNew 
+                    ? 'bg-[var(--color-success)]/15 text-[var(--color-success)]' 
+                    : 'bg-[var(--color-warning)]/15 text-[var(--color-warning)]'
+                )}>
+                  {fileOpMeta.actionLabel}
+                </span>
+
+                {/* Copy path */}
                 <button
                   type="button"
-                  onClick={handleOpenFile}
+                  onClick={handleCopyPath}
                   className={cn(
                     'p-1 rounded text-[var(--color-text-muted)]',
                     'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
                     'transition-colors opacity-0 group-hover/tool:opacity-100'
                   )}
-                  title="Open file"
+                  title={copied ? 'Copied!' : 'Copy path'}
                 >
-                  <FileText size={10} />
+                  <Copy size={10} className={copied ? 'text-[var(--color-success)]' : ''} />
                 </button>
-              )}
-            </>
-          )}
+                
+                {/* Open file */}
+                {onOpenFile && (
+                  <button
+                    type="button"
+                    onClick={handleOpenFile}
+                    className={cn(
+                      'p-1 rounded text-[var(--color-text-muted)]',
+                      'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
+                      'transition-colors opacity-0 group-hover/tool:opacity-100'
+                    )}
+                    title="Open file"
+                  >
+                    <FileText size={10} />
+                  </button>
+                )}
+              </>
+            )}
 
-          {/* Non-file operations: timing and error info */}
-          {!fileOpMeta && (
-            <>
-              {isActive && elapsed && (
-                <span className="text-[9px] text-[var(--color-warning)]/80 font-mono">{elapsed}</span>
-              )}
-              {!isActive && typeof durationMs === 'number' && !hasError && (
-                <span className="text-[9px] text-[var(--color-text-dim)] font-mono">
-                  {formatDurationMs(durationMs)}
-                </span>
-              )}
-              {hasError && errorPreview && (
-                <span 
-                  className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-error)]/10 text-[var(--color-error)] font-mono truncate max-w-[200px]" 
-                  title={fullOutput || errorPreview}
-                >
-                  {errorPreview}
-                </span>
-              )}
-              {hasError && !errorPreview && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-error)]/10 text-[var(--color-error)] font-mono">
-                  failed
-                </span>
-              )}
-            </>
-          )}
-        </span>
-      </div>
+            {/* Non-file operations: timing and error info */}
+            {!fileOpMeta && (
+              <>
+                {isActive && elapsed && (
+                  <span className="text-[9px] text-[var(--color-warning)]/80 font-mono">{elapsed}</span>
+                )}
+                {!isActive && typeof durationMs === 'number' && !hasError && (
+                  <span className="text-[9px] text-[var(--color-text-dim)] font-mono">
+                    {formatDurationMs(durationMs)}
+                  </span>
+                )}
+                {hasError && errorPreview && (
+                  <span 
+                    className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-error)]/10 text-[var(--color-error)] font-mono truncate max-w-[200px]" 
+                    title={fullOutput || errorPreview}
+                  >
+                    {errorPreview}
+                  </span>
+                )}
+                {hasError && !errorPreview && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-error)]/10 text-[var(--color-error)] font-mono">
+                    failed
+                  </span>
+                )}
+              </>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* Research result display */}
       {isExpanded && tool.resultMetadata?.type === 'research_result' && (
@@ -382,12 +385,12 @@ export const ToolItem: React.FC<{
         />
       )}
 
-      {/* File change diff display - auto-rendered for file operations */}
+      {/* File change diff display - always shown by default for file operations */}
       {hasDiffData && (
         <FileChangeDiff
           tool={tool}
           showActions={true}
-          defaultCollapsed={!isExpanded}
+          defaultCollapsed={false}
         />
       )}
     </div>

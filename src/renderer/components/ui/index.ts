@@ -8,9 +8,6 @@ export { Modal } from './Modal';
 export { StatusIndicator, StatusDot as StatusIndicatorDot } from './StatusIndicator';
 export { Toggle, Checkbox, RadioGroup } from './Toggle';
 
-// Task Progress Component
-export { TaskProgress } from './TaskProgress';
-
 // Interactive Data Viewer
 export { DataViewer } from './DataViewer';
 

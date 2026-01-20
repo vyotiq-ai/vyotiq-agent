@@ -57,6 +57,39 @@ export const PROVIDERS: Record<LLMProviderName, ProviderInfo> = {
     bgColor: 'bg-violet-500/10',
     icon: 'atom',
   },
+  xai: {
+    id: 'xai',
+    name: 'xAI',
+    shortName: 'Grok',
+    description: 'Grok models - advanced reasoning and coding',
+    website: 'https://x.ai',
+    docsUrl: 'https://docs.x.ai',
+    color: 'text-slate-400',
+    bgColor: 'bg-slate-500/10',
+    icon: 'brain',
+  },
+  mistral: {
+    id: 'mistral',
+    name: 'Mistral AI',
+    shortName: 'Mistral',
+    description: 'Mistral models - efficient and multilingual',
+    website: 'https://mistral.ai',
+    docsUrl: 'https://docs.mistral.ai',
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    icon: 'cpu',
+  },
+  glm: {
+    id: 'glm',
+    name: 'Z.AI GLM',
+    shortName: 'GLM',
+    description: 'GLM models - thinking mode and function calling',
+    website: 'https://z.ai',
+    docsUrl: 'https://docs.z.ai',
+    color: 'text-cyan-400',
+    bgColor: 'bg-cyan-500/10',
+    icon: 'brain',
+  },
   openrouter: {
     id: 'openrouter',
     name: 'OpenRouter',
@@ -71,7 +104,7 @@ export const PROVIDERS: Record<LLMProviderName, ProviderInfo> = {
 };
 
 /** Provider order for UI display and fallback priority */
-export const PROVIDER_ORDER: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'openrouter'];
+export const PROVIDER_ORDER: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'xai', 'mistral', 'glm', 'openrouter'];
 
 // =============================================================================
 // Provider Helper Functions

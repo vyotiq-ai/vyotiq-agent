@@ -126,22 +126,55 @@ export const browserScreenshotTool: ToolDefinition<ScreenshotArgs> = {
   name: 'browser_screenshot',
   description: `Take a screenshot of the current browser page for visual verification.
 
-**Options:**
-- Viewport only (default): Captures visible area of the page 
-- Full page: Scrolls and captures entire page 
-- Element: Captures specific element by CSS selector 
-- Image format: PNG (default) or JPEG
-- JPEG quality: 1-100 (only for JPEG format)
+## When to Use
+- **Verify rendering**: Confirm UI elements are displayed correctly
+- **Capture state**: Document visual state at specific workflow steps
+- **Debug issues**: See what's actually rendered vs expected
+- **Visual testing**: Compare before/after states
 
-**Use cases:**
-- Verify web app renders correctly and UI elements are in place
+## Workflow Integration
+Use for visual verification:
+\`\`\`
+browser_navigate(url) → load page
+browser_screenshot() → capture initial state
+browser_click(selector) → interact
+browser_screenshot() → capture result
+[compare screenshots to verify behavior]
+\`\`\`
+
+## Testing Pattern
+\`\`\`
+browser_navigate("http://localhost:3000")
+browser_screenshot() → baseline
+[make code changes]
+browser_navigate("http://localhost:3000")
+browser_screenshot() → compare
+\`\`\`
+
+## Options
+- **Viewport only** (default): Captures visible area of the page
+- **Full page**: Scrolls and captures entire page
+- **Element**: Captures specific element by CSS selector
+- **Format**: PNG (default) or JPEG with quality setting
+
+## Parameters
+- **fullPage** (optional): Capture full page (scrolls entire page)
+- **selector** (optional): CSS selector for element to capture
+- **format** (optional): Image format - png or jpeg
+- **quality** (optional): JPEG quality 1-100 (only for jpeg)
+
+## Use Cases
+- Verify web app renders correctly
 - Capture visual changes after interactions
-- Document visual state of page at specific steps in workflows  
-- Compare visual differences between versions of a page
-- Validate responsive design across screen sizes
-- Monitor visual regressions in automated tests
+- Document visual state for reports
+- Validate responsive design
+- Monitor visual regressions
 - Capture error states for debugging
-- Record visual content for reports or audits`,
+
+## Best Practices
+- Use viewport screenshots for quick checks
+- Use fullPage sparingly (can timeout on complex pages)
+- Use selector for specific component verification`,
 
   requiresApproval: false,
   category: 'browser-read',

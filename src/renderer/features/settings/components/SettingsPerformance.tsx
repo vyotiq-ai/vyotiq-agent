@@ -88,6 +88,9 @@ const PROVIDER_NAMES: Record<LLMProviderName, string> = {
   deepseek: 'DeepSeek',
   gemini: 'Gemini',
   openrouter: 'OpenRouter',
+  xai: 'xAI',
+  mistral: 'Mistral',
+  glm: 'GLM (Z.AI)',
 };
 
 const CACHE_STRATEGIES: Array<{ value: CacheSettings['promptCacheStrategy']; label: string; description: string }> = [

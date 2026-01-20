@@ -7,6 +7,7 @@
  * - UI metadata
  * - Category grouping
  * - Dynamic tool management (Phase 2)
+ * - Automatic result caching for idempotent tools
  */
 import type { ToolExecutionResult, ToolSpecification, DynamicToolState } from '../../../shared/types';
 import type {
@@ -19,6 +20,8 @@ import type {
 } from '../types';
 import { getToolUIConfig, getToolCategory, DEFAULT_TOOL_UI } from '../types/toolUIConfig';
 import { createLogger } from '../../logger';
+import { getToolResultCache } from '../../agent/cache/ToolResultCache';
+import { getToolExecutionLogger } from '../../agent/logging/ToolExecutionLogger';
 
 const logger = createLogger('ToolRegistry');
 
@@ -334,6 +337,7 @@ export class ToolRegistry {
 
   /**
    * Execute a tool and return enhanced result
+   * Automatically caches results for idempotent tools
    */
   async execute(
     name: string,
@@ -359,9 +363,61 @@ export class ToolRegistry {
     // Validate and normalize arguments before execution
     const normalizedArgs = this.validateAndNormalizeArgs(args, tool.schema);
 
+    // Log argument normalization at debug level if changes were made
+    const toolExecutionLogger = getToolExecutionLogger();
+    toolExecutionLogger.logNormalization(name, args, normalizedArgs);
+
+    // Check cache for idempotent tools
+    const cache = getToolResultCache();
+    const cachedResult = cache.get(name, normalizedArgs);
+    
+    if (cachedResult) {
+      const completedAt = Date.now();
+      const estimatedTokensSaved = Math.ceil(cachedResult.output.length / 4);
+      
+      logger.debug('Cache hit for tool execution', {
+        tool: name,
+        estimatedTokensSaved,
+        cacheStats: cache.getStats(),
+      });
+
+      // Return cached result with cache metadata
+      const enhanced: EnhancedToolResult = {
+        ...cachedResult,
+        timing: {
+          startedAt,
+          completedAt,
+          durationMs: completedAt - startedAt,
+        },
+        metadata: {
+          ...cachedResult.metadata,
+          fromCache: true,
+          estimatedTokensSaved,
+        },
+      };
+
+      // Generate preview for UI
+      enhanced.preview = this.generatePreview(cachedResult.output, name);
+
+      return enhanced;
+    }
+
     try {
       const result = await tool.execute(normalizedArgs, context);
       const completedAt = Date.now();
+
+      // Cache successful results for idempotent tools
+      if (result.success && cache.isCacheable(name)) {
+        cache.set(name, normalizedArgs, result, context.sessionId);
+        logger.debug('Cached tool result', {
+          tool: name,
+          outputLength: result.output.length,
+          sessionId: context.sessionId,
+        });
+      }
+
+      // Invalidate cache for write operations
+      this.invalidateCacheForWriteOperation(name, normalizedArgs, result);
 
       // Enhance result with timing and additional metadata
       const enhanced: EnhancedToolResult = {
@@ -374,7 +430,7 @@ export class ToolRegistry {
       };
 
       // Add file change info for file operations
-      const fileChanges = this.extractFileChanges(name, args, result);
+      const fileChanges = this.extractFileChanges(name, normalizedArgs, result);
       if (fileChanges.length > 0) {
         enhanced.fileChanges = fileChanges;
       }
@@ -399,12 +455,52 @@ export class ToolRegistry {
   }
 
   /**
+   * Invalidate cache entries when write operations modify files
+   */
+  private invalidateCacheForWriteOperation(
+    toolName: string,
+    args: Record<string, unknown>,
+    result: ToolExecutionResult
+  ): void {
+    // Only invalidate on successful write operations
+    if (!result.success) return;
+
+    const writeTools = ['write', 'create_file', 'edit', 'replace_string_in_file', 'bulk'];
+    if (!writeTools.includes(toolName)) return;
+
+    const cache = getToolResultCache();
+    const filePath = (args.path || args.filePath) as string | undefined;
+
+    if (filePath) {
+      const invalidated = cache.invalidatePath(filePath);
+      if (invalidated > 0) {
+        logger.debug('Invalidated cache entries for modified file', {
+          tool: toolName,
+          path: filePath,
+          invalidatedCount: invalidated,
+        });
+      }
+    }
+
+    // For bulk operations, invalidate all affected paths
+    if (toolName === 'bulk' && Array.isArray(args.operations)) {
+      for (const op of args.operations as Array<{ path?: string; source?: string; destination?: string }>) {
+        if (op.path) cache.invalidatePath(op.path);
+        if (op.source) cache.invalidatePath(op.source);
+        if (op.destination) cache.invalidatePath(op.destination);
+      }
+    }
+  }
+
+  /**
    * Validate and normalize tool arguments
    * Handles common LLM errors like:
    * - String "true"/"false" instead of boolean
    * - String numbers instead of actual numbers
    * - Null/undefined for optional fields
    * - Whitespace in string values
+   * - Nested object/array parsing
+   * - Common typos in argument names (schema-aware alias mapping)
    */
   private validateAndNormalizeArgs(
     args: Record<string, unknown>,
@@ -412,11 +508,108 @@ export class ToolRegistry {
   ): Record<string, unknown> {
     const normalized: Record<string, unknown> = {};
     
+    // Common argument name aliases for LLM compatibility
+    // Maps alias -> array of possible canonical names (in priority order)
+    // The first canonical name that exists in the schema will be used
+    const argAliasGroups: Record<string, string[]> = {
+      // Path-related aliases
+      'file_path': ['file_path', 'path', 'filePath'],
+      'filepath': ['file_path', 'path', 'filePath'],
+      'filePath': ['file_path', 'path', 'filePath'],
+      'file': ['file_path', 'path', 'file'],
+      'filename': ['file_path', 'path', 'filename'],
+      'target_file': ['file_path', 'path', 'target_file'],
+      'source_file': ['source', 'file_path', 'path'],
+      
+      // String replacement aliases (for edit tools)
+      'oldString': ['old_string', 'oldString', 'search'],
+      'old_str': ['old_string', 'old_str', 'search'],
+      'newString': ['new_string', 'newString', 'replace'],
+      'new_str': ['new_string', 'new_str', 'replace'],
+      'search': ['old_string', 'search', 'pattern', 'query'],
+      'find': ['old_string', 'search', 'find', 'pattern'],
+      'replace': ['new_string', 'replace', 'replacement'],
+      'replacement': ['new_string', 'replace', 'replacement'],
+      
+      // Command/terminal aliases
+      'cmd': ['command', 'cmd'],
+      'shell_command': ['command', 'shell_command'],
+      
+      // Directory aliases
+      'dir': ['directory', 'path', 'dir'],
+      'cwd': ['directory', 'cwd', 'path'],
+      'working_dir': ['directory', 'working_dir', 'cwd'],
+      'workingDirectory': ['directory', 'workingDirectory', 'cwd'],
+      'folder': ['directory', 'path', 'folder'],
+      
+      // Content aliases
+      'text': ['content', 'text', 'body'],
+      'body': ['content', 'body', 'text'],
+      'data': ['content', 'data', 'body'],
+      'contents': ['content', 'contents', 'text'],
+      
+      // Pattern/regex aliases
+      'regex': ['pattern', 'regex', 'regexp'],
+      'regexp': ['pattern', 'regexp', 'regex'],
+      'search_pattern': ['pattern', 'search_pattern', 'query'],
+      'query': ['pattern', 'query', 'search'],
+      
+      // Boolean option aliases
+      'recursive': ['includeSubdirs', 'recursive', 'recurse'],
+      'recurse': ['includeSubdirs', 'recurse', 'recursive'],
+      'replaceAll': ['replace_all', 'replaceAll'],
+      'replace_all_occurrences': ['replace_all', 'replace_all_occurrences'],
+      
+      // Numeric option aliases
+      'max_depth': ['maxDepth', 'max_depth', 'depth'],
+      'maxdepth': ['maxDepth', 'maxdepth', 'depth'],
+      'timeout_ms': ['timeout', 'timeout_ms', 'timeoutMs'],
+      'timeoutMs': ['timeout', 'timeoutMs', 'timeout_ms'],
+      'line_number': ['line', 'line_number', 'lineNumber'],
+      'lineNumber': ['line', 'lineNumber', 'line_number'],
+      'start_line': ['offset', 'start_line', 'startLine'],
+      'startLine': ['offset', 'startLine', 'start_line'],
+      'end_line': ['limit', 'end_line', 'endLine'],
+      'endLine': ['limit', 'endLine', 'end_line'],
+    };
+    
+    // Get the set of properties defined in the schema
+    const schemaProperties = new Set(Object.keys(schema.properties));
+    
+    // First pass: normalize argument names using schema-aware aliases
+    const aliasedArgs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(args)) {
+      // Check if this key has aliases defined
+      const possibleTargets = argAliasGroups[key];
+      
+      if (possibleTargets) {
+        // Find the first target that exists in the schema
+        const targetKey = possibleTargets.find(target => schemaProperties.has(target)) || key;
+        
+        // Only apply alias if target doesn't already have a value
+        if (!(targetKey in aliasedArgs)) {
+          if (targetKey !== key) {
+            logger.debug('Argument alias applied', {
+              original: key,
+              normalized: targetKey,
+              schemaHasTarget: schemaProperties.has(targetKey),
+            });
+          }
+          aliasedArgs[targetKey] = value;
+        }
+      } else {
+        // No alias defined, use key as-is
+        if (!(key in aliasedArgs)) {
+          aliasedArgs[key] = value;
+        }
+      }
+    }
+    
+    for (const [key, value] of Object.entries(aliasedArgs)) {
       const propSchema = schema.properties[key];
       
       if (!propSchema) {
-        // Unknown property - include as-is
+        // Unknown property - include as-is but log for debugging
         normalized[key] = value;
         continue;
       }
@@ -434,7 +627,10 @@ export class ToolRegistry {
       switch (propSchema.type) {
         case 'boolean':
           if (typeof value === 'string') {
-            normalized[key] = value.toLowerCase() === 'true';
+            const lower = value.toLowerCase().trim();
+            normalized[key] = lower === 'true' || lower === '1' || lower === 'yes';
+          } else if (typeof value === 'number') {
+            normalized[key] = value !== 0;
           } else {
             normalized[key] = Boolean(value);
           }
@@ -442,7 +638,8 @@ export class ToolRegistry {
           
         case 'number':
           if (typeof value === 'string') {
-            const num = parseFloat(value);
+            const trimmed = value.trim();
+            const num = parseFloat(trimmed);
             normalized[key] = isNaN(num) ? value : num;
           } else {
             normalized[key] = value;
@@ -452,8 +649,29 @@ export class ToolRegistry {
         case 'string':
           if (typeof value === 'string') {
             // Trim whitespace from path-like arguments
-            const pathKeys = ['path', 'filePath', 'file', 'directory', 'cwd', 'source', 'destination'];
-            normalized[key] = pathKeys.includes(key) ? value.trim() : value;
+            // This handles common LLM errors where paths have leading/trailing whitespace
+            const pathKeys = [
+              'path', 'file_path', 'filePath', 'file', 'filename',
+              'directory', 'dir', 'cwd', 'folder',
+              'source', 'destination', 'target',
+              'working_dir', 'workingDirectory',
+              'source_file', 'target_file'
+            ];
+            if (pathKeys.includes(key)) {
+              const trimmed = value.trim();
+              if (trimmed !== value) {
+                logger.debug('Whitespace trimmed from path argument', {
+                  key,
+                  original: JSON.stringify(value),
+                  trimmed: JSON.stringify(trimmed),
+                });
+              }
+              normalized[key] = trimmed;
+            } else {
+              normalized[key] = value;
+            }
+          } else if (value === null || value === undefined) {
+            normalized[key] = '';
           } else {
             normalized[key] = String(value);
           }
@@ -463,40 +681,80 @@ export class ToolRegistry {
           if (Array.isArray(value)) {
             normalized[key] = value;
           } else if (typeof value === 'string') {
-            // Try to parse JSON array or split by comma
-            try {
-              const parsed = JSON.parse(value);
-              normalized[key] = Array.isArray(parsed) ? parsed : [value];
-            } catch (error) {
-              const trimmed = value.trim();
-              // Only log when it looks like the caller intended JSON.
-              if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-                logger.debug('Failed to parse JSON array argument; falling back to comma-split', {
+            const trimmed = value.trim();
+            // Try to parse JSON array first
+            if (trimmed.startsWith('[')) {
+              try {
+                const parsed = JSON.parse(trimmed);
+                normalized[key] = Array.isArray(parsed) ? parsed : [value];
+                logger.debug('Successfully parsed JSON array argument', {
+                  key,
+                  itemCount: Array.isArray(parsed) ? parsed.length : 1,
+                });
+              } catch (error) {
+                logger.debug('Failed to parse JSON array argument; attempting recovery', {
                   key,
                   value: trimmed.slice(0, 200),
                   error: error instanceof Error ? error.message : String(error),
                 });
+                // Try to extract array items heuristically
+                const items = this.extractArrayItemsFromString(trimmed);
+                normalized[key] = items.length > 0 ? items : [value];
               }
-              normalized[key] = value.split(',').map(s => s.trim()).filter(Boolean);
+            } else if (trimmed.startsWith('{')) {
+              // Single object provided as string - wrap in array
+              try {
+                const parsed = JSON.parse(trimmed);
+                normalized[key] = [parsed];
+                logger.debug('Wrapped single JSON object in array', { key });
+              } catch {
+                // Not valid JSON, split by delimiter
+                normalized[key] = value.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+              }
+            } else {
+              // Split by comma, newline, or semicolon
+              normalized[key] = value.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
             }
+          } else if (typeof value === 'object' && value !== null) {
+            // Single object provided - wrap in array
+            normalized[key] = [value];
           } else {
             normalized[key] = [value];
           }
           break;
           
         case 'object':
-          if (typeof value === 'string') {
-            try {
-              normalized[key] = JSON.parse(value);
-            } catch (error) {
-              const trimmed = value.trim();
-              if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            normalized[key] = value;
+          } else if (Array.isArray(value)) {
+            // Array provided for object type - keep as-is (might be intentional)
+            normalized[key] = value;
+            logger.debug('Array provided for object parameter', { key });
+          } else if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+              try {
+                normalized[key] = JSON.parse(trimmed);
+                logger.debug('Successfully parsed JSON object argument', {
+                  key,
+                  type: trimmed.startsWith('{') ? 'object' : 'array',
+                });
+              } catch (error) {
                 logger.debug('Failed to parse JSON object argument; leaving as string', {
                   key,
                   value: trimmed.slice(0, 200),
                   error: error instanceof Error ? error.message : String(error),
                 });
+                // Try to recover malformed JSON
+                const recovered = this.tryRecoverMalformedJson(trimmed);
+                if (recovered !== null) {
+                  normalized[key] = recovered;
+                  logger.debug('Recovered malformed JSON object argument', { key });
+                } else {
+                  normalized[key] = value;
+                }
               }
+            } else {
               normalized[key] = value;
             }
           } else {
@@ -509,7 +767,75 @@ export class ToolRegistry {
       }
     }
     
+    // Validate required fields and provide helpful error messages
+    if (schema.required) {
+      const missingRequired = schema.required.filter(key => !(key in normalized) || normalized[key] === undefined);
+      if (missingRequired.length > 0) {
+        logger.warn('Missing required arguments', {
+          missing: missingRequired,
+          provided: Object.keys(normalized),
+          schemaRequired: schema.required,
+        });
+      }
+    }
+    
     return normalized;
+  }
+
+  /**
+   * Extract array items from a malformed array string
+   */
+  private extractArrayItemsFromString(input: string): unknown[] {
+    const items: unknown[] = [];
+    
+    // Try to find string items: "item1", "item2"
+    const stringPattern = /"([^"\\]*(?:\\.[^"\\]*)*)"/g;
+    let match;
+    while ((match = stringPattern.exec(input)) !== null) {
+      items.push(match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n'));
+    }
+    
+    // If no string items found, try to find object items
+    if (items.length === 0) {
+      const objectPattern = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
+      while ((match = objectPattern.exec(input)) !== null) {
+        try {
+          items.push(JSON.parse(match[0]));
+        } catch {
+          // Skip malformed objects
+        }
+      }
+    }
+    
+    return items;
+  }
+
+  /**
+   * Try to recover malformed JSON by fixing common issues
+   * Returns null if recovery is not possible
+   */
+  private tryRecoverMalformedJson(input: string): unknown | null {
+    // Try common fixes for malformed JSON
+    let fixed = input;
+    
+    // Fix 1: Remove trailing commas before closing brackets
+    fixed = fixed.replace(/,\s*([}\]])/g, '$1');
+    
+    // Fix 2: Add missing quotes around unquoted keys
+    fixed = fixed.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
+    
+    // Fix 3: Replace single quotes with double quotes (common mistake)
+    // Only do this if there are no double quotes in the string
+    if (!fixed.includes('"') && fixed.includes("'")) {
+      fixed = fixed.replace(/'/g, '"');
+    }
+    
+    try {
+      return JSON.parse(fixed);
+    } catch {
+      // Recovery failed
+      return null;
+    }
   }
 
   /**

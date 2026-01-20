@@ -58,6 +58,7 @@ function createInitialState(overrides: Partial<AgentUIState> = {}): AgentUIState
     contextMetrics: {},
     routingDecisions: {},
     terminalStreams: {},
+    todos: {},
     // Phase 4: Communication
     pendingQuestions: [],
     pendingDecisions: [],

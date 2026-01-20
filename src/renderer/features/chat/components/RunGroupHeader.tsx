@@ -4,6 +4,7 @@ import { CheckCircle2, XCircle, Loader2, Wrench, Clock, Cpu } from 'lucide-react
 import type { ChatMessage, ToolResultEvent } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
 import { calculateSessionCost, formatTokenCount, formatCost } from '../../../../shared/utils/costEstimation';
+import { formatDurationMs } from '../utils/toolDisplay';
 
 interface RunGroupHeaderProps {
   runId?: string;
@@ -33,15 +34,6 @@ function getDurationMsFromToolResult(result?: ToolResultEvent): number | undefin
   if (typeof durationMs === 'number') return durationMs;
 
   return undefined;
-}
-
-function formatDurationMs(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  const s = Math.round(ms / 100) / 10;
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const rem = Math.round((s - m * 60) * 10) / 10;
-  return `${m}m ${rem}s`;
 }
 
 /** Extract provider/model info from the first assistant message in a run */
@@ -165,7 +157,10 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
                   {truncateOneLine(firstUser.content, 80)}
                 </span>
               ) : (
-                <span className="text-[11px] text-[var(--color-text-muted)] italic">
+                <span className={cn(
+                  'text-[11px] italic',
+                  isRunning ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-muted)]'
+                )}>
                   {isRunning ? 'Processing...' : 'Completed'}
                 </span>
               )}

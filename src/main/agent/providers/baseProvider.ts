@@ -15,6 +15,20 @@ export interface RetryConfig {
   backoffMultiplier?: number;
   /** HTTP status codes that should trigger a retry */
   retryableStatusCodes?: number[];
+  /** Request timeout in ms (default: 120000 = 2 minutes) */
+  requestTimeoutMs?: number;
+}
+
+/** Configuration for network-specific retry behavior */
+export interface NetworkRetryConfig {
+  /** Maximum number of retry attempts for network errors (default: 3) */
+  maxRetries?: number;
+  /** Initial delay in ms before first retry for network errors (default: 3000) */
+  initialDelayMs?: number;
+  /** Maximum delay in ms between retries for network errors (default: 30000) */
+  maxDelayMs?: number;
+  /** Backoff multiplier for network errors (default: 2) */
+  backoffMultiplier?: number;
 }
 
 const DEFAULT_RETRY_CONFIG: Required<RetryConfig> = {
@@ -23,6 +37,14 @@ const DEFAULT_RETRY_CONFIG: Required<RetryConfig> = {
   maxDelayMs: 60000, // Increased from 30000 - allow longer delays for rate limits
   backoffMultiplier: 2.5, // Increased from 2 - more aggressive backoff
   retryableStatusCodes: [429, 500, 502, 503, 504],
+  requestTimeoutMs: 120000, // 2 minutes default timeout
+};
+
+const DEFAULT_NETWORK_RETRY_CONFIG: Required<NetworkRetryConfig> = {
+  maxRetries: 3,
+  initialDelayMs: 3000, // Start with 3 seconds for network issues
+  maxDelayMs: 30000, // Cap at 30 seconds
+  backoffMultiplier: 2,
 };
 
 /** Error messages that indicate non-retryable errors */
@@ -274,11 +296,170 @@ function isTransientError(error: unknown): boolean {
       message.includes('timeout') ||
       message.includes('econnreset') ||
       message.includes('econnrefused') ||
+      message.includes('econnaborted') ||
       message.includes('socket') ||
-      message.includes('fetch failed')
+      message.includes('fetch failed') ||
+      message.includes('failed to fetch') ||
+      message.includes('enotfound') ||
+      message.includes('dns') ||
+      message.includes('getaddrinfo') ||
+      message.includes('etimedout')
     );
   }
   return false;
+}
+
+/**
+ * Check if an error is specifically a network connectivity issue
+ * (as opposed to a server error like 502/503)
+ */
+export function isNetworkConnectivityError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('fetch failed') ||
+      message.includes('failed to fetch') ||
+      message.includes('enotfound') ||
+      message.includes('econnrefused') ||
+      message.includes('getaddrinfo') ||
+      message.includes('network request failed') ||
+      message.includes('etimedout') ||
+      message.includes('dns')
+    );
+  }
+  return false;
+}
+
+/**
+ * Fetch with timeout support
+ * Creates a fetch request that will abort after the specified timeout
+ */
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit & { timeout?: number },
+  signal?: AbortSignal
+): Promise<Response> {
+  const timeout = options.timeout ?? DEFAULT_RETRY_CONFIG.requestTimeoutMs;
+  
+  // Create an abort controller for the timeout
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    timeoutController.abort();
+  }, timeout);
+  
+  // Combine the timeout signal with any provided signal
+  const combinedSignal = signal 
+    ? combineAbortSignals(signal, timeoutController.signal)
+    : timeoutController.signal;
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: combinedSignal,
+    });
+    return response;
+  } catch (error) {
+    if (timeoutController.signal.aborted && !signal?.aborted) {
+      throw new Error(`Request timeout after ${timeout}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Combine multiple abort signals into one
+ */
+function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      return controller.signal;
+    }
+    
+    signal.addEventListener('abort', () => {
+      controller.abort(signal.reason);
+    }, { once: true });
+  }
+  
+  return controller.signal;
+}
+
+/**
+ * Execute a streaming fetch with retry logic for network errors
+ * Returns the Response object, caller is responsible for reading the stream
+ */
+export async function fetchStreamWithRetry(
+  url: string,
+  options: RequestInit & { timeout?: number },
+  signal?: AbortSignal,
+  config: NetworkRetryConfig = {}
+): Promise<Response> {
+  const retryConfig = { ...DEFAULT_NETWORK_RETRY_CONFIG, ...config };
+  let lastError: Error | undefined;
+  
+  for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
+    try {
+      if (signal?.aborted) {
+        throw new Error('Aborted');
+      }
+      
+      const response = await fetchWithTimeout(url, options, signal);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw APIError.fromResponse(response, errorText);
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+      
+      // Don't retry if user cancelled
+      if (signal?.aborted) {
+        throw error;
+      }
+      
+      // Check if this is a retryable network error
+      const isNetworkIssue = isNetworkConnectivityError(error) || isTransientError(error);
+      const isRetryableApiError = error instanceof APIError && error.isRetryable;
+      
+      if ((!isNetworkIssue && !isRetryableApiError) || attempt >= retryConfig.maxRetries) {
+        throw error;
+      }
+      
+      // Calculate delay with exponential backoff
+      let delayMs = retryConfig.initialDelayMs * Math.pow(retryConfig.backoffMultiplier, attempt);
+      delayMs = Math.min(delayMs, retryConfig.maxDelayMs);
+      
+      // Add jitter (±15%)
+      delayMs = delayMs * (0.85 + Math.random() * 0.3);
+      
+      // Use longer delay for network connectivity issues
+      if (isNetworkConnectivityError(error)) {
+        delayMs = Math.max(delayMs, 5000); // Minimum 5 seconds for network issues
+        logger.warn('Network connectivity issue, retrying', { 
+          attempt: attempt + 1, 
+          maxAttempts: retryConfig.maxRetries + 1, 
+          waitTimeMs: Math.round(delayMs),
+          error: lastError.message 
+        });
+      } else {
+        logger.warn('Transient error during stream fetch, retrying', { 
+          attempt: attempt + 1, 
+          maxAttempts: retryConfig.maxRetries + 1, 
+          waitTimeMs: Math.round(delayMs) 
+        });
+      }
+      
+      await sleep(delayMs, signal);
+    }
+  }
+  
+  throw lastError ?? new Error('All stream fetch retry attempts failed');
 }
 
 export type { ProviderResponseChunk } from '../../../shared/types';

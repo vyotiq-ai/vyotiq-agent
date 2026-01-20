@@ -7,13 +7,16 @@ interface SettingsRateLimitsProps {
     onChange: (provider: LLMProviderName, value: number) => void;
 }
 
-const providerOrder: LLMProviderName[] = ['openai', 'anthropic', 'deepseek', 'gemini', 'openrouter'];
+const providerOrder: LLMProviderName[] = ['openai', 'anthropic', 'deepseek', 'gemini', 'openrouter', 'xai', 'mistral', 'glm'];
 const providerLabel: Record<LLMProviderName, string> = {
     openai: 'openai',
     anthropic: 'anthropic',
     deepseek: 'deepseek',
     gemini: 'gemini',
     openrouter: 'openrouter',
+    xai: 'xai',
+    mistral: 'mistral',
+    glm: 'glm (z.ai)',
 };
 
 export const SettingsRateLimits: React.FC<SettingsRateLimitsProps> = ({ rateLimits, onChange }) => {

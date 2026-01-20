@@ -1,4 +1,4 @@
-export type LLMProviderName = 'anthropic' | 'openai' | 'deepseek' | 'gemini' | 'openrouter';
+export type LLMProviderName = 'anthropic' | 'openai' | 'deepseek' | 'gemini' | 'openrouter' | 'xai' | 'mistral' | 'glm';
 
 export type AgentRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -173,8 +173,6 @@ export interface AgentConfig {
   maxOutputTokens: number;
   /** Specific model ID to use (overrides provider default) */
   selectedModelId?: string;
-  /** @deprecated Use selectedModelId instead */
-  manualOverrideModel?: string;
 
   // OpenAI Reasoning Model Settings
   /**
@@ -1728,6 +1726,29 @@ export interface ClaudeSubscription {
   connectedAt: number;
 }
 
+/**
+ * GLM Coding Plan subscription tier
+ * - lite: $3/month - Basic usage
+ * - pro: $15/month - High-frequency, complex projects
+ * @see https://docs.z.ai/devpack/overview
+ */
+export type GLMSubscriptionTier = 'lite' | 'pro';
+
+/**
+ * GLM Coding Plan subscription data
+ * API key-based subscription for Z.AI GLM models
+ */
+export interface GLMSubscription {
+  /** API key for the coding plan */
+  apiKey: string;
+  /** Subscription tier */
+  tier: GLMSubscriptionTier;
+  /** Whether to use the coding endpoint */
+  useCodingEndpoint: boolean;
+  /** When the subscription was connected */
+  connectedAt: number;
+}
+
 export interface AgentSettings {
   apiKeys: Partial<Record<LLMProviderName, string>>;
   rateLimits: Partial<Record<LLMProviderName, number>>;
@@ -1756,6 +1777,8 @@ export interface AgentSettings {
   autonomousFeatureFlags?: AutonomousFeatureFlags;
   /** Claude Code subscription authentication (OAuth-based) */
   claudeSubscription?: ClaudeSubscription;
+  /** GLM Coding Plan subscription (API key-based) */
+  glmSubscription?: GLMSubscription;
 }
 
 /**
@@ -1824,21 +1847,8 @@ export interface AutonomousFeatureFlags {
   enablePerformanceMonitoring: boolean;
   /** Enable advanced debugging */
   enableAdvancedDebugging: boolean;
-  /** Tool settings for dynamic tools */
-  toolSettings?: {
-    customTools?: Array<{
-      name: string;
-      description: string;
-      enabled: boolean;
-      steps: Array<{
-        toolName: string;
-        input: Record<string, unknown>;
-        condition?: string;
-        onError?: string;
-      }>;
-    }>;
-    maxDynamicToolsPerSession?: number;
-  };
+  /** Tool settings for dynamic tools and parallel execution */
+  toolSettings?: Partial<ToolConfigSettings>;
 }
 
 /**
@@ -1851,10 +1861,7 @@ export const DEFAULT_AUTONOMOUS_FEATURE_FLAGS: AutonomousFeatureFlags = {
   enableSafetyFramework: true,
   enablePerformanceMonitoring: false,
   enableAdvancedDebugging: false,
-  toolSettings: {
-    customTools: [],
-    maxDynamicToolsPerSession: 10,
-  },
+  toolSettings: undefined, // Will be merged with DEFAULT_TOOL_CONFIG_SETTINGS at runtime
 };
 
 export interface AgentSettingsEvent {
@@ -1986,6 +1993,8 @@ export interface ToolConfigSettings {
   maxToolExecutionTime: number;
   /** Enable tool result caching */
   enableToolCaching: boolean;
+  /** Maximum concurrent tool executions for parallel execution (default: 5) */
+  maxConcurrentTools: number;
   /** User-defined custom tools */
   customTools?: CustomToolConfig[];
 }
@@ -2041,6 +2050,7 @@ export const DEFAULT_TOOL_CONFIG_SETTINGS: ToolConfigSettings = {
   requireDynamicToolConfirmation: true,
   maxToolExecutionTime: 120000, // 2 minutes
   enableToolCaching: true,
+  maxConcurrentTools: 5, // Default max concurrent tools for parallel execution
 };
 
 /**
@@ -2342,144 +2352,6 @@ export interface CapabilityGrant {
 // Phase 2: Tool Composition Types
 // -----------------------------------------------------------------------------
 
-/**
- * Execution mode for workflow steps
- */
-export type WorkflowExecutionMode = 'sequential' | 'parallel' | 'conditional' | 'loop';
-
-/**
- * Data binding between workflow steps
- */
-export interface DataBinding {
-  /** Source step ID (or 'input' for workflow input) */
-  source: string;
-  /** Path to extract from source output (JSONPath-like) */
-  sourcePath: string;
-  /** Target parameter name */
-  target: string;
-  /** Optional transformation */
-  transform?: DataTransformType;
-}
-
-/**
- * Data transformation types
- */
-export type DataTransformType =
-  | 'identity'
-  | 'json_parse'
-  | 'json_stringify'
-  | 'split'
-  | 'join'
-  | 'map'
-  | 'filter'
-  | 'flatten'
-  | 'first'
-  | 'last'
-  | 'count'
-  | 'extract_property';
-
-/**
- * A step in a composition workflow
- */
-export interface WorkflowStep {
-  /** Step identifier */
-  id: string;
-  /** Tool to execute */
-  toolName: string;
-  /** Static arguments */
-  staticArgs?: Record<string, unknown>;
-  /** Dynamic bindings from other steps */
-  bindings?: DataBinding[];
-  /** Dependencies (step IDs that must complete first) */
-  dependsOn: string[];
-  /** Execution condition (expression) */
-  condition?: string;
-  /** Error handling strategy */
-  onError: 'abort' | 'skip' | 'retry' | 'fallback';
-  /** Retry count if onError is 'retry' */
-  retryCount?: number;
-  /** Fallback value if onError is 'fallback' */
-  fallbackValue?: unknown;
-  /** Store output with this key */
-  outputAs?: string;
-}
-
-/**
- * Complete composition workflow definition
- */
-export interface CompositionWorkflow {
-  /** Workflow ID */
-  id: string;
-  /** Workflow name */
-  name: string;
-  /** Description */
-  description: string;
-  /** Workflow steps */
-  steps: WorkflowStep[];
-  /** Input schema for the workflow */
-  inputSchema?: Record<string, unknown>;
-  /** Output extraction from final step(s) */
-  outputExtraction?: DataBinding[];
-  /** Maximum execution time (ms) */
-  timeoutMs?: number;
-  /** Maximum total token budget */
-  tokenBudget?: number;
-  /** Created by */
-  createdBy: {
-    sessionId: string;
-    runId?: string;
-    agentId?: string;
-  };
-  /** Creation timestamp */
-  createdAt: number;
-}
-
-/**
- * Workflow execution context
- */
-export interface WorkflowContext {
-  /** Workflow ID being executed */
-  workflowId: string;
-  /** Initial input */
-  input: Record<string, unknown>;
-  /** Variables accumulated during execution */
-  variables: Record<string, unknown>;
-  /** Step outputs by step ID */
-  stepOutputs: Map<string, unknown>;
-  /** Current step being executed */
-  currentStep?: string;
-  /** Execution start time */
-  startedAt: number;
-  /** Tokens used so far */
-  tokensUsed: number;
-}
-
-/**
- * Result of workflow execution
- */
-export interface WorkflowExecutionResult {
-  /** Workflow ID */
-  workflowId: string;
-  /** Whether execution succeeded */
-  success: boolean;
-  /** Final output */
-  output?: unknown;
-  /** Error if failed */
-  error?: string;
-  /** Step-by-step results */
-  stepResults: Array<{
-    stepId: string;
-    success: boolean;
-    output?: unknown;
-    error?: string;
-    durationMs: number;
-  }>;
-  /** Total duration */
-  totalDurationMs: number;
-  /** Tokens used */
-  tokensUsed: number;
-}
-
 // -----------------------------------------------------------------------------
 // Phase 2: Tool Discovery Types
 // -----------------------------------------------------------------------------
@@ -2696,24 +2568,24 @@ export interface SandboxExecutionResult {
 /**
  * Task scope level
  */
-export type TaskScopeLevel = 
-  | 'file' 
+export type TaskScopeLevel =
+  | 'file'
   | 'single-file'
   | 'multi-file'
-  | 'package' 
+  | 'package'
   | 'feature'
-  | 'project' 
+  | 'project'
   | 'workspace'
   | 'unknown';
 
 /**
  * Task complexity level
  */
-export type TaskComplexityLevel = 
+export type TaskComplexityLevel =
   | 'trivial'
-  | 'simple' 
-  | 'moderate' 
-  | 'complex' 
+  | 'simple'
+  | 'moderate'
+  | 'complex'
   | 'high'
   | 'unknown';
 
@@ -2801,20 +2673,6 @@ export interface BrowserStateEvent {
 }
 
 /**
- * Event emitted during workflow execution (Phase 2)
- */
-export interface WorkflowProgressEvent {
-  type: 'workflow-progress';
-  sessionId: string;
-  runId: string;
-  workflowId: string;
-  stepId: string;
-  status: 'pending' | 'executing' | 'completed' | 'failed' | 'skipped';
-  result?: unknown;
-  timestamp: number;
-}
-
-/**
  * Claude subscription status change event
  */
 export interface ClaudeSubscriptionEvent {
@@ -2825,7 +2683,22 @@ export interface ClaudeSubscriptionEvent {
   subscription?: ClaudeSubscription;
 }
 
-export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | WorkflowProgressEvent | FileChangedEvent | ClaudeSubscriptionEvent;
+/**
+ * GLM subscription status change event
+ */
+export interface GLMSubscriptionEvent {
+  type: 'glm-subscription';
+  eventType: 'connected' | 'disconnected' | 'tier-changed';
+  message: string;
+  tier?: GLMSubscriptionTier;
+  subscription?: GLMSubscription;
+}
+
+// Import and re-export TodoUpdateEvent from todo types to avoid duplication
+import type { TodoUpdateEvent as TodoUpdateEventType } from './types/todo';
+export type TodoUpdateEvent = TodoUpdateEventType;
+
+export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent;
 
 
 export interface StartSessionPayload {
@@ -3418,6 +3291,8 @@ export type DiagnosticSeverity = 'error' | 'warning' | 'info' | 'hint';
 export interface DiagnosticInfo {
   /** File path */
   filePath: string;
+  /** File name (extracted from path) */
+  fileName?: string;
   /** Line number (1-indexed) */
   line: number;
   /** Column number (1-indexed) */

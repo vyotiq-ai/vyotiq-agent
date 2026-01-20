@@ -8,13 +8,16 @@ interface SettingsBehaviorProps {
     onChange: (field: keyof AgentSettings['defaultConfig'], value: string | boolean | number) => void;
 }
 
-const providerOrder: LLMProviderName[] = ['openai', 'anthropic', 'deepseek', 'gemini', 'openrouter'];
+const providerOrder: LLMProviderName[] = ['openai', 'anthropic', 'deepseek', 'gemini', 'openrouter', 'xai', 'mistral', 'glm'];
 const providerLabel: Record<LLMProviderName, string> = {
     openai: 'openai',
     anthropic: 'anthropic',
     deepseek: 'deepseek',
     gemini: 'gemini',
     openrouter: 'openrouter',
+    xai: 'xai',
+    mistral: 'mistral',
+    glm: 'glm (z.ai)',
 };
 
 export const SettingsBehavior: React.FC<SettingsBehaviorProps> = ({ config, onChange }) => {
@@ -143,8 +146,8 @@ export const SettingsBehavior: React.FC<SettingsBehaviorProps> = ({ config, onCh
                     type="text"
                     placeholder="e.g. gpt-4.1-mini, claude-3.5-sonnet"
                     className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30 placeholder:text-[var(--color-text-placeholder)]"
-                    value={config.manualOverrideModel ?? ''}
-                    onChange={(event) => onChange('manualOverrideModel', event.target.value)}
+                    value={config.selectedModelId ?? ''}
+                    onChange={(event) => onChange('selectedModelId', event.target.value)}
                 />
                 <p className="text-[9px] text-[var(--color-text-placeholder)]"># bypass routing, use exact model id</p>
             </div>

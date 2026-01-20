@@ -5,12 +5,13 @@
  * Allows users to approve, deny, or provide alternative instructions.
  * 
  * Features:
+ * - Inline diff preview for file operations (write, edit)
  * - Expandable tool arguments with copy functionality
  * - Quick suggestion templates for common actions
  * - Keyboard shortcuts (Enter to send, Esc to cancel)
  * - Visual feedback for all interactions
  */
-import React, { memo, useCallback, useState, useMemo } from 'react';
+import React, { memo, useCallback, useState, useMemo, useEffect } from 'react';
 import { 
   Check, 
   X, 
@@ -24,12 +25,16 @@ import {
   SkipForward,
   RefreshCw,
   FileEdit,
+  FileCode2,
+  Plus,
+  Expand,
 } from 'lucide-react';
 import { useAgentActions, useAgentSelector } from '../../../state/AgentProvider';
 import { cn } from '../../../utils/cn';
 import type { ToolCallEvent } from '../../../../shared/types';
 import { getToolIconComponent, getToolTarget } from '../utils/toolDisplay';
 import { Button } from '../../../components/ui/Button';
+import { computeDiffStats, computeDiffHunks, computeInlineDiff } from './toolExecution/diffUtils';
 
 function shortRunId(runId: string | undefined): string | undefined {
   if (!runId) return undefined;
@@ -78,6 +83,519 @@ function getQuickSuggestions(toolName: string) {
   return QUICK_SUGGESTIONS.default;
 }
 
+// =============================================================================
+// File Operation Detection & Diff Preview
+// =============================================================================
+
+/** Check if tool is a file write operation */
+function isFileWriteOperation(toolName: string): boolean {
+  const name = toolName.toLowerCase();
+  return name === 'write' || name === 'create_file' || name.includes('write_file');
+}
+
+/** Check if tool is a file edit operation */
+function isFileEditOperation(toolName: string): boolean {
+  const name = toolName.toLowerCase();
+  return name === 'edit' || name.includes('edit_file');
+}
+
+/** Extract file path from tool arguments */
+function extractFilePath(args: Record<string, unknown>): string | undefined {
+  return (args.file_path || args.path || args.filePath) as string | undefined;
+}
+
+/** Extract content for write operations */
+function extractWriteContent(args: Record<string, unknown>): string | undefined {
+  return args.content as string | undefined;
+}
+
+/** Extract edit strings for edit operations */
+function extractEditStrings(args: Record<string, unknown>): { oldString: string; newString: string } | undefined {
+  const oldString = (args.old_string || args.oldString || args.search) as string | undefined;
+  const newString = (args.new_string || args.newString || args.replace) as string | undefined;
+  
+  if (typeof oldString === 'string' && typeof newString === 'string') {
+    return { oldString, newString };
+  }
+  return undefined;
+}
+
+/** Hook to fetch original file content for diff preview */
+function useOriginalFileContent(filePath: string | undefined, isFileOp: boolean) {
+  const [originalContent, setOriginalContent] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!filePath || !isFileOp) {
+      setOriginalContent(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+
+    // Fetch original content via IPC - files.read takes an array and returns AttachmentPayload[]
+    window.vyotiq?.files?.read([filePath])
+      .then((results: Array<{ content?: string; error?: string }>) => {
+        if (cancelled) return;
+        const result = results?.[0];
+        if (result?.content !== undefined) {
+          setOriginalContent(result.content);
+        } else {
+          // File doesn't exist (new file) or error
+          setOriginalContent('');
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // File doesn't exist - treat as new file
+        setOriginalContent('');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [filePath, isFileOp]);
+
+  return { originalContent, isLoading, error };
+}
+
+// =============================================================================
+// Inline Diff Preview Component
+// =============================================================================
+
+interface InlineDiffPreviewProps {
+  originalContent: string;
+  newContent: string;
+  filePath: string;
+  isNewFile: boolean;
+  maxHeight?: number;
+}
+
+const InlineDiffPreview: React.FC<InlineDiffPreviewProps> = memo(({
+  originalContent,
+  newContent,
+  filePath,
+  isNewFile,
+  maxHeight = 200,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [expandedRegions, setExpandedRegions] = useState<Set<number>>(new Set());
+
+  const stats = useMemo(() => computeDiffStats(originalContent, newContent), [originalContent, newContent]);
+  const diffHunks = useMemo(() => computeDiffHunks(originalContent, newContent, 2), [originalContent, newContent]);
+
+  const toggleRegionExpanded = useCallback((regionIdx: number) => {
+    setExpandedRegions(prev => {
+      const next = new Set(prev);
+      if (next.has(regionIdx)) {
+        next.delete(regionIdx);
+      } else {
+        next.add(regionIdx);
+      }
+      return next;
+    });
+  }, []);
+
+  // Build unified diff display
+  const diffLines = useMemo(() => {
+    const originalLines = originalContent.split('\n');
+    const modifiedLines = newContent.split('\n');
+    const lines: Array<{
+      type: 'context' | 'added' | 'removed' | 'expand';
+      content: string;
+      oldLineNum?: number;
+      newLineNum?: number;
+      inlineDiff?: { oldParts: Array<{ text: string; type: 'unchanged' | 'added' | 'removed' }>; newParts: Array<{ text: string; type: 'unchanged' | 'added' | 'removed' }> };
+      expandInfo?: { before: number; after: number; regionIdx: number };
+    }> = [];
+
+    let lastOrigEnd = 0;
+    let lastModEnd = 0;
+
+    diffHunks.forEach((hunk, hunkIdx) => {
+      const gapOrig = hunk.originalStart - lastOrigEnd;
+      const gapMod = hunk.modifiedStart - lastModEnd;
+
+      if (gapOrig > 0 || gapMod > 0) {
+        const gapLines = Math.max(gapOrig, gapMod);
+        if (gapLines > 0 && !expandedRegions.has(hunkIdx)) {
+          lines.push({
+            type: 'expand',
+            content: `${gapLines} unchanged line${gapLines !== 1 ? 's' : ''}`,
+            expandInfo: { before: lastOrigEnd, after: hunk.originalStart, regionIdx: hunkIdx }
+          });
+        } else if (expandedRegions.has(hunkIdx)) {
+          for (let i = lastOrigEnd; i < hunk.originalStart; i++) {
+            lines.push({
+              type: 'context',
+              content: originalLines[i] || '',
+              oldLineNum: i + 1,
+              newLineNum: lastModEnd + (i - lastOrigEnd) + 1
+            });
+          }
+        }
+      }
+
+      // Process hunk lines
+      const origHunkLines = hunk.originalLines;
+      const modHunkLines = hunk.modifiedLines;
+      let origIdx = 0;
+      let modIdx = 0;
+
+      while (origIdx < origHunkLines.length || modIdx < modHunkLines.length) {
+        const origLine = origIdx < origHunkLines.length ? origHunkLines[origIdx] : null;
+        const modLine = modIdx < modHunkLines.length ? modHunkLines[modIdx] : null;
+
+        if (origLine !== null && modLine !== null && origLine === modLine) {
+          lines.push({
+            type: 'context',
+            content: origLine,
+            oldLineNum: hunk.originalStart + origIdx + 1,
+            newLineNum: hunk.modifiedStart + modIdx + 1
+          });
+          origIdx++;
+          modIdx++;
+        } else {
+          if (origLine !== null && (modLine === null || origLine !== modLine)) {
+            const inlineDiff = modLine !== null ? computeInlineDiff(origLine, modLine) : undefined;
+            lines.push({
+              type: 'removed',
+              content: origLine,
+              oldLineNum: hunk.originalStart + origIdx + 1,
+              inlineDiff
+            });
+            origIdx++;
+          }
+          if (modLine !== null && (origLine === null || origLine !== modLine)) {
+            const inlineDiff = origLine !== null ? computeInlineDiff(origHunkLines[origIdx - 1] || '', modLine) : undefined;
+            lines.push({
+              type: 'added',
+              content: modLine,
+              newLineNum: hunk.modifiedStart + modIdx + 1,
+              inlineDiff
+            });
+            modIdx++;
+          }
+        }
+      }
+
+      lastOrigEnd = hunk.originalEnd;
+      lastModEnd = hunk.modifiedEnd;
+    });
+
+    // Trailing collapsed region
+    const trailingGap = Math.max(originalLines.length - lastOrigEnd, modifiedLines.length - lastModEnd);
+    if (trailingGap > 0 && !expandedRegions.has(diffHunks.length)) {
+      lines.push({
+        type: 'expand',
+        content: `${trailingGap} unchanged line${trailingGap !== 1 ? 's' : ''}`,
+        expandInfo: { before: lastOrigEnd, after: originalLines.length, regionIdx: diffHunks.length }
+      });
+    } else if (expandedRegions.has(diffHunks.length) && trailingGap > 0) {
+      for (let i = lastOrigEnd; i < originalLines.length; i++) {
+        lines.push({
+          type: 'context',
+          content: originalLines[i] || '',
+          oldLineNum: i + 1,
+          newLineNum: lastModEnd + (i - lastOrigEnd) + 1
+        });
+      }
+    }
+
+    return lines;
+  }, [originalContent, newContent, diffHunks, expandedRegions]);
+
+  // Get filename from path
+  const fileName = filePath.split(/[/\\]/).pop() || filePath;
+
+  return (
+    <div className="mt-2 rounded-xl overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)] shadow-[0_6px_18px_rgba(0,0,0,0.16)]">
+      {/* Header - clean, modern design matching DiffViewer */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          'w-full flex items-center gap-2.5 px-3.5 py-2.5',
+          'bg-gradient-to-r from-[var(--color-surface-1)]/70 via-[var(--color-surface-1)]/60 to-[var(--color-surface-1)]/50',
+          'border-b border-[var(--color-border-subtle)]/30',
+          'font-mono cursor-pointer transition-all duration-150',
+          'hover:from-[var(--color-surface-1)]/90 hover:via-[var(--color-surface-1)]/80 hover:to-[var(--color-surface-1)]/70',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30'
+        )}
+        aria-expanded={isExpanded}
+        aria-label={`${isNewFile ? 'New file' : 'Modified file'}: ${fileName}`}
+      >
+        <span className={cn(
+          'text-[var(--color-text-dim)] flex-shrink-0 transition-transform duration-200',
+          isExpanded && 'rotate-0',
+          !isExpanded && '-rotate-90'
+        )}>
+          <ChevronDown size={12} />
+        </span>
+        <FileCode2 size={13} className={isNewFile ? 'text-[var(--color-diff-added-text)]' : 'text-[var(--color-diff-expand-text)]'} />
+        <span className="text-[11px] font-medium text-[var(--color-text-primary)] truncate flex-1 min-w-0 text-left" title={filePath}>
+          {fileName}
+        </span>
+        <span className={cn(
+          'text-[8px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ring-1 ring-inset',
+          isNewFile 
+            ? 'bg-[var(--color-diff-added-text)]/12 text-[var(--color-diff-added-text)] ring-[var(--color-diff-added-text)]/25' 
+            : 'bg-[var(--color-diff-expand-text)]/12 text-[var(--color-diff-expand-text)] ring-[var(--color-diff-expand-text)]/25'
+        )}>
+          {isNewFile ? 'new' : 'modified'}
+        </span>
+        <span className="text-[10px] flex-shrink-0 flex items-center gap-2 font-mono tabular-nums">
+          {stats.added > 0 && (
+            <span className="text-[var(--color-diff-added-text)] font-semibold">
+              add {stats.added}
+            </span>
+          )}
+          {stats.removed > 0 && (
+            <span className="text-[var(--color-diff-removed-text)] font-semibold">
+              remove {stats.removed}
+            </span>
+          )}
+        </span>
+      </button>
+
+      {/* Diff content */}
+      {isExpanded && (
+        <div 
+          className="font-mono text-[10px] leading-[1.65] overflow-auto scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent"
+          style={{ maxHeight }}
+        >
+          {diffLines.length === 0 ? (
+            <div className="px-3 py-2.5 text-[var(--color-text-dim)]/70 italic text-[9px]">No changes detected</div>
+          ) : (
+            diffLines.map((line, idx) => {
+              if (line.type === 'expand') {
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => line.expandInfo && toggleRegionExpanded(line.expandInfo.regionIdx)}
+                    className={cn(
+                      'w-full flex items-center justify-center gap-2 py-1.5 px-3',
+                      'text-[8px] font-mono text-[var(--color-text-muted)] font-medium',
+                      'bg-gradient-to-r from-[var(--color-surface-1)]/40 via-[var(--color-surface-1)]/50 to-[var(--color-surface-1)]/40',
+                      'hover:from-[var(--color-surface-2)]/60 hover:via-[var(--color-surface-2)]/70 hover:to-[var(--color-surface-2)]/60',
+                      'border-y border-[var(--color-border-subtle)]/20 transition-all duration-150',
+                      'hover:text-[var(--color-text-secondary)]',
+                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30'
+                    )}
+                    aria-label={`Expand ${line.content}`}
+                  >
+                    <Expand size={9} className="opacity-60" />
+                    <span className="uppercase tracking-wider">{line.content}</span>
+                    <Expand size={9} className="opacity-60" />
+                  </button>
+                );
+              }
+
+              const isRemoved = line.type === 'removed';
+              const isAdded = line.type === 'added';
+              const isContext = line.type === 'context';
+
+              return (
+                <div
+                  key={idx}
+                  className={cn(
+                    'flex items-stretch transition-colors duration-75 border-b border-[var(--color-border-subtle)]/10',
+                    isRemoved && 'bg-[var(--color-diff-removed-bg)] hover:bg-[var(--color-diff-removed-bg)]/80',
+                    isAdded && 'bg-[var(--color-diff-added-bg)] hover:bg-[var(--color-diff-added-bg)]/80',
+                    isContext && 'hover:bg-[var(--color-surface-2)]/30'
+                  )}
+                >
+                  {/* Line numbers - enhanced styling */}
+                  <div className="flex-shrink-0 w-[56px] flex text-[8px] text-[var(--color-text-dim)]/50 select-none border-r border-[var(--color-border-subtle)]/15 tabular-nums font-medium">
+                    <span className={cn(
+                      'w-[28px] text-right pr-1 py-px',
+                      isRemoved && 'text-[var(--color-diff-removed-gutter)] bg-[var(--color-diff-removed-gutter)]/20'
+                    )}>
+                      {line.oldLineNum || ''}
+                    </span>
+                    <span className={cn(
+                      'w-[28px] text-right pr-1 py-px',
+                      isAdded && 'text-[var(--color-diff-added-gutter)] bg-[var(--color-diff-added-gutter)]/20'
+                    )}>
+                      {line.newLineNum || ''}
+                    </span>
+                  </div>
+
+                  {/* Change indicator bar - wider, more visible */}
+                  <div className={cn(
+                    'flex-shrink-0 w-[4px]',
+                    isRemoved && 'bg-[var(--color-diff-removed-indicator)]',
+                    isAdded && 'bg-[var(--color-diff-added-indicator)]'
+                  )} />
+
+                  {/* Line content with enhanced colors */}
+                  <div className={cn(
+                    'flex-1 px-2.5 py-px whitespace-pre overflow-x-auto leading-[1.65]',
+                    isRemoved && 'text-[var(--color-diff-removed-text)]',
+                    isAdded && 'text-[var(--color-diff-added-text)]',
+                    isContext && 'text-[var(--color-text-secondary)]/65'
+                  )}>
+                    {line.inlineDiff && (isAdded || isRemoved) ? (
+                      <span>
+                        {(isRemoved ? line.inlineDiff.oldParts : line.inlineDiff.newParts).map((part, pIdx) => (
+                          <span
+                            key={pIdx}
+                            className={cn(
+                              'transition-colors duration-75',
+                              part.type !== 'unchanged' && isRemoved && 'bg-[var(--color-diff-removed-word-bg)] text-[var(--color-diff-removed-text)] rounded-[3px] px-[3px] -mx-[1px] ring-1 ring-inset ring-[var(--color-diff-removed-word-ring)]',
+                              part.type !== 'unchanged' && isAdded && 'bg-[var(--color-diff-added-word-bg)] text-[var(--color-diff-added-text)] rounded-[3px] px-[3px] -mx-[1px] ring-1 ring-inset ring-[var(--color-diff-added-word-ring)]'
+                            )}
+                          >
+                            {part.text}
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      line.content || '\u00A0'
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+InlineDiffPreview.displayName = 'InlineDiffPreview';
+
+// =============================================================================
+// Edit Operation Diff Preview (for old_string -> new_string)
+// =============================================================================
+
+interface EditDiffPreviewProps {
+  oldString: string;
+  newString: string;
+  filePath: string;
+  maxHeight?: number;
+}
+
+const EditDiffPreview: React.FC<EditDiffPreviewProps> = memo(({
+  oldString,
+  newString,
+  filePath,
+  maxHeight = 200,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const stats = useMemo(() => computeDiffStats(oldString, newString), [oldString, newString]);
+
+  const fileName = filePath.split(/[/\\]/).pop() || filePath;
+
+  return (
+      <div className="mt-2 rounded-xl overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)] shadow-[0_6px_18px_rgba(0,0,0,0.16)]">
+      {/* Header - refined design matching other diff previews */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          'w-full flex items-center gap-2.5 px-3.5 py-2.5',
+          'bg-gradient-to-r from-[var(--color-surface-1)]/70 via-[var(--color-surface-1)]/60 to-[var(--color-surface-1)]/50',
+          'border-b border-[var(--color-border-subtle)]/30',
+          'font-mono cursor-pointer transition-all duration-150',
+          'hover:from-[var(--color-surface-1)]/90 hover:via-[var(--color-surface-1)]/80 hover:to-[var(--color-surface-1)]/70',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30'
+        )}
+        aria-expanded={isExpanded}
+        aria-label={`Edit file: ${fileName}`}
+      >
+        <span className={cn(
+          'text-[var(--color-text-dim)] flex-shrink-0 transition-transform duration-200',
+          isExpanded && 'rotate-0',
+          !isExpanded && '-rotate-90'
+        )}>
+          <ChevronDown size={12} />
+        </span>
+        <FileEdit size={13} className="text-[var(--color-diff-modified-text)]" />
+        <span className="text-[11px] font-medium text-[var(--color-text-primary)] truncate flex-1 min-w-0 text-left" title={filePath}>
+          {fileName}
+        </span>
+        <span className="text-[8px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold flex-shrink-0 bg-[var(--color-diff-modified-bg)] text-[var(--color-diff-modified-text)] ring-1 ring-inset ring-[var(--color-diff-modified-ring)]">
+          edit
+        </span>
+        <span className="text-[10px] flex-shrink-0 flex items-center gap-2 font-mono tabular-nums">
+          {stats.added > 0 && (
+            <span className="text-[var(--color-diff-added-text)] font-semibold">
+              add {stats.added}
+            </span>
+          )}
+          {stats.removed > 0 && (
+            <span className="text-[var(--color-diff-removed-text)] font-semibold">
+              remove {stats.removed}
+            </span>
+          )}
+        </span>
+      </button>
+
+      {/* Diff content - side by side old/new sections with enhanced styling */}
+      {isExpanded && (
+        <div 
+          className="font-mono text-[10px] leading-[1.65] overflow-auto scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent"
+          style={{ maxHeight }}
+        >
+          {/* Removed section */}
+          <div className="border-b border-[var(--color-border-subtle)]/20">
+            <div className="px-3 py-1.5 text-[8px] text-[var(--color-text-dim)]/80 bg-[var(--color-diff-removed-bg)] uppercase tracking-wider font-semibold flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-diff-removed-indicator)]/60" />
+              before
+            </div>
+            {oldString.split('\n').map((line, idx) => (
+              <div
+                key={`old-${idx}`}
+                className="flex items-stretch bg-[var(--color-diff-removed-bg)] hover:bg-[var(--color-diff-removed-bg-hover)] transition-colors duration-75 border-b border-[var(--color-border-subtle)]/10"
+              >
+                <div className="flex-shrink-0 w-[32px] text-right pr-2 py-px text-[9px] text-[var(--color-diff-removed-gutter)] select-none border-r border-[var(--color-border-subtle)]/15 bg-[var(--color-diff-removed-gutter-bg)] tabular-nums font-medium">
+                  {idx + 1}
+                </div>
+                <div className="flex-shrink-0 w-[4px] bg-[var(--color-diff-removed-indicator)]" />
+                <div className="flex-1 px-3 py-px whitespace-pre overflow-x-auto text-[var(--color-diff-removed-text)]">
+                  {line || '\u00A0'}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Added section */}
+          <div>
+            <div className="px-3 py-1.5 text-[8px] text-[var(--color-text-dim)]/80 bg-[var(--color-diff-added-bg)] uppercase tracking-wider font-semibold flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-diff-added-indicator)]/60" />
+              after
+            </div>
+            {newString.split('\n').map((line, idx) => (
+              <div
+                key={`new-${idx}`}
+                className="flex items-stretch bg-[var(--color-diff-added-bg)] hover:bg-[var(--color-diff-added-bg-hover)] transition-colors duration-75 border-b border-[var(--color-border-subtle)]/10"
+              >
+                <div className="flex-shrink-0 w-[32px] text-right pr-2 py-px text-[9px] text-[var(--color-diff-added-gutter)] select-none border-r border-[var(--color-border-subtle)]/15 bg-[var(--color-diff-added-gutter-bg)] tabular-nums font-medium">
+                  {idx + 1}
+                </div>
+                <div className="flex-shrink-0 w-[4px] bg-[var(--color-diff-added-indicator)]" />
+                <div className="flex-1 px-3 py-px whitespace-pre overflow-x-auto text-[var(--color-diff-added-text)]">
+                  {line || '\u00A0'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+EditDiffPreview.displayName = 'EditDiffPreview';
+
 interface ToolConfirmationItemProps {
   confirmation: ToolCallEvent;
   onApprove: () => void;
@@ -105,6 +623,27 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
   const quickSuggestions = useMemo(() => getQuickSuggestions(toolCall.name), [toolCall.name]);
   const hasArgs = toolCall.arguments && Object.keys(toolCall.arguments).length > 0;
   const argsString = useMemo(() => safeJsonStringify(toolCall.arguments, 2), [toolCall.arguments]);
+
+  // Detect file operations for diff preview
+  const isWriteOp = isFileWriteOperation(toolCall.name);
+  const isEditOp = isFileEditOperation(toolCall.name);
+  const isFileOp = isWriteOp || isEditOp;
+  
+  // Extract file operation data
+  const filePath = useMemo(() => extractFilePath(toolCall.arguments), [toolCall.arguments]);
+  const writeContent = useMemo(() => isWriteOp ? extractWriteContent(toolCall.arguments) : undefined, [isWriteOp, toolCall.arguments]);
+  const editStrings = useMemo(() => isEditOp ? extractEditStrings(toolCall.arguments) : undefined, [isEditOp, toolCall.arguments]);
+  
+  // Fetch original content for write operations
+  const { originalContent, isLoading: isLoadingOriginal } = useOriginalFileContent(
+    isWriteOp ? filePath : undefined,
+    isWriteOp
+  );
+
+  // Determine if we can show diff preview
+  const canShowWriteDiff = isWriteOp && filePath && writeContent !== undefined && originalContent !== null && !isLoadingOriginal;
+  const canShowEditDiff = isEditOp && filePath && editStrings !== undefined;
+  const isNewFile = isWriteOp && originalContent === '';
 
   const handleFeedbackSubmit = useCallback(() => {
     if (!feedbackText.trim() || isSubmitting) return;
@@ -215,8 +754,35 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
           )}
         </div>
 
-        {/* Expandable arguments */}
-        {hasArgs && (
+        {/* Diff preview for file operations */}
+        {canShowWriteDiff && filePath && writeContent !== undefined && (
+          <InlineDiffPreview
+            originalContent={originalContent || ''}
+            newContent={writeContent}
+            filePath={filePath}
+            isNewFile={isNewFile}
+            maxHeight={200}
+          />
+        )}
+
+        {canShowEditDiff && filePath && editStrings && (
+          <EditDiffPreview
+            oldString={editStrings.oldString}
+            newString={editStrings.newString}
+            filePath={filePath}
+            maxHeight={200}
+          />
+        )}
+
+        {/* Loading indicator for file content */}
+        {isWriteOp && isLoadingOriginal && (
+          <div className="mt-2 px-2 py-1.5 rounded-sm bg-[var(--color-surface-1)]/30 border border-[var(--color-border-subtle)]/30">
+            <span className="text-[9px] text-[var(--color-text-muted)] animate-pulse">Loading file content...</span>
+          </div>
+        )}
+
+        {/* Expandable arguments - only show if no diff preview or for non-file operations */}
+        {hasArgs && !isFileOp && (
           <div className="mt-2">
             <button
               type="button"
@@ -306,6 +872,22 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
                 </button>
               );
             })}
+            {/* Add custom instruction button */}
+            <button
+              onClick={() => setFeedbackText(feedbackText ? feedbackText + ' ' : '')}
+              className={cn(
+                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm',
+                'text-[9px] text-[var(--color-accent-primary)]',
+                'bg-[var(--color-surface-1)] border border-dashed border-[var(--color-accent-primary)]/30',
+                'hover:bg-[var(--color-accent-primary)]/10 hover:border-[var(--color-accent-primary)]/50',
+                'transition-all duration-100',
+                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
+              )}
+              title="Add custom instruction"
+            >
+              <Plus size={9} />
+              custom
+            </button>
           </div>
 
           {/* Custom feedback input */}

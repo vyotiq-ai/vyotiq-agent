@@ -112,8 +112,15 @@ const ThinkingPanelComponent: React.FC<ThinkingPanelProps> = ({
       {!isCollapsed && (
         <div className="ml-3 mt-0.5 border-l border-[var(--color-border-subtle)] pl-2">
           {thinking ? (
-            <pre className="text-[11px] whitespace-pre-wrap break-words text-[var(--color-text-secondary)] leading-relaxed max-h-[400px] overflow-y-auto scrollbar-thin py-0.5">
+            <pre className="text-[11px] whitespace-pre-wrap break-words text-[var(--color-text-reasoning)] leading-relaxed max-h-[400px] overflow-y-auto scrollbar-thin py-0.5 italic">
               {thinking}
+              {isStreaming && (
+                <span 
+                  className="inline-block w-[2px] h-[12px] bg-[var(--color-info)] animate-pulse ml-0.5 align-middle"
+                  style={{ animationDuration: '800ms' }}
+                  aria-hidden="true"
+                />
+              )}
             </pre>
           ) : (
             <div className="flex items-center gap-1.5 text-[10px] py-1">

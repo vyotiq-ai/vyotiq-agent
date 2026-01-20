@@ -1,12 +1,14 @@
 /**
  * Dynamic Sections Builder
- * 
+ *
  * Builds context-aware sections that change per-request:
  * - Workspace context
  * - Terminal context
  * - Editor context
  * - Access level
  * - Persona/custom instructions
+ *
+ * Tools are loaded dynamically with their own descriptions.
  */
 
 import type {
@@ -16,9 +18,9 @@ import type {
   WorkspaceDiagnosticsInfo,
   TaskAnalysisContext,
   WorkspaceStructureContext,
+  ToolDefForPrompt,
 } from './types';
-import type { PromptSettings, AccessLevelSettings } from '../../../shared/types';
-import { ACCESS_LEVEL_DEFAULTS, ACCESS_LEVEL_DESCRIPTIONS } from '../../../shared/types';
+import type { PromptSettings, AccessLevelSettings, ResponseFormatPreferences } from '../../../shared/types';
 
 // =============================================================================
 // UTILITY FUNCTIONS
@@ -39,316 +41,236 @@ function truncate(str: string, maxLen: number): string {
 }
 
 // =============================================================================
-// CORE CONTEXT
+// TOOLS REFERENCE - Compact format
+// =============================================================================
+
+export function buildToolsReference(tools?: ToolDefForPrompt[]): string {
+  if (!tools || tools.length === 0) return '';
+
+  // Compact single-line format per tool
+  const toolLines = tools.map(t => `  <t n="${t.name}">${escapeXml(truncate(t.description, 80))}</t>`);
+  return `<tools>\n${toolLines.join('\n')}\n</tools>`;
+}
+
+// =============================================================================
+// CORE CONTEXT - Compact format
 // =============================================================================
 
 export function buildCoreContext(context: SystemPromptContext): string {
-  if (!context.promptSettings.includeWorkspaceContext) {
-    return '';
-  }
+  if (!context.promptSettings.includeWorkspaceContext) return '';
 
-  const workspacePath = context.workspace?.path || 'No workspace selected';
-  const isWindows = process.platform === 'win32';
-  const osName = isWindows ? 'Windows' : (process.platform === 'darwin' ? 'macOS' : 'Linux');
+  const ws = context.workspace?.path || 'none';
+  const os = process.platform === 'win32' ? 'win' : (process.platform === 'darwin' ? 'mac' : 'linux');
 
-  return `<context>
-  <workspace_root>${workspacePath}</workspace_root>
-  <operating_system>${osName}</operating_system>
-  <path_separator>${isWindows ? '\\\\' : '/'}</path_separator>
-  <session>${context.session.state.id}</session>
-  <model>${context.modelId}</model>
-  <provider>${context.providerName}</provider>
-  <tools_available>${context.toolsList}</tools_available>
-  <local_time>${new Date().toISOString()}</local_time>
-</context>`;
+  return `<ctx ws="${ws}" os="${os}" model="${context.modelId}" provider="${context.providerName}" />`
 }
 
 // =============================================================================
-// CORE TOOLS
-// =============================================================================
-
-export function buildCoreTools(toolsList: string, _toolDefinitions?: { name: string; description: string }[]): string {
-  return `<tools>
-  <available_tools>${toolsList}</available_tools>
-  <note>Refer to the tools array for detailed parameter requirements and usage rules.</note>
-</tools>`;
-}
-
-// =============================================================================
-// TERMINAL CONTEXT
+// TERMINAL CONTEXT - Compact format
 // =============================================================================
 
 export function buildTerminalContext(terminalContext?: TerminalContextInfo): string {
-  if (!terminalContext || terminalContext.processes.length === 0) {
-    return '';
-  }
+  if (!terminalContext || terminalContext.processes.length === 0) return '';
 
-  const { processes, defaultShell, cwd } = terminalContext;
-  const runningCount = processes.filter(p => p.isRunning).length;
+  const { processes } = terminalContext;
+  const running = processes.filter(p => p.isRunning);
+  if (running.length === 0) return '';
 
-  const parts: string[] = [];
-  parts.push('<terminal_context>');
-  parts.push(`  <shell>${defaultShell}</shell>`);
-  if (cwd) parts.push(`  <cwd>${cwd}</cwd>`);
-
-  if (processes.length > 0) {
-    parts.push(`  <processes running="${runningCount}">`);
-    for (const proc of processes.slice(0, 5)) {
-      const status = proc.isRunning ? 'running' : `exited:${proc.exitCode}`;
-      parts.push(`    <process pid="${proc.pid}" status="${status}">`);
-      parts.push(`      <command>${escapeXml(truncate(proc.command, 100))}</command>`);
-      parts.push('    </process>');
-    }
-    parts.push('  </processes>');
-
-    if (runningCount > 0) {
-      parts.push('  <hint>Use check_terminal(pid) for output, kill_terminal(pid) to stop</hint>');
-    }
-  }
-
-  parts.push('</terminal_context>');
-  return parts.join('\n');
+  const procs = running.slice(0, 3).map(p => 
+    `<p pid="${p.pid}">${escapeXml(truncate(p.command, 50))}</p>`
+  ).join('');
+  
+  return `<terminal running="${running.length}">${procs}</terminal>`;
 }
 
 // =============================================================================
-// EDITOR CONTEXT
+// EDITOR CONTEXT - Compact format
 // =============================================================================
 
 export function buildEditorContext(editorContext?: EditorContextInfo): string {
-  if (!editorContext || (editorContext.openFiles.length === 0 && !editorContext.activeFile)) {
-    return '';
-  }
+  if (!editorContext) return '';
+  
+  const { activeFile, diagnostics } = editorContext;
+  if (!activeFile && (!diagnostics || diagnostics.length === 0)) return '';
 
-  const { openFiles, activeFile, cursorPosition, diagnostics } = editorContext;
   const parts: string[] = [];
-  parts.push('<editor_context>');
-
-  if (openFiles.length > 0) {
-    parts.push('  <open_files>');
-    for (const file of openFiles.slice(0, 10)) {
-      const isActive = file === activeFile ? ' active="true"' : '';
-      parts.push(`    <file${isActive}>${escapeXml(file)}</file>`);
-    }
-    parts.push('  </open_files>');
-  }
-
-  if (activeFile && cursorPosition) {
-    parts.push(`  <cursor file="${escapeXml(activeFile)}" line="${cursorPosition.lineNumber}" column="${cursorPosition.column}" />`);
-  }
-
-  // Active file diagnostics
-  if (diagnostics && diagnostics.length > 0 && activeFile) {
-    const fileDiags = diagnostics.filter(d => d.filePath === activeFile).slice(0, 5);
-    if (fileDiags.length > 0) {
-      parts.push('  <diagnostics>');
-      for (const d of fileDiags) {
-        parts.push(`    <diagnostic severity="${d.severity}" line="${d.line}">${escapeXml(d.message)}</diagnostic>`);
-      }
-      parts.push('  </diagnostics>');
+  if (activeFile) parts.push(`active="${escapeXml(activeFile)}"`);
+  
+  if (diagnostics && diagnostics.length > 0) {
+    const errors = diagnostics.filter(d => d.severity === 'error').length;
+    const warnings = diagnostics.filter(d => d.severity === 'warning').length;
+    if (errors > 0 || warnings > 0) {
+      parts.push(`errors="${errors}" warnings="${warnings}"`);
     }
   }
 
-  parts.push('</editor_context>');
-  return parts.join('\n');
+  return parts.length > 0 ? `<editor ${parts.join(' ')} />` : '';
 }
 
 // =============================================================================
-// WORKSPACE DIAGNOSTICS
+// WORKSPACE DIAGNOSTICS - Compact format (only show if errors exist)
 // =============================================================================
 
 export function buildWorkspaceDiagnostics(diagnostics?: WorkspaceDiagnosticsInfo): string {
-  if (!diagnostics || diagnostics.diagnostics.length === 0) {
-    return '';
-  }
+  if (!diagnostics || diagnostics.errorCount === 0) return '';
 
-  const { errorCount, warningCount } = diagnostics;
-  const parts: string[] = [];
-  parts.push(`<workspace_diagnostics errors="${errorCount}" warnings="${warningCount}">`);
+  const issues = diagnostics.diagnostics.slice(0, 5).map(d => 
+    `<i f="${escapeXml(d.filePath)}" l="${d.line}">${escapeXml(truncate(d.message, 60))}</i>`
+  ).join('');
 
-  // Group by file, show top 10 files
-  const byFile = new Map<string, typeof diagnostics.diagnostics>();
-  for (const d of diagnostics.diagnostics) {
-    const existing = byFile.get(d.filePath) || [];
-    existing.push(d);
-    byFile.set(d.filePath, existing);
-  }
-
-  const sortedFiles = [...byFile.entries()]
-    .sort((a, b) => b[1].filter(d => d.severity === 'error').length - a[1].filter(d => d.severity === 'error').length)
-    .slice(0, 10);
-
-  for (const [filePath, fileDiags] of sortedFiles) {
-    const errors = fileDiags.filter(d => d.severity === 'error').length;
-    parts.push(`  <file path="${escapeXml(filePath)}" errors="${errors}">`);
-    for (const d of fileDiags.slice(0, 3)) {
-      parts.push(`    <diagnostic line="${d.line}" severity="${d.severity}">${escapeXml(d.message)}</diagnostic>`);
-    }
-    parts.push('  </file>');
-  }
-
-  if (errorCount > 0) {
-    parts.push('  <hint>Fix these errors to ensure code compiles and passes linting.</hint>');
-  }
-
-  parts.push('</workspace_diagnostics>');
-  return parts.join('\n');
+  return `<diag errors="${diagnostics.errorCount}" warnings="${diagnostics.warningCount}">${issues}</diag>`;
 }
 
 // =============================================================================
-// TASK ANALYSIS
+// TASK ANALYSIS - Compact (only if present)
 // =============================================================================
 
 export function buildTaskAnalysis(taskAnalysis?: TaskAnalysisContext): string {
   if (!taskAnalysis) return '';
-
-  const parts: string[] = [];
-  parts.push(`<task_analysis intent="${taskAnalysis.intent}" confidence="${(taskAnalysis.confidence * 100).toFixed(0)}%">`);
-  parts.push(`  <complexity>${taskAnalysis.complexity}</complexity>`);
-  parts.push(`  <scope>${taskAnalysis.scope}</scope>`);
-
-  if (taskAnalysis.shouldDecompose) {
-    parts.push('  <recommendation>Consider decomposing into subtasks</recommendation>');
-  }
-
-  parts.push('</task_analysis>');
-  return parts.join('\n');
+  return `<task intent="${escapeXml(taskAnalysis.intent)}" complexity="${taskAnalysis.complexity || 'medium'}" />`;
 }
 
 // =============================================================================
-// WORKSPACE STRUCTURE
+// WORKSPACE STRUCTURE - Compact
 // =============================================================================
 
 export function buildWorkspaceStructure(structure?: WorkspaceStructureContext): string {
-  if (!structure || !structure.projectType) return '';
+  if (!structure) return '';
 
   const parts: string[] = [];
-  parts.push('<workspace_structure>');
+  if (structure.languages?.length) parts.push(`lang="${structure.languages.join(',')}"`);
+  if (structure.frameworks?.length) parts.push(`fw="${structure.frameworks.join(',')}"`);
+  if (structure.packageManager) parts.push(`pm="${structure.packageManager}"`);
 
-  if (structure.projectType) parts.push(`  <project_type>${structure.projectType}</project_type>`);
-  if (structure.framework) parts.push(`  <framework>${structure.framework}</framework>`);
-  if (structure.packageManager) parts.push(`  <package_manager>${structure.packageManager}</package_manager>`);
-
-  if (structure.sourceDirectories?.length) {
-    parts.push(`  <source_dirs>${structure.sourceDirectories.slice(0, 5).join(', ')}</source_dirs>`);
-  }
-
-  parts.push('</workspace_structure>');
-  return parts.join('\n');
+  return parts.length > 0 ? `<ws ${parts.join(' ')} />` : '';
 }
 
 // =============================================================================
-// ACCESS LEVEL
+// ACCESS LEVEL - Compact
 // =============================================================================
 
-export function buildAccessLevel(settings?: AccessLevelSettings): string {
-  if (!settings || !settings.showInSystemPrompt) return '';
-
-  const { level, categoryPermissions } = settings;
-  const levelInfo = ACCESS_LEVEL_DESCRIPTIONS[level];
-  const basePermissions = ACCESS_LEVEL_DEFAULTS[level];
-
-  const parts: string[] = [];
-  parts.push(`<access_level level="${level}" name="${levelInfo.name}">`);
-  parts.push(`  <description>${levelInfo.description}</description>`);
-  parts.push('  <permissions>');
-
-  const categories = ['read', 'write', 'terminal', 'git', 'system', 'destructive'] as const;
-  for (const cat of categories) {
-    const perm = categoryPermissions[cat] ?? basePermissions[cat];
-    const status = perm.allowed ? (perm.requiresConfirmation ? '✓ (confirm)' : '✓') : '✗';
-    parts.push(`    <${cat}>${status}</${cat}>`);
-  }
-
-  parts.push('  </permissions>');
-
-  if (!settings.allowOutsideWorkspace) {
-    parts.push('  <restriction>Only access files within workspace</restriction>');
-  }
-
-  parts.push('</access_level>');
-  return parts.join('\n');
+export function buildAccessLevel(accessLevel?: AccessLevelSettings): string {
+  if (!accessLevel) return '';
+  const level = accessLevel.level || 'standard';
+  return `<access level="${level}" />`;
 }
 
 // =============================================================================
-// PERSONA & CUSTOM INSTRUCTIONS
+// PERSONA - Only if non-default
 // =============================================================================
 
-export function buildPersona(promptSettings: PromptSettings): string {
-  if (!promptSettings.activePersonaId || promptSettings.activePersonaId === 'default') {
-    return '';
-  }
+export function buildPersona(settings?: PromptSettings): string {
+  if (!settings?.activePersonaId || settings.activePersonaId === 'default') return '';
 
-  const persona = promptSettings.personas?.find(p => p.id === promptSettings.activePersonaId);
+  const persona = settings.personas?.find(p => p.id === settings.activePersonaId);
   if (!persona?.systemPrompt) return '';
 
-  return `<persona name="${persona.name || 'Custom'}">
-${persona.systemPrompt}
-</persona>`;
+  return `<persona>${escapeXml(truncate(persona.systemPrompt, 200))}</persona>`;
 }
 
-export function buildCustomPrompt(promptSettings: PromptSettings): string {
-  if (!promptSettings.useCustomSystemPrompt || !promptSettings.customSystemPrompt) {
-    return '';
-  }
+// =============================================================================
+// CUSTOM PROMPT - Only if enabled
+// =============================================================================
 
-  return `<custom_instructions>
-${promptSettings.customSystemPrompt}
-</custom_instructions>`;
+export function buildCustomPrompt(settings?: PromptSettings): string {
+  if (!settings?.useCustomSystemPrompt || !settings.customSystemPrompt) return '';
+  return `<custom>${escapeXml(settings.customSystemPrompt)}</custom>`;
 }
+
+// =============================================================================
+// ADDITIONAL INSTRUCTIONS - Only if present
+// =============================================================================
 
 export function buildAdditionalInstructions(instructions?: string): string {
   if (!instructions) return '';
-
-  return `<additional_instructions>
-${instructions}
-</additional_instructions>`;
+  return `<extra>${escapeXml(instructions)}</extra>`;
 }
 
 // =============================================================================
-// COMMUNICATION STYLE
+// COMMUNICATION STYLE - Only if non-default
 // =============================================================================
 
-export function buildCommunicationStyle(responseFormat?: PromptSettings['responseFormat']): string {
-  if (!responseFormat) {
-    return `<communication_style tone="professional">
-  <guideline>Be concise but conversational</guideline>
-  <guideline>Explain approach briefly before using tools</guideline>
-  <guideline>Summarize changes after completion</guideline>
-</communication_style>`;
+export function buildCommunicationStyle(responseFormat?: ResponseFormatPreferences): string {
+  if (!responseFormat) return '';
+  
+  const isDefault = responseFormat.explanationDetail === 'moderate' && responseFormat.tone === 'professional';
+  if (isDefault) return '';
+
+  return `<style detail="${responseFormat.explanationDetail}" tone="${responseFormat.tone}" />`;
+}
+
+// =============================================================================
+// CORE TOOLS (Alias for buildToolsReference)
+// =============================================================================
+
+/**
+ * Alias for buildToolsReference for backward compatibility
+ */
+export function buildCoreTools(tools?: ToolDefForPrompt[]): string {
+  return buildToolsReference(tools);
+}
+
+// =============================================================================
+// DYNAMIC TOOL CATEGORIES
+// =============================================================================
+
+/**
+ * Tool categories - compact format for token efficiency
+ * Must match actual tool names from implementations
+ */
+export const DYNAMIC_TOOL_CATEGORIES: Record<string, { tools: string[]; description: string }> = {
+  file: {
+    tools: ['read', 'write', 'edit', 'ls', 'grep', 'glob', 'bulk', 'read_lints'],
+    description: 'File operations, search, diagnostics',
+  },
+  terminal: {
+    tools: ['run', 'check_terminal', 'kill_terminal'],
+    description: 'Command execution, process management',
+  },
+  browser: {
+    tools: [
+      // Primary (always loaded)
+      'browser_fetch', 'browser_navigate', 'browser_extract', 'browser_snapshot', 'browser_screenshot',
+      'browser_click', 'browser_type', 'browser_scroll', 'browser_wait', 'browser_console', 'browser_check_url',
+      // Secondary (deferred, use request_tools to load)
+      'browser_fill_form', 'browser_hover', 'browser_evaluate', 'browser_state',
+      'browser_back', 'browser_forward', 'browser_reload', 'browser_network', 'browser_tabs', 'browser_security_status',
+    ],
+    description: 'Web automation, scraping, form filling, debugging',
+  },
+  lsp: {
+    tools: ['lsp_hover', 'lsp_definition', 'lsp_references', 'lsp_symbols', 'lsp_diagnostics', 'lsp_completions', 'lsp_code_actions', 'lsp_rename'],
+    description: 'Code intelligence, navigation, refactoring',
+  },
+  task: {
+    tools: ['TodoWrite', 'CreatePlan', 'VerifyTasks', 'GetActivePlan', 'ListPlans', 'DeletePlan'],
+    description: 'Task tracking, planning, verification',
+  },
+  advanced: {
+    tools: ['create_tool', 'request_tools'],
+    description: 'Dynamic tool creation, tool discovery',
+  },
+};
+
+/**
+ * Build compact tool categories section
+ * 
+ * NOTE: This is the single source of truth for tool categories.
+ * The static system prompt references this via "see <tool_categories>" 
+ * to avoid duplication.
+ */
+export function buildToolCategories(): string {
+  const categories = Object.entries(DYNAMIC_TOOL_CATEGORIES);
+  if (categories.length === 0) return '';
+
+  const parts: string[] = ['<tool_categories>'];
+  parts.push('  <hint>Use request_tools to list/search tools by category</hint>');
+  
+  for (const [name, info] of categories) {
+    const samples = info.tools.slice(0, 3).join(', ');
+    parts.push(`  <cat name="${name}" desc="${info.description}" samples="${samples}" />`);
   }
-
-  const guidelines: string[] = [];
-
-  switch (responseFormat.tone) {
-    case 'casual':
-      guidelines.push('Be friendly and approachable');
-      break;
-    case 'technical':
-      guidelines.push('Be precise and technical');
-      break;
-    case 'friendly':
-      guidelines.push('Be warm and encouraging');
-      break;
-    default:
-      guidelines.push('Be concise but conversational');
-  }
-
-  switch (responseFormat.explanationDetail) {
-    case 'minimal':
-      guidelines.push('Keep explanations brief');
-      break;
-    case 'detailed':
-      guidelines.push('Provide thorough explanations');
-      break;
-  }
-
-  if (responseFormat.includeExamples) {
-    guidelines.push('Include examples when helpful');
-  }
-
-  const guidelinesXml = guidelines.map(g => `  <guideline>${g}</guideline>`).join('\n');
-
-  return `<communication_style tone="${responseFormat.tone || 'professional'}">
-${guidelinesXml}
-</communication_style>`;
+  
+  parts.push('</tool_categories>');
+  return parts.join('\n');
 }

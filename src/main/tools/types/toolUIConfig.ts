@@ -176,6 +176,15 @@ export const TOOL_UI_CONFIG: Record<string, ToolUIMetadata> = {
     runningLabel: 'Watching',
     completedLabel: 'Watching',
   },
+
+  // Agent Internal Tools
+  TodoWrite: {
+    icon: 'ListTodo',
+    label: 'Tasks',
+    color: 'text-[var(--color-accent-primary)]',
+    runningLabel: 'Updating tasks',
+    completedLabel: 'Tasks updated',
+  },
 };
 
 // Category mappings
@@ -234,6 +243,8 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   browser_reload: 'browser-write',
   browser_tabs: 'browser-write',
   browser_wait: 'browser-write',
+  // Agent internal tools
+  TodoWrite: 'agent-internal',
 };
 
 // Default fallback config

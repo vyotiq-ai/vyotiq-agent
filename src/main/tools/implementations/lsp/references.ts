@@ -23,20 +23,49 @@ interface ReferencesArgs extends Record<string, unknown> {
 
 export const lspReferencesTool: ToolDefinition<ReferencesArgs> = {
   name: 'lsp_references',
-  description: `Find all references to a symbol at a specific position.
+  description: `Find all references to a symbol at a specific position. Critical for safe refactoring.
 
-Use this to:
-- Find all usages of a function, variable, or class
-- Understand the impact of changing a symbol
-- Navigate between related code locations
+## When to Use
+- **Before renaming**: Find all usages to understand impact
+- **Refactoring**: Identify all places that need changes
+- **Understanding code**: See how a symbol is used throughout the codebase
+- **Impact analysis**: Assess the scope of a change
 
-Parameters:
-- file (required): File path relative to workspace
-- line (required): Line number (1-indexed)
-- column (required): Column number (1-indexed)
-- include_declaration (optional): Include the declaration itself (default: true)
+## Workflow Integration
+Use for safe refactoring:
+\`\`\`
+lsp_references(file, line, col) → find ALL usages
+read(files_with_references) → understand each usage
+[plan changes based on usage patterns]
+edit(each_file) → make consistent changes
+read_lints() → verify no errors
+\`\`\`
 
-Returns a list of all locations where the symbol is referenced.`,
+## Refactoring Pattern
+\`\`\`
+lsp_definition → find where symbol is defined
+lsp_references → find all usages
+[for each reference]
+  read(file) → understand context
+  edit(file, old, new) → update usage
+read_lints() → verify all changes
+\`\`\`
+
+## Parameters
+- **file** (required): File path relative to workspace
+- **line** (required): Line number (1-indexed)
+- **column** (required): Column number (1-indexed)
+- **include_declaration** (optional): Include the declaration itself (default: true)
+
+## Output
+- Total reference count
+- References grouped by file
+- Line and column for each reference
+
+## Best Practices
+- Always check references before renaming or removing symbols
+- Use with lsp_definition to understand the full picture
+- Consider all usages when changing function signatures`,
   requiresApproval: false,
   category: 'code-intelligence',
   riskLevel: 'safe',

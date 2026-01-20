@@ -75,9 +75,10 @@ interface ProcessInfo {
 }
 
 // Default and maximum timeout values
-const DEFAULT_TIMEOUT_MS = 120000; // 2 minutes
-const MAX_TIMEOUT_MS = 600000; // 10 minutes
+const DEFAULT_TIMEOUT_MS = 240000; // 4 minutes (increased from 3)
+const MAX_TIMEOUT_MS = 1200000; // 20 minutes (increased from 15)
 const MAX_OUTPUT_SIZE = 1024 * 1024; // 1MB max output per process
+const TIMEOUT_WARNING_THRESHOLD_MS = 90000; // Warn after 1.5 minutes (increased from 1)
 
 /**
  * Process Terminal Manager implementation using node-pty
@@ -104,7 +105,29 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
     // Determine shell based on platform
     const isWindows = os.platform() === 'win32';
     const shell = isWindows ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
-    const shellArgs = isWindows ? ['-NoLogo', '-NoProfile', '-Command', command] : ['-c', command];
+    
+    // Convert bash-style command chaining to PowerShell syntax on Windows
+    // && (AND) -> ; (sequential) - PowerShell doesn't support && in older versions
+    // || (OR) -> ; if ($LASTEXITCODE -ne 0) { ... } - but we simplify to just ;
+    let effectiveCommand = command;
+    if (isWindows) {
+      // Replace && with ; for PowerShell compatibility
+      // This handles: cmd1 && cmd2 -> cmd1 ; cmd2
+      effectiveCommand = command.replace(/\s*&&\s*/g, ' ; ');
+      
+      // Replace || with ; (simplified - just run sequentially)
+      effectiveCommand = effectiveCommand.replace(/\s*\|\|\s*/g, ' ; ');
+      
+      // Log if command was modified
+      if (effectiveCommand !== command) {
+        logger.debug('Converted bash-style command to PowerShell syntax', {
+          original: command.slice(0, 100),
+          converted: effectiveCommand.slice(0, 100),
+        });
+      }
+    }
+    
+    const shellArgs = isWindows ? ['-NoLogo', '-NoProfile', '-Command', effectiveCommand] : ['-c', command];
 
     const ptyModule = await getPty();
 
@@ -166,14 +189,43 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
           }
         });
 
-        // Set up timeout
+        // Set up timeout with progressive warnings
         if (waitForExit && effectiveTimeout > 0) {
+          // Warning timeout - emit warning after threshold
+          if (effectiveTimeout > TIMEOUT_WARNING_THRESHOLD_MS) {
+            const warningTimeout = setTimeout(() => {
+              if (processInfo.isRunning) {
+                logger.info('Long-running command in progress', {
+                  pid,
+                  command: command.slice(0, 100),
+                  elapsedMs: TIMEOUT_WARNING_THRESHOLD_MS,
+                  remainingMs: effectiveTimeout - TIMEOUT_WARNING_THRESHOLD_MS,
+                });
+                // Emit a warning event (not error) so UI can show progress
+                this.emit('warning', {
+                  pid,
+                  message: `Command running for ${Math.round(TIMEOUT_WARNING_THRESHOLD_MS / 1000)}s, will timeout in ${Math.round((effectiveTimeout - TIMEOUT_WARNING_THRESHOLD_MS) / 1000)}s`,
+                });
+              }
+            }, TIMEOUT_WARNING_THRESHOLD_MS);
+            
+            // Store warning timeout for cleanup
+            (processInfo as ProcessInfo & { warningTimeout?: NodeJS.Timeout }).warningTimeout = warningTimeout;
+          }
+
           processInfo.timeout = setTimeout(() => {
             if (processInfo.isRunning) {
-              processInfo.stderr += `\n[Process timed out after ${effectiveTimeout}ms]`;
+              const elapsedMs = Date.now() - processInfo.startedAt;
+              processInfo.stderr += `\n[Process timed out after ${effectiveTimeout}ms (elapsed: ${elapsedMs}ms)]`;
               processInfo.isRunning = false;
               processInfo.exitCode = -1;
               processInfo.finishedAt = Date.now();
+              
+              // Clear warning timeout if set
+              const extendedInfo = processInfo as ProcessInfo & { warningTimeout?: NodeJS.Timeout };
+              if (extendedInfo.warningTimeout) {
+                clearTimeout(extendedInfo.warningTimeout);
+              }
               
               try {
                 ptyProcess.kill();
@@ -183,6 +235,11 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
                   error: error instanceof Error ? error.message : String(error),
                 });
               }
+              
+              logger.warn('Terminal process timed out', {
+                pid,
+                error: `Process timed out after ${effectiveTimeout}ms`,
+              });
               
               // Emit error event only once
               this.emit('error', { 

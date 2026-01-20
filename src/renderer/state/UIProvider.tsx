@@ -128,6 +128,13 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Global keyboard shortcut handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape to close metrics dashboard
+      if (e.key === 'Escape' && metricsDashboardOpen) {
+        e.preventDefault();
+        setMetricsDashboardOpen(false);
+        return;
+      }
+      
       // ? to show shortcuts (when no modals are open and not in an input)
       if (e.key === '?' && !settingsOpen && !shortcutsOpen) {
         const target = e.target as HTMLElement;
@@ -162,8 +169,8 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         toggleCommandPalette();
       }
 
-      // Ctrl/Cmd + Shift + M to toggle metrics dashboard
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
+      // Ctrl/Cmd + Shift + I to toggle metrics dashboard
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'i') {
         e.preventDefault();
         toggleMetricsDashboard();
       }
@@ -172,9 +179,9 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       // are handled in EditorView.tsx
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settingsOpen, shortcutsOpen, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [settingsOpen, shortcutsOpen, metricsDashboardOpen, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard]);
 
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = useMemo(() => ({ 

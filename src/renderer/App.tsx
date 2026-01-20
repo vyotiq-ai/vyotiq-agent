@@ -172,7 +172,53 @@ const App: React.FC = () => {
 
   const [isResizingBrowser, setIsResizingBrowser] = useState(false);
 
-  // Command palette commands
+  // PERFORMANCE OPTIMIZATION: Split commands into stable and dynamic parts
+  // Stable commands don't depend on frequently changing state
+  const stableCommands = useMemo<CommandItem[]>(() => [
+    // Navigation commands
+    {
+      id: 'focus-chat',
+      label: 'Focus Chat Input',
+      description: 'Jump to the message input',
+      icon: CommandIcons.chat,
+      shortcut: '/',
+      category: 'Navigation',
+      action: () => {
+        const input = document.querySelector<HTMLTextAreaElement>('[data-chat-input]');
+        input?.focus();
+      },
+    },
+    // Workspace commands
+    {
+      id: 'add-workspace',
+      label: 'Add Workspace',
+      description: 'Open a folder as a workspace',
+      icon: CommandIcons.folder,
+      category: 'Workspace',
+      action: () => void actions.openWorkspaceDialog(),
+    },
+    // Settings commands
+    {
+      id: 'open-settings',
+      label: 'Open Settings',
+      description: 'Configure application settings',
+      icon: CommandIcons.settings,
+      shortcut: 'Ctrl+,',
+      category: 'Settings',
+      action: openSettings,
+    },
+    {
+      id: 'keyboard-shortcuts',
+      label: 'Keyboard Shortcuts',
+      description: 'View all keyboard shortcuts',
+      icon: CommandIcons.shortcuts,
+      shortcut: '?',
+      category: 'Settings',
+      action: openShortcuts,
+    },
+  ], [actions, openSettings, openShortcuts]);
+
+  // Dynamic commands that depend on UI state
   const commands = useMemo<CommandItem[]>(() => [
     // Session commands
     {
@@ -197,19 +243,7 @@ const App: React.FC = () => {
       },
       disabled: !agentSnapshot.activeSessionId,
     },
-    // Navigation commands
-    {
-      id: 'focus-chat',
-      label: 'Focus Chat Input',
-      description: 'Jump to the message input',
-      icon: CommandIcons.chat,
-      shortcut: '/',
-      category: 'Navigation',
-      action: () => {
-        const input = document.querySelector<HTMLTextAreaElement>('[data-chat-input]');
-        input?.focus();
-      },
-    },
+    ...stableCommands,
     // Panel commands
     {
       id: 'toggle-browser',
@@ -235,7 +269,7 @@ const App: React.FC = () => {
       label: 'Open Metrics Dashboard',
       description: 'View agent metrics and performance data',
       icon: CommandIcons.settings,
-      shortcut: 'Ctrl+Shift+M',
+      shortcut: 'Ctrl+Shift+I',
       category: 'Panels',
       action: openMetricsDashboard,
     },
@@ -292,34 +326,6 @@ const App: React.FC = () => {
         }
       },
       disabled: !agentSnapshot.activeSessionId,
-    },
-    // Workspace commands
-    {
-      id: 'add-workspace',
-      label: 'Add Workspace',
-      description: 'Open a folder as a workspace',
-      icon: CommandIcons.folder,
-      category: 'Workspace',
-      action: () => void actions.openWorkspaceDialog(),
-    },
-    // Settings commands
-    {
-      id: 'open-settings',
-      label: 'Open Settings',
-      description: 'Configure application settings',
-      icon: CommandIcons.settings,
-      shortcut: 'Ctrl+,',
-      category: 'Settings',
-      action: openSettings,
-    },
-    {
-      id: 'keyboard-shortcuts',
-      label: 'Keyboard Shortcuts',
-      description: 'View all keyboard shortcuts',
-      icon: CommandIcons.shortcuts,
-      shortcut: '?',
-      category: 'Settings',
-      action: openShortcuts,
     },
     // Editor commands
     {
@@ -379,13 +385,12 @@ const App: React.FC = () => {
       disabled: tabs.length === 0,
     },
   ], [
+    stableCommands,
     agentSnapshot.activeSessionId,
     agentSnapshot.activeSessionStatus,
     browserPanelOpen,
     undoHistoryOpen,
     actions,
-    openSettings,
-    openShortcuts,
     openBrowserPanel,
     closeBrowserPanel,
     openUndoHistory,
@@ -394,7 +399,7 @@ const App: React.FC = () => {
     // Editor dependencies
     isEditorVisible,
     activeTabId,
-    activeTab,
+    activeTab?.isDirty,
     tabs.length,
     toggleEditor,
     saveFile,
@@ -437,6 +442,7 @@ const App: React.FC = () => {
   }, [isResizingBrowser, setBrowserPanelWidth]);
 
   return (
+    <>
     <MainLayout onOpenSettings={openSettings}>
       <div className="flex flex-col h-full w-full">
         <div className="flex flex-1 min-h-0">
@@ -500,33 +506,45 @@ const App: React.FC = () => {
           />
         </Suspense>
       )}
-      {/* Metrics Dashboard Modal */}
-      {metricsDashboardOpen && (
-        <Suspense fallback={<MetricsLoader />}>
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="relative w-full max-w-5xl max-h-[90vh] m-4 bg-[var(--color-surface-base)] rounded-lg border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden">
-              {/* Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
-                <span className="text-xs font-medium text-[var(--color-text-primary)]">Metrics Dashboard</span>
-                <button
-                  onClick={closeMetricsDashboard}
-                  className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
-                  aria-label="Close metrics dashboard"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              {/* Content */}
-              <div className="overflow-y-auto max-h-[calc(90vh-60px)]">
-                <MetricsDashboard period="day" />
-              </div>
+    </MainLayout>
+    {/* Metrics Dashboard Modal - rendered outside MainLayout to avoid overflow issues */}
+    {metricsDashboardOpen && (
+      <Suspense fallback={<MetricsLoader />}>
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-scale-in"
+          onClick={(e) => {
+            // Close on backdrop click
+            if (e.target === e.currentTarget) {
+              closeMetricsDashboard();
+            }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="metrics-dashboard-title"
+        >
+          <div className="relative w-full max-w-5xl max-h-[90vh] m-4 bg-[var(--color-surface-base)] rounded-lg border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
+              <span id="metrics-dashboard-title" className="text-xs font-medium text-[var(--color-text-primary)]">Metrics Dashboard</span>
+              <button
+                onClick={closeMetricsDashboard}
+                className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                aria-label="Close metrics dashboard"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Content */}
+            <div className="overflow-y-auto max-h-[calc(90vh-60px)]">
+              <MetricsDashboard period="day" />
             </div>
           </div>
-        </Suspense>
-      )}
-    </MainLayout>
+        </div>
+      </Suspense>
+    )}
+    </>
   );
 };
 

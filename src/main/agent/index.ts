@@ -37,8 +37,6 @@ export {
   CORE_IDENTITY,
   CRITICAL_RULES,
   TOOL_CHAINING,
-  CLOSING_REMINDER,
-  IMPORTANT_REMINDERS,
   DEFAULT_PROMPT_SETTINGS,
 } from './systemPrompt';
 export type { 
@@ -165,8 +163,6 @@ export {
   getAnomalyDetector,
 } from './security';
 
-// Phase 4: Task Analysis - Removed (module not implemented)
-
 // Phase 4: Resource Allocation
 export {
   ResourceAllocator,
@@ -178,10 +174,6 @@ export {
   initResourceMonitor,
   resetResourceMonitor,
 } from './resources';
-
-// Phase 4: Coordination - Removed sub-agent coordination system
-
-// Phase 5: Monitoring - Removed (module not implemented)
 
 // Phase 5: Recovery
 export {

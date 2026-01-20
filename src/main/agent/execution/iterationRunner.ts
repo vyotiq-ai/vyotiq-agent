@@ -28,6 +28,7 @@ import {
   isRateLimitError,
   isMaxOutputTokensError,
   isTransientError,
+  isNetworkError,
   extractRetryAfter,
 } from '../utils/errorUtils';
 import { agentMetrics } from '../metrics';
@@ -557,6 +558,25 @@ export class IterationRunner {
           const delay = retryAfter ? retryAfter * 1000 : baseDelay + jitter;
 
           this.logger.warn('Rate limited, retrying', { provider: provider.name, runId, attempt, delay: Math.round(delay) });
+          await this.delay(delay);
+          continue;
+        }
+
+        // Handle network connectivity errors with longer delays
+        // These errors (fetch failed, DNS, connection refused) need more time to recover
+        if (isNetworkError(error) && attempt < maxRetries) {
+          const baseDelay = 5000; // Start with 5 seconds for network issues
+          const exponentialDelay = baseDelay * Math.pow(2, attempt - 1);
+          const jitter = Math.random() * 2000;
+          const delay = Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
+
+          this.logger.warn('Network connectivity error, retrying with extended delay', { 
+            provider: provider.name, 
+            runId, 
+            attempt,
+            error: lastError?.message,
+            delay: Math.round(delay) 
+          });
           await this.delay(delay);
           continue;
         }

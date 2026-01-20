@@ -1,4 +1,4 @@
-import { BaseLLMProvider, type ProviderRequest, type ProviderMessage, APIError, withRetry } from './baseProvider';
+import { BaseLLMProvider, type ProviderRequest, type ProviderMessage, APIError, withRetry, fetchStreamWithRetry } from './baseProvider';
 import type { ProviderResponse, ToolCallPayload, ProviderResponseChunk, TokenUsage } from '../../../shared/types';
 import { createLogger } from '../../logger';
 import { normalizeStrictJsonSchema, parseToolArguments } from '../../utils';
@@ -711,19 +711,37 @@ export class DeepSeekProvider extends BaseLLMProvider {
       maxTokens: body.max_tokens,
     });
     
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal: request.signal,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw this.createDeepSeekError(response, errorText);
+    // Use fetchStreamWithRetry for automatic retry on network errors
+    let response: Response;
+    try {
+      response = await fetchStreamWithRetry(
+        `${this.baseUrl}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          timeout: 120000, // 2 minute timeout for streaming requests
+        },
+        request.signal,
+        {
+          maxRetries: 3,
+          initialDelayMs: 3000,
+          maxDelayMs: 15000,
+          backoffMultiplier: 2,
+        }
+      );
+    } catch (error) {
+      // Re-wrap with DeepSeek-specific error if it's an API error
+      if (error instanceof APIError) {
+        throw this.createDeepSeekError(
+          { status: error.statusCode ?? 500, headers: { get: (): string | null => null } } as unknown as Response,
+          error.message
+        );
+      }
+      throw error;
     }
 
     if (!response.body) throw new Error('No response body');

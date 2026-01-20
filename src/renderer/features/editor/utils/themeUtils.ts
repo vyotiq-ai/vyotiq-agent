@@ -188,15 +188,76 @@ export const vyotiqDarkTheme: monaco.editor.IStandaloneThemeData = {
     'editorInfo.foreground': '#61afef',
     'editorHint.foreground': '#98c379',
     
-    // Diff Editor colors
-    'diffEditor.insertedTextBackground': '#98c37920',
-    'diffEditor.insertedLineBackground': '#98c37915',
-    'diffEditor.removedTextBackground': '#e06c7520',
-    'diffEditor.removedLineBackground': '#e06c7515',
+    // Sticky Scroll
+    'editorStickyScroll.background': '#0a0a0c',
+    'editorStickyScrollHover.background': '#0f0f12',
+    'editorStickyScroll.border': '#1f1f24',
+    'editorStickyScroll.shadow': '#00000050',
+    
+    // Inlay Hints
+    'editorInlayHint.background': '#1a1a1d80',
+    'editorInlayHint.foreground': '#71717a',
+    'editorInlayHint.typeForeground': '#61afef90',
+    'editorInlayHint.parameterForeground': '#d19a6690',
+    
+    // Linked Editing
+    'editor.linkedEditingBackground': '#c678dd30',
+    
+    // Bracket Pair Colorization (additional)
+    'editorBracketPairGuide.background1': '#d19a6650',
+    'editorBracketPairGuide.background2': '#c678dd50',
+    'editorBracketPairGuide.background3': '#56b6c250',
+    'editorBracketPairGuide.background4': '#98c37950',
+    'editorBracketPairGuide.background5': '#e06c7550',
+    'editorBracketPairGuide.background6': '#61afef50',
+    'editorBracketPairGuide.activeBackground1': '#d19a66',
+    'editorBracketPairGuide.activeBackground2': '#c678dd',
+    'editorBracketPairGuide.activeBackground3': '#56b6c2',
+    'editorBracketPairGuide.activeBackground4': '#98c379',
+    'editorBracketPairGuide.activeBackground5': '#e06c75',
+    'editorBracketPairGuide.activeBackground6': '#61afef',
+    
+    // Code Lens
+    'editorCodeLens.foreground': '#71717a',
+    
+    // Folding
+    'editor.foldBackground': '#3e445120',
+    'editorGutter.foldingControlForeground': '#71717a',
+    
+    // Ghost Text (AI Suggestions)
+    'editorGhostText.background': '#00000000',
+    'editorGhostText.foreground': '#71717a80',
+    'editorGhostText.border': '#00000000',
+    
+    // Marker Navigation (F8)
+    'editorMarkerNavigation.background': '#0f0f12',
+    'editorMarkerNavigationError.background': '#f4474730',
+    'editorMarkerNavigationWarning.background': '#e5c07b30',
+    'editorMarkerNavigationInfo.background': '#61afef30',
+    'editorMarkerNavigationError.headerBackground': '#f4474720',
+    'editorMarkerNavigationWarning.headerBackground': '#e5c07b20',
+    'editorMarkerNavigationInfo.headerBackground': '#61afef20',
+    
+    // Lightbulb (Quick Fix)
+    'editorLightBulb.foreground': '#e5c07b',
+    'editorLightBulbAutoFix.foreground': '#34d399',
+    
+    // Ruler
+    'editorRuler.foreground': '#1f1f24',
+    
+    // Unicode Highlight
+    'editorUnicodeHighlight.border': '#e5c07b',
+    'editorUnicodeHighlight.background': '#e5c07b20',
+    
+    // Diff Editor colors - matched with unified diff view
+    'diffEditor.insertedTextBackground': '#1a2e1a',
+    'diffEditor.insertedLineBackground': '#1a2e1a',
+    'diffEditor.removedTextBackground': '#2e1a1a',
+    'diffEditor.removedLineBackground': '#2e1a1a',
     'diffEditor.border': '#1f1f24',
     'diffEditor.diagonalFill': '#1a1a1d50',
-    'diffEditorGutter.insertedLineBackground': '#98c37930',
-    'diffEditorGutter.removedLineBackground': '#e06c7530',
+    'diffEditorGutter.insertedLineBackground': '#1f3a1f',
+    'diffEditorGutter.removedLineBackground': '#3a1f1f',
     'diffEditorOverview.insertedForeground': '#98c379',
     'diffEditorOverview.removedForeground': '#e06c75',
   },

@@ -2,6 +2,9 @@
  * LSP Tools Index
  * 
  * Exports all LSP-related tools for code intelligence.
+ * 
+ * Primary tools are always loaded for coding tasks.
+ * Secondary tools are deferred and loaded on-demand via request_tools.
  */
 
 import type { ToolDefinition } from '../../types';
@@ -26,17 +29,33 @@ import { lspCodeActionsTool } from './codeActions';
 import { lspRenameTool } from './rename';
 
 /**
+ * Mark secondary tools as deferred for context-aware loading
+ */
+function markAsDeferred<T extends ToolDefinition>(tool: T): T {
+  return {
+    ...tool,
+    deferLoading: true,
+    searchKeywords: [
+      ...(tool.searchKeywords || []),
+      'lsp', 'code', 'intelligence', 'symbol',
+    ],
+  };
+}
+
+/**
  * All LSP tools as an array for registration
  */
 export const LSP_TOOLS: ToolDefinition[] = [
+  // Primary LSP tools (always loaded for coding tasks)
   lspHoverTool,
   lspDefinitionTool,
   lspReferencesTool,
-  lspSymbolsTool,
   lspDiagnosticsTool,
-  lspCompletionsTool,
-  lspCodeActionsTool,
-  lspRenameTool,
+  // Secondary LSP tools (deferred, loaded on-demand)
+  markAsDeferred(lspSymbolsTool),
+  markAsDeferred(lspCompletionsTool),
+  markAsDeferred(lspCodeActionsTool),
+  markAsDeferred(lspRenameTool),
 ];
 
 /**

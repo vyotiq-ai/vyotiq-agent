@@ -98,6 +98,43 @@ export interface EditorSettings {
   contextLinesBefore?: number;
   /** Context lines after cursor - synced from global settings */
   contextLinesAfter?: number;
+  
+  // =============================================
+  // VSCode-like features
+  // =============================================
+  
+  /** Enable sticky scroll - keeps scope context visible at top */
+  stickyScroll?: boolean;
+  /** Enable font ligatures for programming fonts */
+  fontLigatures?: boolean;
+  /** Format on paste */
+  formatOnPaste?: boolean;
+  /** Format on type */
+  formatOnType?: boolean;
+  /** Format on save */
+  formatOnSave?: boolean;
+  /** Trim trailing whitespace on save */
+  trimTrailingWhitespace?: boolean;
+  /** Insert final newline on save */
+  insertFinalNewline?: boolean;
+  /** Enable linked editing for paired tags (HTML/JSX) */
+  linkedEditing?: boolean;
+  /** Enable inlay hints */
+  inlayHints?: boolean;
+  /** Auto-detect indentation from file content */
+  detectIndentation?: boolean;
+  /** Render indent guides */
+  renderIndentGuides?: boolean;
+  /** Highlight active indent guide */
+  highlightActiveIndentGuide?: boolean;
+  /** Enable semantic highlighting */
+  semanticHighlighting?: boolean;
+  /** Enable column selection mode (Alt+Shift+Click) */
+  columnSelectionMode?: boolean;
+  /** Show folding controls */
+  showFoldingControls?: 'always' | 'never' | 'mouseover';
+  /** Fold imports by default */
+  foldImportsByDefault?: boolean;
 }
 
 /** Default editor settings */
@@ -125,6 +162,23 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   inlineCompletionMaxTokens: 128,
   contextLinesBefore: 50,
   contextLinesAfter: 10,
+  // VSCode-like features
+  stickyScroll: true,
+  fontLigatures: true,
+  formatOnPaste: true,
+  formatOnType: true,
+  formatOnSave: false,
+  trimTrailingWhitespace: true,
+  insertFinalNewline: true,
+  linkedEditing: true,
+  inlayHints: true,
+  detectIndentation: true,
+  renderIndentGuides: true,
+  highlightActiveIndentGuide: true,
+  semanticHighlighting: true,
+  columnSelectionMode: false,
+  showFoldingControls: 'mouseover',
+  foldImportsByDefault: false,
 };
 
 /** Editor context menu action */

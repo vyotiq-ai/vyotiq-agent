@@ -141,18 +141,50 @@ async function executeClick(
 
 export const browserClickTool: ToolDefinition<ClickArgs> = {
   name: 'browser_click',
-  description: `Click on an element in the browser.
+  description: `Click on an element in the browser. Core interaction tool for web automation.
 
-**Use for:**
-- Clicking buttons and links
-- Triggering UI interactions
-- Testing click handlers
+## When to Use
+- **Click buttons**: Submit forms, trigger actions
+- **Navigate links**: Click navigation elements
+- **UI interactions**: Toggle menus, expand sections
+- **Testing**: Verify click handlers work correctly
 
-**Selector tips:**
+## Workflow Integration
+Use as part of interaction sequences:
+\`\`\`
+browser_navigate(url) → load page
+browser_snapshot() → see available elements
+browser_click(selector) → interact
+browser_screenshot() → verify result
+\`\`\`
+
+## Form Interaction Pattern
+\`\`\`
+browser_navigate("http://localhost:3000/login")
+browser_type("#email", "user@example.com")
+browser_type("#password", "password")
+browser_click("button[type='submit']")
+browser_screenshot() → verify login result
+\`\`\`
+
+## Selector Tips
 - Use IDs when available: #submit-btn
 - Use classes: .nav-link
 - Use attributes: [data-testid="login"]
-- Use text content: button:contains("Submit")`,
+- Use text content: button:contains("Submit")
+- Use browser_snapshot to find selectors
+
+## Parameters
+- **selector** (required): CSS selector for the element to click
+- **button** (optional): Mouse button - left, right, middle (default: left)
+- **doubleClick** (optional): Perform double-click instead of single
+- **waitTimeout** (optional): Wait for element to appear (ms)
+- **modifiers** (optional): Modifier keys - Alt, Control, Meta, Shift
+
+## Best Practices
+- Use browser_snapshot first to find correct selectors
+- Use waitTimeout for dynamically loaded elements
+- Verify results with browser_screenshot`,
 
   requiresApproval: false,
   category: 'browser-write',

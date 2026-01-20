@@ -3,6 +3,10 @@
  *
  * Builds context-aware prompts dynamically based on agent state,
  * task requirements, and available context.
+ * 
+ * NOTE: For most use cases, prefer using buildSystemPrompt() from '../systemPrompt'
+ * which handles caching and dynamic section injection automatically.
+ * This builder is for specialized prompt construction scenarios.
  */
 
 import type {
@@ -12,12 +16,11 @@ import type {
 // Type alias for API compatibility
 type ConversationMessage = ChatMessage;
 
-// Import from new consolidated systemPrompt module
-import {
-  CORE_IDENTITY,
-  CRITICAL_RULES,
-  TOOL_CHAINING,
-} from '../systemPrompt';
+// Import from consolidated systemPrompt module
+import { getStaticContent } from '../systemPrompt';
+
+// Get the unified system prompt content
+const getUnifiedPrompt = (): string => getStaticContent();
 
 // =============================================================================
 // Types
@@ -102,19 +105,10 @@ export class DynamicPromptBuilder {
     let currentTokens = 0;
     const maxTokens = options.maxTokens ?? 8000;
 
-    // Add core identity (always included)
-    sections.push(CORE_IDENTITY);
-    currentTokens += estimateTokens(CORE_IDENTITY);
-
-    // Add critical rules (always included)
-    sections.push(CRITICAL_RULES);
-    currentTokens += estimateTokens(CRITICAL_RULES);
-
-    // Add tool chaining if requested and space permits
-    if (options.includeWorkflows !== false && currentTokens + estimateTokens(TOOL_CHAINING) < maxTokens * 0.9) {
-      sections.push(TOOL_CHAINING);
-      currentTokens += estimateTokens(TOOL_CHAINING);
-    }
+    // Add unified system prompt (contains identity, rules, tools, workflows)
+    const unifiedPrompt = getUnifiedPrompt();
+    sections.push(unifiedPrompt);
+    currentTokens += estimateTokens(unifiedPrompt);
 
     // Add custom sections
     if (options.customSections) {
@@ -148,12 +142,12 @@ export class DynamicPromptBuilder {
    * Build minimal prompt for token-constrained situations
    */
   buildMinimal(_options: PromptBuildOptions): BuiltPrompt {
-    // Minimal main agent prompt
-    const prompt = `${CORE_IDENTITY}\n\n${CRITICAL_RULES}`;
+    // Minimal prompt uses the unified system prompt
+    const prompt = getUnifiedPrompt();
     return {
       systemPrompt: prompt,
       estimatedTokens: estimateTokens(prompt),
-      sections: ['identity', 'rules'],
+      sections: ['unified'],
     };
   }
 

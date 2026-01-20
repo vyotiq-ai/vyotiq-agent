@@ -167,18 +167,54 @@ async function executeScroll(
 
 export const browserScrollTool: ToolDefinition<ScrollArgs> = {
   name: 'browser_scroll',
-  description: `Scroll the browser page or a specific element.
+  description: `Scroll the browser page or a specific element. Essential for accessing content below the fold.
 
-**Directions:**
-- up/down: Scroll vertically by amount
-- left/right: Scroll horizontally by amount
-- top/bottom: Jump to start/end of page
+## When to Use
+- **View more content**: Scroll to see content below the viewport
+- **Navigate long pages**: Jump to top/bottom of page
+- **Scroll to elements**: Make specific elements visible
+- **Scrollable containers**: Scroll within sidebars, modals, etc.
 
-**Options:**
-- amount: Pixels to scroll (default: 500)
-- selector: Scroll within specific element
-- scrollToElement: Scroll to make element visible
-- smooth: Use smooth animation`,
+## Workflow Integration
+Use to access content not in viewport:
+\`\`\`
+browser_navigate(url) → load page
+browser_scroll(direction: "down") → see more content
+browser_extract() → get visible content
+[repeat as needed]
+\`\`\`
+
+## Scroll to Element Pattern
+\`\`\`
+browser_scroll(scrollToElement: "#section-3")
+browser_screenshot() → verify element is visible
+browser_click("#section-3 button") → interact
+\`\`\`
+
+## Infinite Scroll Pattern
+\`\`\`
+browser_navigate(url)
+browser_scroll(direction: "bottom")
+browser_wait(selector: ".new-content")
+browser_extract()
+\`\`\`
+
+## Directions
+- **up/down**: Scroll vertically by amount
+- **left/right**: Scroll horizontally by amount
+- **top/bottom**: Jump to start/end of page
+
+## Parameters
+- **direction** (required): up, down, left, right, top, bottom
+- **amount** (optional): Pixels to scroll (default: 500)
+- **selector** (optional): Scroll within specific element
+- **scrollToElement** (optional): Scroll to make element visible
+- **smooth** (optional): Use smooth animation
+
+## Best Practices
+- Use scrollToElement to ensure specific content is visible
+- Use direction: "bottom" for infinite scroll pages
+- Combine with browser_wait for dynamic content`,
 
   requiresApproval: false,
   category: 'browser-write',

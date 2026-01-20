@@ -7,10 +7,12 @@
  * - PDF files - extracted text content using pdf-parse
  * - Jupyter notebooks (.ipynb) - all cells with outputs
  * - Encoding detection and handling
+ * - Automatic mojibake repair for corrupted UTF-8 content
  */
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { resolvePath } from '../../utils/fileSystem';
+import { hasMojibake, repairMojibake } from '../../utils/encoding';
 import { createLogger } from '../../logger';
 import { markFileAsRead } from '../fileTracker';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
@@ -41,10 +43,6 @@ interface ReadFileArgs extends Record<string, unknown> {
   offset?: number;
   /** Number of lines to read. Only use if file is too large */
   limit?: number;
-  /** @deprecated Use offset instead */
-  startLine?: number;
-  /** @deprecated Use limit with offset instead */
-  endLine?: number;
   /** File encoding (default: utf-8) */
   encoding?: BufferEncoding;
 }
@@ -108,33 +106,78 @@ function truncateContent(content: string, filePath: string): { content: string; 
 
 export const readFileTool: ToolDefinition<ReadFileArgs> = {
   name: 'read',
-  description: `Reads a file from the local filesystem. You can access any file directly by using this tool.
+  description: `Reads a file from the local filesystem. The foundational tool for understanding code before making changes.
 
-Usage:
-- Provide an absolute path to the file you want to read
+## When to Use
+- **ALWAYS before editing** - Read files to get exact content for the edit tool
+- To understand code structure, patterns, and conventions
+- To find specific functions, classes, or implementations
+- To verify file contents after changes
+- To read configuration, documentation, or data files
+
+## Workflow Integration
+This is the FIRST step in the Read → Edit → Verify cycle:
+\`\`\`
+read(file) → Get exact file content
+  │
+  ├─ Understand the code structure
+  ├─ Copy EXACT text for edit tool's old_string
+  │
+edit(file, old, new) → Make targeted changes
+  │
+read_lints() → Verify no errors introduced
+\`\`\`
+
+## Tool Chaining Patterns
+**Pattern 1: Discovery → Read → Modify**
+\`\`\`
+grep("pattern") → Find files containing pattern
+read(files) → Understand context (batch multiple files)
+edit(file, old, new) → Make changes
+\`\`\`
+
+**Pattern 2: Explore → Read → Plan**
+\`\`\`
+glob("**/*.ts") → Find all TypeScript files
+ls(directory) → Understand structure
+read(key_files) → Understand architecture
+CreatePlan → Break down the task
+\`\`\`
+
+## Supported File Types
+- **Code files**: All text-based source files (TypeScript, Python, etc.)
+- **Images**: PNG, JPG, JPEG, GIF, WebP, BMP, SVG (visual analysis)
+- **PDFs**: Text extraction with page-by-page processing
+- **Notebooks**: Jupyter .ipynb files with all cells and outputs
+- **Config/Data**: JSON, YAML, XML, CSV, etc.
+
+## Parameters
+- **path** (required): Absolute or workspace-relative path to the file
+- **offset** (optional): Line number to start reading (1-indexed). Use for large files
+- **limit** (optional): Number of lines to read (default: ${MAX_FILE_LINES}). Use with offset
+
+## Large File Strategy
+Files over ${MAX_FILE_LINES} lines are automatically chunked:
+1. First read: \`read(path)\` → Returns first ${MAX_FILE_LINES} lines + total count
+2. Next chunk: \`read(path, offset=${MAX_FILE_LINES + 1}, limit=${MAX_FILE_LINES})\`
+3. Continue until you've read what you need
+
+## Output Format
+- Line numbers in cat -n format (6-digit padded, tab-separated)
+- Truncation notices for large files with guidance on reading more
+- Metadata includes: totalLines, bytesRead, wasTruncated
+
+## Best Practices
+- **Batch reads**: Read multiple related files in parallel when possible
+- **Read before edit**: The edit tool requires EXACT string matches
+- **Check metadata**: Use totalLines to know if more content exists
+- **Use grep first**: For large codebases, grep to find relevant files before reading
+
+## Important Notes
 - On Windows, use paths like "C:\\Users\\..." or workspace-relative paths
 - On Unix/Mac, use paths like "/home/user/..." or workspace-relative paths
-- By default, it reads up to ${MAX_FILE_LINES} lines per request (smaller chunks for better context)
-- For large files, use offset and limit to read in chunks of ~${MAX_FILE_LINES} lines
-- Any lines longer than ${MAX_LINE_LENGTH} characters will be truncated
-- Results are returned using cat -n format, with line numbers starting at 1
-- This tool allows reading images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as the LLM is multimodal.
-- This tool can read PDF files (.pdf). PDFs are processed page by page, extracting both text and visual content for analysis.
-- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
-- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
-- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
-
-IMPORTANT: Do NOT use Unix-style root paths like "/" on Windows. Use the workspace path from your context.
-
-Best Practices for Large Files:
-- Read files in chunks of ${MAX_FILE_LINES} lines using offset/limit
-- Start with offset=1, limit=${MAX_FILE_LINES}, then offset=${MAX_FILE_LINES + 1}, limit=${MAX_FILE_LINES}, etc.
-- Check the totalLines in metadata to know how many lines remain
-
-Parameters:
-- path (required): The absolute path to the file to read
-- offset (optional): The line number to start reading from (1-indexed). Use for reading large files in chunks
-- limit (optional): The number of lines to read (default: ${MAX_FILE_LINES}). Use with offset for chunked reading`,
+- Empty files return a warning message
+- Lines over ${MAX_LINE_LENGTH} characters are truncated`,
   requiresApproval: false,
   category: 'file-read',
   riskLevel: 'safe',
@@ -220,9 +263,9 @@ Parameters:
     });
     const encoding = args.encoding || 'utf-8';
     
-    // Support both new (offset/limit) and legacy (startLine/endLine) parameters
-    const offset = args.offset ?? args.startLine;
-    const limit = args.limit ?? (args.endLine && args.startLine ? args.endLine - args.startLine + 1 : undefined);
+    // Support both new (offset/limit) parameters
+    const offset = args.offset;
+    const limit = args.limit;
 
     // Log the read operation
     context.logger.info('Reading file', {
@@ -340,7 +383,7 @@ This may be a scanned/image-only PDF or have security restrictions.`,
       }
       
       // Read as text or base64 for images
-      const content = await fs.readFile(filePath, isImage ? 'base64' : encoding);
+      let content = await fs.readFile(filePath, isImage ? 'base64' : encoding);
       
       // Handle image files - return info about the image
       if (isImage) {
@@ -358,6 +401,22 @@ This may be a scanned/image-only PDF or have security restrictions.`,
             size: stats.size,
           },
         };
+      }
+
+      // Detect and repair mojibake (UTF-8 encoding corruption)
+      // This fixes issues like box-drawing characters appearing as garbled text
+      let encodingRepaired = false;
+      if (hasMojibake(content)) {
+        const repairedContent = repairMojibake(content);
+        if (repairedContent !== content) {
+          encodingRepaired = true;
+          logger.info('Repaired mojibake in file', {
+            path: args.path,
+            originalLength: content.length,
+            repairedLength: repairedContent.length,
+          });
+          content = repairedContent;
+        }
       }
 
       // Handle line range if specified (offset/limit)
@@ -381,6 +440,9 @@ This may be a scanned/image-only PDF or have security restrictions.`,
         let output = numberedLines.join('\n');
         if (rangeWasTruncated) {
           output += `\n\n... [Truncated: Requested ${limit} lines from line ${offset}, showing ${actualEnd - start}. Max ${MAX_FILE_LINES} lines per request.]`;
+        }
+        if (encodingRepaired) {
+          output = `[Note: File encoding was repaired (mojibake detected and fixed)]\n\n${output}`;
         }
 
         // Track that this file was read
@@ -423,9 +485,14 @@ This may be a scanned/image-only PDF or have security restrictions.`,
       
       // Format with cat -n style line numbers for full file reads too
       const lines = truncatedContent.split('\n');
-      const numberedContent = lines.map((line, idx) => {
+      let numberedContent = lines.map((line, idx) => {
         return `${(idx + 1).toString().padStart(6, ' ')}\t${line}`;
       }).join('\n');
+
+      // Add encoding repair note if applicable
+      if (encodingRepaired) {
+        numberedContent = `[Note: File encoding was repaired (mojibake detected and fixed)]\n\n${numberedContent}`;
+      }
 
       // Track that this file was read
       markFileAsRead(filePath);
@@ -439,6 +506,7 @@ This may be a scanned/image-only PDF or have security restrictions.`,
           totalLines,
           bytesRead: content.length,
           wasTruncated,
+          encodingRepaired,
         },
       };
     } catch (error) {

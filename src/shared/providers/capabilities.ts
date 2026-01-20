@@ -52,6 +52,25 @@ export const PROVIDER_CAPABILITIES: Record<LLMProviderName, ProviderCapabilities
     supportsVision: true,  // Depends on selected model
     supportsStructuredOutput: true,  // Depends on selected model
   },
+  xai: {
+    supportsStreaming: true,
+    supportsToolUse: true,
+    supportsVision: true,
+    supportsStructuredOutput: true,
+  },
+  mistral: {
+    supportsStreaming: true,
+    supportsToolUse: true,
+    supportsVision: true,
+    supportsStructuredOutput: true,
+  },
+  glm: {
+    supportsStreaming: true,
+    supportsToolUse: true,
+    supportsVision: true,  // GLM-4.6V, GLM-4.5V support vision
+    supportsStructuredOutput: true,
+    supportsThinking: true,  // GLM-4.7, GLM-4.6 support thinking mode
+  },
 };
 
 // =============================================================================

@@ -21,19 +21,45 @@ interface DiagnosticsArgs extends Record<string, unknown> {
 
 export const lspDiagnosticsTool: ToolDefinition<DiagnosticsArgs> = {
   name: 'lsp_diagnostics',
-  description: `Get diagnostics (errors, warnings) for files using language servers.
+  description: `Get diagnostics (errors, warnings) for files using language servers. Alternative to read_lints for LSP-based checking.
 
-Use this to:
-- Check for errors in specific files
-- Get all workspace diagnostics
-- Filter diagnostics by severity
+## When to Use
+- **Check specific files**: Get errors/warnings for files you're working on
+- **Workspace overview**: See all problems across the codebase
+- **Filter by severity**: Focus on errors only, or include warnings
+- **Real-time feedback**: Get diagnostics from language server cache
 
-Parameters:
-- files (optional): Array of file paths to check
-- all (optional): Get all cached diagnostics from workspace
-- severity (optional): Filter by 'error', 'warning', 'info', or 'hint'
+## Workflow Integration
+Use as verification step:
+\`\`\`
+edit(file, old, new) → make change
+lsp_diagnostics(files: [file]) → check for errors
+[if errors] → fix immediately
+[if clean] → continue
+\`\`\`
 
-Returns formatted list of diagnostics with file, line, severity, and message.`,
+## Comparison with read_lints
+- **lsp_diagnostics**: Uses language server (TypeScript, etc.) - faster, cached
+- **read_lints**: Runs ESLint - more comprehensive, includes style rules
+
+Use lsp_diagnostics for quick type checking, read_lints for full linting.
+
+## Parameters
+- **files** (optional): Array of file paths to check
+- **all** (optional): Get all cached diagnostics from workspace
+- **severity** (optional): Filter by 'error', 'warning', 'info', or 'hint'
+
+## Output
+- Diagnostics grouped by file
+- Line and column for each issue
+- Severity indicator (✗ error, ⚠ warning, ℹ info, 💡 hint)
+- Summary counts
+
+## Best Practices
+- Use after editing files to catch type errors quickly
+- Filter by 'error' to focus on critical issues
+- Use 'all: true' to get workspace-wide overview
+- Combine with read_lints for comprehensive checking`,
   requiresApproval: false,
   category: 'code-intelligence',
   riskLevel: 'safe',

@@ -3,7 +3,7 @@
  * 
  * Centralized type definitions for the tool execution system.
  */
-import type { ToolExecutionResult } from '../../../shared/types';
+import type { ToolExecutionResult, RendererEvent } from '../../../shared/types';
 import type { SafetyManager } from '../../agent/safety';
 
 // =============================================================================
@@ -11,8 +11,10 @@ import type { SafetyManager } from '../../agent/safety';
 // =============================================================================
 
 export interface ToolExecutionContext {
-  workspacePath?: string;
-  cwd?: string;
+  /** Workspace root path - always provided for tool execution */
+  workspacePath: string;
+  /** Current working directory - defaults to workspace root */
+  cwd: string;
   terminalManager: TerminalManager;
   logger: ToolLogger;
   /** Safety manager for validating operations */
@@ -31,6 +33,10 @@ export interface ToolExecutionContext {
    * Long-running operations MUST respect this signal.
    */
   signal?: AbortSignal;
+  /**
+   * Optional callback to emit events to the renderer
+   */
+  emitEvent?: (event: RendererEvent) => void;
 }
 
 export interface ToolLogger {
@@ -54,31 +60,31 @@ export interface ToolDefinition<TArgs extends Record<string, unknown> = Record<s
   category?: ToolCategory;
   /** UI metadata for display */
   ui?: ToolUIMetadata;
-  
+
   // ==========================================================================
   // Advanced Tool Use Features (from Anthropic engineering patterns)
   // ==========================================================================
-  
+
   /**
    * Examples of correct tool usage to improve accuracy.
    * Anthropic research shows this improves tool call accuracy from 72% to 90%.
    * Each example should demonstrate proper parameter formatting.
    */
   inputExamples?: TArgs[];
-  
+
   /**
    * When true, tool schema is not loaded upfront but discovered on-demand.
    * Use for rarely-used tools to reduce context token usage by up to 85%.
    * Tool becomes available through the tool search mechanism.
    */
   deferLoading?: boolean;
-  
+
   /**
    * Keywords for tool discovery when deferLoading is enabled.
    * Used by the tool search mechanism to find relevant tools.
    */
   searchKeywords?: string[];
-  
+
   /**
    * Specifies who can call this tool.
    * - 'direct': Called directly by the LLM (default)
@@ -86,7 +92,7 @@ export interface ToolDefinition<TArgs extends Record<string, unknown> = Record<s
    * Use this to enable Programmatic Tool Calling (PTC) for safe, read-only operations.
    */
   allowedCallers?: ('direct' | 'code_execution')[];
-  
+
   /**
    * Risk level for safety validation.
    * - 'safe': Read-only operations, no side effects
@@ -94,19 +100,19 @@ export interface ToolDefinition<TArgs extends Record<string, unknown> = Record<s
    * - 'dangerous': Destructive or irreversible operations
    */
   riskLevel?: 'safe' | 'moderate' | 'dangerous';
-  
+
   /**
    * Patterns that always require user confirmation even in YOLO mode.
    * Applied during safety validation.
    */
   alwaysConfirmPatterns?: RegExp[];
-  
+
   /**
    * When true, this tool requires that the target file was read first.
    * Used by write/edit tools to ensure file contents are understood before modification.
    */
   mustReadBeforeWrite?: boolean;
-  
+
   /**
    * Reference to a shared cache that tracks which files have been read.
    * Used in conjunction with mustReadBeforeWrite for safety validation.
@@ -140,7 +146,7 @@ export interface SchemaProperty {
 // Tool Categories & UI
 // =============================================================================
 
-export type ToolCategory = 
+export type ToolCategory =
   | 'file-read'      // Reading files
   | 'file-write'     // Creating/modifying files
   | 'file-search'    // Finding/searching files
@@ -151,6 +157,7 @@ export type ToolCategory =
   | 'code-intelligence' // Symbols, definitions, references, diagnostics
   | 'browser-read'   // Browser read-only operations (fetch, extract, console)
   | 'browser-write'  // Browser state-changing operations (click, type, navigate)
+  | 'agent-internal' // Agent internal tools (planning, etc.)
   | 'other';         // Uncategorized
 
 export interface ToolUIMetadata {
@@ -215,7 +222,7 @@ export interface TerminalManager {
   isRunning?(pid: number): boolean;
   /** Clean up old completed processes (optional implementation) */
   cleanup?(maxAgeMs?: number): number;
-  
+
   // Event emitter methods for real-time output
   on(event: 'stdout', listener: (payload: TerminalOutputPayload) => void): this;
   on(event: 'stderr', listener: (payload: TerminalOutputPayload) => void): this;

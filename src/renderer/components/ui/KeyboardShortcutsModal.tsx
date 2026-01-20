@@ -54,6 +54,10 @@ const shortcutCategories = [
   {
     title: 'panels',
     shortcuts: [
+      { ...KEYBOARD_SHORTCUTS.toggleTerminal, formatted: formatShortcut(KEYBOARD_SHORTCUTS.toggleTerminal) },
+      { ...KEYBOARD_SHORTCUTS.toggleProblems, formatted: formatShortcut(KEYBOARD_SHORTCUTS.toggleProblems) },
+      { ...KEYBOARD_SHORTCUTS.toggleOutput, formatted: formatShortcut(KEYBOARD_SHORTCUTS.toggleOutput) },
+      { ...KEYBOARD_SHORTCUTS.toggleDebugConsole, formatted: formatShortcut(KEYBOARD_SHORTCUTS.toggleDebugConsole) },
       { ...KEYBOARD_SHORTCUTS.toggleBrowser, formatted: formatShortcut(KEYBOARD_SHORTCUTS.toggleBrowser) },
       { ...KEYBOARD_SHORTCUTS.toggleUndoHistory, formatted: formatShortcut(KEYBOARD_SHORTCUTS.toggleUndoHistory) },
       { ...KEYBOARD_SHORTCUTS.toggleMetrics, formatted: formatShortcut(KEYBOARD_SHORTCUTS.toggleMetrics) },

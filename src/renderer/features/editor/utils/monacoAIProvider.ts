@@ -93,8 +93,8 @@ export function registerAIInlineCompletionProvider(): monaco.IDisposable {
         }
 
         if (!response.text) {
-          // Log error if there was one
-          if (response.error) {
+          // Log error if there was one (but not for quota/rate limit - those are expected)
+          if (response.error && !response.error.includes('quota') && !response.error.includes('Rate limited')) {
             logger.debug('Inline completion returned no text', { error: response.error });
           }
           return null;
@@ -118,7 +118,11 @@ export function registerAIInlineCompletionProvider(): monaco.IDisposable {
           }],
         };
       } catch (error) {
-        logger.error('Inline completion error', { error });
+        // Only log unexpected errors, not quota/rate limit issues
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (!errorMsg.includes('quota') && !errorMsg.includes('rate')) {
+          logger.error('Inline completion error', { error });
+        }
         return null;
       }
     },

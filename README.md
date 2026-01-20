@@ -282,7 +282,7 @@ npm run make        # Creates .exe (Windows), .dmg (macOS), .deb/.rpm (Linux)
 Type your request in the chat input:
 
 ```
-"Create a React component for a todo list with local storage persistence"
+"Create a React component for a user profile with local storage persistence"
 ```
 
 ```

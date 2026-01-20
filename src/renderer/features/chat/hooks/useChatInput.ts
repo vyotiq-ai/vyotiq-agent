@@ -100,7 +100,6 @@ export const useChatInput = () => {
           yoloMode: activeSession?.config?.yoloMode ?? false,
           preferredProvider: activeSession?.config?.preferredProvider ?? 'auto',
           selectedModelId: activeSession?.config?.selectedModelId,
-          manualOverrideModel: activeSession?.config?.manualOverrideModel,
         },
         recentUserMessageContents,
         recentUserMessagesForHistory,
@@ -114,7 +113,6 @@ export const useChatInput = () => {
       if (a.activeSessionConfig.yoloMode !== b.activeSessionConfig.yoloMode) return false;
       if (a.activeSessionConfig.preferredProvider !== b.activeSessionConfig.preferredProvider) return false;
       if (a.activeSessionConfig.selectedModelId !== b.activeSessionConfig.selectedModelId) return false;
-      if (a.activeSessionConfig.manualOverrideModel !== b.activeSessionConfig.manualOverrideModel) return false;
       if (a.recentUserMessageContents.length !== b.recentUserMessageContents.length) return false;
       for (let i = 0; i < a.recentUserMessageContents.length; i++) {
         if (a.recentUserMessageContents[i] !== b.recentUserMessageContents[i]) return false;
@@ -142,7 +140,6 @@ export const useChatInput = () => {
         yoloMode: sessionSnapshot.activeSessionConfig.yoloMode,
         preferredProvider: sessionSnapshot.activeSessionConfig.preferredProvider,
         selectedModelId: sessionSnapshot.activeSessionConfig.selectedModelId,
-        manualOverrideModel: sessionSnapshot.activeSessionConfig.manualOverrideModel,
       },
     };
   }, [
@@ -152,7 +149,6 @@ export const useChatInput = () => {
     sessionSnapshot.activeSessionConfig.yoloMode,
     sessionSnapshot.activeSessionConfig.preferredProvider,
     sessionSnapshot.activeSessionConfig.selectedModelId,
-    sessionSnapshot.activeSessionConfig.manualOverrideModel,
   ]);
 
   const agentBusy = sessionSnapshot.activeSessionStatus === 'running' || sessionSnapshot.activeSessionStatus === 'awaiting-confirmation';

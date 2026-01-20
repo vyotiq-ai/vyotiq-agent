@@ -11,12 +11,15 @@
  * - Go to Symbol (Ctrl+Shift+O)
  * - Keyboard shortcuts
  * - Breadcrumbs navigation
+ * - Integrated Terminal (Ctrl+`)
+ * - Problems Panel (Ctrl+Shift+M)
  */
 
 import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
-import { Loader2, Save, Settings, FolderOpen, FileText, RotateCcw, Layout, Code, Terminal, Moon, Type, Keyboard } from 'lucide-react';
+import { Loader2, Save, Settings, FolderOpen, FileText, RotateCcw, Layout, Code, Terminal, Moon, Type, Keyboard, GitCompare, Search, Replace, AlignJustify, Hash, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useEditor } from '../../state/EditorProvider';
+import { useUI } from '../../state/UIProvider';
 import {
   EditorTabBar,
   MonacoEditor,
@@ -27,8 +30,13 @@ import {
   CommandPalette,
   QuickOpen,
   GoToSymbol,
+  GoToLine,
   Breadcrumbs,
+  DiffPanel,
+  BottomPanel,
 } from './components';
+import type { Problem } from './components/ProblemsPanel';
+import type { PanelTab } from './components/BottomPanel';
 import type { Command } from './components/CommandPalette';
 import type { QuickOpenFile } from './components/QuickOpen';
 import type { DocumentSymbol } from './components/GoToSymbol';
@@ -70,7 +78,19 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     prevTab,
     goToFileAndLine,
     hasUnsavedChanges,
+    diffState,
+    showDiff,
+    hideDiff,
+    acceptDiff,
+    rejectDiff,
+    bottomPanelOpen,
+    bottomPanelActiveTab,
+    setBottomPanelOpen,
+    setBottomPanelActiveTab,
   } = useEditor();
+  
+  // Get UI functions for keyboard shortcuts modal
+  const { openShortcuts } = useUI();
   
   const isLoading = tabs.some(t => t.isLoading);
   
@@ -80,6 +100,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [goToSymbolOpen, setGoToSymbolOpen] = useState(false);
+  const [goToLineOpen, setGoToLineOpen] = useState(false);
   
   const _editorRef = useRef<{ getEditor: () => unknown } | null>(null);
   
@@ -268,6 +289,15 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
       action: () => setQuickOpenOpen(true),
     },
     {
+      id: 'nav.goToLine',
+      label: 'Go to Line...',
+      icon: Hash,
+      category: 'Navigation',
+      shortcut: 'Ctrl+G',
+      action: () => setGoToLineOpen(true),
+      when: () => !!activeTab,
+    },
+    {
       id: 'nav.goToSymbol',
       label: 'Go to Symbol in Editor...',
       icon: Code,
@@ -326,11 +356,62 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
       action: () => updateSettings({ wordWrap: settings.wordWrap === 'on' ? 'off' : 'on' }),
     },
     {
+      id: 'editor.format',
+      label: 'Format Document',
+      icon: AlignJustify,
+      category: 'Editor',
+      shortcut: 'Shift+Alt+F',
+      action: () => {
+        // Monaco's built-in format action - triggered via the editor ref
+        document.dispatchEvent(new CustomEvent('vyotiq:editor:formatDocument'));
+      },
+      when: () => !!activeTab,
+    },
+    {
+      id: 'editor.find',
+      label: 'Find',
+      icon: Search,
+      category: 'Edit',
+      shortcut: 'Ctrl+F',
+      action: () => {
+        // Trigger Monaco's built-in find widget
+        document.dispatchEvent(new CustomEvent('vyotiq:editor:find'));
+      },
+      when: () => !!activeTab,
+    },
+    {
+      id: 'editor.replace',
+      label: 'Replace',
+      icon: Replace,
+      category: 'Edit',
+      shortcut: 'Ctrl+H',
+      action: () => {
+        // Trigger Monaco's built-in find/replace widget
+        document.dispatchEvent(new CustomEvent('vyotiq:editor:replace'));
+      },
+      when: () => !!activeTab,
+    },
+    {
       id: 'workspace.openFolder',
       label: 'Open Folder...',
       icon: FolderOpen,
       category: 'Workspace',
       action: () => window.vyotiq?.workspace?.add?.(),
+    },
+    {
+      id: 'view.problems',
+      label: bottomPanelOpen && bottomPanelActiveTab === 'problems' ? 'Hide Problems' : 'Show Problems',
+      icon: AlertCircle,
+      category: 'View',
+      shortcut: 'Ctrl+Shift+M',
+      action: () => {
+        if (bottomPanelOpen && bottomPanelActiveTab === 'problems') {
+          setBottomPanelOpen(false);
+        } else {
+          setBottomPanelActiveTab('problems');
+          setBottomPanelOpen(true);
+        }
+      },
     },
     {
       id: 'layout.toggle',
@@ -341,11 +422,46 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     },
     {
       id: 'terminal.toggle',
-      label: 'Toggle Terminal',
+      label: bottomPanelOpen && bottomPanelActiveTab === 'terminal' ? 'Hide Terminal' : 'Show Terminal',
       icon: Terminal,
       category: 'View',
       shortcut: 'Ctrl+`',
-      action: () => console.log('Toggle terminal requested'),
+      action: () => {
+        if (bottomPanelOpen && bottomPanelActiveTab === 'terminal') {
+          setBottomPanelOpen(false);
+        } else {
+          setBottomPanelActiveTab('terminal');
+          setBottomPanelOpen(true);
+        }
+      },
+    },
+    {
+      id: 'output.toggle',
+      label: bottomPanelOpen && bottomPanelActiveTab === 'output' ? 'Hide Output' : 'Show Output',
+      category: 'View',
+      shortcut: 'Ctrl+Shift+U',
+      action: () => {
+        if (bottomPanelOpen && bottomPanelActiveTab === 'output') {
+          setBottomPanelOpen(false);
+        } else {
+          setBottomPanelActiveTab('output');
+          setBottomPanelOpen(true);
+        }
+      },
+    },
+    {
+      id: 'debugConsole.toggle',
+      label: bottomPanelOpen && bottomPanelActiveTab === 'debug-console' ? 'Hide Debug Console' : 'Show Debug Console',
+      category: 'View',
+      shortcut: 'Ctrl+Shift+Y',
+      action: () => {
+        if (bottomPanelOpen && bottomPanelActiveTab === 'debug-console') {
+          setBottomPanelOpen(false);
+        } else {
+          setBottomPanelActiveTab('debug-console');
+          setBottomPanelOpen(true);
+        }
+      },
     },
     {
       id: 'theme.toggle',
@@ -363,12 +479,172 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
       icon: Keyboard,
       category: 'Help',
       shortcut: 'Ctrl+K Ctrl+S',
-      action: () => console.log('Show keyboard shortcuts requested'),
+      action: openShortcuts,
+    },
+    {
+      id: 'diff.compareWithSaved',
+      label: 'Compare with Saved',
+      icon: GitCompare,
+      category: 'File',
+      action: () => {
+        if (activeTab && activeTab.isDirty) {
+          showDiff({
+            original: activeTab.originalContent,
+            modified: activeTab.content,
+            filePath: activeTab.path,
+            language: activeTab.language,
+            originalLabel: 'Saved',
+            modifiedLabel: 'Current',
+          });
+        }
+      },
+      when: () => !!activeTab?.isDirty,
+    },
+    // VSCode Editor Features
+    {
+      id: 'editor.stickyScroll.toggle',
+      label: settings.stickyScroll ? 'Disable Sticky Scroll' : 'Enable Sticky Scroll',
+      category: 'Editor',
+      action: () => updateSettings({ stickyScroll: !settings.stickyScroll }),
+    },
+    {
+      id: 'editor.fontLigatures.toggle',
+      label: settings.fontLigatures ? 'Disable Font Ligatures' : 'Enable Font Ligatures',
+      category: 'Editor',
+      action: () => updateSettings({ fontLigatures: !settings.fontLigatures }),
+    },
+    {
+      id: 'editor.linkedEditing.toggle',
+      label: settings.linkedEditing ? 'Disable Linked Editing' : 'Enable Linked Editing',
+      category: 'Editor',
+      action: () => updateSettings({ linkedEditing: !settings.linkedEditing }),
+    },
+    {
+      id: 'editor.inlayHints.toggle',
+      label: settings.inlayHints ? 'Hide Inlay Hints' : 'Show Inlay Hints',
+      category: 'Editor',
+      action: () => updateSettings({ inlayHints: !settings.inlayHints }),
+    },
+    {
+      id: 'editor.bracketPairColorization.toggle',
+      label: settings.bracketPairColorization ? 'Disable Bracket Colorization' : 'Enable Bracket Colorization',
+      category: 'Editor',
+      action: () => updateSettings({ bracketPairColorization: !settings.bracketPairColorization }),
+    },
+    {
+      id: 'editor.formatOnSave.toggle',
+      label: settings.formatOnSave ? 'Disable Format on Save' : 'Enable Format on Save',
+      category: 'Editor',
+      action: () => updateSettings({ formatOnSave: !settings.formatOnSave }),
+    },
+    {
+      id: 'editor.trimWhitespace.toggle',
+      label: settings.trimTrailingWhitespace ? 'Disable Trim Trailing Whitespace' : 'Enable Trim Trailing Whitespace',
+      category: 'Editor',
+      action: () => updateSettings({ trimTrailingWhitespace: !settings.trimTrailingWhitespace }),
+    },
+    {
+      id: 'editor.renderWhitespace.cycle',
+      label: `Render Whitespace: ${settings.renderWhitespace || 'selection'}`,
+      category: 'Editor',
+      action: () => {
+        const modes: Array<'none' | 'boundary' | 'selection' | 'trailing' | 'all'> = ['none', 'selection', 'trailing', 'boundary', 'all'];
+        const current = settings.renderWhitespace || 'selection';
+        const nextIndex = (modes.indexOf(current) + 1) % modes.length;
+        updateSettings({ renderWhitespace: modes[nextIndex] });
+      },
+    },
+    // TypeScript / Language Server commands
+    {
+      id: 'typescript.restartServer',
+      label: 'TypeScript: Restart TS Server',
+      description: 'Restart the TypeScript Language Server to pick up new type definitions',
+      icon: RotateCcw,
+      category: 'TypeScript',
+      action: async () => {
+        try {
+          // Import Monaco dynamically to access its API
+          const monaco = await import('monaco-editor');
+          
+          // Clear all existing TypeScript/LSP markers from all models
+          const models = monaco.editor.getModels();
+          for (const model of models) {
+            // Clear markers from various sources
+            monaco.editor.setModelMarkers(model, 'typescript', []);
+            monaco.editor.setModelMarkers(model, 'lsp', []);
+            monaco.editor.setModelMarkers(model, 'javascript', []);
+          }
+          
+          // Restart the backend TypeScript Diagnostics Service
+          const result = await window.vyotiq?.lsp?.restartTypeScriptServer?.();
+          
+          if (result?.success) {
+            console.log('TypeScript server restarted successfully', result.diagnostics);
+            
+            // Force Monaco to re-validate by touching each TypeScript/JavaScript model
+            for (const model of models) {
+              const uri = model.uri;
+              const path = uri.path.toLowerCase();
+              if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.js') || path.endsWith('.jsx')) {
+                // Trigger a change event to force re-validation
+                const content = model.getValue();
+                model.setValue(content);
+              }
+            }
+          } else {
+            console.error('Failed to restart TypeScript server:', result?.error);
+          }
+        } catch (err) {
+          console.error('Error restarting TypeScript server:', err);
+        }
+      },
+    },
+    {
+      id: 'typescript.refreshDiagnostics',
+      label: 'TypeScript: Refresh Diagnostics',
+      description: 'Refresh all TypeScript and LSP diagnostics',
+      icon: RotateCcw,
+      category: 'TypeScript',
+      action: async () => {
+        try {
+          // Import Monaco dynamically
+          const monaco = await import('monaco-editor');
+          
+          // Clear all existing markers
+          const models = monaco.editor.getModels();
+          for (const model of models) {
+            monaco.editor.setModelMarkers(model, 'typescript', []);
+            monaco.editor.setModelMarkers(model, 'lsp', []);
+            monaco.editor.setModelMarkers(model, 'javascript', []);
+          }
+          
+          // Refresh diagnostics from backend
+          const result = await window.vyotiq?.lsp?.refreshDiagnostics?.();
+          
+          if (result?.success) {
+            console.log('Diagnostics refreshed', result);
+            
+            // Force Monaco to re-validate
+            for (const model of models) {
+              const uri = model.uri;
+              const path = uri.path.toLowerCase();
+              if (path.endsWith('.ts') || path.endsWith('.tsx') || path.endsWith('.js') || path.endsWith('.jsx')) {
+                const content = model.getValue();
+                model.setValue(content);
+              }
+            }
+          } else {
+            console.error('Failed to refresh diagnostics:', result?.error);
+          }
+        } catch (err) {
+          console.error('Error refreshing diagnostics:', err);
+        }
+      },
     },
   ], [
-    activeTab, activeTabId, tabs, settings,
+    activeTab, activeTabId, tabs, settings, bottomPanelOpen, bottomPanelActiveTab,
     handleSave, saveAllFiles, handleRevertFile, closeTab, closeAllTabs,
-    nextTab, prevTab, updateSettings,
+    nextTab, prevTab, updateSettings, showDiff, openShortcuts, setBottomPanelActiveTab, setBottomPanelOpen,
   ]);
   
   useEffect(() => {
@@ -437,6 +713,61 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
         return;
       }
 
+      // Ctrl+G - Go to Line
+      if (modKey && !e.shiftKey && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        setGoToLineOpen(true);
+        return;
+      }
+
+      // Ctrl+Shift+M - Toggle Problems Panel
+      if (modKey && e.shiftKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        if (bottomPanelOpen && bottomPanelActiveTab === 'problems') {
+          setBottomPanelOpen(false);
+        } else {
+          setBottomPanelActiveTab('problems');
+          setBottomPanelOpen(true);
+        }
+        return;
+      }
+
+      // Ctrl+` - Toggle Terminal
+      if (modKey && e.key === '`') {
+        e.preventDefault();
+        if (bottomPanelOpen && bottomPanelActiveTab === 'terminal') {
+          setBottomPanelOpen(false);
+        } else {
+          setBottomPanelActiveTab('terminal');
+          setBottomPanelOpen(true);
+        }
+        return;
+      }
+
+      // Ctrl+Shift+U - Toggle Output Panel
+      if (modKey && e.shiftKey && e.key.toLowerCase() === 'u') {
+        e.preventDefault();
+        if (bottomPanelOpen && bottomPanelActiveTab === 'output') {
+          setBottomPanelOpen(false);
+        } else {
+          setBottomPanelActiveTab('output');
+          setBottomPanelOpen(true);
+        }
+        return;
+      }
+
+      // Ctrl+Shift+Y - Toggle Debug Console
+      if (modKey && e.shiftKey && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (bottomPanelOpen && bottomPanelActiveTab === 'debug-console') {
+          setBottomPanelOpen(false);
+        } else {
+          setBottomPanelActiveTab('debug-console');
+          setBottomPanelOpen(true);
+        }
+        return;
+      }
+
       if (e.key === 'F1') {
         e.preventDefault();
         setCommandPaletteOpen(true);
@@ -446,7 +777,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTabId, handleSave, saveAllFiles, closeTab, nextTab, prevTab, handleRevertFile]);
+  }, [activeTabId, handleSave, saveAllFiles, closeTab, nextTab, prevTab, handleRevertFile, bottomPanelOpen, bottomPanelActiveTab, setBottomPanelActiveTab, setBottomPanelOpen]);
   
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -459,116 +790,165 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
-  
-  if (!isEditorVisible) {
-    return null;
-  }
+
+  // Panel toggle events are now handled in EditorProvider
+  // The Home component now shows EditorView when bottomPanelOpen is true
+  // so we don't need a separate hidden render path
   
   return (
     <div className={cn('flex flex-col h-full bg-[var(--color-surface-base)]', className)}>
-      <EditorTabBar
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onTabClick={setActiveTab}
-        onTabClose={closeTab}
-        onTabCloseOthers={closeOtherTabs}
-        onTabCloseAll={closeAllTabs}
-        onTabCloseSaved={closeSavedTabs}
-        onReorder={reorderTabs}
-        onAIAction={handleTabAIAction}
-        enableAI={settings.enableAI !== false}
-      />
+      {/* Only show tab bar and editor content when there are tabs */}
+      {tabs.length > 0 && (
+        <>
+          <EditorTabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onTabClick={setActiveTab}
+            onTabClose={closeTab}
+            onTabCloseOthers={closeOtherTabs}
+            onTabCloseAll={closeAllTabs}
+            onTabCloseSaved={closeSavedTabs}
+            onReorder={reorderTabs}
+            onAIAction={handleTabAIAction}
+            enableAI={settings.enableAI !== false}
+          />
 
-      {activeTab && (
-        <Breadcrumbs
-          filePath={activeTab.path}
-          symbols={documentSymbols.slice(0, 3)}
-          onSymbolClick={handleSymbolSelect}
-          onShowSymbolPicker={() => setGoToSymbolOpen(true)}
-        />
-      )}
-      
-      <div className="flex-1 min-h-0 relative">
-        {isLoading && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--color-surface-base)]/80 backdrop-blur-sm">
-            <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
-              <Loader2 size={16} className="animate-spin" />
-              <span className="text-[11px] font-mono">Loading...</span>
-            </div>
+          {activeTab && (
+            <Breadcrumbs
+              filePath={activeTab.path}
+              symbols={documentSymbols.slice(0, 3)}
+              onSymbolClick={handleSymbolSelect}
+              onShowSymbolPicker={() => setGoToSymbolOpen(true)}
+            />
+          )}
+          
+          <div className="flex-1 min-h-0 relative">
+            {isLoading && (
+              <div className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--color-surface-base)]/80 backdrop-blur-sm">
+                <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span className="text-[11px] font-mono">Loading...</span>
+                </div>
+              </div>
+            )}
+            
+            {activeTab ? (
+              <MonacoEditor
+                tab={activeTab}
+                settings={settings}
+                onChange={handleContentChange}
+                onSave={handleSave}
+                onViewStateChange={handleViewStateChange}
+                onCursorChange={handleCursorChange}
+                pendingNavigation={pendingNavigation}
+                onNavigationHandled={clearPendingNavigation}
+              />
+            ) : null}
           </div>
-        )}
-        
-        {tabs.length === 0 ? (
-          <EditorEmptyState />
-        ) : activeTab ? (
-          <MonacoEditor
+          
+          <EditorStatusBar
             tab={activeTab}
             settings={settings}
-            onChange={handleContentChange}
-            onSave={handleSave}
-            onViewStateChange={handleViewStateChange}
-            onCursorChange={handleCursorChange}
-            pendingNavigation={pendingNavigation}
-            onNavigationHandled={clearPendingNavigation}
+            onSettingsClick={() => setSettingsMenuOpen(true)}
+            onRevertClick={activeTab?.isDirty ? handleRevertFile : undefined}
+            isLoading={isLoading}
           />
-        ) : null}
-      </div>
-      
-      <EditorStatusBar
-        tab={activeTab}
-        settings={settings}
-        onSettingsClick={() => setSettingsMenuOpen(true)}
-        onRevertClick={activeTab?.isDirty ? handleRevertFile : undefined}
-        isLoading={isLoading}
-      />
-      
-      <EditorSettingsMenu
-        isOpen={settingsMenuOpen}
-        settings={settings}
-        onClose={() => setSettingsMenuOpen(false)}
-        onSettingsChange={updateSettings}
-      />
+          
+          <EditorSettingsMenu
+            isOpen={settingsMenuOpen}
+            settings={settings}
+            onClose={() => setSettingsMenuOpen(false)}
+            onSettingsChange={updateSettings}
+          />
 
-      {showAIResult && (
-        <div className="absolute bottom-16 right-4 w-[420px] z-50">
-          <AIResultPanel
-            isOpen={showAIResult}
-            isLoading={actionState.isLoading}
-            action={actionState.action}
-            result={actionState.result}
-            error={actionState.error}
-            provider={actionState.provider}
-            latencyMs={actionState.latencyMs}
-            onClose={() => {
-              setShowAIResult(false);
-              clearActionResult();
-            }}
+          {showAIResult && (
+            <div className="absolute bottom-16 right-4 w-[420px] z-50">
+              <AIResultPanel
+                isOpen={showAIResult}
+                isLoading={actionState.isLoading}
+                action={actionState.action}
+                result={actionState.result}
+                error={actionState.error}
+                provider={actionState.provider}
+                latencyMs={actionState.latencyMs}
+                onClose={() => {
+                  setShowAIResult(false);
+                  clearActionResult();
+                }}
+              />
+            </div>
+          )}
+
+          <CommandPalette
+            isOpen={commandPaletteOpen}
+            onClose={() => setCommandPaletteOpen(false)}
+            commands={commands}
+            placeholder="Type a command..."
           />
-        </div>
+
+          <QuickOpen
+            isOpen={quickOpenOpen}
+            onClose={() => setQuickOpenOpen(false)}
+            files={workspaceFiles}
+            recentFiles={tabs.map(t => t.path)}
+            onFileSelect={handleQuickOpenSelect}
+            onGoToLine={(line) => activeTab && goToFileAndLine(activeTab.path, line, 1)}
+          />
+
+          <GoToSymbol
+            isOpen={goToSymbolOpen}
+            onClose={() => setGoToSymbolOpen(false)}
+            symbols={documentSymbols}
+            onSymbolSelect={handleSymbolSelect}
+          />
+
+          <GoToLine
+            isOpen={goToLineOpen}
+            onClose={() => setGoToLineOpen(false)}
+            onGoToLine={(line, column) => activeTab && goToFileAndLine(activeTab.path, line, column || 1)}
+            currentLine={activeTab?.cursorPosition?.lineNumber || 1}
+            totalLines={activeTab?.content?.split('\n').length || 1}
+          />
+
+          <DiffPanel
+            isOpen={diffState.isVisible}
+            original={diffState.original}
+            modified={diffState.modified}
+            language={diffState.language}
+            originalLabel={diffState.originalLabel}
+            modifiedLabel={diffState.modifiedLabel}
+            settings={settings}
+            viewMode={diffState.viewMode}
+            onClose={hideDiff}
+            onAcceptAll={acceptDiff}
+            onRejectAll={rejectDiff}
+            position="bottom"
+          />
+        </>
       )}
 
-      <CommandPalette
-        isOpen={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        commands={commands}
-        placeholder="Type a command..."
-      />
+      {/* Show empty state when no tabs are open and bottom panel is closed */}
+      {tabs.length === 0 && !bottomPanelOpen && isEditorVisible && (
+        <EditorEmptyState
+          onOpenFile={() => setQuickOpenOpen(true)}
+          className="flex-1"
+        />
+      )}
 
-      <QuickOpen
-        isOpen={quickOpenOpen}
-        onClose={() => setQuickOpenOpen(false)}
-        files={workspaceFiles}
-        recentFiles={tabs.map(t => t.path)}
-        onFileSelect={handleQuickOpenSelect}
-        onGoToLine={(line) => activeTab && goToFileAndLine(activeTab.path, line, 1)}
-      />
-
-      <GoToSymbol
-        isOpen={goToSymbolOpen}
-        onClose={() => setGoToSymbolOpen(false)}
-        symbols={documentSymbols}
-        onSymbolSelect={handleSymbolSelect}
-      />
+      {/* Bottom panel - fills remaining space when no tabs are open */}
+      <div className={cn(tabs.length === 0 ? 'flex-1 min-h-0' : '')}>
+        <BottomPanel
+          isOpen={bottomPanelOpen}
+          onClose={() => setBottomPanelOpen(false)}
+          activeTab={bottomPanelActiveTab as PanelTab}
+          onTabChange={setBottomPanelActiveTab}
+          workspacePath={activeWorkspace?.path}
+          onProblemClick={(problem: Problem) => {
+            goToFileAndLine(problem.file, problem.line, problem.column);
+          }}
+          fillHeight={tabs.length === 0}
+        />
+      </div>
     </div>
   );
 };

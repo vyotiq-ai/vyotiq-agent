@@ -290,7 +290,7 @@ export function parseCompletion(response: string): ParsedCompletion {
   }
 
   // Extract next steps
-  const nextMatch = response.match(/(?:next\s*steps?|todo|follow[-\s]?up)\s*:?\s*([\s\S]*?)(?:\n\n|$)/i);
+  const nextMatch = response.match(/(?:next\s*steps?|follow[-\s]?up)\s*:?\s*([\s\S]*?)(?:\n\n|$)/i);
   if (nextMatch) {
     completion.nextSteps = nextMatch[1]
       .split(/\n/)

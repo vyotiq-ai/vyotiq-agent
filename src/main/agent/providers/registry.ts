@@ -17,6 +17,9 @@ import {
   OPENAI_MODELS,
   DEEPSEEK_MODELS,
   GEMINI_MODELS,
+  XAI_MODELS,
+  MISTRAL_MODELS,
+  GLM_MODELS,
   DEFAULT_MODELS,
   getModelById as sharedGetModelById,
   getDefaultModel as getDefaultModelInfo,
@@ -296,6 +299,77 @@ export const OPENROUTER_CONFIG: ProviderDefinition = {
 };
 
 // =============================================================================
+// xAI (Grok) Configuration
+// @see https://docs.x.ai/docs/overview
+// =============================================================================
+
+export const XAI_CONFIG: ProviderDefinition = {
+  id: 'xai',
+  name: 'xAI',
+  baseUrl: 'https://api.x.ai/v1',
+  models: XAI_MODELS.map(toModelDefinition),
+  defaultModel: DEFAULT_MODELS.xai,
+  capabilities: {
+    caching: false,
+    streaming: true,
+  },
+  /**
+   * xAI Rate Limits
+   * @see https://docs.x.ai/docs/rate-limits
+   */
+  rateLimits: {
+    free: { rpm: 60, inputTpm: 100000, outputTpm: 50000 },
+    standard: { rpm: 600, inputTpm: 1000000, outputTpm: 500000 },
+  },
+};
+
+// =============================================================================
+// Mistral AI Configuration
+// @see https://docs.mistral.ai/api/
+// =============================================================================
+
+export const MISTRAL_CONFIG: ProviderDefinition = {
+  id: 'mistral',
+  name: 'Mistral AI',
+  baseUrl: 'https://api.mistral.ai/v1',
+  models: MISTRAL_MODELS.map(toModelDefinition),
+  defaultModel: DEFAULT_MODELS.mistral,
+  capabilities: {
+    caching: false,
+    streaming: true,
+  },
+  /**
+   * Mistral Rate Limits
+   * @see https://docs.mistral.ai/getting-started/rate-limits/
+   */
+  rateLimits: {
+    free: { rpm: 60, inputTpm: 500000, outputTpm: 250000 },
+    standard: { rpm: 600, inputTpm: 2000000, outputTpm: 1000000 },
+  },
+};
+
+// =============================================================================
+// Z.AI GLM Configuration
+// @see https://docs.z.ai
+// =============================================================================
+
+export const GLM_CONFIG: ProviderDefinition = {
+  id: 'glm',
+  name: 'Z.AI GLM',
+  baseUrl: 'https://api.z.ai/api/paas/v4',
+  models: GLM_MODELS.map(toModelDefinition),
+  defaultModel: DEFAULT_MODELS.glm,
+  capabilities: {
+    caching: false,
+    streaming: true,
+  },
+  rateLimits: {
+    free: { rpm: 60, inputTpm: 500000, outputTpm: 250000 },
+    standard: { rpm: 500, inputTpm: 2000000, outputTpm: 1000000 },
+  },
+};
+
+// =============================================================================
 // Provider Registry
 // =============================================================================
 
@@ -304,6 +378,9 @@ export const PROVIDER_CONFIGS: Record<LLMProviderName, ProviderDefinition> = {
   openai: OPENAI_CONFIG,
   deepseek: DEEPSEEK_CONFIG,
   gemini: GEMINI_CONFIG,
+  xai: XAI_CONFIG,
+  mistral: MISTRAL_CONFIG,
+  glm: GLM_CONFIG,
   openrouter: OPENROUTER_CONFIG,
 };
 
@@ -393,6 +470,9 @@ export function getAllProviders(): ProviderDefinition[] {
     OPENAI_CONFIG,
     DEEPSEEK_CONFIG,
     GEMINI_CONFIG,
+    XAI_CONFIG,
+    MISTRAL_CONFIG,
+    GLM_CONFIG,
     OPENROUTER_CONFIG,
   ];
 }

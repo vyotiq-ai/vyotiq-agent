@@ -119,6 +119,27 @@ export const PROVIDER_CONTEXT_CONFIGS: Record<LLMProviderName, Partial<ContextWi
     pruneThreshold: 0.95,
     targetUtilization: 0.70,
   },
+  xai: {
+    maxContextTokens: 131072,  // 128K for Grok models
+    reservedOutputTokens: 8192,
+    warnThreshold: 0.75,
+    pruneThreshold: 0.85,
+    targetUtilization: 0.60,
+  },
+  mistral: {
+    maxContextTokens: 128000,  // 128K for Mistral Large
+    reservedOutputTokens: 8192,
+    warnThreshold: 0.75,
+    pruneThreshold: 0.85,
+    targetUtilization: 0.60,
+  },
+  glm: {
+    maxContextTokens: 128000,  // 128K for GLM-4.7
+    reservedOutputTokens: 16384,
+    warnThreshold: 0.75,
+    pruneThreshold: 0.85,
+    targetUtilization: 0.60,
+  },
   openrouter: {
     maxContextTokens: 128000,  // Varies by model, use conservative default
     reservedOutputTokens: 8192,

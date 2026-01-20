@@ -72,6 +72,38 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'gemini-2.0-flash-lite': { inputPerMillion: 0.075, outputPerMillion: 0.3 },
   'gemini-1.5-pro': { inputPerMillion: 1.25, outputPerMillion: 5, cacheReadPerMillion: 0.3125 },
   'gemini-1.5-flash': { inputPerMillion: 0.075, outputPerMillion: 0.3, cacheReadPerMillion: 0.01875 },
+
+  // ==========================================================================
+  // xAI (Grok)
+  // ==========================================================================
+  'grok-4': { inputPerMillion: 3, outputPerMillion: 15 },
+  'grok-3': { inputPerMillion: 3, outputPerMillion: 15 },
+  'grok-3-fast': { inputPerMillion: 1, outputPerMillion: 5 },
+  'grok-2': { inputPerMillion: 2, outputPerMillion: 10 },
+  'grok-2-vision': { inputPerMillion: 2, outputPerMillion: 10 },
+
+  // ==========================================================================
+  // Mistral AI
+  // ==========================================================================
+  'mistral-large-latest': { inputPerMillion: 2, outputPerMillion: 6 },
+  'mistral-large-2512': { inputPerMillion: 2, outputPerMillion: 6 },
+  'mistral-medium-latest': { inputPerMillion: 2.7, outputPerMillion: 8.1 },
+  'mistral-small-latest': { inputPerMillion: 0.2, outputPerMillion: 0.6 },
+  'codestral-latest': { inputPerMillion: 0.3, outputPerMillion: 0.9 },
+  'ministral-3b-latest': { inputPerMillion: 0.04, outputPerMillion: 0.04 },
+  'ministral-8b-latest': { inputPerMillion: 0.1, outputPerMillion: 0.1 },
+  'open-mistral-nemo': { inputPerMillion: 0.15, outputPerMillion: 0.15 },
+
+  // ==========================================================================
+  // Z.AI GLM
+  // @see https://docs.z.ai
+  // ==========================================================================
+  'glm-4.7': { inputPerMillion: 0.6, outputPerMillion: 2.2 },
+  'glm-4.6': { inputPerMillion: 0.4, outputPerMillion: 1.6 },
+  'glm-4.5': { inputPerMillion: 0.3, outputPerMillion: 1.2 },
+  'glm-4-32b-0414-128k': { inputPerMillion: 0.2, outputPerMillion: 0.8 },
+  'glm-4.6v': { inputPerMillion: 0.5, outputPerMillion: 2.0 },
+  'glm-4.5v': { inputPerMillion: 0.4, outputPerMillion: 1.6 },
 };
 
 /** Default fallback pricing */

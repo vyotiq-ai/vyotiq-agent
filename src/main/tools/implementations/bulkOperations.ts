@@ -79,30 +79,50 @@ export const bulkOperationsTool: ToolDefinition<BulkOperationsArgs> = {
   name: 'bulk',
   description: `Perform multiple file operations (rename, move, copy, delete) in a single call.
 
-Usage:
-- Batch multiple file operations for efficiency
-- Operations execute in order (sequential, not parallel)
-- Use continueOnError: true to proceed even if one operation fails
-- Prefer this over multiple individual operations for refactoring tasks
+## When to Use
+- **Refactoring**: Rename/move multiple files at once
+- **Reorganizing**: Move files to new directory structure
+- **Cleanup**: Delete multiple temporary files
+- **Copying templates**: Copy multiple template files
 
-Operation Types:
-- rename: Rename a file or directory
-- move: Move a file or directory to a new location
-- copy: Copy a file or directory
-- delete: Remove a file or directory (use with caution)
+## Operation Types
+- **rename**: Rename a file or directory in place
+- **move**: Move a file or directory to a new location
+- **copy**: Copy a file or directory (recursive for directories)
+- **delete**: Remove a file or directory (use with caution!)
 
-Parameters:
-- operations (required): Array of operations to perform
+## Parameters
+- **operations** (required): Array of operations to perform
   - type: 'rename' | 'move' | 'copy' | 'delete'
   - source: Source file/directory path (relative to workspace)
   - destination: Target path (required for rename, move, copy)
-- continueOnError (optional): Continue with remaining operations if one fails (default: false)
+- **continueOnError**: Continue with remaining operations if one fails (default: false)
 
-This tool requires user approval before execution.`,
+## Workflow Integration
+Use for batch refactoring:
+\`\`\`
+grep("OldName") → find files to rename
+bulk([
+  { type: "rename", source: "OldName.ts", destination: "NewName.ts" },
+  { type: "move", source: "src/old/", destination: "src/new/" }
+])
+grep("OldName") → verify no remaining references
+\`\`\`
+
+## Safety
+- Requires user approval
+- Operations execute sequentially (not parallel)
+- Use continueOnError: true for non-critical operations
+- Maximum 50 operations per call
+
+## Best Practices
+- Verify source files exist before bulk operations
+- Use continueOnError for cleanup operations
+- Check results for partial failures`,
   requiresApproval: true,
   category: 'file-write',
   deferLoading: true,
-  searchKeywords: ['bulk', 'batch', 'multiple files', 'rename', 'move', 'copy', 'delete', 'refactor', 'reorganize'],
+  searchKeywords: ['bulk', 'batch', 'multiple files', 'rename', 'move', 'copy', 'delete', 'refactor', 'reorganize', 'cleanup'],
   ui: {
     icon: 'layers',
     label: 'Bulk',

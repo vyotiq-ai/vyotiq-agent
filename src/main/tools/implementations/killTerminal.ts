@@ -14,15 +14,42 @@ interface KillTerminalArgs extends Record<string, unknown> {
 
 export const killTerminalTool: ToolDefinition<KillTerminalArgs> = {
   name: 'kill_terminal',
-  description: `Terminate a running terminal process. Use this to:
-- Stop background processes that are no longer needed
-- Kill hung or unresponsive commands
+  description: `Terminate a running terminal process.
+
+## When to Use
+- **Stop servers**: Kill dev servers when done testing
+- **Stop watchers**: End file watchers or build watchers
+- **Kill hung processes**: Terminate unresponsive commands
+- **Clean up**: Stop processes before ending session
+
+## Workflow Integration
+Complete the terminal lifecycle:
+\`\`\`
+run("npm run dev", run_in_background: true) → start server, get PID
+[do testing/development work]
+check_terminal(pid) → verify server is running
+[when done]
+kill_terminal(pid) → stop server
+\`\`\`
+
+## Parameters
+- **pid** (required): Process ID to kill (from run command output)
+
+## Safety
+- Requires user approval before execution
+- Only kills processes started in current session
+- Cannot kill system processes
+
+## Common Use Cases
+- Stop development servers (npm run dev, yarn start)
+- End file watchers (webpack --watch, tsc --watch)
+- Terminate test runners in watch mode
 - Clean up after testing`,
   requiresApproval: true,
   category: 'terminal',
   riskLevel: 'moderate',
   allowedCallers: ['direct'],
-  searchKeywords: ['kill', 'stop', 'terminate', 'end', 'process', 'cancel'],
+  searchKeywords: ['kill', 'stop', 'terminate', 'end', 'process', 'cancel', 'server', 'watch'],
   schema: {
     type: 'object',
     properties: {

@@ -24,7 +24,6 @@ import { cn } from '../../../utils/cn';
 import { useEditor } from '../../../state/EditorProvider';
 
 import { ToolItem } from './toolExecution/ToolItem';
-import { ToolExecutionHeader } from './toolExecution/ToolExecutionHeader';
 import { buildToolCalls } from '../utils/buildToolCalls';
 import type { ToolCall } from './toolExecution/types';
 
@@ -107,24 +106,78 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
   messages,
   isRunning = false,
   toolResults,
-  onStop,
+  onStop: _onStop, // Reserved for future stop functionality
 }) => {
-  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+  // Track manually collapsed tools - file ops default to expanded
+  const [manuallyCollapsed, setManuallyCollapsed] = useState<Set<string>>(new Set());
+  // Track manually expanded tools - non-file ops default to collapsed
+  const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const runningStartTimesRef = useRef<Map<string, number>>(new Map());
   const { showEditor, openFile } = useEditor();
-  
-  const toggleExpanded = useCallback((callId: string) => {
-    setExpandedTools(prev => {
-      const next = new Set(prev);
-      if (next.has(callId)) {
-        next.delete(callId);
-      } else {
-        next.add(callId);
-      }
-      return next;
+
+  // Extract tool calls and their results
+  const toolCalls = useMemo(() => {
+    return buildToolCalls({
+      messages,
+      toolResults,
+      isRunning,
+      runningStartTimes: runningStartTimesRef.current,
     });
-  }, []);
+  }, [messages, isRunning, toolResults]);
+
+  // Compute the effective expanded tools set (for passing to child components)
+  const expandedTools = useMemo(() => {
+    const expanded = new Set<string>();
+    for (const tool of toolCalls) {
+      const isFileOp = isFileOperationTool(tool.name);
+      const isCompleted = tool.status === 'completed';
+      
+      if (isFileOp && isCompleted) {
+        // File ops are expanded by default unless manually collapsed
+        if (!manuallyCollapsed.has(tool.callId)) {
+          expanded.add(tool.callId);
+        }
+      } else {
+        // Other tools are collapsed by default unless manually expanded
+        if (manuallyExpanded.has(tool.callId)) {
+          expanded.add(tool.callId);
+        }
+      }
+    }
+    return expanded;
+  }, [toolCalls, manuallyCollapsed, manuallyExpanded]);
+
+  const toggleExpanded = useCallback((callId: string) => {
+    // Find the tool to determine its type
+    const tool = toolCalls.find(t => t.callId === callId);
+    const isFileOp = tool && isFileOperationTool(tool.name);
+    const isCompleted = tool && tool.status === 'completed';
+    
+    if (isFileOp && isCompleted) {
+      // For file ops, toggle the collapsed state
+      setManuallyCollapsed(prev => {
+        const next = new Set(prev);
+        if (next.has(callId)) {
+          next.delete(callId);
+        } else {
+          next.add(callId);
+        }
+        return next;
+      });
+    } else {
+      // For other tools, toggle the expanded state
+      setManuallyExpanded(prev => {
+        const next = new Set(prev);
+        if (next.has(callId)) {
+          next.delete(callId);
+        } else {
+          next.add(callId);
+        }
+        return next;
+      });
+    }
+  }, [toolCalls]);
 
   const toggleGroupExpanded = useCallback((groupIdx: number) => {
     setExpandedGroups(prev => {
@@ -144,53 +197,15 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
     showEditor();
   }, [openFile, showEditor]);
 
-  // Extract tool calls and their results
-  const toolCalls = useMemo(() => {
-    return buildToolCalls({
-      messages,
-      toolResults,
-      isRunning,
-      runningStartTimes: runningStartTimesRef.current,
-    });
-  }, [messages, isRunning, toolResults]);
-
   // Group consecutive file operations
   const groupedTools = useMemo(() => groupToolCalls(toolCalls), [toolCalls]);
-
-  // Compute tool stats for header
-  const toolStats = useMemo(() => {
-    let running = 0;
-    let completed = 0;
-    let errors = 0;
-    for (const tool of toolCalls) {
-      if (tool.status === 'running') running++;
-      else if (tool.status === 'completed') completed++;
-      else if (tool.status === 'error') errors++;
-    }
-    return { running, completed, errors };
-  }, [toolCalls]);
 
   if (toolCalls.length === 0) {
     return null;
   }
 
-  // Only show header when there are multiple tools or when running
-  const showHeader = toolCalls.length > 3 || isRunning;
-
   return (
     <div className="font-mono text-[11px] min-w-0 max-w-full">
-      {/* Header with stats - shown for multiple tools or when running */}
-      {showHeader && (
-        <ToolExecutionHeader
-          toolCount={toolCalls.length}
-          runningCount={toolStats.running}
-          completedCount={toolStats.completed}
-          errorCount={toolStats.errors}
-          isRunning={isRunning}
-          onStop={onStop}
-        />
-      )}
-      
       {/* Tool list with grouping */}
       <div className="space-y-0.5 min-w-0 overflow-hidden">
         {groupedTools.map((item, idx) => {

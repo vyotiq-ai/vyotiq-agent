@@ -38,6 +38,9 @@ const TOKEN_COSTS: Record<LLMProviderName, { input: number; output: number; cach
   openai: { input: 2.5, output: 10.0, cached: 1.25 }, // GPT-4o pricing with cached
   deepseek: { input: 0.27, output: 1.1, cached: 0.1 }, // DeepSeek v2.5 pricing
   gemini: { input: 0.075, output: 0.3, cached: 0.0375 }, // Gemini 1.5 Pro pricing
+  xai: { input: 3.0, output: 15.0, cached: 1.5 }, // Grok pricing
+  mistral: { input: 2.0, output: 6.0, cached: 1.0 }, // Mistral Large pricing
+  glm: { input: 0.5, output: 2.0, cached: 0.25 }, // GLM-4.7 pricing
   openrouter: { input: 2.0, output: 8.0, cached: 1.0 }, // OpenRouter varies by model
 };
 

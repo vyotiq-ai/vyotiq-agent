@@ -205,6 +205,10 @@ export interface InlineCompletionResponse {
   cached?: boolean;
   /** Error if failed */
   error?: string;
+  /** Whether API quota was exceeded */
+  quotaExceeded?: boolean;
+  /** Whether rate limit was hit */
+  rateLimited?: boolean;
 }
 
 // =============================================================================

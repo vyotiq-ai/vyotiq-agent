@@ -384,6 +384,7 @@ export async function executeToolsParallel(
       wasParallel = true;
       
       // Execute in parallel with semaphore control
+      // Using Promise.allSettled ensures that failed tools don't block other independent tools
       const groupResults = await Promise.allSettled(
         group.tools.map(t => 
           semaphore.withPermit(async () => {
@@ -394,12 +395,28 @@ export async function executeToolsParallel(
                 output: 'Execution cancelled',
               } as EnhancedToolResult;
             }
-            return executeFn(t.tool);
+            try {
+              return await executeFn(t.tool);
+            } catch (error) {
+              // Catch any unexpected errors from the execution function
+              // This ensures one tool's failure doesn't prevent other tools from completing
+              return {
+                toolName: t.tool.name,
+                success: false,
+                output: error instanceof Error ? error.message : String(error),
+                timing: {
+                  startedAt: Date.now(),
+                  completedAt: Date.now(),
+                  durationMs: 0,
+                },
+              } as EnhancedToolResult;
+            }
           })
         )
       );
       
       // Store results and estimate sequential time
+      // Failed tools are recorded but don't block the processing of other results
       let maxGroupTime = 0;
       for (let i = 0; i < group.tools.length; i++) {
         const toolIndex = group.tools[i].index;
@@ -411,10 +428,21 @@ export async function executeToolsParallel(
           estimatedSequentialTime += duration;
           maxGroupTime = Math.max(maxGroupTime, duration);
         } else {
+          // Handle rejected promises (should be rare since we catch errors above)
+          // This ensures the parallel execution continues even if Promise.allSettled
+          // reports a rejection
+          const errorMessage = settled.reason instanceof Error 
+            ? settled.reason.message 
+            : String(settled.reason) || 'Unknown error';
           results[toolIndex] = {
             toolName: group.tools[i].tool.name,
             success: false,
-            output: settled.reason?.message || 'Unknown error',
+            output: errorMessage,
+            timing: {
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+              durationMs: 0,
+            },
           };
         }
       }

@@ -21,18 +21,109 @@ export function safeCreateSet(streamingSessions: Set<string> | unknown): Set<str
     return new Set();
 }
 
+/**
+ * PERFORMANCE OPTIMIZATION: Shallow compare two message arrays
+ * Returns true if arrays are structurally equivalent (same messages by id and content length)
+ */
+export function areMessagesEqual(
+    a: AgentSessionState['messages'],
+    b: AgentSessionState['messages']
+): boolean {
+    if (a === b) return true;
+    if (a.length !== b.length) return false;
+    
+    // Quick check: compare last message (most likely to change)
+    const lastA = a[a.length - 1];
+    const lastB = b[b.length - 1];
+    if (lastA && lastB) {
+        if (lastA.id !== lastB.id) return false;
+        if ((lastA.content?.length ?? 0) !== (lastB.content?.length ?? 0)) return false;
+        if ((lastA.toolCalls?.length ?? 0) !== (lastB.toolCalls?.length ?? 0)) return false;
+    }
+    
+    return true;
+}
+
+/**
+ * PERFORMANCE OPTIMIZATION: Check if session has meaningful changes
+ * Avoids expensive merge operations when nothing important changed
+ */
+export function hasSessionChanged(
+    existing: AgentSessionState,
+    incoming: AgentSessionState
+): boolean {
+    // Reference equality - no change
+    if (existing === incoming) return false;
+    
+    // Status change is always meaningful
+    if (existing.status !== incoming.status) return true;
+    
+    // Branch change is meaningful
+    if (existing.activeBranchId !== incoming.activeBranchId) return true;
+    
+    // Title change is meaningful
+    if (existing.title !== incoming.title) return true;
+    
+    // Message count change is meaningful
+    if (existing.messages.length !== incoming.messages.length) return true;
+    
+    // Check last message for streaming updates
+    const existingLast = existing.messages[existing.messages.length - 1];
+    const incomingLast = incoming.messages[incoming.messages.length - 1];
+    
+    if (existingLast && incomingLast) {
+        // Different message IDs
+        if (existingLast.id !== incomingLast.id) return true;
+        
+        // Content length changed (streaming)
+        if ((existingLast.content?.length ?? 0) !== (incomingLast.content?.length ?? 0)) return true;
+        
+        // Thinking content changed
+        if ((existingLast.thinking?.length ?? 0) !== (incomingLast.thinking?.length ?? 0)) return true;
+        
+        // Tool calls changed
+        if ((existingLast.toolCalls?.length ?? 0) !== (incomingLast.toolCalls?.length ?? 0)) return true;
+        
+        // Usage data added (important for cost tracking)
+        if (!existingLast.usage && incomingLast.usage) return true;
+        
+        // Reaction changed
+        if (existingLast.reaction !== incomingLast.reaction) return true;
+    }
+    
+    return false;
+}
+
+/**
+ * PERFORMANCE OPTIMIZATION: Update assistant message by ID with minimal array copying
+ * Uses indexed access instead of findIndex where possible
+ */
 export const updateAssistantMessageById = (
     sessions: AgentSessionState[],
     sessionId: string,
     messageId: string,
-    updater: (message: AgentSessionState['messages'][number]) => AgentSessionState['messages'][number]
+    updater: (message: AgentSessionState['messages'][number]) => AgentSessionState['messages'][number],
+    sessionIndexHint?: number
 ): AgentSessionState[] => {
-    const sessionIndex = sessions.findIndex(s => s.id === sessionId);
+    // Use hint if provided, otherwise search
+    let sessionIndex = sessionIndexHint;
+    if (sessionIndex === undefined || sessions[sessionIndex]?.id !== sessionId) {
+        sessionIndex = sessions.findIndex(s => s.id === sessionId);
+    }
     if (sessionIndex === -1) return sessions;
 
     const session = sessions[sessionIndex];
     const messages = session.messages;
-    const messageIndex = messages.findIndex(m => m.id === messageId);
+    
+    // Optimization: check last message first (most common case for streaming)
+    let messageIndex = -1;
+    const lastIdx = messages.length - 1;
+    if (lastIdx >= 0 && messages[lastIdx].id === messageId) {
+        messageIndex = lastIdx;
+    } else {
+        messageIndex = messages.findIndex(m => m.id === messageId);
+    }
+    
     if (messageIndex === -1) return sessions;
 
     const message = messages[messageIndex];
@@ -43,7 +134,8 @@ export const updateAssistantMessageById = (
     const newMessage = updater(message);
     if (newMessage === message) return sessions;
 
-    const newMessages = [...messages];
+    // Create new arrays only when necessary
+    const newMessages = messages.slice();
     newMessages[messageIndex] = newMessage;
 
     const newSession = {
@@ -51,7 +143,7 @@ export const updateAssistantMessageById = (
         messages: newMessages,
     };
 
-    const newSessions = [...sessions];
+    const newSessions = sessions.slice();
     newSessions[sessionIndex] = newSession;
     return newSessions;
 };
@@ -62,30 +154,32 @@ export const updateAssistantMessageContent = (
     messageId: string | undefined,
     delta: string
 ): AgentSessionState[] => {
+    // Fast path: find session index once
+    const sessionIndex = sessions.findIndex(s => s.id === sessionId);
+    if (sessionIndex === -1) return sessions;
+    
     if (messageId) {
         const updated = updateAssistantMessageById(sessions, sessionId, messageId, (message) => ({
             ...message,
             content: (message.content || '') + delta,
             isThinkingStreaming: false,
-        }));
+        }), sessionIndex);
         if (updated !== sessions) return updated;
     }
 
-    const sessionIndex = sessions.findIndex(s => s.id === sessionId);
-    if (sessionIndex === -1) return sessions;
     const session = sessions[sessionIndex];
     const lastIndex = session.messages.length - 1;
     const lastMessage = session.messages[lastIndex];
     if (!lastMessage || lastMessage.role !== 'assistant') return sessions;
 
-    const newMessages = [...session.messages];
+    const newMessages = session.messages.slice();
     newMessages[lastIndex] = {
         ...lastMessage,
         content: (lastMessage.content || '') + delta,
         isThinkingStreaming: false,
     };
 
-    const newSessions = [...sessions];
+    const newSessions = sessions.slice();
     newSessions[sessionIndex] = { ...session, messages: newMessages };
     return newSessions;
 };

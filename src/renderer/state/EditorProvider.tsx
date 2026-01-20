@@ -20,11 +20,31 @@ import type { EditorTab, EditorSettings } from '../features/editor/types';
 import { DEFAULT_EDITOR_SETTINGS } from '../features/editor/types';
 import { getLanguageFromPath, getFileName, isTextFile } from '../features/editor/utils/languageUtils';
 import { createLogger } from '../utils/logger';
+import type { DiffViewMode } from '../features/editor/components/DiffViewer';
 
 const logger = createLogger('EditorProvider');
 
 const STORAGE_KEY = 'vyotiq-editor-tabs';
 const SETTINGS_KEY = 'vyotiq-editor-settings';
+
+/** Diff viewer state */
+export interface DiffState {
+  isVisible: boolean;
+  original: string;
+  modified: string;
+  filePath?: string;
+  language?: string;
+  originalLabel?: string;
+  modifiedLabel?: string;
+  viewMode: DiffViewMode;
+}
+
+const initialDiffState: DiffState = {
+  isVisible: false,
+  original: '',
+  modified: '',
+  viewMode: 'split',
+};
 
 // Utility function for debouncing
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, delay: number) => {
@@ -35,25 +55,138 @@ const debounce = <T extends (...args: unknown[]) => void>(fn: T, delay: number) 
   };
 };
 
-// Utility function for decoding file content
-const decodeFileContent = (content: string, encoding?: string) => {
+/**
+ * Decode file content from base64 to UTF-8 string.
+ * 
+ * IMPORTANT: atob() alone doesn't properly handle UTF-8 multi-byte characters.
+ * It treats each byte as a character, which corrupts characters like:
+ * - Box-drawing characters (├, │, └, ─)
+ * - Emojis (🔥, ✓, ✗)
+ * - Accented characters (é, ñ, ü)
+ * 
+ * The correct approach is:
+ * 1. Decode base64 to binary string using atob()
+ * 2. Convert binary string to Uint8Array (raw bytes)
+ * 3. Use TextDecoder to properly decode UTF-8 bytes to string
+ */
+const decodeFileContent = (content: string, encoding?: string): string => {
   if (encoding === 'base64') {
     try {
-      return atob(content);
-    } catch {
+      // Step 1: Decode base64 to binary string
+      const binaryString = atob(content);
+      
+      // Step 2: Convert binary string to byte array
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      // Step 3: Decode UTF-8 bytes to proper string
+      const decoded = new TextDecoder('utf-8').decode(bytes);
+      
+      // Step 4: Apply mojibake repair for any remaining encoding issues
+      return repairMojibake(decoded);
+    } catch (error) {
+      // If decoding fails, try direct atob as last resort
+      console.warn('Failed to decode base64 content as UTF-8, falling back to atob:', error);
       try {
-        const binaryString = atob(content);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return new TextDecoder('utf-8').decode(bytes);
+        return repairMojibake(atob(content));
       } catch {
         return content;
       }
     }
   }
-  return content;
+  // For non-base64 content, still apply mojibake repair
+  return repairMojibake(content);
+};
+
+/**
+ * Common UTF-8 mojibake patterns (UTF-8 bytes misread as Windows-1252)
+ * Maps corrupted sequences back to their original UTF-8 characters
+ */
+const MOJIBAKE_PATTERNS: [RegExp, string][] = [
+  // Box-drawing characters (commonly corrupted in .md files with ASCII art)
+  [/â"œ/g, '├'],    // U+251C BOX DRAWINGS LIGHT VERTICAL AND RIGHT
+  [/â"‚/g, '│'],    // U+2502 BOX DRAWINGS LIGHT VERTICAL
+  [/â""€/g, '└'],    // U+2514 BOX DRAWINGS LIGHT DOWN AND RIGHT
+  [/â"€/g, '─'],    // U+2500 BOX DRAWINGS LIGHT HORIZONTAL
+  [/â"Œ/g, '┌'],    // U+250C BOX DRAWINGS LIGHT DOWN AND RIGHT
+  [/â"�/g, '┐'],    // U+2510 BOX DRAWINGS LIGHT DOWN AND LEFT
+  [/â"˜/g, '┘'],    // U+2518 BOX DRAWINGS LIGHT UP AND LEFT
+  [/â"¤/g, '┤'],    // U+2524 BOX DRAWINGS LIGHT VERTICAL AND LEFT
+  [/â"¬/g, '┬'],    // U+252C BOX DRAWINGS LIGHT DOWN AND HORIZONTAL
+  [/â"´/g, '┴'],    // U+2534 BOX DRAWINGS LIGHT UP AND HORIZONTAL
+  [/â"¼/g, '┼'],    // U+253C BOX DRAWINGS LIGHT VERTICAL AND HORIZONTAL
+  [/â•"/g, '╔'],    // U+2554 BOX DRAWINGS DOUBLE DOWN AND RIGHT
+  [/â•—/g, '╗'],    // U+2557 BOX DRAWINGS DOUBLE DOWN AND LEFT
+  [/â•š/g, '╚'],    // U+255A BOX DRAWINGS DOUBLE UP AND RIGHT
+  [/â•�/g, '╝'],    // U+255D BOX DRAWINGS DOUBLE UP AND LEFT
+  [/â•'/g, '║'],    // U+2551 BOX DRAWINGS DOUBLE VERTICAL
+  [/â•�/g, '═'],    // U+2550 BOX DRAWINGS DOUBLE HORIZONTAL
+  
+  // Common punctuation and symbols
+  [/â€"/g, '—'],    // U+2014 EM DASH
+  [/â€"/g, '–'],    // U+2013 EN DASH
+  [/â€™/g, '\u2019'],    // U+2019 RIGHT SINGLE QUOTATION MARK
+  [/â€˜/g, '\u2018'],    // U+2018 LEFT SINGLE QUOTATION MARK
+  [/â€œ/g, '\u201C'],    // U+201C LEFT DOUBLE QUOTATION MARK
+  [/â€�/g, '\u201D'],    // U+201D RIGHT DOUBLE QUOTATION MARK
+  [/â€¦/g, '…'],    // U+2026 HORIZONTAL ELLIPSIS
+  [/â€¢/g, '•'],    // U+2022 BULLET
+  [/Â©/g, '©'],    // U+00A9 COPYRIGHT SIGN
+  [/Â®/g, '®'],    // U+00AE REGISTERED SIGN
+  [/â„¢/g, '™'],    // U+2122 TRADE MARK SIGN
+  [/Â°/g, '°'],    // U+00B0 DEGREE SIGN
+  [/Â±/g, '±'],    // U+00B1 PLUS-MINUS SIGN
+  [/â‚¬/g, '€'],    // U+20AC EURO SIGN
+  [/Â£/g, '£'],    // U+00A3 POUND SIGN
+  [/Â¥/g, '¥'],    // U+00A5 YEN SIGN
+  [/Â§/g, '§'],    // U+00A7 SECTION SIGN
+  [/Â«/g, '«'],    // U+00AB LEFT-POINTING DOUBLE ANGLE QUOTATION MARK
+  [/Â»/g, '»'],    // U+00BB RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK
+  
+  // Check marks and crosses
+  [/âœ"/g, '✓'],    // U+2713 CHECK MARK
+  [/âœ—/g, '✗'],    // U+2717 BALLOT X
+  [/âœ˜/g, '✘'],    // U+2718 HEAVY BALLOT X
+  [/âœ"/g, '✔'],    // U+2714 HEAVY CHECK MARK
+  
+  // Arrows
+  [/â†'/g, '→'],    // U+2192 RIGHTWARDS ARROW
+  [/â†�/g, '←'],    // U+2190 LEFTWARDS ARROW
+  [/â†"/g, '↓'],    // U+2193 DOWNWARDS ARROW
+  [/â†'/g, '↑'],    // U+2191 UPWARDS ARROW
+  [/â‡'/g, '⇒'],    // U+21D2 RIGHTWARDS DOUBLE ARROW
+  
+  // Common diacritical patterns (accented characters)
+  [/Ã¡/g, 'á'],
+  [/Ã©/g, 'é'],
+  [/Ã­/g, 'í'],
+  [/Ã³/g, 'ó'],
+  [/Ãº/g, 'ú'],
+  [/Ã±/g, 'ñ'],
+  [/Ã¼/g, 'ü'],
+  [/Ã¤/g, 'ä'],
+  [/Ã¶/g, 'ö'],
+  [/ÃŸ/g, 'ß'],
+  
+  // Remove stray UTF-8 continuation byte markers
+  [/Â(?=[^\s])/g, ''],  // Commonly appears before other characters in mojibake
+];
+
+/**
+ * Repair mojibake (encoding corruption) in content.
+ * This fixes UTF-8 bytes that were misread as Windows-1252/CP1252.
+ */
+const repairMojibake = (content: string): string => {
+  if (!content) return content;
+  
+  let repaired = content;
+  for (const [pattern, replacement] of MOJIBAKE_PATTERNS) {
+    repaired = repaired.replace(pattern, replacement);
+  }
+  
+  return repaired;
 };
 
 interface EditorContextValue {
@@ -63,6 +196,13 @@ interface EditorContextValue {
   activeTab: EditorTab | null;
   settings: EditorSettings;
   isEditorVisible: boolean;
+
+  // Bottom panel state
+  bottomPanelOpen: boolean;
+  bottomPanelActiveTab: 'problems' | 'terminal' | 'output' | 'debug-console';
+  setBottomPanelOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
+  setBottomPanelActiveTab: (tab: 'problems' | 'terminal' | 'output' | 'debug-console') => void;
+  toggleBottomPanel: (tab?: 'problems' | 'terminal' | 'output' | 'debug-console') => void;
 
   // Pending navigation for when switching tabs
   pendingNavigation: { line: number; column: number } | null;
@@ -104,6 +244,20 @@ interface EditorContextValue {
   hasUnsavedChanges: () => boolean;
   getUnsavedTabs: () => EditorTab[];
   isFileOpen: (path: string) => boolean;
+
+  // Diff viewer
+  diffState: DiffState;
+  showDiff: (params: {
+    original: string;
+    modified: string;
+    filePath?: string;
+    language?: string;
+    originalLabel?: string;
+    modifiedLabel?: string;
+  }) => void;
+  hideDiff: () => void;
+  acceptDiff: () => void;
+  rejectDiff: () => void;
 }
 
 const EditorContext = createContext<EditorContextValue | null>(null);
@@ -181,6 +335,11 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
 
   const [isEditorVisible, setIsEditorVisible] = useState(true);
   const [pendingNavigation, setPendingNavigation] = useState<{ line: number; column: number } | null>(null);
+  const [diffState, setDiffState] = useState<DiffState>(initialDiffState);
+  
+  // Bottom panel state - persisted
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
+  const [bottomPanelActiveTab, setBottomPanelActiveTab] = useState<'problems' | 'terminal' | 'output' | 'debug-console'>('terminal');
 
   const tabHistoryRef = useRef<string[]>([]);
   const viewStateUpdateRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -581,6 +740,84 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
   const hideEditor = useCallback(() => setIsEditorVisible(false), []);
   const toggleEditor = useCallback(() => setIsEditorVisible(prev => !prev), []);
 
+  // Bottom panel toggle - also shows editor when opening panel
+  const toggleBottomPanel = useCallback((tab?: 'problems' | 'terminal' | 'output' | 'debug-console') => {
+    if (tab) {
+      if (bottomPanelOpen && bottomPanelActiveTab === tab) {
+        setBottomPanelOpen(false);
+      } else {
+        setBottomPanelActiveTab(tab);
+        setBottomPanelOpen(true);
+        setIsEditorVisible(true); // Show editor when opening panel
+      }
+    } else {
+      setBottomPanelOpen(prev => !prev);
+    }
+  }, [bottomPanelOpen, bottomPanelActiveTab]);
+
+  // Listen for panel toggle events from sidebar
+  useEffect(() => {
+    const handleTerminalToggle = () => toggleBottomPanel('terminal');
+    const handleProblemsToggle = () => toggleBottomPanel('problems');
+    const handleOutputToggle = () => toggleBottomPanel('output');
+    const handleDebugConsoleToggle = () => toggleBottomPanel('debug-console');
+
+    document.addEventListener('vyotiq:terminal:toggle', handleTerminalToggle);
+    document.addEventListener('vyotiq:problems:toggle', handleProblemsToggle);
+    document.addEventListener('vyotiq:output:toggle', handleOutputToggle);
+    document.addEventListener('vyotiq:debug-console:toggle', handleDebugConsoleToggle);
+    
+    return () => {
+      document.removeEventListener('vyotiq:terminal:toggle', handleTerminalToggle);
+      document.removeEventListener('vyotiq:problems:toggle', handleProblemsToggle);
+      document.removeEventListener('vyotiq:output:toggle', handleOutputToggle);
+      document.removeEventListener('vyotiq:debug-console:toggle', handleDebugConsoleToggle);
+    };
+  }, [toggleBottomPanel]);
+
+  // Diff viewer methods
+  const showDiff = useCallback((params: {
+    original: string;
+    modified: string;
+    filePath?: string;
+    language?: string;
+    originalLabel?: string;
+    modifiedLabel?: string;
+  }) => {
+    setDiffState(prev => ({
+      ...prev,
+      isVisible: true,
+      original: params.original,
+      modified: params.modified,
+      filePath: params.filePath,
+      language: params.language || 'plaintext',
+      originalLabel: params.originalLabel || 'Original',
+      modifiedLabel: params.modifiedLabel || 'Modified',
+    }));
+  }, []);
+
+  const hideDiff = useCallback(() => {
+    setDiffState(prev => ({ ...prev, isVisible: false }));
+  }, []);
+
+  const acceptDiff = useCallback(() => {
+    if (diffState.filePath && diffState.isVisible) {
+      const tab = tabs.find(t => t.path === diffState.filePath);
+      if (tab) {
+        setTabs(prev => prev.map(t =>
+          t.path === diffState.filePath
+            ? { ...t, content: diffState.modified, isDirty: diffState.modified !== t.originalContent }
+            : t
+        ));
+      }
+    }
+    setDiffState(initialDiffState);
+  }, [diffState, tabs]);
+
+  const rejectDiff = useCallback(() => {
+    setDiffState(initialDiffState);
+  }, []);
+
   const hasUnsavedChanges = useCallback(() => tabs.some(t => t.isDirty), [tabs]);
   const getUnsavedTabs = useCallback(() => tabs.filter(t => t.isDirty), [tabs]);
   const isFileOpen = useCallback((path: string) => tabs.some(t => t.path === path), [tabs]);
@@ -621,6 +858,16 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
     hasUnsavedChanges,
     getUnsavedTabs,
     isFileOpen,
+    diffState,
+    showDiff,
+    hideDiff,
+    acceptDiff,
+    rejectDiff,
+    bottomPanelOpen,
+    bottomPanelActiveTab,
+    setBottomPanelOpen,
+    setBottomPanelActiveTab,
+    toggleBottomPanel,
   }), [
     tabs,
     activeTabId,
@@ -652,6 +899,14 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
     hasUnsavedChanges,
     getUnsavedTabs,
     isFileOpen,
+    diffState,
+    showDiff,
+    hideDiff,
+    acceptDiff,
+    rejectDiff,
+    bottomPanelOpen,
+    bottomPanelActiveTab,
+    toggleBottomPanel,
   ]);
 
   return (

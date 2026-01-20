@@ -32,11 +32,12 @@ const FAST_MODELS: Partial<Record<LLMProviderName, string[]>> = {
   openai: ['gpt-4o-mini', 'gpt-4.1-mini'],
   anthropic: ['claude-3-5-haiku-latest'],
   deepseek: ['deepseek-chat'],
+  glm: ['glm-4.5', 'glm-4-32b-0414-128k'],
   openrouter: [], // OpenRouter uses model IDs directly
 };
 
 /** Provider priority for speed (includes all supported providers) */
-const PROVIDER_PRIORITY: LLMProviderName[] = ['gemini', 'openai', 'deepseek', 'anthropic', 'openrouter'];
+const PROVIDER_PRIORITY: LLMProviderName[] = ['gemini', 'openai', 'deepseek', 'glm', 'anthropic', 'openrouter'];
 
 interface EditorAIServiceDeps {
   getProviders: () => ProviderMap;
@@ -272,6 +273,31 @@ export class EditorAIService {
         return { text: null };
       }
       const message = error instanceof Error ? error.message : String(error);
+      
+      // Handle quota exceeded errors gracefully
+      if (message.includes('exceeded') && message.includes('quota')) {
+        this.logger.warn('Inline completion quota exceeded - temporarily disabling', { 
+          provider: selected.name,
+          error: message.slice(0, 200), // Truncate long error messages
+        });
+        // Return a user-friendly error without spamming logs
+        return { 
+          text: null, 
+          error: 'API quota exceeded. Inline completions temporarily unavailable.',
+          quotaExceeded: true,
+        };
+      }
+      
+      // Handle rate limit errors
+      if (message.includes('rate') && message.includes('limit')) {
+        this.logger.debug('Inline completion rate limited', { provider: selected.name });
+        return { 
+          text: null, 
+          error: 'Rate limited. Please wait a moment.',
+          rateLimited: true,
+        };
+      }
+      
       this.logger.error('Inline completion error', { error: message });
       return { text: null, error: message };
     } finally {

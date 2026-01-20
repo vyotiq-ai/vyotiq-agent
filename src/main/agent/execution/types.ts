@@ -73,8 +73,11 @@ export interface EditorState {
 export interface WorkspaceDiagnostics {
   diagnostics: Array<{
     filePath: string;
+    fileName: string;
     line: number;
     column: number;
+    endLine?: number;
+    endColumn?: number;
     message: string;
     severity: 'error' | 'warning' | 'info' | 'hint';
     source: 'typescript' | 'eslint';

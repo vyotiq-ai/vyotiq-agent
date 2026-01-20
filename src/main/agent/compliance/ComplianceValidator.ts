@@ -77,6 +77,27 @@ export class ComplianceValidator {
   }
 
   /**
+   * Register files that were provided through editor context (not read tool).
+   * This allows the compliance validator to know about files the agent has seen
+   * even if they weren't explicitly read via the read tool.
+   */
+  registerEditorContextFiles(runId: string, filePaths: string[]): void {
+    const state = this.runStates.get(runId);
+    if (!state) return;
+    
+    for (const filePath of filePaths) {
+      if (filePath && typeof filePath === 'string') {
+        state.filesRead.add(this.normalizePath(filePath));
+      }
+    }
+    
+    this.logger?.info('Registered editor context files for compliance', {
+      runId,
+      fileCount: filePaths.length,
+    });
+  }
+
+  /**
    * Get run state
    */
   getRunState(runId: string): ComplianceRunState | undefined {

@@ -27,32 +27,53 @@ interface GlobArgs extends Record<string, unknown> {
 
 export const globTool: ToolDefinition<GlobArgs> = {
   name: 'glob',
-  description: `Fast file-pattern matching using glob syntax. Use this tool to find files matching a pattern.
+  description: `Fast file-pattern matching using glob syntax. Use this to find files by name pattern.
 
-Usage:
-- Returns relative paths by default (set absolute: true for full paths)
-- Automatically ignores node_modules and .git directories unless specified
-- Supports standard glob patterns: *, **, ?, [...], {...}
-- Use Grep tool instead if you need to search file contents
+## When to Use
+- **Find files by extension**: \`**/*.ts\`, \`**/*.tsx\`
+- **Find files by name**: \`**/*Button*\`, \`**/test*\`
+- **Find config files**: \`*.json\`, \`*.{yaml,yml}\`
+- **Explore structure**: \`src/**/*\`, \`components/**/*.tsx\`
 
-Pattern Syntax:
-- * matches any characters except /
-- ** matches any characters including /
-- ? matches single character
-- [...] matches character class
-- {...} matches alternatives (e.g., "*.{ts,tsx}")
+## Key Difference from Grep
+- **glob**: Finds files by NAME pattern (fast, no content reading)
+- **grep**: Finds files by CONTENT pattern (searches inside files)
 
-Parameters:
-- pattern (required): The glob pattern to match (e.g., "**/*.ts", "src/**/*.{js,tsx}")
-- path (optional): Absolute path to search from. Defaults to workspace root
-- absolute (optional): Return absolute paths instead of relative (default: false)
-- ignore (optional): Array of glob patterns to exclude (e.g., ["node_modules/**", "dist/**"])
-- dot (optional): Include hidden files starting with "." (default: true)`,
+Use glob when you know the filename pattern. Use grep when you need to search content.
+
+## Pattern Syntax
+- \`*\` matches any characters except /
+- \`**\` matches any characters including / (recursive)
+- \`?\` matches single character
+- \`[...]\` matches character class
+- \`{a,b}\` matches alternatives
+
+## Examples
+- \`**/*.ts\` - All TypeScript files recursively
+- \`src/**/*.{js,jsx}\` - JS/JSX files in src/
+- \`*.json\` - JSON files in root only
+- \`**/*test*\` - Files with 'test' in name
+- \`components/**/index.tsx\` - All index.tsx in components
+
+## Parameters
+- **pattern** (required): Glob pattern to match
+- **path**: Directory to search from (defaults to workspace root)
+- **absolute**: Return absolute paths (default: false)
+- **ignore**: Patterns to exclude (default: node_modules, .git)
+- **dot**: Include hidden files (default: true)
+
+## Workflow Integration
+Use glob to discover files, then read/edit them:
+\`\`\`
+glob("**/*.tsx") → get component files
+read(files) → understand structure
+edit(file, old, new) → make changes
+\`\`\``,
   requiresApproval: false,
   category: 'file-search',
   riskLevel: 'safe',
   allowedCallers: ['direct', 'code_execution'],
-  searchKeywords: ['find', 'search', 'files', 'pattern', 'glob', 'match', 'list', 'locate'],
+  searchKeywords: ['find', 'search', 'files', 'pattern', 'glob', 'match', 'list', 'locate', 'discover', 'extension'],
   ui: {
     icon: 'file-search',
     label: 'Glob',

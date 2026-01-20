@@ -124,11 +124,6 @@ function getToolActivityDescription(toolName: string): string {
     return 'generating image';
   }
   
-  // Task operations
-  if (normalizedTool.includes('task')) {
-    return 'processing task';
-  }
-  
   // Default: use the tool name with "using" prefix
   // Clean up common prefixes/suffixes
   const cleanName = toolName

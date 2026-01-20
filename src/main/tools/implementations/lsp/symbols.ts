@@ -20,18 +20,50 @@ interface SymbolsArgs extends Record<string, unknown> {
 
 export const lspSymbolsTool: ToolDefinition<SymbolsArgs> = {
   name: 'lsp_symbols',
-  description: `Get symbols from a document or search workspace symbols.
+  description: `Get symbols from a document or search workspace symbols. Essential for code navigation.
 
-Use this to:
-- Get an outline of a file (classes, functions, variables)
-- Search for symbols across the entire workspace
-- Navigate to specific code elements
+## When to Use
+- **File outline**: Get structure of a file (classes, functions, variables)
+- **Workspace search**: Find symbols by name across the entire codebase
+- **Navigation**: Jump to specific code elements
+- **Understanding structure**: See how code is organized
 
-Parameters:
-- file (optional): File path for document symbols
-- query (optional): Search query for workspace symbols
+## Workflow Integration
+Use for discovery and navigation:
+\`\`\`
+lsp_symbols(file) → get file outline
+[identify symbol of interest]
+lsp_definition(file, line, col) → go to definition
+lsp_references(file, line, col) → find usages
+\`\`\`
 
-Provide 'file' for document outline, or 'query' for workspace search.`,
+## Workspace Search Pattern
+\`\`\`
+lsp_symbols(query="handleClick") → find matching symbols
+[review results]
+read(file_with_symbol) → understand implementation
+\`\`\`
+
+## Two Modes
+1. **Document symbols** (provide file): Get outline of a specific file
+2. **Workspace search** (provide query): Search symbols across all files
+
+## Parameters
+- **file** (optional): File path for document symbols
+- **query** (optional): Search query for workspace symbols
+
+Provide 'file' for document outline, or 'query' for workspace search.
+
+## Output
+- Symbol name and kind (function, class, variable, etc.)
+- Location (file, line, column)
+- Container name (parent class/namespace)
+- Hierarchical structure for document symbols
+
+## Best Practices
+- Use document symbols to understand file structure before editing
+- Use workspace search to find symbols when you know the name
+- Combine with lsp_definition and lsp_references for full navigation`,
   requiresApproval: false,
   category: 'code-intelligence',
   riskLevel: 'safe',

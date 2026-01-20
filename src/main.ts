@@ -190,10 +190,25 @@ const bootstrapInfrastructure = async () => {
       const tsDiagnosticsService = initTypeScriptDiagnosticsService(logger);
       await tsDiagnosticsService.initialize(activeWorkspace.path);
       
-      // Forward diagnostics events to renderer
+      // Forward diagnostics events to renderer in the expected format
       tsDiagnosticsService.on('diagnostics', (event) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('diagnostics:updated', event);
+          if (event.type === 'diagnostics-updated' && event.snapshot) {
+            mainWindow.webContents.send('diagnostics:updated', {
+              diagnostics: event.snapshot.diagnostics,
+              errorCount: event.snapshot.errorCount,
+              warningCount: event.snapshot.warningCount,
+              filesWithErrors: event.snapshot.filesWithErrors,
+              timestamp: event.snapshot.timestamp,
+            });
+          } else if (event.type === 'file-diagnostics' && event.filePath && event.diagnostics) {
+            mainWindow.webContents.send('diagnostics:file-updated', {
+              filePath: event.filePath,
+              diagnostics: event.diagnostics,
+            });
+          } else if (event.type === 'diagnostics-cleared') {
+            mainWindow.webContents.send('diagnostics:cleared', {});
+          }
         }
       });
       
@@ -342,6 +357,11 @@ app.on('before-quit', async (event) => {
       const { shutdownLSPManager } = await import('./main/lsp');
       await shutdownLSPManager();
       logger.info('LSP manager shutdown complete');
+      
+      // Cleanup terminal sessions
+      const { cleanupTerminalSessions } = await import('./main/ipc');
+      cleanupTerminalSessions();
+      logger.info('Terminal sessions cleaned up');
       
       await orchestrator.cleanup();
     } catch (error) {

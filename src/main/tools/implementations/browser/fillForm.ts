@@ -198,17 +198,58 @@ async function executeFillForm(
 
 export const browserFillFormTool: ToolDefinition<FillFormArgs> = {
   name: 'browser_fill_form',
-  description: `Fill multiple form fields in one operation.
+  description: `Fill multiple form fields in one operation. Efficient for complex forms.
 
-**Supported field types:**
-- textbox: Text input fields
-- textarea: Multi-line text
-- checkbox: Check/uncheck (value: "true"/"false")
-- radio: Select radio option
-- combobox: Select dropdown option
-- slider: Range inputs
+## When to Use
+- **Complex forms**: Fill many fields at once
+- **Registration**: Complete signup forms
+- **Data entry**: Fill structured data forms
+- **Testing**: Automate form submission tests
 
-**Use refs from browser_snapshot** for reliable targeting.`,
+## Workflow Integration
+Use with snapshot for reliable form filling:
+\`\`\`
+browser_navigate(url) → load form page
+browser_snapshot(interactiveOnly: true) → get field refs
+browser_fill_form(fields: [...], submit: true) → fill and submit
+browser_wait(text: "Success") → wait for confirmation
+browser_screenshot() → verify result
+\`\`\`
+
+## Registration Pattern
+\`\`\`
+browser_navigate("http://localhost:3000/register")
+browser_snapshot(interactiveOnly: true)
+browser_fill_form(fields: [
+  { ref: "e5", name: "Name", type: "textbox", value: "John Doe" },
+  { ref: "e6", name: "Email", type: "textbox", value: "john@example.com" },
+  { ref: "e7", name: "Password", type: "textbox", value: "secure123" },
+  { ref: "e8", name: "Terms", type: "checkbox", value: "true" }
+], submit: true)
+\`\`\`
+
+## Supported Field Types
+- **textbox**: Text input fields
+- **textarea**: Multi-line text
+- **checkbox**: Check/uncheck (value: "true"/"false")
+- **radio**: Select radio option
+- **combobox**: Select dropdown option
+- **slider**: Range inputs
+
+## Parameters
+- **fields** (required): Array of fields to fill
+  - ref: Element ref from snapshot or CSS selector
+  - name: Human-readable field name
+  - type: Field type (textbox, checkbox, etc.)
+  - value: Value to set
+- **submit** (optional): Submit form after filling
+- **formSelector** (optional): Form selector for submit
+
+## Best Practices
+- Use browser_snapshot first to get accurate refs
+- Use refs from snapshot for reliable targeting
+- Set submit: true to complete the form
+- Check results for partial failures`,
 
   requiresApproval: false,
   category: 'browser-write',

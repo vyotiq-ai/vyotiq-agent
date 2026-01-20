@@ -22,17 +22,38 @@ export const lspHoverTool: ToolDefinition<HoverArgs> = {
   name: 'lsp_hover',
   description: `Get type information and documentation for a symbol at a specific position.
 
-Use this to:
-- Understand what type a variable or expression has
-- Read documentation for functions, classes, or methods
-- Get signature information for APIs
+## When to Use
+- **Understand types**: See what type a variable or expression has
+- **Read docs**: Get documentation for functions, classes, or methods
+- **API exploration**: Understand function signatures and parameters
+- **Quick info**: Get information without navigating away
 
-Parameters:
-- file (required): File path relative to workspace
-- line (required): Line number (1-indexed)
-- column (required): Column number (1-indexed)
+## Workflow Integration
+Use for understanding before editing:
+\`\`\`
+read(file) → see the code
+lsp_hover(file, line, col) → understand types/docs
+[make informed changes]
+edit(file, old, new) → apply changes
+read_lints() → verify
+\`\`\`
 
-Returns type information and documentation if available.`,
+## When to Use vs Other LSP Tools
+- **lsp_hover**: Quick type info and docs (no navigation)
+- **lsp_definition**: Navigate to where symbol is defined
+- **lsp_references**: Find all usages of a symbol
+- **lsp_symbols**: Get file outline or search workspace
+
+## Parameters
+- **file** (required): File path relative to workspace
+- **line** (required): Line number (1-indexed)
+- **column** (required): Column number (1-indexed)
+
+## Returns
+- Type information for the symbol
+- Documentation/JSDoc if available
+- Function signatures
+- Range of the symbol`,
   requiresApproval: false,
   category: 'code-intelligence',
   riskLevel: 'safe',

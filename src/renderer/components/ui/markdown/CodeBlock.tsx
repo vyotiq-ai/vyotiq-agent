@@ -99,55 +99,36 @@ export const CodeBlock: React.FC<CodeBlockProps> = memo(({
   const isRunnable = ['bash', 'sh', 'shell', 'zsh', 'cmd', 'powershell', 'ps1'].includes(language.toLowerCase());
 
   return (
-    <div className="relative group my-3 rounded-lg overflow-hidden border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] shadow-sm hover:shadow-md transition-shadow duration-200">
-      <div className="flex items-center justify-between px-4 py-2 bg-[var(--color-surface-header)] border-b border-[var(--color-border-subtle)]">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            {langInfo.icon && (
-              <span className={cn(
-                'text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-md border',
-                langInfo.color, 
-                'bg-current/10 border-current/20'
-              )}>
-                {langInfo.icon}
-              </span>
-            )}
-            <span className={cn('text-[10px] font-mono font-semibold', langInfo.color)}>
-              {langInfo.name}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-[9px] text-[var(--color-text-dim)]">
-            <span>{lineCount} line{lineCount !== 1 ? 's' : ''}</span>
-            {shouldCollapse && (
-              <span className="opacity-60">
-                {isCollapsed ? `(showing ${collapseThreshold})` : '(full)'}
-              </span>
-            )}
-          </div>
+    <div className="relative group my-2 rounded overflow-hidden border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--color-surface-header)] border-b border-[var(--color-border-subtle)]">
+        <div className="flex items-center gap-2">
+          <span className={cn('text-[10px] font-mono', langInfo.color)}>
+            {langInfo.name}
+          </span>
+          <span className="text-[9px] text-[var(--color-text-dim)]">
+            {lineCount} line{lineCount !== 1 ? 's' : ''}
+          </span>
         </div>
         
-        {/* Always visible copy button + hover actions */}
+        {/* Actions */}
         <div className="flex items-center gap-1">
           <button
             onClick={handleCopy}
             aria-label="Copy code"
             className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded text-[10px]',
-              'bg-[var(--color-surface-2)] hover:bg-[var(--color-accent-primary)]/10',
+              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px]',
               'text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)]',
-              'transition-colors',
-              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+              'transition-colors'
             )}
-            title="Copy code (click)"
           >
             {copied ? (
               <>
-                <Check size={12} className="text-[var(--color-success)]" />
-                <span className="text-[var(--color-success)]">Copied!</span>
+                <Check size={10} className="text-[var(--color-success)]" />
+                <span className="text-[var(--color-success)]">Copied</span>
               </>
             ) : (
               <>
-                <Copy size={12} />
+                <Copy size={10} />
                 <span>Copy</span>
               </>
             )}
@@ -159,13 +140,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = memo(({
               aria-label="Run in terminal"
               className={cn(
                 'p-1 rounded opacity-0 group-hover:opacity-100',
-                'hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)]',
-                'transition-all',
-                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+                'text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)]',
+                'transition-all'
               )}
               title="Run in terminal"
             >
-              <Play size={12} />
+              <Play size={10} />
             </button>
           )}
 
@@ -175,13 +155,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = memo(({
               aria-label="Insert into file"
               className={cn(
                 'p-1 rounded opacity-0 group-hover:opacity-100',
-                'hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-info)]',
-                'transition-all',
-                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+                'text-[var(--color-text-muted)] hover:text-[var(--color-info)]',
+                'transition-all'
               )}
               title="Insert into file"
             >
-              <FileCode size={12} />
+              <FileCode size={10} />
             </button>
           )}
         </div>
@@ -198,20 +177,20 @@ export const CodeBlock: React.FC<CodeBlockProps> = memo(({
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className={cn(
-            'w-full py-1.5 flex items-center justify-center gap-1',
+            'w-full py-1 flex items-center justify-center gap-1',
             'bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-header)]',
-            'text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
+            'text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
             'border-t border-[var(--color-border-subtle)] transition-colors'
           )}
         >
           {isCollapsed ? (
             <>
-              <ChevronDown size={12} />
+              <ChevronDown size={10} />
               Show all {lineCount} lines
             </>
           ) : (
             <>
-              <ChevronUp size={12} />
+              <ChevronUp size={10} />
               Collapse
             </>
           )}

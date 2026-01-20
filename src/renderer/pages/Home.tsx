@@ -27,12 +27,12 @@ const EditorLoader: React.FC = () => (
 );
 
 export const Home: React.FC = () => {
-  const { tabs, isEditorVisible } = useEditor();
+  const { tabs, isEditorVisible, bottomPanelOpen } = useEditor();
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isResizing, setIsResizing] = useState(false);
   
-  // Show editor panel when there are open tabs
-  const showEditor = isEditorVisible && tabs.length > 0;
+  // Show editor panel when there are open tabs OR when bottom panel is open
+  const showEditor = (isEditorVisible && tabs.length > 0) || bottomPanelOpen;
   
   // Handle resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {

@@ -19,8 +19,6 @@ interface ListDirArgs extends Record<string, unknown> {
   path: string;
   /** List of glob patterns to ignore */
   ignore?: string[];
-  /** @deprecated Use path (absolute) instead */
-  relativePath?: string;
   /** Show hidden files starting with "." (default: false) */
   showHidden?: boolean;
   /** List subdirectories recursively (default: false) */
@@ -29,29 +27,48 @@ interface ListDirArgs extends Record<string, unknown> {
 
 export const listDirTool: ToolDefinition<ListDirArgs> = {
   name: 'ls',
-  description: `Lists files and directories in a given path.
+  description: `List files and directories in a given path.
 
-Usage:
-- Provide an absolute path to the directory you want to list
-- On Windows, use paths like "C:\\Users\\..." or the workspace path
-- On Unix/Mac, use paths like "/home/user/..." or the workspace path
-- You can optionally provide an array of glob patterns to ignore with the ignore parameter
-- You should generally prefer the Glob and Grep tools if you know which directories to search
-- Returns a list of files and directories with type indicators (/ for directories)
+## When to Use
+- **Explore structure**: Understand directory layout before making changes
+- **Find files**: When you know the directory but not exact filenames
+- **Verify paths**: Confirm directories exist before operations
 
-IMPORTANT: Do NOT use Unix-style root paths like "/" on Windows - they will be interpreted as workspace-relative.
-To list the workspace root, use the full workspace path provided in your context.
+## Key Difference from Glob
+- **ls**: Lists contents of a specific directory (with optional recursion)
+- **glob**: Finds files matching a pattern across the entire workspace
 
-Parameters:
-- path (required): The absolute path to the directory to list
-- ignore (optional): List of glob patterns to ignore (e.g., ["node_modules", "*.log", "dist/**"])
-- showHidden (optional): Include hidden files starting with "." (default: false)
-- recursive (optional): List subdirectories recursively up to ${MAX_RECURSIVE_DEPTH} levels (default: false)`,
+Use ls when exploring a known directory. Use glob when searching by pattern.
+
+## Parameters
+- **path** (required): Absolute path to the directory to list
+- **ignore**: Glob patterns to exclude (e.g., ["node_modules", "*.log"])
+- **showHidden**: Include hidden files starting with "." (default: false)
+- **recursive**: List subdirectories recursively up to ${MAX_RECURSIVE_DEPTH} levels (default: false)
+
+## Output Format
+- Directories end with "/" (e.g., "src/")
+- Files listed without suffix
+- Sorted: directories first, then files alphabetically
+
+## Workflow Integration
+Use ls as part of exploration:
+\`\`\`
+ls(workspace) → understand structure
+ls(src/) → find relevant directories
+glob("**/*.ts") → find specific files
+read(files) → understand code
+\`\`\`
+
+## Platform Notes
+- Windows: Use paths like "C:\\Users\\..." or workspace-relative
+- Unix/Mac: Use paths like "/home/user/..." or workspace-relative
+- Do NOT use "/" alone on Windows - use the full workspace path`,
   requiresApproval: false,
   category: 'file-read',
   riskLevel: 'safe',
   allowedCallers: ['direct', 'code_execution'],
-  searchKeywords: ['list', 'directory', 'folder', 'files', 'contents', 'ls', 'tree', 'browse'],
+  searchKeywords: ['list', 'directory', 'folder', 'files', 'contents', 'ls', 'tree', 'browse', 'explore', 'structure'],
   ui: {
     icon: 'folder-open',
     label: 'List',
@@ -127,8 +144,8 @@ Parameters:
       };
     }
 
-    // Support both path and legacy relativePath parameter
-    const targetPath = args.path?.trim() || args.relativePath?.trim();
+    // Support path parameter
+    const targetPath = args.path?.trim();
     
     if (!targetPath) {
       return {

@@ -15,3 +15,13 @@ export { normalizeStrictJsonSchema } from './jsonSchemaStrict';
 
 // JSON parsing utilities (robust parsing with recovery for streaming)
 export { parseJsonRobust, parseToolArguments, type JsonParseResult } from './jsonParser';
+
+// Encoding detection and repair utilities
+export { 
+  hasMojibake, 
+  repairMojibake, 
+  hasUtf8Bom, 
+  removeUtf8Bom, 
+  detectEncoding, 
+  decodeBuffer 
+} from './encoding';

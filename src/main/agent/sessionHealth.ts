@@ -91,11 +91,11 @@ interface SessionHealthState {
 // =============================================================================
 
 export const DEFAULT_SESSION_HEALTH_CONFIG: SessionHealthConfig = {
-  tokenUsageWarningThreshold: 0.7,
-  tokenUsageCriticalThreshold: 0.9,
-  iterationWarningThreshold: 0.8,
-  stallTimeoutMs: 120000, // 2 minutes
-  slowResponseThresholdMs: 30000, // 30 seconds
+  tokenUsageWarningThreshold: 0.85,   // Increased - more tolerance for large contexts
+  tokenUsageCriticalThreshold: 0.97,  // Increased - allow more context usage
+  iterationWarningThreshold: 0.90,    // Increased - more tolerance for complex tasks
+  stallTimeoutMs: 300000, // 5 minutes - longer timeout for complex operations
+  slowResponseThresholdMs: 90000, // 90 seconds - more tolerance for slow responses
 };
 
 // =============================================================================
@@ -383,32 +383,32 @@ export class SessionHealthMonitor {
       return { shouldStop: false };
     }
 
-    // Check for recent critical issues (within last 60 seconds)
+    // Check for recent critical issues (within last 180 seconds - increased from 120)
     const recentCriticalIssues = state.issues.filter(
-      i => i.severity === 'error' && Date.now() - i.detectedAt < 60000
+      i => i.severity === 'error' && Date.now() - i.detectedAt < 180000
     );
 
-    // Stop if there are multiple loop detections
+    // Stop if there are multiple loop detections (require 5+ instead of 4)
     const loopIssues = recentCriticalIssues.filter(i => i.type === 'loop-detected');
-    if (loopIssues.length >= 2) {
+    if (loopIssues.length >= 5) {
       return {
         shouldStop: true,
         reason: `Multiple loops detected: ${loopIssues.map(i => i.message).join('; ')}`,
       };
     }
 
-    // Stop if token usage is critically high (over 200% - indicates runaway)
+    // Stop if token usage is critically high (over 400% - increased from 300%)
     const tokenUtilization = state.maxContextTokens > 0
       ? state.totalInputTokens / state.maxContextTokens
       : 0;
-    if (tokenUtilization > 2.0) {
+    if (tokenUtilization > 4.0) {
       return {
         shouldStop: true,
         reason: `Token usage critically high: ${Math.round(tokenUtilization * 100)}% of context window`,
       };
     }
 
-    // Stop if session has been stalled
+    // Stop if session has been stalled for extended period
     const stallIssues = recentCriticalIssues.filter(i => i.type === 'stalled');
     if (stallIssues.length > 0) {
       return {

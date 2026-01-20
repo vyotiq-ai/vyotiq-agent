@@ -6,14 +6,58 @@ export function isTransientError(error: unknown): boolean {
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     return (
+      // Timeout errors
       message.includes('timeout') ||
+      message.includes('etimedout') ||
+      message.includes('esockettimedout') ||
+      // Connection errors
       message.includes('econnreset') ||
       message.includes('econnrefused') ||
+      message.includes('econnaborted') ||
       message.includes('socket hang up') ||
+      message.includes('socket closed') ||
+      // Network/fetch errors
       message.includes('network') ||
+      message.includes('fetch failed') ||
+      message.includes('failed to fetch') ||
+      message.includes('network request failed') ||
+      // DNS errors
+      message.includes('enotfound') ||
+      message.includes('getaddrinfo') ||
+      message.includes('dns') ||
+      // SSL/TLS errors (transient)
+      message.includes('ssl') && message.includes('error') ||
+      message.includes('certificate') && message.includes('expired') ||
+      // HTTP server errors
       message.includes('502') ||
       message.includes('503') ||
-      message.includes('504')
+      message.includes('504') ||
+      message.includes('bad gateway') ||
+      message.includes('service unavailable') ||
+      message.includes('gateway timeout') ||
+      // Connection aborted/interrupted
+      message.includes('aborted') ||
+      message.includes('interrupted') ||
+      message.includes('connection closed')
+    );
+  }
+  return false;
+}
+
+/**
+ * Check if error is specifically a network connectivity issue
+ * These typically benefit from longer retry delays
+ */
+export function isNetworkError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('fetch failed') ||
+      message.includes('failed to fetch') ||
+      message.includes('network request failed') ||
+      message.includes('enotfound') ||
+      message.includes('econnrefused') ||
+      message.includes('getaddrinfo')
     );
   }
   return false;

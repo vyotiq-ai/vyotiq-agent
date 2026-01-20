@@ -29,7 +29,6 @@ interface ProviderSelectionOptions {
         config: {
           preferredProvider: LLMProviderName | 'auto';
           selectedModelId?: string;
-          manualOverrideModel?: string;
         };
       }
     | undefined;
@@ -51,7 +50,7 @@ export function useProviderSelection(options: ProviderSelectionOptions): Provide
     if (activeSession) {
       setSelectedProvider(activeSession.config.preferredProvider);
       setSelectedModelId(activeSession.config.selectedModelId);
-      setManualModel(activeSession.config.manualOverrideModel ?? activeSession.config.selectedModelId ?? '');
+      setManualModel(activeSession.config.selectedModelId ?? '');
     } else {
       setManualModel('');
       setSelectedModelId(undefined);
@@ -67,14 +66,13 @@ export function useProviderSelection(options: ProviderSelectionOptions): Provide
       updateSessionConfig(activeSession.id, { 
         preferredProvider: provider,
         selectedModelId: modelId,
-        manualOverrideModel: modelId || undefined,
       });
     }
   }, [activeSession, updateSessionConfig]);
 
   // Debounced version of config update
   const debouncedUpdateConfig = useDebounce(
-    (sessionId: string, config: { manualOverrideModel?: string; selectedModelId?: string }) => {
+    (sessionId: string, config: { selectedModelId?: string }) => {
       updateSessionConfig(sessionId, config);
     },
     CONFIG_DEBOUNCE_MS
@@ -83,10 +81,9 @@ export function useProviderSelection(options: ProviderSelectionOptions): Provide
   const handleManualModelCommit = useCallback(() => {
     if (!activeSession) return;
     const trimmed = manualModel.trim();
-    const current = activeSession.config.manualOverrideModel ?? '';
+    const current = activeSession.config.selectedModelId ?? '';
     if (trimmed === current) return;
     debouncedUpdateConfig(activeSession.id, { 
-      manualOverrideModel: trimmed || undefined,
       selectedModelId: trimmed || undefined,
     });
   }, [debouncedUpdateConfig, activeSession, manualModel]);
@@ -95,9 +92,8 @@ export function useProviderSelection(options: ProviderSelectionOptions): Provide
     setManualModel('');
     setSelectedModelId(undefined);
     if (!activeSession) return;
-    if (activeSession.config.manualOverrideModel || activeSession.config.selectedModelId) {
+    if (activeSession.config.selectedModelId) {
       updateSessionConfig(activeSession.id, { 
-        manualOverrideModel: undefined,
         selectedModelId: undefined,
       });
     }
@@ -109,10 +105,10 @@ export function useProviderSelection(options: ProviderSelectionOptions): Provide
       handleManualModelCommit();
     } else if (event.key === 'Escape') {
       event.preventDefault();
-      setManualModel(activeSession?.config.manualOverrideModel ?? activeSession?.config.selectedModelId ?? '');
+      setManualModel(activeSession?.config.selectedModelId ?? '');
       event.currentTarget.blur();
     }
-  }, [activeSession?.config.manualOverrideModel, activeSession?.config.selectedModelId, handleManualModelCommit]);
+  }, [activeSession?.config.selectedModelId, handleManualModelCommit]);
 
   return {
     selectedProvider,

@@ -20,10 +20,6 @@ interface EditFileArgs extends Record<string, unknown> {
   new_string: string;
   /** Replace all occurrences of old_string (default: false) */
   replace_all?: boolean;
-  /** @deprecated Use file_path instead */
-  path?: string;
-  /** @deprecated Use single old_string/new_string instead */
-  replacements?: Array<{ search: string; replace: string }>;
 }
 
 /**
@@ -52,6 +48,31 @@ function calculateSimilarity(str1: string, str2: string): number {
   }
   
   return matches / longer.length;
+}
+
+/**
+ * Normalize line endings to LF
+ */
+function normalizeLineEndings(str: string): string {
+  return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+/**
+ * Try to find a match with normalized line endings
+ * Returns the original content position if found
+ */
+function findWithNormalizedLineEndings(
+  content: string,
+  searchStr: string
+): { found: boolean; normalizedContent: string; normalizedSearch: string } {
+  const normalizedContent = normalizeLineEndings(content);
+  const normalizedSearch = normalizeLineEndings(searchStr);
+  
+  return {
+    found: normalizedContent.includes(normalizedSearch),
+    normalizedContent,
+    normalizedSearch,
+  };
 }
 
 /**
@@ -174,138 +195,87 @@ function detectCommonIssues(searchStr: string, content: string): string[] {
   return issues;
 }
 
-/**
- * Legacy execution mode for backward compatibility with old replacements array format
- */
-async function executeLegacyEdit(args: EditFileArgs, context: ToolExecutionContext): Promise<ToolExecutionResult> {
-  const filePath = args.path!;
-  const replacements = args.replacements!;
-
-  const resolvedPath = resolvePath(context.workspacePath!, filePath.trim(), {
-    allowOutsideWorkspace: context.allowOutsideWorkspace,
-  });
-
-  try {
-    // Read original content
-    const originalContent = await fs.readFile(resolvedPath, 'utf-8');
-    let content = originalContent;
-    const originalLines = content.split('\n').length;
-
-    // Apply replacements
-    const appliedReplacements: string[] = [];
-    const failedReplacements: { search: string; reason: string }[] = [];
-
-    for (let i = 0; i < replacements.length; i++) {
-      const replacement = replacements[i];
-      
-      if (!replacement || typeof replacement !== 'object') {
-        failedReplacements.push({
-          search: `(replacement ${i + 1})`,
-          reason: 'Invalid replacement object',
-        });
-        continue;
-      }
-      
-      const { search, replace } = replacement;
-      
-      if (typeof search !== 'string' || search.length === 0) {
-        failedReplacements.push({
-          search: `(replacement ${i + 1})`,
-          reason: 'Invalid search field',
-        });
-        continue;
-      }
-      
-      if (typeof replace !== 'string') {
-        failedReplacements.push({
-          search: search.substring(0, 30),
-          reason: 'Invalid replace field',
-        });
-        continue;
-      }
-      
-      if (!content.includes(search)) {
-        failedReplacements.push({
-          search: search.length > 40 ? search.substring(0, 40) + '...' : search,
-          reason: 'Search string not found',
-        });
-        continue;
-      }
-      
-      content = content.replace(search, replace);
-      appliedReplacements.push(`Applied replacement ${i + 1}`);
-    }
-
-    // Write modified content
-    await fs.writeFile(resolvedPath, content, 'utf-8');
-
-    const newLines = content.split('\n').length;
-    const linesChanged = newLines - originalLines;
-
-    let output = `Successfully edited ${filePath}\n`;
-    output += `Applied ${appliedReplacements.length}/${replacements.length} replacements\n`;
-    output += `Lines: ${originalLines} → ${newLines} (${linesChanged >= 0 ? '+' : ''}${linesChanged})`;
-
-    if (failedReplacements.length > 0) {
-      output += `\n\nWarning: ${failedReplacements.length} replacement(s) failed:`;
-      for (const failed of failedReplacements) {
-        output += `\n- ${failed.search}: ${failed.reason}`;
-      }
-    }
-
-    return {
-      toolName: 'edit',
-      success: true,
-      output,
-      metadata: {
-        path: filePath,
-        filePath: resolvedPath,
-        content,
-        appliedCount: appliedReplacements.length,
-        failedCount: failedReplacements.length,
-        action: 'modified',
-      },
-    };
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    return {
-      toolName: 'edit',
-      success: false,
-      output: `Failed to edit file: ${err.message}`,
-    };
-  }
-}
-
 export const editFileTool: ToolDefinition<EditFileArgs> = {
   name: 'edit',
-  description: `This is a tool for editing files. For moving or renaming files, use the bash tool with the 'mv' command instead. For larger edits, use the write tool to overwrite the entire file.
+  description: `Performs exact string replacement in files. The primary tool for making targeted code changes.
 
-Before editing, you should read the file to understand its contents and context. To edit a file, provide:
-1. file_path: The ABSOLUTE path to the file to modify (must start with / on Unix or drive letter on Windows)
-2. old_string: The text to search for - must match EXACTLY and uniquely identify ONE location
-3. new_string: The text to replace old_string with
+## When to Use
+- **Targeted changes**: Modifying specific functions, lines, or blocks
+- **Refactoring**: Renaming variables, updating signatures, fixing bugs
+- **Small updates**: Adding imports, changing values, fixing typos
+- **Preserving context**: When most of the file should remain unchanged
 
-CRITICAL RULES for old_string:
-- Copy the text from the read tool output EXACTLY, including all whitespace and indentation
-- Include enough surrounding context (3+ lines before and after) to make the match unique
-- If the string matches multiple locations, the edit will fail - add more context
-- If the string doesn't match exactly (wrong whitespace/indentation), the edit will fail
+## When NOT to Use
+- **New files**: Use write tool instead
+- **Major rewrites**: If changing >50% of file, use write
+- **Moving/renaming files**: Use terminal with 'mv' command
+- **Repeated failures**: Switch to write tool after 2-3 failed attempts
 
-CRITICAL RULES for new_string:
-- Provide the complete replacement text, preserving proper indentation
-- Match the indentation style of the surrounding code
-- Don't include line number prefixes from the read tool output
+## Workflow Integration
+This is the core of the Read → Edit → Verify cycle:
+\`\`\`
+read(file) → Get EXACT file content
+  │
+  ├─ Copy the EXACT text you want to change
+  │   (including whitespace, indentation)
+  │
+edit(file, old_string, new_string)
+  │
+  ├─ SUCCESS → read_lints() to verify
+  │
+  └─ FAILURE → Diagnose and retry OR use write tool
+\`\`\`
 
-Parameters:
-- file_path: The absolute path to the file to modify
-- old_string: The exact text to find and replace (must be unique in the file)
-- new_string: The replacement text (must be different from old_string)
-- replace_all: If true, replace ALL occurrences of old_string (default: false)
+## Critical Requirements
 
-Safety:
-- This tool requires user approval before execution
-- The file must have been read in the current session before editing
-- Always verify the edit succeeded by examining the result`,
+### old_string Rules
+1. **EXACT MATCH**: Must match character-for-character, including:
+   - All whitespace (spaces, tabs, newlines)
+   - Indentation (copy exactly from read output)
+   - Line endings
+2. **UNIQUE MATCH**: Must match exactly ONE location in the file
+3. **SUFFICIENT CONTEXT**: Include 3+ surrounding lines to ensure uniqueness
+4. **COPY DIRECTLY**: Copy from read tool output, don't retype
+
+### new_string Rules
+1. **COMPLETE REPLACEMENT**: Provide the full replacement text
+2. **PRESERVE INDENTATION**: Match the surrounding code style
+3. **NO LINE NUMBERS**: Don't include line number prefixes from read output
+4. **MUST BE DIFFERENT**: old_string and new_string cannot be identical
+
+## Common Failures & Recovery
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| "old_string not found" | Text doesn't match exactly | Re-read file, copy exactly |
+| "matches multiple locations" | Not enough context | Add more surrounding lines |
+| Whitespace mismatch | Tabs vs spaces, trailing spaces | Copy directly from read output |
+| Keeps failing | Complex edit or file changed | Use write tool instead |
+
+## Self-Correction Protocol
+1. **First failure**: Re-read file, copy exact text, retry
+2. **Second failure**: Add more context lines (function signature, unique comments)
+3. **Third failure**: Use write tool to replace entire file
+
+## Parameters
+- **file_path** (required): Absolute path to the file to modify
+- **old_string** (required): Exact text to find and replace (must be unique)
+- **new_string** (required): Replacement text (must differ from old_string)
+- **replace_all** (optional, default: false): Replace ALL occurrences
+
+## Safety Features
+- Requires user approval before execution
+- File must be read in current session before editing
+- Auto-backup created before modification
+- Undo history recorded for all edits
+- Detailed diagnostics on failure
+
+## Best Practices
+- **Always read first**: Get exact content before editing
+- **Copy exactly**: Don't retype text, copy from read output
+- **Include context**: 3+ lines before and after the change
+- **Verify after**: Run read_lints() immediately after edit
+- **One change at a time**: Make atomic, focused edits`,
   requiresApproval: true,
   category: 'file-write',
   riskLevel: 'moderate',
@@ -385,23 +355,6 @@ Safety:
         type: 'boolean',
         description: 'Replace all occurrences instead of just the first (default: false)',
       },
-      // Deprecated parameters for backward compatibility
-      path: {
-        type: 'string',
-        description: '(deprecated) Use file_path instead',
-      },
-      replacements: {
-        type: 'array',
-        description: '(deprecated) Use old_string/new_string instead',
-        items: {
-          type: 'object',
-          properties: {
-            search: { type: 'string', description: 'Text to search for' },
-            replace: { type: 'string', description: 'Text to replace with' },
-          },
-          required: ['search', 'replace'],
-        },
-      },
     },
     required: ['file_path', 'old_string', 'new_string'],
   },
@@ -412,7 +365,6 @@ Safety:
     context.logger.info('Edit tool: Received arguments', {
       argKeys,
       hasFilePath: !!args.file_path,
-      hasPath: !!args.path,
       hasOldString: typeof args.old_string === 'string',
       hasNewString: typeof args.new_string === 'string',
       oldStringLength: typeof args.old_string === 'string' ? args.old_string.length : 0,
@@ -427,16 +379,11 @@ Safety:
       };
     }
 
-    // Support multiple parameter name variations that LLMs might use
-    const filePath = args.file_path || args.path || (args as Record<string, unknown>).filePath as string | undefined;
-    const oldString = args.old_string || (args as Record<string, unknown>).oldString as string | undefined || (args as Record<string, unknown>).search as string | undefined;
-    const newString = args.new_string ?? (args as Record<string, unknown>).newString as string | undefined ?? (args as Record<string, unknown>).replace as string | undefined;
+    // Extract parameters (support common LLM variations)
+    const filePath = args.file_path || (args as Record<string, unknown>).filePath as string | undefined;
+    const oldString = args.old_string || (args as Record<string, unknown>).oldString as string | undefined;
+    const newString = args.new_string ?? (args as Record<string, unknown>).newString as string | undefined;
     const replaceAll = args.replace_all ?? (args as Record<string, unknown>).replaceAll as boolean | undefined ?? false;
-    
-    // Legacy mode: handle old replacements array format
-    if (args.replacements && Array.isArray(args.replacements) && args.replacements.length > 0 && !oldString) {
-      return await executeLegacyEdit(args, context);
-    }
 
     // Validate file_path - provide detailed diagnostics
     if (!filePath || typeof filePath !== 'string') {
@@ -486,12 +433,36 @@ Safety:
 
     // Check that old_string and new_string are different
     if (oldString === newString) {
-      // Provide more diagnostic info
+      // Provide more diagnostic info to help the LLM understand the issue
       const preview = oldString.length > 100 ? oldString.substring(0, 100) + '...' : oldString;
+      context.logger.warn('Edit tool: old_string and new_string are identical', {
+        filePath,
+        stringLength: oldString.length,
+        preview: preview.substring(0, 50),
+      });
       return {
         toolName: 'edit',
         success: false,
-        output: `old_string and new_string are identical. No changes to make.\n\nBoth contain: "${preview}"\n\nEnsure old_string has the ORIGINAL text and new_string has the CHANGED text.`,
+        output: `ERROR: old_string and new_string are IDENTICAL - no changes to make.
+
+This means you're trying to replace text with the exact same text. This is a no-op.
+
+WHAT TO DO:
+1. old_string should contain the CURRENT/ORIGINAL text from the file
+2. new_string should contain the MODIFIED/NEW text you want
+
+COMMON CAUSES:
+• You may have copied the same text to both fields
+• You may have already made this change in a previous edit
+• The file may already contain the desired content
+
+SOLUTION:
+• Re-read the file to see its current state
+• If the change is already applied, move on to the next task
+• If not, ensure old_string has the ORIGINAL text and new_string has your CHANGES
+
+String preview (first 100 chars):
+"${preview}"`,
       };
     }
 
@@ -574,8 +545,27 @@ Safety:
       const originalContent = await fs.readFile(resolvedPath, 'utf-8');
       const originalLines = originalContent.split('\n').length;
 
-      // Check if old_string exists in file
+      // Check if old_string exists in file - try exact match first
+      let effectiveOldString = oldString;
+      let effectiveContent = originalContent;
+      let lineEndingNormalized = false;
+      
       if (!originalContent.includes(oldString)) {
+        // Try with normalized line endings (CRLF -> LF)
+        const normalized = findWithNormalizedLineEndings(originalContent, oldString);
+        if (normalized.found) {
+          effectiveOldString = normalized.normalizedSearch;
+          effectiveContent = normalized.normalizedContent;
+          lineEndingNormalized = true;
+          context.logger.info('Edit tool: Using normalized line endings for match', {
+            resolvedPath,
+            originalHasCRLF: originalContent.includes('\r\n'),
+            searchHasCRLF: oldString.includes('\r\n'),
+          });
+        }
+      }
+      
+      if (!effectiveContent.includes(effectiveOldString)) {
         // Comprehensive diagnostics for matching failure
         const diagnostics: string[] = [];
         let suggestion = '';
@@ -682,8 +672,10 @@ Safety:
         };
       }
 
-      // Count occurrences
-      const occurrenceCount = (originalContent.match(new RegExp(escapeRegExp(oldString), 'g')) || []).length;
+      // Count occurrences - use effective strings if line endings were normalized
+      const searchContent = lineEndingNormalized ? effectiveContent : originalContent;
+      const searchString = lineEndingNormalized ? effectiveOldString : oldString;
+      const occurrenceCount = (searchContent.match(new RegExp(escapeRegExp(searchString), 'g')) || []).length;
 
       // If multiple occurrences and not replace_all, fail
       if (occurrenceCount > 1 && !replaceAll) {
@@ -704,12 +696,41 @@ File: ${filePath}`,
       let content: string;
       let replacementCount: number;
       
-      if (replaceAll) {
-        content = originalContent.split(oldString).join(newString);
-        replacementCount = occurrenceCount;
+      if (lineEndingNormalized) {
+        // If we normalized line endings for matching, we need to:
+        // 1. Normalize the new_string to match the file's line ending style
+        // 2. Perform replacement on normalized content
+        // 3. Convert back to original line ending style if file used CRLF
+        const fileUsesCRLF = originalContent.includes('\r\n');
+        const normalizedNewString = normalizeLineEndings(newString);
+        
+        if (replaceAll) {
+          content = effectiveContent.split(effectiveOldString).join(normalizedNewString);
+          replacementCount = occurrenceCount;
+        } else {
+          content = effectiveContent.replace(effectiveOldString, normalizedNewString);
+          replacementCount = 1;
+        }
+        
+        // Convert back to CRLF if original file used it
+        if (fileUsesCRLF) {
+          content = content.replace(/\n/g, '\r\n');
+        }
+        
+        context.logger.info('Edit tool: Applied line-ending normalized replacement', {
+          resolvedPath,
+          fileUsesCRLF,
+          replacementCount,
+        });
       } else {
-        content = originalContent.replace(oldString, newString);
-        replacementCount = 1;
+        // Standard replacement without normalization
+        if (replaceAll) {
+          content = originalContent.split(oldString).join(newString);
+          replacementCount = occurrenceCount;
+        } else {
+          content = originalContent.replace(oldString, newString);
+          replacementCount = 1;
+        }
       }
 
       // Write modified content

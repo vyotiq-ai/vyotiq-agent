@@ -13,6 +13,15 @@ export { DiagnosticEngine } from './DiagnosticEngine';
 export { RecoveryManager } from './RecoveryManager';
 export { SelfHealingAgent } from './SelfHealingAgent';
 export { UserCommunication } from './UserCommunication';
+export {
+  ErrorRecoveryManager,
+  getErrorRecoveryManager,
+  resetErrorRecoveryManager,
+  type RecoverySuggestion,
+  type ErrorRecoveryConfig,
+  type ErrorPatternCategory,
+  type SessionErrorRecord,
+} from './ErrorRecoveryManager';
 
 // Export strategies
 export {

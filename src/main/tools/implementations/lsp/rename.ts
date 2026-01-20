@@ -23,21 +23,45 @@ interface RenameArgs extends Record<string, unknown> {
 
 export const lspRenameTool: ToolDefinition<RenameArgs> = {
   name: 'lsp_rename',
-  description: `Rename a symbol across the workspace.
+  description: `Rename a symbol across the workspace. Computes all required edits for safe refactoring.
 
-Use this to:
-- Safely rename variables, functions, classes, etc.
-- Get all the edits needed to rename a symbol
-- Preview changes before applying them
+## When to Use
+- **Safe renaming**: Rename variables, functions, classes across all files
+- **Refactoring preview**: See all changes before applying
+- **Consistent updates**: Ensure all references are updated together
 
-Parameters:
-- file (required): File path relative to workspace
-- line (required): Line number (1-indexed)
-- column (required): Column number (1-indexed)
-- new_name (required): New name for the symbol
+## Workflow Integration
+Use for safe symbol renaming:
+\`\`\`
+lsp_references(file, line, col) → preview all usages
+lsp_rename(file, line, col, new_name) → compute edits
+[review the computed edits]
+[apply edits using edit tool]
+read_lints() → verify no errors
+\`\`\`
 
-Returns the list of edits needed to perform the rename.
-Note: This tool returns the edits but does NOT apply them. Use the edit tool to apply.`,
+## Important Notes
+- This tool COMPUTES edits but does NOT apply them
+- Review the computed edits before applying
+- Use the edit tool to apply each change
+- For simple renames, consider using bulk tool instead
+
+## Parameters
+- **file** (required): File path relative to workspace
+- **line** (required): Line number (1-indexed)
+- **column** (required): Column number (1-indexed)
+- **new_name** (required): New name for the symbol
+
+## Output
+- Total number of edits required
+- Files that will be modified
+- Preview of each edit (line and new text)
+
+## Best Practices
+- Check lsp_references first to understand scope
+- Review all computed edits before applying
+- Apply edits file by file using edit tool
+- Run read_lints after all changes`,
   requiresApproval: false,
   category: 'code-intelligence',
   riskLevel: 'safe',

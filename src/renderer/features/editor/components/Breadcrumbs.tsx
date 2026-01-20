@@ -144,8 +144,8 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
   const segments = getPathSegments(filePath);
   const lastSegment = segments[segments.length - 1];
   
-  // Get file icon for the last segment (the file itself) - used for title/accessibility
-  const _FileIcon = lastSegment ? getFileIcon(lastSegment.name) : File;
+  // Get file icon for the last segment (the file itself)
+  const FileIcon = lastSegment && lastSegment.isFile ? getFileIcon(lastSegment.name) : File;
   
   // Only show last few path segments to save space
   const visibleSegments = segments.length > 3 
@@ -161,7 +161,13 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({
         className
       )}
       title={lastSegment ? `${lastSegment.path} - Click to navigate` : undefined}
+      aria-label={lastSegment ? `Breadcrumb: ${lastSegment.name}` : 'Breadcrumb navigation'}
     >
+      {/* File type indicator */}
+      {lastSegment && lastSegment.isFile && (
+        <FileIcon size={14} className="text-[var(--color-text-muted)] shrink-0 mr-1" aria-hidden="true" />
+      )}
+      
       {/* Path breadcrumbs */}
       {visibleSegments.map((segment, index) => {
         if (segment.name === '...') {

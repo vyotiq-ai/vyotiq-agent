@@ -20,29 +20,90 @@ interface WriteFileArgs extends Record<string, unknown> {
   file_path: string;
   /** The content to write to the file */
   content: string;
-  /** @deprecated Use file_path instead */
-  path?: string;
   /** Create parent directories if they don't exist (default: true) */
   createDirectories?: boolean;
 }
 
 export const writeFileTool: ToolDefinition<WriteFileArgs> = {
   name: 'write',
-  description: `Writes a file to the local filesystem.
+  description: `Writes a file to the local filesystem. Use for creating new files or completely rewriting existing ones.
 
-Usage:
-- This tool will overwrite the existing file if there is one at the provided path.
-- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
-- ALWAYS prefer editing existing files in the codebase using the Edit tool. NEVER write new files unless explicitly required.
-- NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
-- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.
-- Parent directories will be created automatically if they don't exist.
+## When to Use
+- **Creating new files**: Components, utilities, configs, etc.
+- **Complete rewrites**: When most of the file content changes
+- **Edit tool failing**: When edit can't match the string, write the whole file
+- **Generated content**: When creating files from templates or specifications
 
-Parameters:
-- file_path (required): The absolute path to the file to write (must be absolute, not relative)
-- content (required): The content to write to the file
+## When NOT to Use
+- **Small changes**: Use edit tool for targeted modifications
+- **Existing files**: Prefer edit to preserve unchanged content
+- **Documentation**: Don't create docs unless explicitly requested
 
-This tool requires user approval before execution.`,
+## Workflow Integration
+**Pattern 1: Create New File**
+\`\`\`
+glob("**/*.ts") → Check if similar file exists
+  │
+  └─ Not found → write(new_file, content)
+                   │
+                 read_lints() → Verify no errors
+\`\`\`
+
+**Pattern 2: Edit Fallback**
+\`\`\`
+read(file) → Get current content
+edit(file, old, new) → Attempt targeted change
+  │
+  └─ FAILS (string not found)
+       │
+     write(file, complete_new_content) → Rewrite entire file
+       │
+     read_lints() → Verify no errors
+\`\`\`
+
+**Pattern 3: Scaffold New Feature**
+\`\`\`
+CreatePlan → Break down feature into tasks
+  │
+  ├─ write(component.tsx) → Create component
+  ├─ write(component.test.tsx) → Create tests
+  ├─ write(types.ts) → Create types
+  │
+  └─ read_lints() → Verify all files
+\`\`\`
+
+## Decision: write vs edit
+| Scenario | Use |
+|----------|-----|
+| Changing specific lines | edit |
+| Modifying a few functions | edit |
+| Creating new files | write |
+| Rewriting most of a file | write |
+| Edit keeps failing | write |
+
+## Parameters
+- **file_path** (required): Absolute path to the file to write
+- **content** (required): Complete content to write to the file
+- **createDirectories** (optional, default: true): Auto-create parent directories
+
+## Safety Features
+- Requires user approval before execution
+- Existing files must be read first (tracked per session)
+- Auto-backup created before overwriting (if safety manager enabled)
+- Undo history recorded for all writes
+
+## Best Practices
+- **Read before overwrite**: Always read existing files first
+- **Complete content**: Provide the entire file content, not fragments
+- **Match conventions**: Follow existing code style and patterns
+- **Verify after**: Run read_lints() to catch any issues
+- **No placeholders**: Write production-ready code, no TODOs
+
+## Important Notes
+- Parent directories are created automatically
+- Overwrites existing files without merge
+- Don't create documentation files unless explicitly requested
+- Avoid emojis in code files unless requested`,
   requiresApproval: true,
   category: 'file-write',
   riskLevel: 'moderate',
@@ -115,8 +176,8 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
       };
     }
 
-    // Support both file_path and legacy path parameter
-    const pathArg = args.file_path || args.path;
+    // Use file_path parameter
+    const pathArg = args.file_path;
     
     if (!pathArg || typeof pathArg !== 'string') {
       context.logger.error('Write tool: Invalid file_path argument', {

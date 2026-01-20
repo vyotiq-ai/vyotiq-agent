@@ -136,19 +136,60 @@ async function executeType(
 
 export const browserTypeTool: ToolDefinition<TypeArgs> = {
   name: 'browser_type',
-  description: `Type text into an input field or editable element.
+  description: `Type text into an input field or editable element. Core tool for form interactions.
 
-**Features:**
-- Fast typing (default): Sets value directly
-- Slow typing: Character by character with key events
-- Auto-submit: Press Enter after typing
-- Clear first: Remove existing content before typing
+## When to Use
+- **Fill inputs**: Type into text fields, search boxes
+- **Form data**: Enter email, password, names, etc.
+- **Search**: Type queries and submit
+- **Text areas**: Enter multi-line content
 
-**Use for:**
-- Filling form inputs
-- Search boxes
-- Text areas
-- Any editable element`,
+## Workflow Integration
+Use as part of form interactions:
+\`\`\`
+browser_navigate(url) → load page
+browser_snapshot() → find input selectors
+browser_type(selector, text) → enter text
+browser_click(submit_button) → submit
+browser_screenshot() → verify result
+\`\`\`
+
+## Login Pattern
+\`\`\`
+browser_navigate("http://localhost:3000/login")
+browser_type("#email", "user@example.com")
+browser_type("#password", "password123")
+browser_click("button[type='submit']")
+browser_wait(text: "Welcome")
+browser_screenshot()
+\`\`\`
+
+## Search Pattern
+\`\`\`
+browser_type("#search", "react hooks", submit: true)
+browser_wait(selector: ".results")
+browser_extract(selector: ".results")
+\`\`\`
+
+## Features
+- **Fast typing** (default): Sets value directly
+- **Slow typing**: Character by character with key events
+- **Auto-submit**: Press Enter after typing
+- **Clear first**: Remove existing content before typing
+
+## Parameters
+- **selector** (required): CSS selector for the input element
+- **text** (required): Text to type
+- **clearFirst** (optional): Clear existing content (default: true)
+- **slowly** (optional): Type character by character (triggers key events)
+- **submit** (optional): Press Enter after typing to submit
+- **delay** (optional): Delay between characters in ms (only when slowly=true)
+
+## Best Practices
+- Use browser_snapshot first to find correct selectors
+- Use clearFirst: true to replace existing content
+- Use submit: true for search boxes
+- Use slowly: true if the app needs key events`,
 
   requiresApproval: false,
   category: 'browser-write',

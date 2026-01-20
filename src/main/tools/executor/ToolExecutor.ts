@@ -402,8 +402,11 @@ export class ToolExecutor {
    * STRICT MODE: If session has a workspaceId but workspace is not found,
    * this will return a context WITHOUT workspacePath, causing tools to fail safely
    * with a clear "No workspace selected" error.
+   * 
+   * @param session - The internal session
+   * @param runId - Optional run ID for tracking (Requirement 8: Tool Execution Context Enhancement)
    */
-  private buildContext(session: InternalSession): ToolExecutionContext {
+  private buildContext(session: InternalSession, runId?: string): ToolExecutionContext {
     // Log context building for debugging
     this.deps.logger.info('Building tool execution context', {
       sessionId: session.state.id,
@@ -417,7 +420,7 @@ export class ToolExecutor {
       : undefined;
     
     // If session has explicit workspaceId but workspace not found - this is a critical error
-    // Return context WITHOUT workspacePath so tools fail safely with clear error
+    // Return context with fallback workspacePath so tools can fail safely with clear error
     if (session.state.workspaceId && !workspace) {
       this.deps.logger.error('CRITICAL: Session workspaceId not found in workspace list', {
         sessionId: session.state.id,
@@ -429,9 +432,13 @@ export class ToolExecutor {
         })),
       });
       
-      // Return context without workspacePath - tools MUST handle this case
+      // Return context with fallback workspacePath - tools should check workspace validity
+      const fallbackPath = process.cwd();
       return {
-        workspacePath: undefined,
+        sessionId: session.state.id,
+        runId,
+        workspacePath: fallbackPath,
+        cwd: fallbackPath,
         terminalManager: this.deps.terminalManager,
         logger: {
           info: (message: string, meta?: Record<string, unknown>) =>
@@ -469,8 +476,12 @@ export class ToolExecutor {
       workspaceId: workspace?.id ?? '(none)',
     });
 
+    const workspacePath = workspace?.path ?? process.cwd();
     return {
-      workspacePath: workspace?.path,
+      sessionId: session.state.id,
+      runId,
+      workspacePath,
+      cwd: workspacePath,
       terminalManager: this.deps.terminalManager,
       logger: {
         info: (message: string, meta?: Record<string, unknown>) =>
@@ -567,7 +578,7 @@ export class ToolExecutor {
     toolCall: ToolCallPayload,
     runId: string
   ): Promise<EnhancedToolResult> {
-    const context = this.buildContext(session);
+    const context = this.buildContext(session, runId);
     const startTime = performance.now();
     const isCacheable = this.cacheConfig.cacheableTools.has(toolCall.name);
     const cacheKey = isCacheable 
@@ -856,117 +867,4 @@ export class ToolExecutor {
   // Composition Workflow Execution (Phase 2)
   // ===========================================================================
 
-  /**
-   * Execute a composed workflow
-   * Workflows combine multiple tools into a single execution
-   */
-  async executeWorkflow(
-    session: InternalSession,
-    workflowId: string,
-    inputs: Record<string, unknown>,
-    runId: string
-  ): Promise<EnhancedToolResult> {
-    const startTime = performance.now();
-    
-    // Dynamic import to avoid circular dependencies
-    const { getToolComposer, getWorkflowRegistry } = await import('../composer');
-    const composer = getToolComposer(this.deps.toolRegistry);
-    const registry = getWorkflowRegistry();
-
-    // Get workflow from registry
-    const workflow = registry?.getWorkflow(workflowId);
-
-    if (!workflow) {
-      const duration = Math.round(performance.now() - startTime);
-      return {
-        toolName: `workflow:${workflowId}`,
-        success: false,
-        output: `Workflow "${workflowId}" not found`,
-        timing: {
-          startedAt: Date.now() - duration,
-          completedAt: Date.now(),
-          durationMs: duration,
-        },
-      };
-    }
-
-    this.deps.logger.info('Executing workflow', {
-      workflowId,
-      name: workflow.name,
-      stepCount: workflow.steps.length,
-      inputs,
-    });
-
-    try {
-      // Build execution context
-      const context = this.buildContext(session);
-
-      // Execute the workflow
-      const result = await composer.execute(
-        workflow, 
-        inputs, 
-        {
-          sessionId: session.state.id,
-          runId,
-          toolContext: context,
-        },
-        (progress) => {
-          this.deps.emitEvent({
-            type: 'workflow-progress',
-            sessionId: session.state.id,
-            runId,
-            workflowId,
-            stepId: progress.currentStep,
-            status: `${progress.completedSteps}/${progress.totalSteps}`,
-            percentage: progress.percentage,
-            timestamp: Date.now(),
-          } as unknown as RendererEvent);
-        }
-      );
-
-      const duration = Math.round(performance.now() - startTime);
-
-      // Convert to enhanced result
-      const enhancedResult: EnhancedToolResult = {
-        toolName: `workflow:${workflowId}`,
-        success: result.success,
-        output: result.success
-          ? `Workflow "${workflow.name}" completed successfully in ${result.totalDurationMs}ms\n\nFinal Output:\n${JSON.stringify(result.output, null, 2)}`
-          : `Workflow "${workflow.name}" failed: ${result.error}`,
-        timing: {
-          startedAt: Date.now() - duration,
-          completedAt: Date.now(),
-          durationMs: duration,
-        },
-      };
-
-      this.deps.logger.info('Workflow execution completed', {
-        workflowId,
-        success: result.success,
-        duration,
-        stepsExecuted: result.stepResults.length,
-      });
-
-      return enhancedResult;
-    } catch (error) {
-      const duration = Math.round(performance.now() - startTime);
-      
-      this.deps.logger.error('Workflow execution failed', {
-        workflowId,
-        error: error instanceof Error ? error.message : String(error),
-        duration,
-      });
-
-      return {
-        toolName: `workflow:${workflowId}`,
-        success: false,
-        output: `Workflow execution failed: ${error instanceof Error ? error.message : String(error)}`,
-        timing: {
-          startedAt: Date.now() - duration,
-          completedAt: Date.now(),
-          durationMs: duration,
-        },
-      };
-    }
-  }
 }

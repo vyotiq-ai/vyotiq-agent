@@ -11,6 +11,9 @@
  * - State: state, tabs
  * - Security: check_url, security_status
  * - Debugging: console, network
+ * 
+ * Primary tools are always loaded.
+ * Secondary tools are deferred and loaded on-demand via request_tools.
  */
 
 // Type exports
@@ -61,6 +64,20 @@ import { browserTabsTool } from './tabs';
 import type { ToolDefinition } from '../../types';
 
 /**
+ * Mark secondary tools as deferred for context-aware loading
+ */
+function markAsDeferred<T extends ToolDefinition>(tool: T): T {
+  return {
+    ...tool,
+    deferLoading: true,
+    searchKeywords: [
+      ...(tool.searchKeywords || []),
+      'browser', 'web', 'automation',
+    ],
+  };
+}
+
+/**
  * All browser tools in a single array for easy registration.
  * 
  * Tools are ordered by frequency of use:
@@ -72,19 +89,20 @@ import type { ToolDefinition } from '../../types';
  * 6. browser_click - Click elements
  * 7. browser_type - Type into inputs
  * 8. browser_scroll - Scroll pages
- * 9. browser_fill_form - Fill multiple form fields
+ * 9. browser_fill_form - Fill multiple form fields (deferred)
  * 10. browser_wait - Wait for conditions
- * 11. browser_hover - Hover interactions
- * 12. browser_evaluate - Custom JS
- * 13. browser_state - Get state
- * 14. browser_back/forward/reload - Navigation
+ * 11. browser_hover - Hover interactions (deferred)
+ * 12. browser_evaluate - Custom JS (deferred)
+ * 13. browser_state - Get state (deferred)
+ * 14. browser_back/forward/reload - Navigation (deferred)
  * 15. browser_console - Debugging console logs
- * 16. browser_network - Network request monitoring
- * 17. browser_tabs - Tab management
- * 18. browser_security_status - Security monitoring
+ * 16. browser_network - Network request monitoring (deferred)
+ * 17. browser_tabs - Tab management (deferred)
+ * 18. browser_security_status - Security monitoring (deferred)
  * 19. browser_check_url - URL safety check
  */
 export const BROWSER_TOOLS: ToolDefinition[] = [
+  // Primary tools (always loaded for browser tasks)
   browserFetchTool,
   browserNavigateTool,
   browserExtractTool,
@@ -93,19 +111,20 @@ export const BROWSER_TOOLS: ToolDefinition[] = [
   browserClickTool,
   browserTypeTool,
   browserScrollTool,
-  browserFillFormTool,
   browserWaitTool,
-  browserHoverTool,
-  browserEvaluateTool,
-  browserStateTool,
-  browserBackTool,
-  browserForwardTool,
-  browserReloadTool,
   browserConsoleTool,
-  browserNetworkTool,
-  browserTabsTool,
-  browserSecurityStatusTool,
   browserCheckUrlTool,
+  // Secondary tools (deferred, loaded on-demand)
+  markAsDeferred(browserFillFormTool),
+  markAsDeferred(browserHoverTool),
+  markAsDeferred(browserEvaluateTool),
+  markAsDeferred(browserStateTool),
+  markAsDeferred(browserBackTool),
+  markAsDeferred(browserForwardTool),
+  markAsDeferred(browserReloadTool),
+  markAsDeferred(browserNetworkTool),
+  markAsDeferred(browserTabsTool),
+  markAsDeferred(browserSecurityStatusTool),
 ];
 
 /**
@@ -127,7 +146,7 @@ export const PRIMARY_BROWSER_TOOLS: ToolDefinition[] = [
 ];
 
 /**
- * Secondary browser tools that can be deferred.
+ * Secondary browser tools that are deferred.
  * These are less frequently used but still valuable.
  */
 export const SECONDARY_BROWSER_TOOLS: ToolDefinition[] = [

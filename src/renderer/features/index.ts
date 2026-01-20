@@ -29,7 +29,8 @@ export * from './fileTree';
 // Editor feature - Monaco code editor
 export * from './editor';
 
-// Orchestration feature - Removed (sub-agent coordination system no longer exists)
+// Debugging feature - Agent execution debugging
+export * from './debugging';
 
 // Onboarding feature - First-run wizard
 export * from './onboarding';

@@ -122,20 +122,50 @@ async function executeEvaluate(
 
 export const browserEvaluateTool: ToolDefinition<EvaluateArgs> = {
   name: 'browser_evaluate',
-  description: `Execute JavaScript code in the browser page context.
+  description: `Execute JavaScript code in the browser page context. Advanced tool for custom interactions.
 
-**Use for:**
-- Custom DOM manipulation
-- Getting computed values
-- Testing JavaScript functionality
-- Interacting with page APIs
+## When to Use
+- **Custom DOM queries**: Get computed values, element counts
+- **Page state**: Access localStorage, sessionStorage, cookies
+- **Complex interactions**: When standard tools don't cover your needs
+- **Testing**: Verify JavaScript functionality
 
-**Script format:**
-- Expression: \`document.title\`
-- Function: \`() => document.querySelectorAll('li').length\`
-- With element: \`(el) => el.getBoundingClientRect()\` (requires selector)
+## Workflow Integration
+Use for advanced page inspection:
+\`\`\`
+browser_navigate(url)
+browser_evaluate("document.querySelectorAll('li').length")
+[use result to inform next steps]
+\`\`\`
 
-**Security:** Scripts run in page context with full DOM access.`,
+## State Inspection Pattern
+\`\`\`
+browser_evaluate("localStorage.getItem('user')")
+browser_evaluate("() => window.__REDUX_STATE__")
+\`\`\`
+
+## Element Inspection Pattern
+\`\`\`
+browser_evaluate("(el) => el.getBoundingClientRect()", selector: "h1")
+browser_evaluate("(el) => getComputedStyle(el).color", selector: ".button")
+\`\`\`
+
+## Script Formats
+- **Expression**: \`document.title\`
+- **Function**: \`() => document.querySelectorAll('li').length\`
+- **With element**: \`(el) => el.getBoundingClientRect()\` (requires selector)
+
+## Parameters
+- **script** (required): JavaScript code to execute (expression or arrow function)
+- **selector** (optional): Element selector - passed to script as first argument
+
+## Security Note
+Scripts run in page context with full DOM access. Use responsibly.
+
+## Best Practices
+- Use standard tools (click, type, extract) when possible
+- Use evaluate for custom queries and state inspection
+- Return serializable values (JSON-compatible)`,
 
   requiresApproval: false, // Read-only by default
   category: 'browser-write',

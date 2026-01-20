@@ -9,6 +9,8 @@
  * - OpenAI: /v1/models
  * - DeepSeek: /models
  * - Gemini: /v1beta/models
+ * - xAI: /v1/models
+ * - Mistral: /v1/models
  * - OpenRouter: /api/v1/models
  */
 
@@ -20,6 +22,9 @@ import { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './anthropic';
 import { OPENAI_MODELS, OPENAI_DEFAULT_MODEL } from './openai';
 import { DEEPSEEK_MODELS, DEEPSEEK_DEFAULT_MODEL } from './deepseek';
 import { GEMINI_MODELS, GEMINI_DEFAULT_MODEL } from './gemini';
+import { XAI_MODELS, XAI_DEFAULT_MODEL } from './xai';
+import { MISTRAL_MODELS, MISTRAL_DEFAULT_MODEL } from './mistral';
+import { GLM_MODELS, GLM_DEFAULT_MODEL } from './glm';
 
 // =============================================================================
 // Default Model IDs (used when API is unavailable)
@@ -30,6 +35,9 @@ export const DEFAULT_MODELS: Record<LLMProviderName, string> = {
   openai: OPENAI_DEFAULT_MODEL,
   deepseek: DEEPSEEK_DEFAULT_MODEL,
   gemini: GEMINI_DEFAULT_MODEL,
+  xai: XAI_DEFAULT_MODEL,
+  mistral: MISTRAL_DEFAULT_MODEL,
+  glm: GLM_DEFAULT_MODEL,
   openrouter: 'anthropic/claude-sonnet-4',
 };
 
@@ -43,6 +51,9 @@ export const MODELS: ModelInfo[] = [
   ...OPENAI_MODELS,
   ...DEEPSEEK_MODELS,
   ...GEMINI_MODELS,
+  ...XAI_MODELS,
+  ...MISTRAL_MODELS,
+  ...GLM_MODELS,
 ];
 
 /** Models indexed by provider for fast lookup (empty - models are fetched dynamically) */
@@ -51,6 +62,9 @@ const MODEL_BY_PROVIDER: Record<LLMProviderName, ModelInfo[]> = {
   openai: OPENAI_MODELS,
   deepseek: DEEPSEEK_MODELS,
   gemini: GEMINI_MODELS,
+  xai: XAI_MODELS,
+  mistral: MISTRAL_MODELS,
+  glm: GLM_MODELS,
   openrouter: [], // OpenRouter models are fetched dynamically via API
 };
 
@@ -155,3 +169,6 @@ export { ANTHROPIC_MODELS, ANTHROPIC_DEFAULT_MODEL } from './anthropic';
 export { OPENAI_MODELS, OPENAI_DEFAULT_MODEL } from './openai';
 export { DEEPSEEK_MODELS, DEEPSEEK_DEFAULT_MODEL } from './deepseek';
 export { GEMINI_MODELS, GEMINI_DEFAULT_MODEL } from './gemini';
+export { XAI_MODELS, XAI_DEFAULT_MODEL } from './xai';
+export { MISTRAL_MODELS, MISTRAL_DEFAULT_MODEL } from './mistral';
+export { GLM_MODELS, GLM_DEFAULT_MODEL } from './glm';

@@ -56,12 +56,21 @@ export interface TypeScriptDiagnosticsServiceConfig {
   includeSuggestions: boolean;
   /** Ignore patterns for files */
   ignorePatterns: string[];
+  /**
+   * Include semantic diagnostics (type errors).
+   * When false, only syntax errors are reported.
+   * Set to false to avoid false positives when type definitions are missing.
+   * Default: false - disabled to prevent "Cannot find name 'Promise'" type errors
+   * in projects that don't have @types/node or proper lib configuration.
+   */
+  includeSemanticDiagnostics: boolean;
 }
 
 export const DEFAULT_TS_DIAGNOSTICS_CONFIG: TypeScriptDiagnosticsServiceConfig = {
   debounceMs: 250,
   maxDiagnostics: 1000,
   includeSuggestions: false,
+  includeSemanticDiagnostics: false, // Disabled by default to avoid false type errors
   ignorePatterns: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'],
 };
 
@@ -111,14 +120,16 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
 
       if (!configPath) {
         // No tsconfig.json - this is expected for non-TypeScript projects
-        this.logger.info('No tsconfig.json found - TypeScript diagnostics disabled for this workspace', { workspacePath });
+        // Log at debug level to avoid noise in logs
+        this.logger.debug('No tsconfig.json found - TypeScript diagnostics disabled for this workspace', { workspacePath });
         return false;
       }
 
       // Parse tsconfig
       const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
       if (configFile.error) {
-        this.logger.warn('Failed to read tsconfig.json - TypeScript diagnostics disabled', {
+        // Log at debug level - this is a configuration issue, not a runtime error
+        this.logger.debug('Failed to read tsconfig.json - TypeScript diagnostics disabled', {
           workspacePath,
           error: ts.flattenDiagnosticMessageText(configFile.error.messageText, '\n'),
         });
@@ -133,7 +144,7 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
 
       // Validate that we have files to analyze
       if (parsedConfig.fileNames.length === 0) {
-        this.logger.info('No TypeScript files found in project - diagnostics disabled', { workspacePath });
+        this.logger.debug('No TypeScript files found in project - diagnostics disabled', { workspacePath });
         return false;
       }
 
@@ -144,16 +155,24 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
         : parsedConfig.fileNames;
       
       if (parsedConfig.fileNames.length > maxFiles) {
-        this.logger.warn('Large project detected - limiting diagnostics to first 500 files', {
+        this.logger.info('Large project detected - limiting diagnostics to first 500 files', {
           totalFiles: parsedConfig.fileNames.length,
           analyzedFiles: maxFiles,
         });
       }
 
+      // Merge compiler options with defaults that improve compatibility
+      // skipLibCheck: Skip type checking of declaration files (node_modules/@types)
+      // This prevents false errors when @types packages aren't installed
+      const enhancedOptions: ts.CompilerOptions = {
+        ...parsedConfig.options,
+        skipLibCheck: true, // Always skip lib check to avoid missing @types errors
+      };
+
       // Create language service host
       this.languageServiceHost = new TypeScriptLanguageServiceHost(
         fileNames,
-        parsedConfig.options,
+        enhancedOptions,
         workspacePath,
         this.logger
       );
@@ -175,7 +194,9 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
 
       return true;
     } catch (error) {
-      this.logger.error('Failed to initialize TypeScript Diagnostics Service', {
+      // Log at debug level for expected failures (non-TS projects)
+      this.logger.debug('TypeScript Diagnostics Service not initialized', {
+        workspacePath,
         error: error instanceof Error ? error.message : String(error),
       });
       return false;
@@ -249,6 +270,42 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
    */
   isReady(): boolean {
     return this.isInitialized;
+  }
+
+  /**
+   * Reinitialize the diagnostics service (e.g., after package.json changes)
+   * This fully recreates the TypeScript Language Service to pick up new type definitions.
+   */
+  async reinitialize(): Promise<boolean> {
+    if (!this.workspacePath) {
+      return false;
+    }
+
+    const workspacePath = this.workspacePath;
+    this.logger.info('Reinitializing TypeScript Diagnostics Service', { workspacePath });
+    
+    // Fully dispose current state
+    this.dispose();
+    
+    // Clear the workspacePath since dispose() nullifies it
+    this.workspacePath = workspacePath;
+
+    // Small delay to ensure file system has settled (npm install, etc.)
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Reinitialize with fresh state
+    const success = await this.initialize(workspacePath);
+    if (success) {
+      this.logger.info('TypeScript Diagnostics Service reinitialized successfully', {
+        workspacePath,
+        fileCount: this.languageServiceHost?.getScriptFileNames().length ?? 0,
+      });
+      // Collect fresh diagnostics
+      await this.collectAllDiagnostics();
+    } else {
+      this.logger.warn('TypeScript Diagnostics Service reinitialization failed', { workspacePath });
+    }
+    return success;
   }
 
   /**
@@ -388,11 +445,15 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
     const diagnostics: Diagnostic[] = [];
 
     try {
-      // Get syntactic diagnostics (parsing errors)
+      // Get syntactic diagnostics (parsing errors) - always included
       const syntacticDiagnostics = this.languageService.getSyntacticDiagnostics(filePath);
       
-      // Get semantic diagnostics (type errors)
-      const semanticDiagnostics = this.languageService.getSemanticDiagnostics(filePath);
+      // Get semantic diagnostics (type errors) - optional, disabled by default
+      // When disabled, avoids false positives like "Cannot find name 'Promise'"
+      // for projects missing @types/node or with incomplete lib configuration
+      const semanticDiagnostics = this.config.includeSemanticDiagnostics
+        ? this.languageService.getSemanticDiagnostics(filePath)
+        : [];
 
       // Get suggestion diagnostics (optional)
       const suggestionDiagnostics = this.config.includeSuggestions

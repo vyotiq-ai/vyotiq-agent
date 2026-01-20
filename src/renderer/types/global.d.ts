@@ -130,6 +130,7 @@ declare global {
           success: boolean;
           diagnostics?: Array<{
             filePath: string;
+            fileName: string;
             line: number;
             column: number;
             severity: 'error' | 'warning' | 'info' | 'hint';
@@ -276,6 +277,30 @@ declare global {
           }>;
           error?: string;
         }>;
+      };
+      glm: {
+        fetchModels: () => Promise<{
+          success: boolean;
+          models: Array<{
+            id: string;
+            object: string;
+            created?: number;
+            owned_by?: string;
+          }>;
+          error?: string;
+        }>;
+        connect: (params: {
+          apiKey: string;
+          tier: 'lite' | 'pro';
+          useCodingEndpoint: boolean;
+        }) => Promise<{ success: boolean; error?: string }>;
+        disconnect: () => Promise<{ success: boolean; error?: string }>;
+        getSubscriptionStatus: () => Promise<{
+          connected: boolean;
+          tier?: 'lite' | 'pro';
+          useCodingEndpoint: boolean;
+        }>;
+        updateSettings: (settings: { useCodingEndpoint?: boolean }) => Promise<{ success: boolean; error?: string }>;
       };
       debug: {
         // Get all traces for a session
@@ -1029,67 +1054,6 @@ declare global {
       };
 
       /**
-       * Task API - Manage task plans
-       */
-      task: {
-        /**
-         * Get current task plan for a session
-         */
-        getPlan: (sessionId: string) => Promise<{
-          success: boolean;
-          plan?: {
-            id: string;
-            sessionId: string;
-            totalSteps: number;
-            completedSteps: number;
-            currentStep?: string;
-            estimatedTimeMs: number;
-            steps?: Array<{
-              id: string;
-              name: string;
-              description?: string;
-              status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
-              progress?: number;
-            }>;
-          };
-          error?: string;
-        }>;
-
-        /**
-         * Get task plan history for a session
-         */
-        getHistory: (sessionId: string, limit?: number) => Promise<{
-          success: boolean;
-          plans: Array<{
-            id: string;
-            sessionId: string;
-            totalSteps: number;
-            completedSteps: number;
-            status: 'planning' | 'executing' | 'completed' | 'failed';
-            createdAt: number;
-            completedAt?: number;
-          }>;
-          error?: string;
-        }>;
-
-        /**
-         * Skip a task step
-         */
-        skipStep: (planId: string, stepId: string, reason?: string) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-
-        /**
-         * Retry a failed task step
-         */
-        retryStep: (planId: string, stepId: string) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-      };
-
-      /**
        * Metrics API - Metrics and observability (Phase 10)
        */
       metrics: {
@@ -1555,6 +1519,26 @@ declare global {
           success: boolean;
           error?: string;
         }>;
+
+        /**
+         * Refresh all diagnostics (TypeScript + LSP)
+         */
+        refreshDiagnostics: () => Promise<{
+          success: boolean;
+          typescript?: { errorCount: number; warningCount: number; diagnosticsCount: number } | null;
+          lsp?: { diagnosticsCount: number };
+          error?: string;
+        }>;
+
+        /**
+         * Restart TypeScript Language Server
+         * Fully reinitializes the TypeScript service to pick up new type definitions.
+         */
+        restartTypeScriptServer: () => Promise<{
+          success: boolean;
+          diagnostics?: { errorCount: number; warningCount: number; diagnosticsCount: number };
+          error?: string;
+        }>;
       };
 
       // Session Health Monitoring API
@@ -1772,6 +1756,55 @@ declare global {
          * Launch Claude Code CLI authentication (opens terminal)
          */
         launchAuth: () => Promise<{ success: boolean; error?: string }>;
+      };
+
+      /**
+       * Terminal API for integrated shell terminal
+       */
+      terminal: {
+        /**
+         * Spawn a new terminal instance
+         */
+        spawn: (options: { id: string; cwd?: string; shell?: string }) => Promise<{
+          success: boolean;
+          id?: string;
+          cwd?: string;
+          error?: string;
+        }>;
+
+        /**
+         * Write data to a terminal
+         */
+        write: (id: string, data: string) => Promise<{ success: boolean; error?: string }>;
+
+        /**
+         * Resize a terminal
+         */
+        resize: (id: string, cols: number, rows: number) => Promise<{ success: boolean; error?: string }>;
+
+        /**
+         * Kill a terminal instance
+         */
+        kill: (id: string) => Promise<{ success: boolean; error?: string }>;
+
+        /**
+         * List all active terminal sessions
+         */
+        list: () => Promise<{
+          success: boolean;
+          sessions?: Array<{ id: string; pid: number }>;
+          error?: string;
+        }>;
+
+        /**
+         * Subscribe to terminal data events
+         */
+        onData: (handler: (event: { id: string; data: string }) => void) => () => void;
+
+        /**
+         * Subscribe to terminal exit events
+         */
+        onExit: (handler: (event: { id: string; exitCode: number }) => void) => () => void;
       };
     };
   }

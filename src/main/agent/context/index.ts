@@ -29,7 +29,19 @@ export {
   clearWorkspaceTypeCache,
   extractRecentToolUsage,
   getToolSelectionSummary,
+  // Session tool state management (agent-controlled)
+  getSessionToolState,
+  addAgentRequestedTools,
+  addDiscoveredTools,
+  getAgentControlledTools,
+  clearSessionToolState,
+  clearAllSessionToolStates,
+  // Error tracking for error-aware tool selection
+  recordToolError,
+  recordToolSuccess,
+  getRecentToolErrors,
   type ToolSelectionContext,
   type WorkspaceType,
   type TaskIntent,
+  type SessionToolState,
 } from './ToolContextManager';

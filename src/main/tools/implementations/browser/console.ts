@@ -220,20 +220,48 @@ async function executeConsole(
 
 export const browserConsoleTool: ToolDefinition<ConsoleArgs> = {
   name: 'browser_console',
-  description: `Get browser console logs for debugging web applications.
+  description: `Get browser console logs for debugging web applications. Essential for finding JavaScript errors.
 
-**Captures:**
+## When to Use
+- **Debug errors**: Find JavaScript errors and exceptions
+- **Check output**: See console.log output from the app
+- **Verify behavior**: Confirm expected logs appear
+- **Troubleshoot**: Diagnose why something isn't working
+
+## Workflow Integration
+Use after interactions to check for errors:
+\`\`\`
+browser_navigate(url)
+browser_click(button)
+browser_console(level: "errors") → check for JS errors
+[if errors found, investigate and fix]
+\`\`\`
+
+## Debugging Pattern
+\`\`\`
+browser_navigate("http://localhost:3000")
+browser_fill_form(fields, submit: true)
+browser_console() → check for errors
+browser_network(status: "error") → check for failed requests
+\`\`\`
+
+## Captures
 - JavaScript errors and exceptions
 - Console.log/warn/error output
 - Network errors
 - Uncaught promise rejections
 
-**Use cases:**
-- Debug why a web app isn't working
-- Check for JavaScript errors after interactions
-- Monitor console output during testing
+## Parameters
+- **level** (optional): Filter by log level - all, errors, warnings, info, debug
+- **limit** (optional): Maximum number of logs to return (default: 50)
+- **clear** (optional): Clear logs after retrieving (default: false)
+- **filter** (optional): Filter logs by text pattern
 
-**Best Practice:** Call this after browser_navigate or interactions to check for errors.`,
+## Best Practices
+- Call after browser_navigate or interactions to check for errors
+- Use level: "errors" to focus on problems
+- Use filter to find specific error types
+- Clear logs between test scenarios`,
 
   requiresApproval: false,
   category: 'browser-read',

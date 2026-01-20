@@ -6,6 +6,7 @@ import { Toggle } from '../../../components/ui/Toggle';
 import { ProviderIcon } from '../../../components/ui/ProviderIcons';
 import { cn } from '../../../utils/cn';
 import { SettingsClaudeSubscription } from './SettingsClaudeSubscription';
+import { SettingsGLMSubscription } from './SettingsGLMSubscription';
 
 interface SettingsProvidersProps {
   apiKeys: AgentSettings['apiKeys'];
@@ -178,6 +179,9 @@ export const SettingsProviders: React.FC<SettingsProvidersProps> = ({
     <div className="space-y-6">
       {/* Claude Code Subscription Section */}
       <SettingsClaudeSubscription />
+
+      {/* GLM Coding Plan Subscription Section */}
+      <SettingsGLMSubscription />
 
       {/* Divider */}
       <div className="h-px bg-[var(--color-border-subtle)]" />

@@ -24,23 +24,49 @@ export const runTerminalTool: ToolDefinition<RunTerminalArgs> = {
   name: 'run',
   description: `Execute a shell command in the terminal. Use this for running scripts, installing packages, building projects, or any command-line operation.
 
-Guidelines:
-- Prefer non-interactive commands; avoid editors like vim/nano
-- Use appropriate flags for non-interactive mode (e.g., -y for apt, --yes for npm)
-- For long-running processes (servers, watch mode), use run_in_background: true
-- For long-running processes (servers, watch mode), use run_in_background: true
-  - If run_in_background is omitted, the tool may auto-enable it for common dev/server/watch commands (override by explicitly setting it)
-- Always provide a description explaining what the command does
-- Commands run in the workspace root by default; use cwd to change directory
+## When to Use
+- **Builds**: npm run build, cargo build, go build
+- **Tests**: npm test, pytest, jest
+- **Installs**: npm install, pip install, cargo add
+- **Git**: git status, git diff, git commit
+- **Scripts**: Any shell script or command
 
-Platform Notes:
-- On Windows, commands run in PowerShell
-- On macOS/Linux, commands run in the default shell (usually bash/zsh)`,
+## Key Parameters
+- **command** (required): The shell command to execute
+- **run_in_background**: Set to true for servers, watchers, or long-running processes
+- **timeout**: Milliseconds to wait (default: 120000, max: 600000)
+- **cwd**: Working directory (defaults to workspace root)
+- **description**: Human-readable description of what the command does
+
+## Background Mode
+Use \`run_in_background: true\` for:
+- Development servers (npm run dev, yarn start)
+- File watchers (webpack --watch, tsc --watch)
+- Any process that doesn't terminate quickly
+
+After starting a background process:
+- Use \`check_terminal\` with the returned PID to see output
+- Use \`kill_terminal\` with the PID to stop it
+
+## Auto-Background Detection
+These commands automatically run in background mode:
+- npm/yarn/pnpm run dev/start/serve/watch
+- vite dev, next dev
+- Commands with --watch or --serve flags
+
+## Platform Notes
+- Windows: Commands run in PowerShell
+- macOS/Linux: Commands run in default shell (bash/zsh)
+
+## Safety
+- Avoid interactive commands (vim, nano, less)
+- Use -y or --yes flags for non-interactive installs
+- Be careful with destructive commands (rm -rf, git reset --hard)`,
   requiresApproval: true,
   category: 'terminal',
   riskLevel: 'moderate',
   allowedCallers: ['direct'],
-  searchKeywords: ['run', 'execute', 'command', 'terminal', 'shell', 'bash', 'npm', 'script', 'build', 'install'],
+  searchKeywords: ['run', 'execute', 'command', 'terminal', 'shell', 'bash', 'npm', 'script', 'build', 'install', 'test', 'git'],
   schema: {
     type: 'object',
     properties: {

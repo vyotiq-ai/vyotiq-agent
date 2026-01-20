@@ -189,6 +189,14 @@ function detectVisionSupport(
       // DeepSeek V3 supports vision
       return id.includes('deepseek-chat') || id.includes('deepseek-reasoner');
     
+    case 'xai':
+      // Grok 2 Vision and Grok 4 support vision
+      return id.includes('vision') || id.includes('grok-4');
+    
+    case 'mistral':
+      // Pixtral models support vision
+      return id.includes('pixtral');
+    
     case 'openrouter': {
       // Check architecture.input_modalities from API response
       const arch = raw?.architecture as { input_modalities?: string[] } | undefined;
@@ -225,6 +233,14 @@ function detectThinkingSupport(modelId: string, provider: LLMProviderName): bool
     case 'anthropic':
       // Claude 3.5+ has some reasoning capabilities
       return id.includes('claude-3.5') || id.includes('claude-4') || id.includes('sonnet-4') || id.includes('opus-4');
+    
+    case 'xai':
+      // Grok 3+ models have reasoning capabilities
+      return id.includes('grok-3') || id.includes('grok-4');
+    
+    case 'mistral':
+      // Magistral models have reasoning capabilities
+      return id.includes('magistral');
     
     default:
       return false;
@@ -401,7 +417,7 @@ export function getAllCachedModels(): ModelInfo[] {
  */
 export function getCacheStatus(): Record<LLMProviderName, { count: number; age: number } | null> {
   const status: Record<string, { count: number; age: number } | null> = {};
-  const providers: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'openrouter'];
+  const providers: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'glm', 'openrouter'];
   
   for (const provider of providers) {
     const cached = modelCache.get(provider);

@@ -29,19 +29,19 @@ let toolingSystemInitCount = 0;
  */
 export function buildToolingSystem(config: ToolingConfig): ToolingSystem {
   toolingSystemInitCount++;
-  
+
   if (toolingSystemInitCount > 1) {
     // Log a warning but don't throw - this could happen on macOS app reactivation
     logger.warn('Tool system initialized multiple times. This may indicate the AgentOrchestrator is being recreated unexpectedly.', {
       initializationCount: toolingSystemInitCount,
     });
   }
-  
+
   const registry = new ToolRegistry();
   const terminalManager = new ProcessTerminalManager();
-  
+
   // Log tool system initialization
-  config.logger.info('Initializing tool system', { 
+  config.logger.info('Initializing tool system', {
     toolCount: ALL_TOOLS.length,
     initializationCount: toolingSystemInitCount,
   });
@@ -63,17 +63,26 @@ export function buildToolingSystem(config: ToolingConfig): ToolingSystem {
   registry.registerAlias('run_terminal_command', 'run');
   registry.registerAlias('bash', 'run');
   registry.registerAlias('shell', 'run');
-  
+
+  // Todo/Task tracking aliases - LLMs often call 'todo' instead of 'TodoWrite'
+  registry.registerAlias('todo', 'TodoWrite');
+  registry.registerAlias('Todo', 'TodoWrite');
+  registry.registerAlias('todo_write', 'TodoWrite');
+  registry.registerAlias('todowrite', 'TodoWrite');
+  registry.registerAlias('task', 'TodoWrite');
+  registry.registerAlias('tasks', 'TodoWrite');
+  registry.registerAlias('checklist', 'TodoWrite');
+
   // Web search aliases
   registry.registerAlias('google', 'web_search');
   registry.registerAlias('search_web', 'web_search');
   registry.registerAlias('research', 'deep_research');
-  
+
   // New tool aliases
   registry.registerAlias('fetch', 'live_fetch');
   registry.registerAlias('fetch_url', 'live_fetch');
   registry.registerAlias('get_page', 'live_fetch');
-  
+
   return {
     registry,
     terminalManager,

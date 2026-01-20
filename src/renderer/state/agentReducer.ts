@@ -10,6 +10,7 @@ import type {
   ContextMetricsSnapshot,
   StreamDeltaEvent,
 } from '../../shared/types';
+import type { TodoItem } from '../../shared/types/todo';
 import { calculateMessageCost, calculateSessionCost } from '../../shared/utils/costEstimation';
 import { createLogger } from '../utils/logger';
 import {
@@ -17,6 +18,7 @@ import {
   updateAssistantMessageContent,
   updateAssistantMessageToolCall,
   updateAssistantMessageThinking,
+  hasSessionChanged,
 } from './agentReducerUtils';
 
 const logger = createLogger('AgentReducer');
@@ -130,6 +132,9 @@ export interface AgentUIState {
   inlineArtifacts: Record<string, InlineArtifactState[]>;
   // Task-based routing decisions per session
   routingDecisions: Record<string, RoutingDecisionState>;
+  // Todo list state per session
+  // Structure: sessionId -> { runId, todos, timestamp }
+  todos: Record<string, { runId: string; todos: TodoItem[]; timestamp: number }>;
 
   /** Cached per-session usage/cost summary for fast UI rendering (updated on SESSION_UPSERT only) */
   sessionCost: Record<string, {
@@ -199,13 +204,18 @@ export const initialState: AgentUIState = {
   inlineArtifacts: {},
   routingDecisions: {},
   sessionCost: {},
+  todos: {},
   // Phase 4: Communication
   pendingQuestions: [],
   pendingDecisions: [],
   communicationProgress: [],
 };
 
-function computeSessionCostSnapshot(messages: AgentSessionState['messages']): AgentUIState['sessionCost'][string] {
+/**
+ * Compute cost snapshot for a session's messages
+ * Exported for use by domain-specific reducers
+ */
+export function computeSessionCostSnapshot(messages: AgentSessionState['messages']): AgentUIState['sessionCost'][string] {
   const messagesWithUsage = messages
     .filter((m) => m.usage)
     .map((m) => ({ usage: m.usage!, modelId: m.modelId, provider: m.provider }));
@@ -305,31 +315,34 @@ export type AgentAction =
   | { type: 'COMMUNICATION_DECISION_REMOVE'; payload: string } // decisionId
   | { type: 'COMMUNICATION_PROGRESS_ADD'; payload: AgentUIState['communicationProgress'][0] }
   | { type: 'COMMUNICATION_PROGRESS_UPDATE'; payload: { id: string; progress: number; message?: string } }
-  | { type: 'COMMUNICATION_PROGRESS_CLEAR'; payload?: string }; // runId or all if undefined
+  | { type: 'COMMUNICATION_PROGRESS_CLEAR'; payload?: string } // runId or all if undefined
+  // Todo list actions
+  | { type: 'TODO_UPDATE'; payload: { sessionId: string; runId: string; todos: TodoItem[]; timestamp: number } }
+  | { type: 'TODO_CLEAR'; payload: string }; // sessionId
 
 
 
 export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIState => {
   switch (action.type) {
     case 'SESSION_UPSERT': {
-      const exists = state.sessions.find((session) => session.id === action.payload.id);
+      const incomingSession = action.payload;
+      const existingSessionIndex = state.sessions.findIndex((session) => session.id === incomingSession.id);
+      const existingSession = existingSessionIndex >= 0 ? state.sessions[existingSessionIndex] : undefined;
 
-      // Debug: Log incoming session usage data
-      const incomingMessagesWithUsage = action.payload.messages.filter(m => m.usage);
-      if (action.payload.messages.length > 0) {
-        logger.debug('SESSION_UPSERT received', {
-          sessionId: action.payload.id,
-          totalMessages: action.payload.messages.length,
-          messagesWithUsage: incomingMessagesWithUsage.length,
-          isExisting: !!exists,
-          sampleUsage: incomingMessagesWithUsage[0]?.usage,
-        });
+      // OPTIMIZATION: Early exit if session is reference-equal (no change)
+      if (existingSession === incomingSession) {
+        return state;
+      }
+
+      // OPTIMIZATION: Use fast change detection to skip expensive merge
+      if (existingSession && !hasSessionChanged(existingSession, incomingSession)) {
+        return state;
       }
 
       // If session status changed to 'idle', clear any pending confirmations for this session
       let updatedPendingConfirmations = state.pendingConfirmations;
-      if (action.payload.status === 'idle') {
-        const sessionId = action.payload.id;
+      if (incomingSession.status === 'idle') {
+        const sessionId = incomingSession.id;
         const hasConfirmationsForSession = Object.values(state.pendingConfirmations)
           .some(conf => conf.sessionId === sessionId);
         if (hasConfirmationsForSession) {
@@ -340,132 +353,119 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
         }
       }
 
-      if (exists) {
+      if (existingSession) {
         // Merge session state - use the incoming payload but preserve streamed content
         let nextSessionCost = state.sessionCost;
-        const sessions = state.sessions.map((session) => {
-          if (session.id === action.payload.id) {
-            // Create a map of existing messages with their content and media for quick lookup
-            const existingContentMap = new Map<string, {
-              content: string;
-              thinking?: string;
-              isThinkingStreaming?: boolean;
-              generatedImages?: Array<{ data: string; mimeType: string }>;
-              generatedAudio?: { data: string; mimeType: string };
-            }>();
-            session.messages.forEach(msg => {
-              if (msg.role === 'assistant' && (msg.content || msg.thinking || msg.isThinkingStreaming || msg.generatedImages || msg.generatedAudio)) {
-                existingContentMap.set(msg.id, {
-                  content: msg.content || '',
-                  thinking: msg.thinking,
-                  isThinkingStreaming: msg.isThinkingStreaming,
-                  generatedImages: msg.generatedImages,
-                  generatedAudio: msg.generatedAudio,
-                });
-              }
+        
+        // OPTIMIZATION: Build lookup map only for assistant messages with content
+        const existingContentMap = new Map<string, {
+          content: string;
+          thinking?: string;
+          isThinkingStreaming?: boolean;
+          generatedImages?: Array<{ data: string; mimeType: string }>;
+          generatedAudio?: { data: string; mimeType: string };
+        }>();
+        
+        for (let i = existingSession.messages.length - 1; i >= 0; i--) {
+          const msg = existingSession.messages[i];
+          if (msg.role === 'assistant' && (msg.content || msg.thinking || msg.isThinkingStreaming || msg.generatedImages || msg.generatedAudio)) {
+            existingContentMap.set(msg.id, {
+              content: msg.content || '',
+              thinking: msg.thinking,
+              isThinkingStreaming: msg.isThinkingStreaming,
+              generatedImages: msg.generatedImages,
+              generatedAudio: msg.generatedAudio,
             });
+          }
+        }
 
-            // Merge messages - preserve streamed content, thinking, and generated media for assistant messages
-            const mergedMessages = action.payload.messages.map(incomingMsg => {
-              if (incomingMsg.role === 'assistant') {
-                const existing = existingContentMap.get(incomingMsg.id);
-                if (existing) {
-                  // Keep the longer content (streamed content vs backend content)
-                  const preserveContent = existing.content.length > (incomingMsg.content?.length ?? 0);
-                  const preserveThinking = existing.thinking &&
-                    existing.thinking.length > (incomingMsg.thinking?.length ?? 0);
+        // OPTIMIZATION: Only map messages if we have content to preserve
+        let mergedMessages: typeof incomingSession.messages;
+        if (existingContentMap.size === 0) {
+          mergedMessages = incomingSession.messages;
+        } else {
+          mergedMessages = incomingSession.messages.map(incomingMsg => {
+            if (incomingMsg.role !== 'assistant') return incomingMsg;
+            
+            const existing = existingContentMap.get(incomingMsg.id);
+            if (!existing) return incomingMsg;
+            
+            // Keep the longer content (streamed content vs backend content)
+            const preserveContent = existing.content.length > (incomingMsg.content?.length ?? 0);
+            const preserveThinking = existing.thinking &&
+              existing.thinking.length > (incomingMsg.thinking?.length ?? 0);
 
-                  // Merge generated media - prefer incoming if it has media, else preserve existing
-                  const hasIncomingImages = incomingMsg.generatedImages && incomingMsg.generatedImages.length > 0;
-                  const hasIncomingAudio = !!incomingMsg.generatedAudio;
+            // Merge generated media - prefer incoming if it has media, else preserve existing
+            const hasIncomingImages = incomingMsg.generatedImages && incomingMsg.generatedImages.length > 0;
+            const hasIncomingAudio = !!incomingMsg.generatedAudio;
 
-                  // If incoming message has tool calls or content, thinking is done
-                  const hasToolCalls = incomingMsg.toolCalls && incomingMsg.toolCalls.length > 0;
-                  const hasContent = incomingMsg.content && incomingMsg.content.trim().length > 0;
-                  // Thinking is done if: has tool calls, has content, OR incoming explicitly says it's not streaming
-                  const thinkingIsDone = hasToolCalls || hasContent || incomingMsg.isThinkingStreaming === false;
+            // If incoming message has tool calls or content, thinking is done
+            const hasToolCalls = incomingMsg.toolCalls && incomingMsg.toolCalls.length > 0;
+            const hasContent = incomingMsg.content && incomingMsg.content.trim().length > 0;
+            const thinkingIsDone = hasToolCalls || hasContent || incomingMsg.isThinkingStreaming === false;
 
-                  // Log for debugging media merge
-                  if (existing.generatedImages?.length || incomingMsg.generatedImages?.length) {
-                    logger.debug('SESSION_UPSERT media merge', {
-                      messageId: incomingMsg.id,
-                      existingImagesCount: existing.generatedImages?.length ?? 0,
-                      incomingImagesCount: incomingMsg.generatedImages?.length ?? 0,
-                      preserveContent,
-                      preserveThinking,
-                    });
-                  }
-
-                  return {
-                    ...incomingMsg,
-                    content: preserveContent ? existing.content : incomingMsg.content,
-                    thinking: preserveThinking ? existing.thinking : incomingMsg.thinking,
-                    // Mark thinking as done if we have tool calls or content
-                    isThinkingStreaming: thinkingIsDone ? false : incomingMsg.isThinkingStreaming,
-                    // Preserve existing media if incoming doesn't have it
-                    generatedImages: hasIncomingImages ? incomingMsg.generatedImages : existing.generatedImages,
-                    generatedAudio: hasIncomingAudio ? incomingMsg.generatedAudio : existing.generatedAudio,
-                  };
-                }
-              }
+            // OPTIMIZATION: Return same object if nothing changed
+            if (!preserveContent && !preserveThinking && 
+                hasIncomingImages === !!existing.generatedImages &&
+                hasIncomingAudio === !!existing.generatedAudio) {
               return incomingMsg;
-            });
-
-            // Update cached cost summary for this session (usage only)
-            // NOTE: This is intentionally NOT updated on stream deltas.
-            try {
-              const costSnapshot = computeSessionCostSnapshot(mergedMessages);
-              nextSessionCost = {
-                ...nextSessionCost,
-                [action.payload.id]: costSnapshot,
-              };
-            } catch (error) {
-              // Defensive: cost snapshot computation should never break session updates
-              logger.warn('Failed to compute session cost snapshot', {
-                sessionId: action.payload.id,
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
-
-            // Log merged state for debugging media handling
-            const messagesWithMedia = mergedMessages.filter(
-              m => m.generatedImages?.length || m.generatedAudio
-            );
-            if (messagesWithMedia.length > 0) {
-              logger.debug('SESSION_UPSERT merged messages with media', {
-                sessionId: action.payload.id,
-                messagesWithMediaCount: messagesWithMedia.length,
-                mediaDetails: messagesWithMedia.map(m => ({
-                  id: m.id,
-                  imageCount: m.generatedImages?.length ?? 0,
-                  hasAudio: !!m.generatedAudio,
-                })),
-              });
             }
 
             return {
-              ...action.payload,
-              messages: mergedMessages,
+              ...incomingMsg,
+              content: preserveContent ? existing.content : incomingMsg.content,
+              thinking: preserveThinking ? existing.thinking : incomingMsg.thinking,
+              isThinkingStreaming: thinkingIsDone ? false : incomingMsg.isThinkingStreaming,
+              generatedImages: hasIncomingImages ? incomingMsg.generatedImages : existing.generatedImages,
+              generatedAudio: hasIncomingAudio ? incomingMsg.generatedAudio : existing.generatedAudio,
             };
+          });
+        }
+
+        // OPTIMIZATION: Only compute cost if messages have usage data
+        const hasUsageData = mergedMessages.some(m => m.usage);
+        if (hasUsageData) {
+          try {
+            const costSnapshot = computeSessionCostSnapshot(mergedMessages);
+            nextSessionCost = {
+              ...nextSessionCost,
+              [incomingSession.id]: costSnapshot,
+            };
+          } catch (error) {
+            logger.warn('Failed to compute session cost snapshot', {
+              sessionId: incomingSession.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
-          return session;
-        });
+        }
+
+        // OPTIMIZATION: Use slice() instead of spread for array copy
+        const sessions = state.sessions.slice();
+        sessions[existingSessionIndex] = {
+          ...incomingSession,
+          messages: mergedMessages,
+        };
+        
         return { ...state, sessions, pendingConfirmations: updatedPendingConfirmations, sessionCost: nextSessionCost };
       } else {
         // New session - add it
-        const sessions = [...state.sessions, action.payload];
-        const activeSessionId = state.activeSessionId ?? action.payload.id;
+        const sessions = [...state.sessions, incomingSession];
+        const activeSessionId = state.activeSessionId ?? incomingSession.id;
         let nextSessionCost = state.sessionCost;
-        try {
-          nextSessionCost = {
-            ...state.sessionCost,
-            [action.payload.id]: computeSessionCostSnapshot(action.payload.messages),
-          };
-        } catch (error) {
-          logger.warn('Failed to compute session cost snapshot', {
-            sessionId: action.payload.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
+        
+        // Only compute cost if there are messages with usage
+        if (incomingSession.messages.some(m => m.usage)) {
+          try {
+            nextSessionCost = {
+              ...state.sessionCost,
+              [incomingSession.id]: computeSessionCostSnapshot(incomingSession.messages),
+            };
+          } catch (error) {
+            logger.warn('Failed to compute session cost snapshot', {
+              sessionId: incomingSession.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
         }
         return { ...state, sessions, activeSessionId, pendingConfirmations: updatedPendingConfirmations, sessionCost: nextSessionCost };
       }
@@ -595,13 +595,15 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
       // Clean up task state for deleted session - extract to separate variables for clarity
       const { [action.payload]: deletedProgress, ...remainingProgress } = state.progressGroups;
       const { [action.payload]: deletedArtifacts, ...remainingArtifacts } = state.artifacts;
+      const { [action.payload]: deletedTodos, ...remainingTodos } = state.todos;
 
       // Log cleanup in development
-      if (process.env.NODE_ENV === 'development' && (deletedProgress || deletedArtifacts)) {
+      if (process.env.NODE_ENV === 'development' && (deletedProgress || deletedArtifacts || deletedTodos)) {
         logger.debug('Session cleanup', {
           sessionId: action.payload,
           hadProgress: !!deletedProgress,
-          hadArtifacts: !!deletedArtifacts
+          hadArtifacts: !!deletedArtifacts,
+          hadTodos: !!deletedTodos,
         });
       }
 
@@ -615,6 +617,7 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
         sessionCost: nextSessionCost,
         progressGroups: remainingProgress,
         artifacts: remainingArtifacts,
+        todos: remainingTodos,
       };
     }
     case 'SESSIONS_CLEAR': {
@@ -632,6 +635,7 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
         toolResults: {},
         inlineArtifacts: {},
         sessionCost: {},
+        todos: {},
       };
     }
     case 'SESSIONS_CLEAR_FOR_WORKSPACE': {
@@ -665,6 +669,11 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
         Object.entries(state.sessionCost).filter(([id]) => !removedSessionIds.has(id))
       ) as AgentUIState['sessionCost'];
 
+      // Clean up todos for removed sessions
+      const todos = Object.fromEntries(
+        Object.entries(state.todos).filter(([id]) => !removedSessionIds.has(id))
+      );
+
       return {
         ...state,
         sessions,
@@ -672,6 +681,7 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
         progressGroups,
         artifacts,
         sessionCost,
+        todos,
       };
     }
     case 'PROGRESS_UPDATE': {
@@ -732,6 +742,7 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
     }
     case 'CLEAR_SESSION_TASK_STATE': {
       const sessionId = action.payload;
+      const { [sessionId]: _, ...remainingTodos } = state.todos;
       return {
         ...state,
         progressGroups: {
@@ -745,6 +756,8 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
         // Clear tool results and inline artifacts for this session
         toolResults: {},
         inlineArtifacts: {},
+        // Clear todos for this session
+        todos: remainingTodos,
       };
     }
     case 'AGENT_STATUS_UPDATE': {
@@ -1017,6 +1030,23 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
       return {
         ...state,
         communicationProgress: [],
+      };
+    }
+    case 'TODO_UPDATE': {
+      const { sessionId, runId, todos, timestamp } = action.payload;
+      return {
+        ...state,
+        todos: {
+          ...state.todos,
+          [sessionId]: { runId, todos, timestamp },
+        },
+      };
+    }
+    case 'TODO_CLEAR': {
+      const { [action.payload]: _, ...remainingTodos } = state.todos;
+      return {
+        ...state,
+        todos: remainingTodos,
       };
     }
     default:

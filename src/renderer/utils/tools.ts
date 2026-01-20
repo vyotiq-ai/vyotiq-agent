@@ -12,6 +12,7 @@ import {
   CircleX,
   Wrench,
   TriangleAlert,
+  ListTodo,
   type LucideIcon 
 } from 'lucide-react';
 
@@ -78,6 +79,9 @@ const toolConfigs: Record<string, ToolUIConfig> = {
   kill_terminal: { Icon: CircleX, label: 'Kill process', color: 'text-[var(--color-error)]', category: 'terminal' },
   kill_terminal_process: { Icon: CircleX, label: 'Kill process', color: 'text-[var(--color-error)]', category: 'terminal' },
 
+  // Agent Internal
+  TodoWrite: { Icon: ListTodo, label: 'Tasks', color: 'text-[var(--color-accent-primary)]', category: 'agent' },
+
   // Other
   'file-read': { Icon: Eye, label: 'Reading', color: 'text-[var(--color-info)]', category: 'file' },
   'file-write': { Icon: FilePlus, label: 'Writing', color: 'text-[var(--color-success)]', category: 'file' },
@@ -105,6 +109,7 @@ const iconMap: Record<string, LucideIcon> = {
   Wrench,
   Skull,
   TriangleAlert,
+  ListTodo,
 };
 
 /**

@@ -9,6 +9,7 @@ export { streamingReducer, type StreamingAction } from './streamingReducer';
 export { taskReducer, type TaskAction } from './taskReducer';
 export { confirmationReducer, type ConfirmationAction } from './confirmationReducer';
 export { settingsReducer, type SettingsAction } from './settingsReducer';
+export { communicationReducer, type CommunicationAction } from './communicationReducer';
 
 import type { AgentUIState, AgentAction } from '../agentReducer';
 import { sessionReducer } from './sessionReducer';
@@ -16,6 +17,7 @@ import { streamingReducer } from './streamingReducer';
 import { taskReducer } from './taskReducer';
 import { confirmationReducer } from './confirmationReducer';
 import { settingsReducer } from './settingsReducer';
+import { communicationReducer } from './communicationReducer';
 
 /**
  * Action type guards
@@ -53,6 +55,9 @@ const TASK_ACTIONS = new Set([
   'MEDIA_OUTPUT_RECEIVE',
   // Task-based routing decision
   'ROUTING_DECISION',
+  // Todo list actions
+  'TODO_UPDATE',
+  'TODO_CLEAR',
 ]);
 
 
@@ -64,6 +69,16 @@ const CONFIRMATION_ACTIONS = new Set([
 const SETTINGS_ACTIONS = new Set([
   'WORKSPACES_UPDATE',
   'SETTINGS_UPDATE',
+]);
+
+const COMMUNICATION_ACTIONS = new Set([
+  'COMMUNICATION_QUESTION_ADD',
+  'COMMUNICATION_QUESTION_REMOVE',
+  'COMMUNICATION_DECISION_ADD',
+  'COMMUNICATION_DECISION_REMOVE',
+  'COMMUNICATION_PROGRESS_ADD',
+  'COMMUNICATION_PROGRESS_UPDATE',
+  'COMMUNICATION_PROGRESS_CLEAR',
 ]);
 
 /**
@@ -99,6 +114,10 @@ export function combinedAgentReducer(
 
   if (SETTINGS_ACTIONS.has(actionType)) {
     return settingsReducer(state, action as Parameters<typeof settingsReducer>[1]);
+  }
+
+  if (COMMUNICATION_ACTIONS.has(actionType)) {
+    return communicationReducer(state, action as Parameters<typeof communicationReducer>[1]);
   }
 
   // Unknown action type - return state unchanged

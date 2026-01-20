@@ -73,6 +73,8 @@ export interface LoopDetectionState {
   uniqueResourcesAccessed: Set<string>;
   /** Track consecutive failures */
   consecutiveFailures: number;
+  /** Track consecutive edit failures with identical strings */
+  consecutiveIdenticalEditFailures: number;
   circuitBreakerTriggered: boolean;
   warningIssued: boolean;
 }
@@ -86,6 +88,10 @@ const EXPLORATION_TOOLS = new Set([
   'read', 'ls', 'grep', 'search', 'find', 'glob', 'list',
   'readFile', 'listDirectory', 'grepSearch', 'fileSearch',
   'cat', 'head', 'tail', 'tree',
+  // Browser tools - fetching different URLs is exploration
+  'browser_fetch', 'browserFetch', 'fetch', 'web_fetch',
+  // Research tools
+  'research', 'web_search', 'webSearch',
 ]);
 
 /** Action tools - lower tolerance, repeated actions are suspicious */
@@ -95,17 +101,20 @@ const ACTION_TOOLS = new Set([
   'mkdir', 'rm', 'mv', 'cp',
 ]);
 
+/** Edit tool - special handling for repeated failures */
+const EDIT_TOOLS = new Set(['edit', 'editFile', 'str_replace', 'strReplace']);
+
 // =============================================================================
 // Default Configuration
 // =============================================================================
 
 export const DEFAULT_LOOP_DETECTION_CONFIG: LoopDetectionConfig = {
   enabled: true,
-  maxConsecutiveIdenticalCalls: 4,
-  maxIdenticalCallsInWindow: 8,
-  windowMs: 120000, // 2 minutes
-  minIterationsForDetection: 8,
-  patternSimilarityThreshold: 0.95,
+  maxConsecutiveIdenticalCalls: 8,  // Increased - more tolerance for exploration
+  maxIdenticalCallsInWindow: 15,    // Increased - allow more repeated calls in window
+  windowMs: 300000, // 5 minutes - longer window for complex tasks
+  minIterationsForDetection: 20,    // Increased - wait longer before detecting loops
+  patternSimilarityThreshold: 0.99, // Increased - require very high confidence before flagging
 };
 
 // =============================================================================
@@ -131,6 +140,7 @@ export class LoopDetector {
       consecutiveIdenticalCalls: 0,
       uniqueResourcesAccessed: new Set(),
       consecutiveFailures: 0,
+      consecutiveIdenticalEditFailures: 0,
       circuitBreakerTriggered: false,
       warningIssued: false,
     });
@@ -143,7 +153,8 @@ export class LoopDetector {
     runId: string,
     toolCall: ToolCallPayload,
     iteration: number,
-    success: boolean = true
+    success: boolean = true,
+    failureReason?: string
   ): LoopDetectionResult {
     if (!this.config.enabled) {
       return this.noLoopResult();
@@ -175,8 +186,37 @@ export class LoopDetector {
     // Track consecutive failures
     if (!success) {
       state.consecutiveFailures++;
+      
+      // Track specific "identical strings" edit failures
+      const isEditTool = EDIT_TOOLS.has(toolCall.name) || EDIT_TOOLS.has(toolCall.name.toLowerCase());
+      if (isEditTool && failureReason?.includes('identical')) {
+        state.consecutiveIdenticalEditFailures++;
+        
+        // If we've had 2+ consecutive identical string failures, flag it immediately
+        if (state.consecutiveIdenticalEditFailures >= 2) {
+          logger.warn('Repeated identical edit string failures detected', {
+            runId,
+            sessionId: state.sessionId,
+            count: state.consecutiveIdenticalEditFailures,
+            toolName: toolCall.name,
+          });
+          return {
+            loopDetected: true,
+            loopType: 'repeated-failures',
+            confidence: 0.95,
+            description: `Edit tool called ${state.consecutiveIdenticalEditFailures} times with identical old_string and new_string`,
+            suggestion: 'The agent keeps trying to edit with identical strings. The change may already be applied - read the file to verify, or the agent may be confused about what changes to make.',
+            involvedTools: [toolCall.name],
+            repetitionCount: state.consecutiveIdenticalEditFailures,
+          };
+        }
+      } else {
+        // Reset if it's a different type of failure
+        state.consecutiveIdenticalEditFailures = 0;
+      }
     } else {
       state.consecutiveFailures = 0;
+      state.consecutiveIdenticalEditFailures = 0;
     }
 
     // Update state
@@ -320,29 +360,38 @@ export class LoopDetector {
     const isActionTool = ACTION_TOOLS.has(currentTool) ||
       ACTION_TOOLS.has(currentTool.toLowerCase());
 
-    // Adjust thresholds based on tool type
+    // Adjust thresholds based on tool type - be much more lenient for exploration
     const consecutiveThreshold = isExplorationTool 
-      ? this.config.maxConsecutiveIdenticalCalls + 2  // More lenient for exploration
+      ? this.config.maxConsecutiveIdenticalCalls + 4  // Much more lenient for exploration
       : isActionTool 
         ? this.config.maxConsecutiveIdenticalCalls - 1  // Stricter for actions
         : this.config.maxConsecutiveIdenticalCalls;
 
     // Check 1: Consecutive identical calls (same tool + same arguments)
+    // For exploration tools, also check if we're accessing different resources
     if (state.consecutiveIdenticalCalls >= consecutiveThreshold) {
-      state.circuitBreakerTriggered = true;
-      return {
-        loopDetected: true,
-        loopType: 'identical-calls',
-        confidence: 0.95,
-        description: `Same tool '${state.lastToolCall?.toolName}' called ${state.consecutiveIdenticalCalls} times with identical arguments`,
-        suggestion: 'The agent is repeating the exact same action. This indicates it may be stuck or confused.',
-        involvedTools: state.lastToolCall ? [state.lastToolCall.toolName] : [],
-        repetitionCount: state.consecutiveIdenticalCalls,
-      };
+      // For exploration tools, only flag if we're truly stuck (same resource repeatedly)
+      if (isExplorationTool && state.uniqueResourcesAccessed.size > 5) {
+        // We're accessing many different resources, this is legitimate exploration
+        // Reset the counter to allow continued exploration
+        state.consecutiveIdenticalCalls = 1;
+      } else {
+        state.circuitBreakerTriggered = true;
+        return {
+          loopDetected: true,
+          loopType: 'identical-calls',
+          confidence: 0.95,
+          description: `Same tool '${state.lastToolCall?.toolName}' called ${state.consecutiveIdenticalCalls} times with identical arguments`,
+          suggestion: 'The agent is repeating the exact same action. This indicates it may be stuck or confused.',
+          involvedTools: state.lastToolCall ? [state.lastToolCall.toolName] : [],
+          repetitionCount: state.consecutiveIdenticalCalls,
+        };
+      }
     }
 
     // Check 2: Repeated failures - agent keeps trying something that fails
-    if (state.consecutiveFailures >= 5) {
+    // Be more lenient - require more failures before flagging
+    if (state.consecutiveFailures >= 7) {
       return {
         loopDetected: true,
         loopType: 'repeated-failures',
@@ -355,19 +404,29 @@ export class LoopDetector {
     }
 
     // Check 3: No progress detection - many iterations but no new resources accessed
-    if (iteration >= 15 && state.patterns.length >= 15) {
-      const recentPatterns = state.patterns.slice(-15);
+    // Much more lenient: require more iterations and check for actual stagnation
+    if (iteration >= 30 && state.patterns.length >= 30) {
+      const recentPatterns = state.patterns.slice(-30);
       const recentUniqueResources = new Set(
         recentPatterns.map(p => p.keyArgument).filter(Boolean)
       );
       
-      // If we've done 15+ iterations but only accessed 2 or fewer unique resources
+      // If we've done 30+ iterations but only accessed 1 or fewer unique resources
       // AND we're not using action tools (which might legitimately repeat)
-      if (recentUniqueResources.size <= 2 && !isActionTool) {
+      // AND we have a high repetition of the same exact calls
+      if (recentUniqueResources.size <= 1 && !isActionTool) {
         const recentTools = [...new Set(recentPatterns.map(p => p.toolName))];
         
         // Only flag if it's exploration tools that should be accessing different resources
-        if (recentTools.some(t => EXPLORATION_TOOLS.has(t) || EXPLORATION_TOOLS.has(t.toLowerCase()))) {
+        // AND we have significant repetition (same signature appearing 15+ times)
+        const signatureCounts = new Map<string, number>();
+        for (const p of recentPatterns) {
+          const sig = `${p.toolName}:${p.argumentsHash}`;
+          signatureCounts.set(sig, (signatureCounts.get(sig) || 0) + 1);
+        }
+        const maxRepetition = Math.max(...signatureCounts.values());
+        
+        if (recentTools.some(t => EXPLORATION_TOOLS.has(t) || EXPLORATION_TOOLS.has(t.toLowerCase())) && maxRepetition >= 15) {
           return {
             loopDetected: true,
             loopType: 'no-progress',
@@ -394,14 +453,21 @@ export class LoopDetector {
       signatureFrequency.set(signature, (signatureFrequency.get(signature) || 0) + 1);
     }
 
-    // Adjust threshold for exploration tools
+    // Adjust threshold for exploration tools - be much more lenient
     const frequencyThreshold = isExplorationTool
-      ? this.config.maxIdenticalCallsInWindow + 4
+      ? this.config.maxIdenticalCallsInWindow + 6
       : this.config.maxIdenticalCallsInWindow;
 
     for (const [signature, count] of signatureFrequency) {
       if (count >= frequencyThreshold) {
         const toolName = signature.split(':')[0];
+        
+        // For exploration tools, check if we're making progress (accessing different resources)
+        if (isExplorationTool && state.uniqueResourcesAccessed.size > count / 2) {
+          // We're accessing many different resources, this is legitimate
+          continue;
+        }
+        
         state.warningIssued = true;
         return {
           loopDetected: true,
@@ -416,16 +482,17 @@ export class LoopDetector {
     }
 
     // Check 5: Repeating sequence pattern (only for non-exploration tools or very long sequences)
-    if (iteration >= this.config.minIterationsForDetection && state.patterns.length >= 8) {
-      const recentSignatures = state.patterns.slice(-12).map(p => `${p.toolName}:${p.argumentsHash}`);
+    if (iteration >= this.config.minIterationsForDetection && state.patterns.length >= 12) {
+      const recentSignatures = state.patterns.slice(-18).map(p => `${p.toolName}:${p.argumentsHash}`);
       const patternResult = this.detectRepeatingSequence(recentSignatures);
       
       // Require higher confidence for exploration tools
-      const requiredConfidence = isExplorationTool ? 0.98 : this.config.patternSimilarityThreshold;
+      const requiredConfidence = isExplorationTool ? 0.995 : this.config.patternSimilarityThreshold;
       
+      // Require more repetitions before flagging
       if (patternResult.detected && 
           patternResult.confidence >= requiredConfidence &&
-          patternResult.repetitions >= 4) {
+          patternResult.repetitions >= 6) {
         const toolNames = patternResult.pattern.map(sig => sig.split(':')[0]);
         return {
           loopDetected: true,

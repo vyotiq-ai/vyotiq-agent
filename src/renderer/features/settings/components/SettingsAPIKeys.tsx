@@ -7,13 +7,16 @@ interface SettingsAPIKeysProps {
     onChange: (provider: LLMProviderName, value: string) => void;
 }
 
-const providerOrder: LLMProviderName[] = ['openai', 'anthropic', 'deepseek', 'gemini', 'openrouter'];
+const providerOrder: LLMProviderName[] = ['openai', 'anthropic', 'deepseek', 'gemini', 'openrouter', 'xai', 'mistral', 'glm'];
 const providerLabel: Record<LLMProviderName, string> = {
     openai: 'openai',
     anthropic: 'anthropic',
     deepseek: 'deepseek',
     gemini: 'gemini',
     openrouter: 'openrouter',
+    xai: 'xai',
+    mistral: 'mistral',
+    glm: 'glm (z.ai)',
 };
 
 export const SettingsAPIKeys: React.FC<SettingsAPIKeysProps> = ({ apiKeys, onChange }) => {

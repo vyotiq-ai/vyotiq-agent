@@ -253,6 +253,47 @@ const geminiAPI = {
 };
 
 // ==========================================================================
+// GLM API
+// ==========================================================================
+
+interface GLMModel {
+	id: string;
+	object: string;
+	created?: number;
+	owned_by?: string;
+}
+
+interface GLMSubscriptionStatus {
+	connected: boolean;
+	tier?: 'lite' | 'pro';
+	useCodingEndpoint: boolean;
+}
+
+interface GLMConnectParams {
+	apiKey: string;
+	tier: 'lite' | 'pro';
+	useCodingEndpoint: boolean;
+}
+
+const glmAPI = {
+	fetchModels: (): Promise<{ success: boolean; models: GLMModel[]; error?: string }> =>
+		ipcRenderer.invoke('glm:fetch-models'),
+	
+	// GLM Subscription methods
+	connect: (params: GLMConnectParams): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('glm:connect', params),
+	
+	disconnect: (): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('glm:disconnect'),
+	
+	getSubscriptionStatus: (): Promise<GLMSubscriptionStatus> =>
+		ipcRenderer.invoke('glm:get-subscription-status'),
+	
+	updateSettings: (settings: { useCodingEndpoint?: boolean }): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('glm:update-settings', settings),
+};
+
+// ==========================================================================
 // Files API
 // ==========================================================================
 
@@ -894,6 +935,7 @@ const editorAIAPI = {
 /** Normalized diagnostic from LSP */
 interface LSPDiagnostic {
 	filePath: string;
+	fileName?: string;
 	line: number;
 	column: number;
 	endLine?: number;
@@ -1211,6 +1253,16 @@ const lspAPI = {
 		lsp?: { diagnosticsCount: number };
 		error?: string;
 	}> => ipcRenderer.invoke('lsp:refresh-diagnostics'),
+
+	/**
+	 * Restart TypeScript Language Server
+	 * Fully reinitializes the TypeScript service to pick up new type definitions.
+	 */
+	restartTypeScriptServer: (): Promise<{
+		success: boolean;
+		diagnostics?: { errorCount: number; warningCount: number; diagnosticsCount: number };
+		error?: string;
+	}> => ipcRenderer.invoke('lsp:restart-typescript-server'),
 };
 
 // ==========================================================================
@@ -1415,6 +1467,80 @@ const claudeAPI = {
 		ipcRenderer.invoke('claude:launch-auth'),
 };
 
+// ==========================================================================
+// Integrated Terminal API
+// ==========================================================================
+
+interface TerminalSpawnOptions {
+	id: string;
+	cwd?: string;
+}
+
+interface TerminalDataEvent {
+	id: string;
+	data: string;
+}
+
+interface TerminalExitEvent {
+	id: string;
+	exitCode: number;
+}
+
+interface TerminalInfo {
+	id: string;
+	cwd: string;
+}
+
+const terminalAPI = {
+	/**
+	 * Spawn a new interactive terminal session
+	 */
+	spawn: (options: TerminalSpawnOptions): Promise<{ success: boolean; id?: string; cwd?: string; error?: string }> =>
+		ipcRenderer.invoke('terminal:spawn', options),
+
+	/**
+	 * Write data to terminal (user input)
+	 */
+	write: (id: string, data: string): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('terminal:write', { id, data }),
+
+	/**
+	 * Resize terminal
+	 */
+	resize: (id: string, cols: number, rows: number): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('terminal:resize', { id, cols, rows }),
+
+	/**
+	 * Kill terminal session
+	 */
+	kill: (id: string): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('terminal:kill', id),
+
+	/**
+	 * List active terminal sessions
+	 */
+	list: (): Promise<{ success: boolean; terminals: TerminalInfo[] }> =>
+		ipcRenderer.invoke('terminal:list'),
+
+	/**
+	 * Subscribe to terminal data events
+	 */
+	onData: (handler: (event: TerminalDataEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: TerminalDataEvent) => handler(data);
+		ipcRenderer.on('terminal:data', listener);
+		return () => ipcRenderer.removeListener('terminal:data', listener);
+	},
+
+	/**
+	 * Subscribe to terminal exit events
+	 */
+	onExit: (handler: (event: TerminalExitEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: TerminalExitEvent) => handler(data);
+		ipcRenderer.on('terminal:exit', listener);
+		return () => ipcRenderer.removeListener('terminal:exit', listener);
+	},
+};
+
 contextBridge.exposeInMainWorld('vyotiq', {
 	agent: agentAPI,
 	workspace: workspaceAPI,
@@ -1424,6 +1550,7 @@ contextBridge.exposeInMainWorld('vyotiq', {
 	openai: openaiAPI,
 	deepseek: deepseekAPI,
 	gemini: geminiAPI,
+	glm: glmAPI,
 	debug: debugAPI,
 	files: fileAPI,
 	cache: cacheAPI,
@@ -1446,4 +1573,7 @@ contextBridge.exposeInMainWorld('vyotiq', {
 
 	// Claude Code Subscription OAuth API
 	claude: claudeAPI,
+
+	// Integrated Terminal API
+	terminal: terminalAPI,
 });

@@ -323,6 +323,7 @@ export interface LSPEvent {
 
 export interface NormalizedDiagnostic {
   filePath: string;
+  fileName?: string;
   line: number;
   column: number;
   endLine?: number;

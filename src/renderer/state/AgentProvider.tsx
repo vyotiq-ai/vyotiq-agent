@@ -13,11 +13,20 @@ import type {
   ContextMetricsEvent,
   RoutingDecisionEvent,
   StreamDeltaEvent,
+  TodoUpdateEvent,
 } from '../../shared/types';
 import { initialState, type AgentUIState, type AgentAction } from './agentReducer';
 import { combinedAgentReducer } from './reducers';
 import { useStreamingBuffer } from '../hooks/useStreamingBuffer';
 import { createLogger } from '../utils/logger';
+
+// Force full page reload on HMR to avoid React context identity issues
+// Context objects get new identity on module reload, breaking consumers using stale context
+if (import.meta.hot) {
+  import.meta.hot.accept(() => {
+    import.meta.hot?.invalidate();
+  });
+}
 
 const logger = createLogger('AgentProvider');
 
@@ -604,6 +613,20 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           }
           break;
         }
+        case 'todo-update': {
+          // Handle todo list updates from the TodoWrite tool
+          const todoEvent = event as TodoUpdateEvent;
+          dispatchRef.current({
+            type: 'TODO_UPDATE',
+            payload: {
+              sessionId: todoEvent.sessionId,
+              runId: todoEvent.runId,
+              todos: todoEvent.todos,
+              timestamp: todoEvent.timestamp,
+            },
+          });
+          break;
+        }
         default:
           break;
       }
@@ -651,7 +674,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           const sessions = await window.vyotiq.agent.getSessionsByWorkspace(activeWorkspace.id);
           if (Array.isArray(sessions) && sessions.length > 0) {
             // Debug: Log session usage data availability
-            const sessionsWithUsage = (sessions as AgentSessionState[]).filter(s => 
+            const sessionsWithUsage = (sessions as AgentSessionState[]).filter(s =>
               s.messages.some(m => m.usage)
             );
             logger.debug('Loading sessions with usage data', {
@@ -872,10 +895,10 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     try {
       await window.vyotiq.agent.updateConfig({ sessionId, config });
     } catch (error) {
-      logger.error('Failed to update session config', { 
-        sessionId, 
+      logger.error('Failed to update session config', {
+        sessionId,
         config,
-        error: error instanceof Error ? error.message : String(error) 
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   }, []);

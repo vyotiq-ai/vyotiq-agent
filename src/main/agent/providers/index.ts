@@ -5,6 +5,9 @@ import { DeepSeekProvider } from './deepseekProvider';
 import { AnthropicProvider } from './anthropicProvider';
 import { GeminiProvider } from './geminiProvider';
 import { OpenRouterProvider } from './openrouterProvider';
+import { XAIProvider } from './xaiProvider';
+import { MistralProvider } from './mistralProvider';
+import { GLMProvider, GLM_GENERAL_ENDPOINT, GLM_CODING_ENDPOINT } from './glmProvider';
 import { createLogger } from '../../logger';
 
 const logger = createLogger('ProviderRegistry');
@@ -36,6 +39,15 @@ export { DeepSeekProvider, type DeepSeekModel } from './deepseekProvider';
 // Re-export Gemini provider and types
 export { GeminiProvider, type GeminiModel } from './geminiProvider';
 
+// Re-export xAI provider and types
+export { XAIProvider, type XAIModel } from './xaiProvider';
+
+// Re-export Mistral provider and types
+export { MistralProvider, type MistralModel } from './mistralProvider';
+
+// Re-export GLM provider and types
+export { GLMProvider, type GLMModel, GLM_GENERAL_ENDPOINT, GLM_CODING_ENDPOINT } from './glmProvider';
+
 // Re-export Gemini Files API service
 export { 
   GeminiFilesService, 
@@ -62,6 +74,9 @@ export {
   DEEPSEEK_CONFIG,
   GEMINI_CONFIG,
   OPENROUTER_CONFIG,
+  XAI_CONFIG,
+  MISTRAL_CONFIG,
+  GLM_CONFIG,
   getProviderConfig,
   getModelDefinition,
   getDefaultModel,
@@ -136,11 +151,17 @@ export function buildProviderMap(settings: AgentSettings): ProviderMap {
     hasAnthropic: Boolean(settings.apiKeys.anthropic?.trim()),
     hasGemini: Boolean(settings.apiKeys.gemini?.trim()),
     hasOpenRouter: Boolean(settings.apiKeys.openrouter?.trim()),
+    hasXAI: Boolean(settings.apiKeys.xai?.trim()),
+    hasMistral: Boolean(settings.apiKeys.mistral?.trim()),
+    hasGLM: Boolean(settings.apiKeys.glm?.trim()),
     openaiKeyLength: settings.apiKeys.openai?.length ?? 0,
     deepseekKeyLength: settings.apiKeys.deepseek?.length ?? 0,
     anthropicKeyLength: settings.apiKeys.anthropic?.length ?? 0,
     geminiKeyLength: settings.apiKeys.gemini?.length ?? 0,
     openrouterKeyLength: settings.apiKeys.openrouter?.length ?? 0,
+    xaiKeyLength: settings.apiKeys.xai?.length ?? 0,
+    mistralKeyLength: settings.apiKeys.mistral?.length ?? 0,
+    glmKeyLength: settings.apiKeys.glm?.length ?? 0,
   });
   
   // OpenAI
@@ -220,6 +241,55 @@ export function buildProviderMap(settings: AgentSettings): ProviderMap {
     hasApiKey: Boolean(openrouterApiKey?.trim()),
     enabled: openrouterSettings.enabled,
     priority: openrouterSettings.priority,
+  });
+  
+  // xAI (Grok)
+  const xaiSettings = getSettings('xai');
+  const xaiApiKey = settings.apiKeys.xai;
+  providers.set('xai', {
+    provider: new XAIProvider(
+      xaiApiKey,
+      xaiSettings.baseUrl || 'https://api.x.ai/v1',
+      xaiSettings.model?.modelId
+    ),
+    hasApiKey: Boolean(xaiApiKey?.trim()),
+    enabled: xaiSettings.enabled,
+    priority: xaiSettings.priority,
+  });
+  
+  // Mistral
+  const mistralSettings = getSettings('mistral');
+  const mistralApiKey = settings.apiKeys.mistral;
+  providers.set('mistral', {
+    provider: new MistralProvider(
+      mistralApiKey,
+      mistralSettings.baseUrl || 'https://api.mistral.ai/v1',
+      mistralSettings.model?.modelId
+    ),
+    hasApiKey: Boolean(mistralApiKey?.trim()),
+    enabled: mistralSettings.enabled,
+    priority: mistralSettings.priority,
+  });
+  
+  // GLM (Z.AI)
+  const glmSettings = getSettings('glm');
+  const glmSubscription = settings.glmSubscription;
+  // Use subscription API key if available, otherwise fall back to regular API key
+  const glmApiKey = glmSubscription?.apiKey || settings.apiKeys.glm;
+  // Use coding endpoint if subscription is configured to use it
+  const glmBaseUrl = glmSubscription?.useCodingEndpoint 
+    ? GLM_CODING_ENDPOINT
+    : (glmSettings.baseUrl || GLM_GENERAL_ENDPOINT);
+  providers.set('glm', {
+    provider: new GLMProvider(
+      glmApiKey,
+      glmBaseUrl,
+      glmSettings.model?.modelId,
+      true // enableThinking
+    ),
+    hasApiKey: Boolean(glmApiKey?.trim()),
+    enabled: glmSettings.enabled,
+    priority: glmSettings.priority,
   });
   
   return providers;

@@ -6,6 +6,7 @@
  * times during a single agentic loop.
  */
 
+import { gzipSync, gunzipSync } from 'zlib';
 import type { ToolExecutionResult } from '../../../shared/types';
 
 /**
@@ -20,6 +21,14 @@ interface CachedToolResult {
   hits: number;
   /** Hash of the arguments for validation */
   argsHash: string;
+  /** Whether the output is compressed */
+  compressed: boolean;
+  /** Original size before compression (only set if compressed) */
+  originalSize?: number;
+  /** Compressed size (only set if compressed) */
+  compressedSize?: number;
+  /** Session ID that created this cache entry (for session-scoped clearing) */
+  sessionId?: string;
 }
 
 /**
@@ -34,6 +43,10 @@ export interface ToolResultCacheConfig {
   toolTTLs?: Record<string, number>;
   /** Enable LRU eviction (default: true) */
   enableLRU: boolean;
+  /** Compression threshold in bytes (default: 4096 = 4KB) */
+  compressionThreshold: number;
+  /** Enable compression (default: true) */
+  enableCompression: boolean;
 }
 
 /**
@@ -86,6 +99,8 @@ const DEFAULT_CONFIG: ToolResultCacheConfig = {
   maxAge: 60000,
   maxSize: 200,
   enableLRU: true,
+  compressionThreshold: 4096, // 4KB
+  enableCompression: true,
 };
 
 /**
@@ -104,16 +119,31 @@ export interface CacheStats {
   hitRate: number;
   /** Entries by tool */
   byTool: Record<string, number>;
+  /** Estimated tokens saved by cache hits */
+  estimatedTokensSaved: number;
+  /** Number of compressed entries */
+  compressedEntries: number;
+  /** Total bytes saved by compression */
+  compressionBytesSaved: number;
+  /** Average compression ratio (original/compressed) */
+  averageCompressionRatio: number;
+  /** Number of sessions with cache entries */
+  sessionsWithCache: number;
+  /** Entries by session */
+  bySession: Record<string, number>;
 }
 
 export class ToolResultCache {
   private cache = new Map<string, CachedToolResult>();
   private config: ToolResultCacheConfig;
   private accessOrder: string[] = []; // For LRU tracking
+  /** Index of cache keys by session ID for fast session clearing */
+  private sessionIndex = new Map<string, Set<string>>();
   
   // Statistics
   private totalHits = 0;
   private totalMisses = 0;
+  private estimatedTokensSaved = 0;
 
   constructor(config: Partial<ToolResultCacheConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -188,13 +218,28 @@ export class ToolResultCache {
 
     cached.hits++;
     this.totalHits++;
-    return cached.result;
+    
+    // Decompress if needed
+    let result = cached.result;
+    if (cached.compressed) {
+      result = this.decompressResult(cached.result);
+    }
+    
+    // Track estimated token savings (roughly 4 chars per token)
+    const tokensSaved = Math.ceil(result.output.length / 4);
+    this.estimatedTokensSaved += tokensSaved;
+    
+    return result;
   }
 
   /**
    * Store a result in the cache
+   * @param tool - Tool name
+   * @param args - Tool arguments
+   * @param result - Tool execution result
+   * @param sessionId - Optional session ID for session-scoped cache clearing
    */
-  set(tool: string, args: Record<string, unknown>, result: ToolExecutionResult): void {
+  set(tool: string, args: Record<string, unknown>, result: ToolExecutionResult, sessionId?: string): void {
     if (!this.isCacheable(tool)) {
       return;
     }
@@ -211,12 +256,43 @@ export class ToolResultCache {
       this.evictOldest();
     }
 
+    // Check if compression is needed
+    const outputSize = result.output.length;
+    const shouldCompress = this.config.enableCompression && outputSize > this.config.compressionThreshold;
+    
+    let cachedResult = result;
+    let compressed = false;
+    let originalSize: number | undefined;
+    let compressedSize: number | undefined;
+    
+    if (shouldCompress) {
+      const compressionResult = this.compressResult(result);
+      cachedResult = compressionResult.result;
+      compressed = true;
+      originalSize = outputSize;
+      compressedSize = compressionResult.result.output.length;
+    }
+
     this.cache.set(key, {
-      result,
+      result: cachedResult,
       timestamp: Date.now(),
       hits: 0,
       argsHash: JSON.stringify(args),
+      compressed,
+      originalSize,
+      compressedSize,
+      sessionId,
     });
+
+    // Track session index for fast session clearing
+    if (sessionId) {
+      let sessionKeys = this.sessionIndex.get(sessionId);
+      if (!sessionKeys) {
+        sessionKeys = new Set();
+        this.sessionIndex.set(sessionId, sessionKeys);
+      }
+      sessionKeys.add(key);
+    }
 
     if (this.config.enableLRU) {
       this.updateAccessOrder(key);
@@ -233,6 +309,7 @@ export class ToolResultCache {
     for (const [key, cached] of this.cache.entries()) {
       // Check if this cache entry references the path
       if (cached.argsHash.includes(path)) {
+        this.removeFromSessionIndex(key);
         this.cache.delete(key);
         this.removeFromAccessOrder(key);
         invalidated++;
@@ -251,6 +328,7 @@ export class ToolResultCache {
 
     for (const key of this.cache.keys()) {
       if (key.startsWith(prefix)) {
+        this.removeFromSessionIndex(key);
         this.cache.delete(key);
         this.removeFromAccessOrder(key);
         invalidated++;
@@ -266,6 +344,60 @@ export class ToolResultCache {
   invalidateAll(): void {
     this.cache.clear();
     this.accessOrder = [];
+    this.sessionIndex.clear();
+  }
+
+  /**
+   * Clear all cache entries for a specific session
+   * Called when a session ends to free memory
+   * 
+   * @param sessionId - The session ID to clear cache entries for
+   * @returns Statistics about what was cleared
+   */
+  clearSession(sessionId: string): { entriesCleared: number; bytesFreed: number } {
+    const sessionKeys = this.sessionIndex.get(sessionId);
+    if (!sessionKeys || sessionKeys.size === 0) {
+      return { entriesCleared: 0, bytesFreed: 0 };
+    }
+
+    let entriesCleared = 0;
+    let bytesFreed = 0;
+
+    for (const key of sessionKeys) {
+      const cached = this.cache.get(key);
+      if (cached) {
+        // Estimate bytes freed (compressed size if compressed, otherwise output length)
+        if (cached.compressed && cached.compressedSize !== undefined) {
+          bytesFreed += cached.compressedSize;
+        } else {
+          bytesFreed += cached.result.output.length;
+        }
+        
+        this.cache.delete(key);
+        this.removeFromAccessOrder(key);
+        entriesCleared++;
+      }
+    }
+
+    // Clear the session index entry
+    this.sessionIndex.delete(sessionId);
+
+    return { entriesCleared, bytesFreed };
+  }
+
+  /**
+   * Get the number of cache entries for a specific session
+   */
+  getSessionEntryCount(sessionId: string): number {
+    const sessionKeys = this.sessionIndex.get(sessionId);
+    return sessionKeys?.size ?? 0;
+  }
+
+  /**
+   * Get all session IDs that have cache entries
+   */
+  getSessionsWithCache(): string[] {
+    return Array.from(this.sessionIndex.keys());
   }
 
   /**
@@ -275,13 +407,32 @@ export class ToolResultCache {
     if (this.config.enableLRU && this.accessOrder.length > 0) {
       const oldest = this.accessOrder.shift();
       if (oldest) {
+        this.removeFromSessionIndex(oldest);
         this.cache.delete(oldest);
       }
     } else {
       // Fall back to FIFO
       const firstKey = this.cache.keys().next().value;
       if (firstKey) {
+        this.removeFromSessionIndex(firstKey);
         this.cache.delete(firstKey);
+      }
+    }
+  }
+
+  /**
+   * Remove a cache key from the session index
+   */
+  private removeFromSessionIndex(key: string): void {
+    const cached = this.cache.get(key);
+    if (cached?.sessionId) {
+      const sessionKeys = this.sessionIndex.get(cached.sessionId);
+      if (sessionKeys) {
+        sessionKeys.delete(key);
+        // Clean up empty session entries
+        if (sessionKeys.size === 0) {
+          this.sessionIndex.delete(cached.sessionId);
+        }
       }
     }
   }
@@ -319,6 +470,7 @@ export class ToolResultCache {
       const ttl = this.getTTL(tool);
       
       if (now - cached.timestamp > ttl) {
+        this.removeFromSessionIndex(key);
         this.cache.delete(key);
         this.removeFromAccessOrder(key);
         removed++;
@@ -333,14 +485,33 @@ export class ToolResultCache {
    */
   getStats(): CacheStats {
     const byTool: Record<string, number> = {};
+    const bySession: Record<string, number> = {};
+    let compressedEntries = 0;
+    let totalOriginalSize = 0;
+    let totalCompressedSize = 0;
     
-    for (const key of this.cache.keys()) {
+    for (const [key, cached] of this.cache.entries()) {
       const tool = key.split('::')[0];
       byTool[tool] = (byTool[tool] || 0) + 1;
+      
+      if (cached.compressed && cached.originalSize !== undefined && cached.compressedSize !== undefined) {
+        compressedEntries++;
+        totalOriginalSize += cached.originalSize;
+        totalCompressedSize += cached.compressedSize;
+      }
+    }
+
+    // Build session statistics from the session index
+    for (const [sessionId, keys] of this.sessionIndex.entries()) {
+      bySession[sessionId] = keys.size;
     }
 
     const total = this.totalHits + this.totalMisses;
     const hitRate = total > 0 ? (this.totalHits / total) * 100 : 0;
+    const compressionBytesSaved = totalOriginalSize - totalCompressedSize;
+    const averageCompressionRatio = compressedEntries > 0 && totalCompressedSize > 0 
+      ? totalOriginalSize / totalCompressedSize 
+      : 0;
 
     return {
       size: this.cache.size,
@@ -349,6 +520,12 @@ export class ToolResultCache {
       misses: this.totalMisses,
       hitRate: Math.round(hitRate * 100) / 100,
       byTool,
+      estimatedTokensSaved: this.estimatedTokensSaved,
+      compressedEntries,
+      compressionBytesSaved,
+      averageCompressionRatio: Math.round(averageCompressionRatio * 100) / 100,
+      sessionsWithCache: this.sessionIndex.size,
+      bySession,
     };
   }
 
@@ -358,6 +535,7 @@ export class ToolResultCache {
   resetStats(): void {
     this.totalHits = 0;
     this.totalMisses = 0;
+    this.estimatedTokensSaved = 0;
   }
 
   /**
@@ -365,6 +543,57 @@ export class ToolResultCache {
    */
   updateConfig(config: Partial<ToolResultCacheConfig>): void {
     this.config = { ...this.config, ...config };
+  }
+
+  /**
+   * Compress a tool result's output using gzip
+   * Returns a new result with base64-encoded compressed output
+   */
+  private compressResult(result: ToolExecutionResult): { result: ToolExecutionResult; originalSize: number; compressedSize: number } {
+    const originalSize = result.output.length;
+    
+    try {
+      // Compress the output using gzip
+      const compressed = gzipSync(Buffer.from(result.output, 'utf-8'));
+      // Encode as base64 for safe storage
+      const compressedOutput = compressed.toString('base64');
+      
+      return {
+        result: {
+          ...result,
+          output: compressedOutput,
+        },
+        originalSize,
+        compressedSize: compressedOutput.length,
+      };
+    } catch {
+      // If compression fails, return original
+      return {
+        result,
+        originalSize,
+        compressedSize: originalSize,
+      };
+    }
+  }
+
+  /**
+   * Decompress a tool result's output
+   * Expects base64-encoded gzip data
+   */
+  private decompressResult(result: ToolExecutionResult): ToolExecutionResult {
+    try {
+      // Decode from base64 and decompress
+      const compressed = Buffer.from(result.output, 'base64');
+      const decompressed = gunzipSync(compressed);
+      
+      return {
+        ...result,
+        output: decompressed.toString('utf-8'),
+      };
+    } catch {
+      // If decompression fails, return as-is (might not be compressed)
+      return result;
+    }
   }
 }
 

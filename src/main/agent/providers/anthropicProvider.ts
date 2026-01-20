@@ -1,4 +1,4 @@
-import { BaseLLMProvider, type ProviderRequest, type ProviderMessage, type CacheControl, APIError, withRetry } from './baseProvider';
+import { BaseLLMProvider, type ProviderRequest, type ProviderMessage, type CacheControl, APIError, withRetry, fetchStreamWithRetry } from './baseProvider';
 import type { ProviderResponse, ToolCallPayload, ProviderResponseChunk } from '../../../shared/types';
 import { createLogger } from '../../logger';
 import { DEFAULT_MODELS } from './registry';
@@ -384,17 +384,23 @@ export class AnthropicProvider extends BaseLLMProvider {
   }
 
   async *stream(request: ProviderRequest): AsyncGenerator<ProviderResponseChunk> {
-    const response = await fetch(`${this.baseUrl}/messages`, {
-      method: 'POST',
-      headers: this.buildHeaders(request),
-      body: JSON.stringify(this.buildBody(request, true)),
-      signal: request.signal,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw APIError.fromResponse(response, errorText);
-    }
+    // Use fetchStreamWithRetry for automatic retry on network errors
+    const response = await fetchStreamWithRetry(
+      `${this.baseUrl}/messages`,
+      {
+        method: 'POST',
+        headers: this.buildHeaders(request),
+        body: JSON.stringify(this.buildBody(request, true)),
+        timeout: 120000, // 2 minute timeout for streaming requests
+      },
+      request.signal,
+      {
+        maxRetries: 3,
+        initialDelayMs: 3000,
+        maxDelayMs: 15000,
+        backoffMultiplier: 2,
+      }
+    );
 
     if (!response.body) throw new Error('No response body');
 

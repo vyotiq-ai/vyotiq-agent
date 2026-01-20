@@ -76,10 +76,10 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
   
   // Get the currently selected model info
   const selectedModel = useMemo(() => {
-    const modelId = config.selectedModelId || config.manualOverrideModel;
+    const modelId = config.selectedModelId;
     if (!modelId) return null;
     return allModels.find(m => m.id === modelId) || { id: modelId, name: modelId, provider: 'unknown' as LLMProviderName };
-  }, [config.selectedModelId, config.manualOverrideModel, allModels]);
+  }, [config.selectedModelId, allModels]);
   
   return (
     <section className="space-y-4 font-mono">
@@ -242,8 +242,8 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
             type="text"
             className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30 placeholder:text-[var(--color-text-placeholder)]"
             placeholder="e.g. claude-3-opus-latest"
-            value={config.manualOverrideModel ?? ''}
-            onChange={(e) => onChange('manualOverrideModel', e.target.value)}
+            value={config.selectedModelId ?? ''}
+            onChange={(e) => onChange('selectedModelId', e.target.value)}
           />
           <p className="text-[9px] text-[var(--color-text-dim)]"># bypass routing, use exact model id</p>
         </div>

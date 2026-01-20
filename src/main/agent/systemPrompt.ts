@@ -1,49 +1,63 @@
 /**
  * System Prompt Module
  * 
- * Re-exports from the new modular systemPrompt/ directory.
+ * Re-exports from the modular systemPrompt/ directory.
  * This file maintains backward compatibility for existing imports.
  * 
- * The system prompt is now organized into:
- * - ./systemPrompt/sections.ts - Static prompt sections (cached)
+ * ## Architecture
+ * 
+ * The system prompt is organized into:
+ * - ./systemPrompt/sections.ts - Static unified prompt (cached)
  * - ./systemPrompt/dynamicSections.ts - Context-aware sections
  * - ./systemPrompt/contextInjection.ts - Rule-based context injection
  * - ./systemPrompt/cache.ts - Prompt caching for performance
  * - ./systemPrompt/builder.ts - Main prompt assembly
+ * 
+ * ## Usage
+ * 
+ * Prefer importing from './systemPrompt' (the directory):
+ * ```typescript
+ * import { buildSystemPrompt, getStaticContent } from './systemPrompt';
+ * ```
+ * 
+ * ## Deprecated Exports
+ * 
+ * The following exports are deprecated and point to the same unified content:
+ * - CORE_IDENTITY, CRITICAL_RULES, TOOL_CHAINING, EDIT_TOOL_GUIDE, etc.
+ * 
+ * Use getStaticContent() instead for the complete static prompt.
  */
 
 // Re-export everything from the new module
 export {
   // Main builder
   buildSystemPrompt,
-  
+
   // Cache
   SystemPromptCache,
   getSystemPromptCache,
-  
-  // Sections
+
+  // Sections - PRIMARY EXPORTS
   PROMPT_SECTIONS,
   getStaticSections,
   getStaticContent,
-  
-  // Static section content
+
+  // Static section content - DEPRECATED (use getStaticContent())
   CORE_IDENTITY,
   CRITICAL_RULES,
   TOOL_CHAINING,
-  TOOLS_REFERENCE,
   EDIT_TOOL_GUIDE,
   COMMON_TASKS,
+  TASK_MANAGEMENT,
   OUTPUT_FORMATTING,
-  IMPORTANT_REMINDERS,
-  CLOSING_REMINDER,
-  
-  // Legacy exports
+  SAFETY_GUIDELINES,
   TOOL_WORKFLOWS,
   TOOL_HINTS,
-  
+
   // Dynamic section builders
   buildCoreContext,
   buildCoreTools,
+  buildToolsReference,
   buildTerminalContext,
   buildEditorContext,
   buildWorkspaceDiagnosticsContext,
@@ -54,12 +68,12 @@ export {
   buildCustomPromptSection,
   buildAdditionalInstructions,
   buildCommunicationStyle,
-  
+
   // Context injection
   buildInjectedContext,
   evaluateContextInjectionCondition,
   processContextRuleTemplate,
-  
+
   // Settings
   DEFAULT_PROMPT_SETTINGS,
 } from './systemPrompt/index';

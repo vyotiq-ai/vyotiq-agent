@@ -16,14 +16,6 @@ export { StorageManager, getStorageManager, resetStorageManager } from './Storag
 
 // Domain-specific storage
 export { DynamicToolStorage, getDynamicToolStorage } from './DynamicToolStorage';
-export { 
-  TaskPlanStorage, 
-  getTaskPlanStorage, 
-  initTaskPlanStorage, 
-  resetTaskPlanStorage,
-  type TaskPlanEntry,
-  type StepUpdatePayload,
-} from './TaskPlanStorage';
 
 // Infrastructure
 export { BackupManager, getBackupManager } from './BackupManager';

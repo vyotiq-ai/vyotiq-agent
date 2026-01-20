@@ -1,4 +1,4 @@
-import { BaseLLMProvider, type ProviderRequest, type ProviderMessage, APIError, withRetry } from './baseProvider';
+import { BaseLLMProvider, type ProviderRequest, type ProviderMessage, APIError, withRetry, fetchStreamWithRetry } from './baseProvider';
 import type { ProviderResponse, ToolCallPayload, ProviderResponseChunk } from '../../../shared/types';
 import { createLogger } from '../../logger';
 import { DEFAULT_MODELS } from './registry';
@@ -654,17 +654,23 @@ export class GeminiProvider extends BaseLLMProvider {
       thinkingConfig: (body.generationConfig as Record<string, unknown>)?.thinkingConfig,
     });
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: request.signal,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw APIError.fromResponse(response, errorText);
-    }
+    // Use fetchStreamWithRetry for automatic retry on network errors
+    const response = await fetchStreamWithRetry(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        timeout: 120000, // 2 minute timeout for streaming requests
+      },
+      request.signal,
+      {
+        maxRetries: 3,
+        initialDelayMs: 3000,
+        maxDelayMs: 15000,
+        backoffMultiplier: 2,
+      }
+    );
 
     if (!response.body) throw new Error('No response body');
 

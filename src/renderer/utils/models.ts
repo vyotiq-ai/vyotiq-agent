@@ -231,6 +231,9 @@ export async function fetchProviderModels(provider: LLMProviderName): Promise<Mo
       case 'openrouter':
         result = await window.vyotiq.openrouter.fetchModels();
         break;
+      case 'glm':
+        result = await window.vyotiq.glm.fetchModels();
+        break;
       default:
         return [];
     }

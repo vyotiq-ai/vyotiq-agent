@@ -1,8 +1,9 @@
 /**
  * Sessions Feature Module
  * 
- * Exports session management components and utilities.
+ * Exports session management hooks and utilities.
+ * Note: Session UI is handled by SessionSelector in the chat feature.
  */
 
-// Components
-export { SidebarSessionList } from './components/SidebarSessionList';
+// Hooks
+export { useSessionList } from './hooks/useSessionList';

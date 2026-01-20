@@ -2,30 +2,16 @@
  * Streaming Reducer
  * 
  * Handles streaming-related state updates including deltas and run status.
+ * 
+ * PERFORMANCE OPTIMIZATIONS:
+ * - Uses shared helper functions from agentReducerUtils
+ * - Checks last message first (most common streaming case)
+ * - Early returns when no changes needed
  */
 
 import type { AgentSessionState } from '../../../shared/types';
 import type { AgentUIState } from '../agentReducer';
-
-/**
- * Safely create a Set from streamingSessions, handling cases where
- * it might not be a proper Set (e.g., after serialization/deserialization)
- */
-function safeCreateSet(streamingSessions: Set<string> | unknown): Set<string> {
-  if (streamingSessions instanceof Set) {
-    return new Set(streamingSessions);
-  }
-  // Handle case where it's an array or iterable
-  if (Array.isArray(streamingSessions)) {
-    return new Set(streamingSessions);
-  }
-  // Handle case where it's an object with values
-  if (streamingSessions && typeof streamingSessions === 'object') {
-    const values = Object.values(streamingSessions as Record<string, string>);
-    return new Set(values.filter((v): v is string => typeof v === 'string'));
-  }
-  return new Set();
-}
+import { safeCreateSet } from '../agentReducerUtils';
 
 export type StreamingAction =
   | { type: 'STREAM_DELTA'; payload: { sessionId: string; messageId?: string; delta: string } }
@@ -33,6 +19,9 @@ export type StreamingAction =
   | { type: 'STREAM_THINKING_DELTA'; payload: { sessionId: string; messageId?: string; delta: string } }
   | { type: 'RUN_STATUS'; payload: { sessionId: string; status: AgentSessionState['status']; runId: string } };
 
+/**
+ * OPTIMIZATION: Update assistant message by ID with last-message-first check
+ */
 function updateAssistantMessageById(
   sessions: AgentSessionState[],
   sessionId: string,
@@ -44,7 +33,16 @@ function updateAssistantMessageById(
 
   const session = sessions[sessionIndex];
   const messages = session.messages;
-  const messageIndex = messages.findIndex(m => m.id === messageId);
+  
+  // OPTIMIZATION: Check last message first (most common case for streaming)
+  let messageIndex = -1;
+  const lastIdx = messages.length - 1;
+  if (lastIdx >= 0 && messages[lastIdx].id === messageId) {
+    messageIndex = lastIdx;
+  } else {
+    messageIndex = messages.findIndex(m => m.id === messageId);
+  }
+  
   if (messageIndex === -1) return sessions;
 
   const message = messages[messageIndex];
@@ -53,11 +51,12 @@ function updateAssistantMessageById(
   const newMessage = updater(message);
   if (newMessage === message) return sessions;
 
-  const newMessages = [...messages];
+  // Use slice() for slightly better performance
+  const newMessages = messages.slice();
   newMessages[messageIndex] = newMessage;
 
   const newSession = { ...session, messages: newMessages };
-  const newSessions = [...sessions];
+  const newSessions = sessions.slice();
   newSessions[sessionIndex] = newSession;
   return newSessions;
 }
@@ -88,13 +87,12 @@ function updateLastAssistantMessage(
   }
 
   // Create new references only for what changed
-  // Ensure content is always a string to prevent "undefined" concatenation
   const newMessage = {
     ...lastMessage,
     content: (lastMessage.content || '') + delta,
   };
 
-  const newMessages = [...messages];
+  const newMessages = messages.slice();
   newMessages[lastMessageIndex] = newMessage;
 
   const newSession = {
@@ -102,7 +100,7 @@ function updateLastAssistantMessage(
     messages: newMessages,
   };
 
-  const newSessions = [...sessions];
+  const newSessions = sessions.slice();
   newSessions[sessionIndex] = newSession;
 
   return newSessions;
@@ -170,11 +168,11 @@ function updateAssistantMessageThinking(
     isThinkingStreaming: true,
   };
 
-  const newMessages = [...messages];
+  const newMessages = messages.slice();
   newMessages[lastMessageIndex] = newMessage;
 
   const newSession = { ...session, messages: newMessages };
-  const newSessions = [...sessions];
+  const newSessions = sessions.slice();
   newSessions[sessionIndex] = newSession;
   return newSessions;
 }
@@ -192,24 +190,30 @@ export function streamingReducer(
       // Optimized delta handling - only update what's needed
       const sessions = updateAssistantMessageContent(state.sessions, action.payload.sessionId, action.payload.messageId, action.payload.delta);
       
+      // Early return if no change
+      if (sessions === state.sessions) {
+        return state;
+      }
+      
       // Track streaming state
       const streamingSessions = safeCreateSet(state.streamingSessions);
       streamingSessions.add(action.payload.sessionId);
       
-      return sessions === state.sessions 
-        ? state 
-        : { ...state, sessions, streamingSessions };
+      return { ...state, sessions, streamingSessions };
     }
 
     case 'STREAM_THINKING_DELTA': {
       const sessions = updateAssistantMessageThinking(state.sessions, action.payload.sessionId, action.payload.messageId, action.payload.delta);
 
+      // Early return if no change
+      if (sessions === state.sessions) {
+        return state;
+      }
+
       const streamingSessions = safeCreateSet(state.streamingSessions);
       streamingSessions.add(action.payload.sessionId);
 
-      return sessions === state.sessions
-        ? state
-        : { ...state, sessions, streamingSessions };
+      return { ...state, sessions, streamingSessions };
     }
     
     case 'RUN_STATUS': {
@@ -251,11 +255,8 @@ export function streamingReducer(
       }
       
       // Create new sessions array with only the changed session updated
-      const sessions = [
-        ...state.sessions.slice(0, sessionIndex),
-        updatedSession,
-        ...state.sessions.slice(sessionIndex + 1),
-      ];
+      const sessions = state.sessions.slice();
+      sessions[sessionIndex] = updatedSession;
       
       // Update streaming sessions set if needed
       const streamingSessions = shouldClearStreaming && state.streamingSessions.has(sessionId)

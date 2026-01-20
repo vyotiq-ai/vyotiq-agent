@@ -214,6 +214,75 @@ export const EditorSettingsMenu: React.FC<EditorSettingsMenuProps> = memo(({
 
         <div className="h-px bg-[var(--color-border-subtle)] mx-3 my-2" />
 
+        {/* VSCode Features Group */}
+        <div className="px-3 py-2">
+          <div className="flex items-center gap-2 mb-1">
+            <Hash size={12} className="text-[var(--color-info)]" />
+            <span className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">Editor Features</span>
+          </div>
+
+          <div className="space-y-1">
+            <Toggle
+              label="Sticky Scroll"
+              description="Keep scope context visible"
+              checked={settings.stickyScroll !== false}
+              onToggle={() => onSettingsChange({ stickyScroll: settings.stickyScroll === false })}
+              size="sm"
+            />
+            <Toggle
+              label="Font Ligatures"
+              description="Enable ligatures (=>, ===)"
+              checked={settings.fontLigatures !== false}
+              onToggle={() => onSettingsChange({ fontLigatures: settings.fontLigatures === false })}
+              size="sm"
+            />
+            <Toggle
+              label="Linked Editing"
+              description="Rename paired tags"
+              checked={settings.linkedEditing !== false}
+              onToggle={() => onSettingsChange({ linkedEditing: settings.linkedEditing === false })}
+              size="sm"
+            />
+            <Toggle
+              label="Inlay Hints"
+              description="Parameter names, types"
+              checked={settings.inlayHints !== false}
+              onToggle={() => onSettingsChange({ inlayHints: settings.inlayHints === false })}
+              size="sm"
+            />
+            <Toggle
+              label="Bracket Colorization"
+              description="Color nested brackets"
+              checked={settings.bracketPairColorization}
+              onToggle={() => onSettingsChange({ bracketPairColorization: !settings.bracketPairColorization })}
+              size="sm"
+            />
+            <Toggle
+              label="Format on Paste"
+              description="Auto-format pasted code"
+              checked={settings.formatOnPaste !== false}
+              onToggle={() => onSettingsChange({ formatOnPaste: settings.formatOnPaste === false })}
+              size="sm"
+            />
+            <Toggle
+              label="Format on Save"
+              description="Format when saving file"
+              checked={settings.formatOnSave === true}
+              onToggle={() => onSettingsChange({ formatOnSave: !settings.formatOnSave })}
+              size="sm"
+            />
+            <Toggle
+              label="Trim Whitespace"
+              description="Remove trailing spaces"
+              checked={settings.trimTrailingWhitespace !== false}
+              onToggle={() => onSettingsChange({ trimTrailingWhitespace: settings.trimTrailingWhitespace === false })}
+              size="sm"
+            />
+          </div>
+        </div>
+
+        <div className="h-px bg-[var(--color-border-subtle)] mx-3 my-2" />
+
         {/* AI Features Group */}
         <div className="px-3 py-2">
           <div className="flex items-center gap-2 mb-1">
@@ -271,7 +340,5 @@ export const EditorSettingsMenu: React.FC<EditorSettingsMenuProps> = memo(({
     </div>
   );
 });
-
-EditorSettingsMenu.displayName = 'EditorSettingsMenu';
 
 EditorSettingsMenu.displayName = 'EditorSettingsMenu';

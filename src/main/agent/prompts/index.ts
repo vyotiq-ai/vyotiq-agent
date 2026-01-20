@@ -2,15 +2,40 @@
  * Prompt Modules Index
  * 
  * Central export for all prompt components used in system prompt construction.
- * Core prompt sections are now in ../systemPrompt/ module.
+ * 
+ * ## Architecture
+ * 
+ * Core prompt sections are in ../systemPrompt/ module with unified structure.
+ * This module provides:
+ * - Re-exports from systemPrompt for convenience
+ * - Tool creation prompts for dynamic tool guidance
+ * - Dynamic prompt builder for context-aware construction
+ * - Response parsers for structured data extraction
+ * - Reusable prompt templates
+ * 
+ * ## Usage
+ * 
+ * For system prompts, prefer importing directly from '../systemPrompt':
+ * ```typescript
+ * import { buildSystemPrompt, getStaticContent } from '../systemPrompt';
+ * ```
  */
 
 // Core prompt sections - re-export from systemPrompt module
+// Note: CORE_IDENTITY, CRITICAL_RULES, TOOL_CHAINING are deprecated aliases
+// that all point to the unified system prompt. Use getStaticContent() instead.
 export {
-  CORE_IDENTITY,
-  CRITICAL_RULES,
-  TOOL_CHAINING,
+  PROMPT_SECTIONS,
+  getStaticContent,
 } from '../systemPrompt';
+
+// Deprecated re-exports (kept for backward compatibility)
+/** @deprecated Use getStaticContent() from '../systemPrompt' */
+export { CORE_IDENTITY } from '../systemPrompt';
+/** @deprecated Use getStaticContent() from '../systemPrompt' */
+export { CRITICAL_RULES } from '../systemPrompt';
+/** @deprecated Use getStaticContent() from '../systemPrompt' */
+export { TOOL_CHAINING } from '../systemPrompt';
 
 // Tool creation prompts - dynamic tool creation guidance
 export {

@@ -55,6 +55,9 @@ const ProviderLinks: Record<LLMProviderName, string> = {
   gemini: 'https://aistudio.google.com/app/apikey',
   deepseek: 'https://platform.deepseek.com/api_keys',
   openrouter: 'https://openrouter.ai/keys',
+  xai: 'https://console.x.ai/team/default/api-keys',
+  mistral: 'https://console.mistral.ai/api-keys',
+  glm: 'https://open.bigmodel.cn/usercenter/apikeys',
 };
 
 export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ onComplete, onSkip }) => {

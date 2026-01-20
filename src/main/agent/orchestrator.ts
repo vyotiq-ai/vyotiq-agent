@@ -12,6 +12,7 @@ import type {
   ConversationBranch,
   SessionSummary,
 } from '../../shared/types';
+import { DEFAULT_TOOL_CONFIG_SETTINGS } from '../../shared/types';
 import type { SettingsStore } from './settingsStore';
 import type { WorkspaceManager } from '../workspaces/workspaceManager';
 import { buildProviderMap } from './providers';
@@ -106,6 +107,12 @@ export class AgentOrchestrator extends EventEmitter {
       getPromptSettings: () => this.settingsStore.get().promptSettings,
       getComplianceSettings: () => this.settingsStore.get().complianceSettings,
       getAccessLevelSettings: () => this.settingsStore.get().accessLevelSettings,
+      getToolSettings: () => {
+        const settings = this.settingsStore.get();
+        const toolSettings = settings.autonomousFeatureFlags?.toolSettings;
+        // Merge with defaults to ensure all required properties are present
+        return toolSettings ? { ...DEFAULT_TOOL_CONFIG_SETTINGS, ...toolSettings } : DEFAULT_TOOL_CONFIG_SETTINGS;
+      },
       getEditorState: () => this.getEditorState(),
       getWorkspaceDiagnostics: () => this.getWorkspaceDiagnostics(),
     });
@@ -325,8 +332,11 @@ export class AgentOrchestrator extends EventEmitter {
   async getWorkspaceDiagnostics(): Promise<{
     diagnostics: Array<{
       filePath: string;
+      fileName: string;
       line: number;
       column: number;
+      endLine?: number;
+      endColumn?: number;
       message: string;
       severity: 'error' | 'warning' | 'info' | 'hint';
       source: 'typescript' | 'eslint';
@@ -363,10 +373,13 @@ export class AgentOrchestrator extends EventEmitter {
         const lspDiagnostics = lspManager?.getAllDiagnostics() ?? [];
         
         // Merge TypeScript and LSP diagnostics, avoiding duplicates
-        const tsDiagnostics = snapshot.diagnostics.map((d: { filePath: string; line: number; column: number; message: string; severity: 'error' | 'warning' | 'info' | 'hint'; code?: string | number }) => ({
+        const tsDiagnostics = snapshot.diagnostics.map((d: { filePath: string; fileName: string; line: number; column: number; endLine?: number; endColumn?: number; message: string; severity: 'error' | 'warning' | 'info' | 'hint'; code?: string | number }) => ({
           filePath: d.filePath,
+          fileName: d.fileName,
           line: d.line,
           column: d.column,
+          endLine: d.endLine,
+          endColumn: d.endColumn,
           message: d.message,
           severity: d.severity,
           source: 'typescript' as const,
@@ -378,8 +391,11 @@ export class AgentOrchestrator extends EventEmitter {
           .filter(d => !d.filePath.match(/\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/))
           .map(d => ({
             filePath: d.filePath,
+            fileName: d.filePath.split(/[/\\]/).pop() || d.filePath,
             line: d.line,
             column: d.column,
+            endLine: d.endLine,
+            endColumn: d.endColumn,
             message: d.message,
             severity: d.severity,
             source: 'typescript' as const, // Keep consistent type
@@ -792,6 +808,16 @@ export class AgentOrchestrator extends EventEmitter {
     this.logger.info('Orchestrator cleanup started');
 
     try {
+      // Flush any pending session persistence first (critical for data integrity)
+      try {
+        await this.sessionManager.flushPendingPersistence();
+        this.logger.info('Session persistence flushed');
+      } catch (error) {
+        this.logger.error('Error flushing session persistence', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       // Stop self-healing agent
       try {
         const selfHealingAgent = getSelfHealingAgent();

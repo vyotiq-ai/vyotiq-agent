@@ -130,10 +130,15 @@ export function getToolTarget(args: Record<string, unknown>, toolName: string, p
 }
 
 export function formatElapsed(startTime: number): string {
-  const elapsed = Math.floor((Date.now() - startTime) / 1000);
-  if (elapsed < 60) return `${elapsed}s`;
+  const elapsedMs = Date.now() - startTime;
+  const elapsed = elapsedMs / 1000;
+  
+  // Show tenths of seconds for first 10 seconds for smoother feel
+  if (elapsed < 10) return `${elapsed.toFixed(1)}s`;
+  if (elapsed < 60) return `${Math.floor(elapsed)}s`;
+  
   const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
+  const secs = Math.floor(elapsed % 60);
   return `${mins}m ${secs}s`;
 }
 

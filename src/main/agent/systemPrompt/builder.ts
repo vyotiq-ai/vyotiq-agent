@@ -2,25 +2,22 @@
  * System Prompt Builder
  * 
  * Builds the complete system prompt by combining:
- * - Cached static sections (identity, rules, workflows)
+ * - Unified static prompt (identity, rules, tools, workflows - single priority)
  * - Dynamic context sections (workspace, editor, terminal)
  * - User customizations (persona, custom prompt)
  * 
  * Structure follows optimal LLM comprehension order:
- * 1. Identity (who you are)
- * 2. Critical rules (what you MUST do)
- * 3. Context (workspace, session, system)
- * 4. Tools and workflows
- * 5. Customizations (persona, style)
- * 6. Reminders (recency effect)
+ * 1. Unified system prompt (who you are, what you do, how you do it)
+ * 2. Context (workspace, session, system)
+ * 3. Customizations (persona, style)
  */
 
 import type { SystemPromptContext } from './types';
 import { getSystemPromptCache } from './cache';
-import { PROMPT_SECTIONS } from './sections';
 import {
   buildCoreContext,
   buildTerminalContext,
+  buildToolsReference,
   buildEditorContext,
   buildWorkspaceDiagnostics,
   buildTaskAnalysis,
@@ -30,6 +27,7 @@ import {
   buildCustomPrompt,
   buildAdditionalInstructions,
   buildCommunicationStyle,
+  buildToolCategories,
 } from './dynamicSections';
 import { buildInjectedContext } from './contextInjection';
 
@@ -39,9 +37,7 @@ export type { SystemPromptContext } from './types';
 /**
  * Build the complete system prompt
  * 
- * Uses caching for static sections and builds dynamic sections per-request.
- * Sections are ordered for optimal LLM comprehension with critical
- * reminders at the end (recency effect).
+ * Uses caching for the unified static prompt and builds dynamic sections per-request.
  */
 export function buildSystemPrompt(context: SystemPromptContext): string {
   const { promptSettings, accessLevelSettings, logger } = context;
@@ -59,39 +55,36 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
 
   // Build dynamic sections
   const dynamicSections = [
-    // Context sections (priority 3-6)
+    // Context sections
     buildCoreContext(context),
     buildWorkspaceStructure(context.workspaceStructure),
     buildTaskAnalysis(context.taskAnalysis),
     buildAccessLevel(accessLevelSettings),
-    
+    buildToolsReference(context.toolDefinitions),
+    buildToolCategories(),
+
     // Terminal and editor context
     buildTerminalContext(context.terminalContext),
     buildEditorContext(context.editorContext),
     buildWorkspaceDiagnostics(context.workspaceDiagnostics),
-    
-    // User customizations (priority 11-14)
+
+    // User customizations
     buildPersona(promptSettings),
     buildCustomPrompt(promptSettings),
     buildCommunicationStyle(promptSettings.responseFormat),
     buildAdditionalInstructions(promptSettings.additionalInstructions),
-    
+
     // Injected context from rules
     buildInjectedContext(context),
   ].filter(Boolean);
 
-  // Assemble: Static (cached) + Dynamic + Reminders
+  // Assemble: Unified Static Prompt + Dynamic
   const staticContent = cache.getStaticPrompt().staticContent;
   const dynamicContent = dynamicSections.join('\n\n');
-  const reminders = [
-    PROMPT_SECTIONS.REMINDERS.content,
-    PROMPT_SECTIONS.FINAL_REMINDER.content,
-  ].join('\n\n');
 
   // Final assembly
   const parts = [staticContent];
   if (dynamicContent) parts.push(dynamicContent);
-  parts.push(reminders);
 
   const systemPrompt = parts.join('\n\n');
 

@@ -94,10 +94,13 @@ export class ToolExecutor {
       ? this.workspaceManager.list().find(w => w.id === session.state.workspaceId)
       : this.workspaceManager.getActive();
 
+    const workspacePath = workspace?.path ?? process.cwd();
+
     return {
       sessionId: session.state.id,
       runId,
-      workspacePath: workspace?.path,
+      workspacePath,
+      cwd: workspacePath,
       terminalManager: this.terminalManager,
       signal,
       logger: {
@@ -132,10 +135,11 @@ export class ToolExecutor {
     runId: string,
     tool: ToolCallPayload,
     iteration: number,
-    success: boolean = true
+    success: boolean = true,
+    failureReason?: string
   ): void {
     const loopDetector = getLoopDetector();
-    loopDetector.recordToolCall(runId, tool, iteration, success);
+    loopDetector.recordToolCall(runId, tool, iteration, success, failureReason);
   }
 
   /**

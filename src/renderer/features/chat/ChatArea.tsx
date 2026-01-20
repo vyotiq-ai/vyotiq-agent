@@ -7,6 +7,7 @@
  * - Tool executions with status and output
  * - Error handling and recovery
  * - Branch navigation for conversation alternatives
+ * - Todo progress tracking for complex tasks
  * 
  * All content is rendered inline without unnecessary cards or modals.
  */
@@ -16,6 +17,10 @@ import { useAgentActions, useAgentSelector } from '../../state/AgentProvider';
 import { useChatScroll } from '../../hooks/useChatScroll';
 import { useConversationSearch } from '../../hooks/useConversationSearch';
 import { useHotkey } from '../../hooks/useKeyboard';
+import { useTodos } from '../../hooks/useTodos';
+// Virtualization hooks - reserved for future performance optimization with large chat histories
+// Currently using simple scroll approach which works well for typical conversation sizes
+import { useVirtualizedList as _useVirtualizedList, useVirtualItemMeasure as _useVirtualItemMeasure } from '../../hooks/useVirtualizedList';
 import { useRenderProfiler } from '../../utils/profiler';
 import { cn } from '../../utils/cn';
 import { createLogger } from '../../utils/logger';
@@ -27,6 +32,7 @@ import { ToolConfirmationPanel } from './components/ToolConfirmationPanel';
 import { BranchNavigation } from './components/BranchNavigation';
 import { RunGroupHeader } from './components/RunGroupHeader';
 import { ConversationSearchBar } from './components/ConversationSearchBar';
+import { TodoProgress } from './components/TodoProgress';
 import type { ChatMessage as ChatMessageType, ToolResultEvent, ConversationBranch } from '../../../shared/types';
 
 /** Message reaction type */
@@ -68,11 +74,76 @@ export const ChatArea: React.FC = () => {
   useRenderProfiler('ChatArea');
 
   const actions = useAgentActions();
-  const activeSession = useAgentSelector((state) => state.sessions.find((session) => session.id === state.activeSessionId));
-  const routingDecision = useAgentSelector((state) => (state.activeSessionId ? state.routingDecisions?.[state.activeSessionId] : undefined));
-  const toolResultsByRun = useAgentSelector((state) => state.toolResults);
+  
+  // PERFORMANCE OPTIMIZATION: Use stable selectors with efficient equality checks
+  // Only extract the fields we actually need to minimize re-renders
+  const _activeSessionId = useAgentSelector(
+    (state) => state.activeSessionId
+  );
+  
+  const activeSession = useAgentSelector(
+    (state) => {
+      if (!state.activeSessionId) return undefined;
+      return state.sessions.find((session) => session.id === state.activeSessionId);
+    },
+    (a, b) => {
+      if (a === b) return true;
+      if (!a || !b) return false;
+      // OPTIMIZATION: Compare by value, not reference for arrays
+      // Only re-render when essential fields change
+      if (a.id !== b.id) return false;
+      if (a.status !== b.status) return false;
+      if (a.activeBranchId !== b.activeBranchId) return false;
+      // For messages, compare length and last message id/content length
+      if (a.messages.length !== b.messages.length) return false;
+      const lastA = a.messages[a.messages.length - 1];
+      const lastB = b.messages[b.messages.length - 1];
+      if (lastA && lastB) {
+        if (lastA.id !== lastB.id) return false;
+        if ((lastA.content?.length ?? 0) !== (lastB.content?.length ?? 0)) return false;
+        if ((lastA.toolCalls?.length ?? 0) !== (lastB.toolCalls?.length ?? 0)) return false;
+      }
+      // Branches comparison
+      if (a.branches?.length !== b.branches?.length) return false;
+      return true;
+    }
+  );
+  
+  const routingDecision = useAgentSelector(
+    (state) => (state.activeSessionId ? state.routingDecisions?.[state.activeSessionId] : undefined),
+    (a, b) => {
+      if (a === b) return true;
+      if (!a || !b) return false;
+      return a.selectedProvider === b.selectedProvider && 
+             a.selectedModel === b.selectedModel &&
+             a.taskType === b.taskType;
+    }
+  );
+  
+  // OPTIMIZATION: Tool results selector - only re-render when the specific session's results change
+  const toolResultsByRun = useAgentSelector(
+    (state) => state.toolResults,
+    (a, b) => {
+      if (a === b) return true;
+      // Quick check: same number of runs
+      const keysA = Object.keys(a);
+      const keysB = Object.keys(b);
+      if (keysA.length !== keysB.length) return false;
+      // Check if any run has different number of results
+      for (const key of keysA) {
+        if (!b[key]) return false;
+        if (Object.keys(a[key]).length !== Object.keys(b[key]).length) return false;
+      }
+      return true;
+    }
+  );
+  
+  // These are unused but kept for future use - prefix with underscore
   const _agentStatus = useAgentSelector((state) => (state.activeSessionId ? state.agentStatus[state.activeSessionId] : undefined));
   const _activeWorkspacePath = useAgentSelector((state) => state.workspaces.find((w) => w.isActive)?.path);
+
+  // Todo state for the active session
+  const { todos, hasTodos } = useTodos({ sessionId: activeSession?.id ?? null });
 
   // Branch state
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
@@ -160,7 +231,7 @@ export const ChatArea: React.FC = () => {
   // #7: Auto-expand runs containing search matches
   useEffect(() => {
     if (!isSearchActive || matchingMessageIds.size === 0) return;
-    
+
     // Find which runs contain matching messages and expand them
     const runsToExpand = new Set<string>();
     messageGroups.forEach((group, idx) => {
@@ -179,7 +250,7 @@ export const ChatArea: React.FC = () => {
           const runKey = group.runId ?? `group-${idx}`;
           const isLastGroup = idx === messageGroups.length - 1;
           const defaultCollapsed = !isLastGroup;
-          
+
           if (runsToExpand.has(runKey) && defaultCollapsed && !next.has(runKey)) {
             next.add(runKey); // Toggle to expand
           }
@@ -294,21 +365,42 @@ export const ChatArea: React.FC = () => {
   }, [activeSession, toolResultsByRun]);
 
 
+  // Determine if agent is currently streaming content
+  const isStreaming = activeSession?.status === 'running';
+
+  // Get the last assistant message content length for scroll dependency
+  const lastAssistantContentLength = useMemo(() => {
+    if (!activeSession?.messages) return 0;
+    const lastAssistant = [...activeSession.messages].reverse().find(m => m.role === 'assistant');
+    return lastAssistant?.content?.length ?? 0;
+  }, [activeSession?.messages]);
+
+  // Scroll hook with streaming mode for smooth auto-focus
   const { scrollRef, forceScrollToBottom } = useChatScroll(
-    activeSession?.messages.length ?? 0,
-    { enabled: true, threshold: 200 }
+    `${activeSession?.messages.length ?? 0}-${lastAssistantContentLength}`,
+    {
+      enabled: true,
+      threshold: 200,
+      streamingMode: isStreaming,
+    }
   );
 
-  // Track last message to auto-scroll
+  // Track last message to auto-scroll on new messages
   const lastMsgRef = useRef<string | null>(null);
+  const lastMsgCountRef = useRef(0);
+
   useEffect(() => {
     if (!activeSession?.messages) return;
-    const lastMsg = activeSession.messages[activeSession.messages.length - 1];
-    if (lastMsg && lastMsg.id !== lastMsgRef.current) {
+    const msgCount = activeSession.messages.length;
+    const lastMsg = activeSession.messages[msgCount - 1];
+
+    // Force scroll when new message is added (not just content update)
+    if (lastMsg && (lastMsg.id !== lastMsgRef.current || msgCount > lastMsgCountRef.current)) {
       lastMsgRef.current = lastMsg.id;
+      lastMsgCountRef.current = msgCount;
       forceScrollToBottom();
     }
-  }, [activeSession, forceScrollToBottom]);
+  }, [activeSession?.messages, forceScrollToBottom]);
 
   // Handle message edit - resends from that point
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
@@ -478,206 +570,219 @@ export const ChatArea: React.FC = () => {
 
       {/* Main chat area */}
       <div className="flex-1 min-h-0 relative">
-      {/* Branch navigation - show when there are branches */}
-      {branches.length > 0 && (
-        <div className="absolute top-2 right-4 z-20">
-          <BranchNavigation
-            branches={branches}
-            activeBranchId={activeBranchId}
-            onSwitchBranch={handleSwitchBranch}
-            onDeleteBranch={handleDeleteBranch}
-          />
-        </div>
-      )}
-
-
-
-      {/* Bottom fade gradient - smooth edge transition */}
-      <div 
-        className="absolute bottom-0 left-0 right-0 h-10 z-10 pointer-events-none"
-        style={{
-          background: 'linear-gradient(to top, var(--color-surface-base) 0%, transparent 100%)'
-        }}
-        aria-hidden="true"
-      />
-      <div
-        className={cn(
-          "h-full overflow-y-auto overflow-x-hidden",
-          "scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent",
-          "bg-[var(--color-surface-base)] transition-colors"
-        )}
-        ref={scrollRef}
-        role="log"
-        aria-label="Chat conversation"
-        aria-live="polite"
-        aria-relevant="additions"
-      >
-      <div className="w-full max-w-[1400px] mx-auto flex flex-col gap-3 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-5 md:pt-6 pb-8 sm:pb-10">
-        {/* Expand/Collapse all - inline at top when multiple runs */}
-        {messageGroups.length > 1 && (
-          <div className="flex justify-end">
-            <button
-              onClick={allExpanded ? collapseAllRuns : expandAllRuns}
-              className={cn(
-                'flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono',
-                'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
-                'transition-colors'
-              )}
-              title={allExpanded ? 'Collapse all runs' : 'Expand all runs'}
-            >
-              <ChevronsUpDown size={10} />
-              <span>{allExpanded ? 'collapse all' : 'expand all'}</span>
-            </button>
+        {/* Branch navigation - show when there are branches */}
+        {branches.length > 0 && (
+          <div className="absolute top-2 right-4 z-20">
+            <BranchNavigation
+              branches={branches}
+              activeBranchId={activeBranchId}
+              onSwitchBranch={handleSwitchBranch}
+              onDeleteBranch={handleDeleteBranch}
+            />
           </div>
         )}
 
-        {messageGroups.map((group, groupIdx) => {
-          const isLastGroup = groupIdx === messageGroups.length - 1;
-          const isGroupRunning = isLastGroup && isRunning;
-          const runKey = group.runId ?? `group-${groupIdx}`;
-          const collapsed = isRunCollapsed(groupIdx, messageGroups.length, runKey);
 
 
-          // Pre-compute which assistant messages have tool calls for inline rendering
-          const assistantMessagesWithTools = new Set(
-            group.messages
-              .filter(m => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0)
-              .map(m => m.id)
-          );
+        {/* Bottom fade gradient - smooth edge transition */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-8 z-10 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to top, var(--color-surface-base) 0%, transparent 100%)'
+          }}
+          aria-hidden="true"
+        />
+        <div
+          className={cn(
+            "h-full overflow-y-auto overflow-x-hidden",
+            "scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent",
+            "bg-[var(--color-surface-base)] transition-colors"
+          )}
+          ref={scrollRef}
+          role="log"
+          aria-label="Chat conversation"
+          aria-live="polite"
+          aria-relevant="additions"
+        >
+          <div className="w-full max-w-[1400px] mx-auto flex flex-col gap-3 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-5 md:pt-6 pb-8 sm:pb-10">
+            {/* Expand/Collapse all - inline at top when multiple runs */}
+            {messageGroups.length > 1 && (
+              <div className="flex justify-end">
+                <button
+                  onClick={allExpanded ? collapseAllRuns : expandAllRuns}
+                  className={cn(
+                    'flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono',
+                    'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
+                    'transition-colors'
+                  )}
+                  title={allExpanded ? 'Collapse all runs' : 'Expand all runs'}
+                >
+                  <ChevronsUpDown size={10} />
+                  <span>{allExpanded ? 'collapse all' : 'expand all'}</span>
+                </button>
+              </div>
+            )}
 
-          // Get tool messages that correspond to each assistant message's tool calls
-          const getToolMessagesForAssistant = (assistantMsg: ChatMessageType) => {
-            if (!assistantMsg.toolCalls) return [];
-            const toolCallIds = new Set(assistantMsg.toolCalls.map(tc => tc.callId).filter(Boolean));
-            return group.messages.filter(
-              m => m.role === 'tool' && m.toolCallId && toolCallIds.has(m.toolCallId)
-            );
-          };
+            {messageGroups.map((group, groupIdx) => {
+              const isLastGroup = groupIdx === messageGroups.length - 1;
+              const isGroupRunning = isLastGroup && isRunning;
+              const runKey = group.runId ?? `group-${groupIdx}`;
+              const collapsed = isRunCollapsed(groupIdx, messageGroups.length, runKey);
 
-          return (
-            <div
-              key={`group-${groupIdx}`}
-              className={cn(
-                'rounded-lg overflow-hidden transition-all duration-150',
-                isGroupRunning
-                  ? 'border border-[var(--color-warning)]/20 shadow-sm shadow-[var(--color-warning)]/5'
-                  : 'border border-[var(--color-border-subtle)]/60',
-                'bg-[var(--color-surface-1)]/10'
-              )}
-            >
-              {/* Clickable header to toggle collapse */}
-              <button
-                type="button"
-                onClick={() => toggleRunCollapse(runKey)}
-                className={cn(
-                  "w-full text-left transition-colors",
-                  "hover:bg-[var(--color-surface-2)]/20",
-                  "focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30"
-                )}
-              >
-                <div className="flex items-center">
-                  <div className={cn(
-                    "flex items-center justify-center w-7 flex-shrink-0 self-stretch",
-                    "border-r border-[var(--color-border-subtle)]/30"
-                  )}>
-                    {collapsed ? (
-                      <ChevronRight size={12} className="text-[var(--color-text-dim)] transition-transform" />
-                    ) : (
-                      <ChevronDown size={12} className="text-[var(--color-text-dim)] transition-transform" />
+
+              // Pre-compute which assistant messages have tool calls for inline rendering
+              const assistantMessagesWithTools = new Set(
+                group.messages
+                  .filter(m => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0)
+                  .map(m => m.id)
+              );
+
+              // Get tool messages that correspond to each assistant message's tool calls
+              const getToolMessagesForAssistant = (assistantMsg: ChatMessageType) => {
+                if (!assistantMsg.toolCalls) return [];
+                const toolCallIds = new Set(assistantMsg.toolCalls.map(tc => tc.callId).filter(Boolean));
+                return group.messages.filter(
+                  m => m.role === 'tool' && m.toolCallId && toolCallIds.has(m.toolCallId)
+                );
+              };
+
+              return (
+                <div
+                  key={`group-${groupIdx}`}
+                  className={cn(
+                    'rounded-lg overflow-hidden transition-all duration-200',
+                    isGroupRunning
+                      ? 'border border-[var(--color-warning)]/30 shadow-md shadow-[var(--color-warning)]/10 ring-1 ring-[var(--color-warning)]/10'
+                      : 'border border-[var(--color-border-subtle)]/60',
+                    'bg-[var(--color-surface-1)]/10'
+                  )}
+                >
+                  {/* Running indicator bar */}
+                  {isGroupRunning && (
+                    <div className="h-[2px] bg-gradient-to-r from-transparent via-[var(--color-warning)] to-transparent animate-pulse" />
+                  )}
+                  {/* Clickable header to toggle collapse */}
+                  <button
+                    type="button"
+                    onClick={() => toggleRunCollapse(runKey)}
+                    className={cn(
+                      "w-full text-left transition-colors",
+                      "hover:bg-[var(--color-surface-2)]/20",
+                      "focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30"
                     )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <RunGroupHeader
-                      runId={group.runId}
-                      messages={group.messages}
-                      toolResults={getToolResultsForRun(group.runId)}
-                      isRunning={isGroupRunning}
-                    />
-                  </div>
-                </div>
-              </button>
-
-              {/* Collapsible content */}
-              {!collapsed && (
-                <div className="px-3 sm:px-4 py-2 sm:py-3 space-y-1 border-t border-[var(--color-border-subtle)]/20">
-                {group.messages.map((message, msgIdx) => {
-                  const isLastMsg = msgIdx === group.messages.length - 1 && isLastGroup;
-                  const isStreaming = isLastMsg && message.role === 'assistant' && isRunning;
-                  const isMessageSearchMatch = matchingMessageIds.has(message.id);
-                  const isCurrentMatch = currentMatchMessageId === message.id;
-
-                  if (message.role === 'user') {
-                    return (
-                      <MessageLine
-                        key={message.id}
-                        message={message}
-                        type="user"
-                        onEdit={handleEditMessage}
-                        onFork={handleForkMessage}
-                        isSearchMatch={isMessageSearchMatch}
-                        isCurrentSearchMatch={isCurrentMatch}
-                      />
-                    );
-                  }
-
-                  if (message.role === 'assistant') {
-                    const hasToolCalls = assistantMessagesWithTools.has(message.id);
-                    const isLastAssistantInGroup = !group.messages.slice(msgIdx + 1).some(m => m.role === 'assistant');
-                    const toolMessages = hasToolCalls ? getToolMessagesForAssistant(message) : [];
-
-                    // Check if this is the first assistant message in the group (show full branding)
-                    // or a continuation (show minimal header)
-                    const previousAssistantIdx = group.messages.slice(0, msgIdx).findLastIndex(m => m.role === 'assistant');
-                    const isFirstAssistantInGroup = previousAssistantIdx === -1;
-
-                    // Messages to pass to ToolExecution: this assistant + its tool results
-                    const messagesForToolExecution = hasToolCalls ? [message, ...toolMessages] : [];
-
-                    return (
-                      <MessageLine
-                        key={message.id}
-                        message={message}
-                        type="assistant"
-                        isStreaming={isStreaming}
-                        onFork={handleForkMessage}
-                        onRunCode={handleRunCode}
-                        onInsertCode={handleInsertCode}
-                        routingInfo={routingInfo}
-                        onReaction={handleReaction}
-                        reaction={message.reaction}
-                        isSearchMatch={isMessageSearchMatch}
-                        isCurrentSearchMatch={isCurrentMatch}
-                        showBranding={isFirstAssistantInGroup}
-                      >
-                        {hasToolCalls && (
-                          <ToolExecution
-                            messages={messagesForToolExecution}
-                            isRunning={isGroupRunning && isLastAssistantInGroup}
-                            toolResults={getToolResultsForRun(group.runId)}
-                            sessionId={activeSession?.id}
-                          />
+                  >
+                    <div className="flex items-center">
+                      <div className={cn(
+                        "flex items-center justify-center w-7 flex-shrink-0 self-stretch",
+                        "border-r border-[var(--color-border-subtle)]/30"
+                      )}>
+                        {collapsed ? (
+                          <ChevronRight size={12} className="text-[var(--color-text-dim)] transition-transform" />
+                        ) : (
+                          <ChevronDown size={12} className="text-[var(--color-text-dim)] transition-transform" />
                         )}
-                      </MessageLine>
-                    );
-                  }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <RunGroupHeader
+                          runId={group.runId}
+                          messages={group.messages}
+                          toolResults={getToolResultsForRun(group.runId)}
+                          isRunning={isGroupRunning}
+                        />
+                      </div>
+                    </div>
+                  </button>
 
-                  if (message.role === 'tool') {
-                    // Tool messages are rendered within tool execution blocks attached to their assistant message
-                    return null;
-                  }
+                  {/* Collapsible content */}
+                  {!collapsed && (
+                    <div className="px-3 sm:px-4 py-2 sm:py-3 space-y-1 border-t border-[var(--color-border-subtle)]/20">
+                      {group.messages.map((message, msgIdx) => {
+                        const isLastMsg = msgIdx === group.messages.length - 1 && isLastGroup;
+                        const isStreaming = isLastMsg && message.role === 'assistant' && isRunning;
+                        const isMessageSearchMatch = matchingMessageIds.has(message.id);
+                        const isCurrentMatch = currentMatchMessageId === message.id;
 
-                  return null;
-                })}
+                        if (message.role === 'user') {
+                          return (
+                            <MessageLine
+                              key={message.id}
+                              message={message}
+                              type="user"
+                              onEdit={handleEditMessage}
+                              onFork={handleForkMessage}
+                              isSearchMatch={isMessageSearchMatch}
+                              isCurrentSearchMatch={isCurrentMatch}
+                            />
+                          );
+                        }
+
+                        if (message.role === 'assistant') {
+                          const hasToolCalls = assistantMessagesWithTools.has(message.id);
+                          const isLastAssistantInGroup = !group.messages.slice(msgIdx + 1).some(m => m.role === 'assistant');
+                          const toolMessages = hasToolCalls ? getToolMessagesForAssistant(message) : [];
+
+                          // Check if this is the first assistant message in the group (show full branding)
+                          // or a continuation (show minimal header)
+                          const previousAssistantIdx = group.messages.slice(0, msgIdx).findLastIndex(m => m.role === 'assistant');
+                          const isFirstAssistantInGroup = previousAssistantIdx === -1;
+
+                          // Messages to pass to ToolExecution: this assistant + its tool results
+                          const messagesForToolExecution = hasToolCalls ? [message, ...toolMessages] : [];
+
+                          return (
+                            <MessageLine
+                              key={message.id}
+                              message={message}
+                              type="assistant"
+                              isStreaming={isStreaming}
+                              onFork={handleForkMessage}
+                              onRunCode={handleRunCode}
+                              onInsertCode={handleInsertCode}
+                              routingInfo={routingInfo}
+                              onReaction={handleReaction}
+                              reaction={message.reaction}
+                              isSearchMatch={isMessageSearchMatch}
+                              isCurrentSearchMatch={isCurrentMatch}
+                              showBranding={isFirstAssistantInGroup}
+                            >
+                              {hasToolCalls && (
+                                <ToolExecution
+                                  messages={messagesForToolExecution}
+                                  isRunning={isGroupRunning && isLastAssistantInGroup}
+                                  toolResults={getToolResultsForRun(group.runId)}
+                                  sessionId={activeSession?.id}
+                                />
+                              )}
+                            </MessageLine>
+                          );
+                        }
+
+                        if (message.role === 'tool') {
+                          // Tool messages are rendered within tool execution blocks attached to their assistant message
+                          return null;
+                        }
+
+                        return null;
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
 
-        {/* Tool confirmation panel - shows when awaiting approval */}
-        <ToolConfirmationPanel />
-      </div>
-      </div>
+            {/* Todo progress - shows when agent has created a task list */}
+            {hasTodos && activeSession && (
+              <TodoProgress
+                todos={todos}
+                sessionId={activeSession.id}
+                className="mt-2"
+              />
+            )}
+
+            {/* Tool confirmation panel - shows when awaiting approval */}
+            <ToolConfirmationPanel />
+          </div>
+        </div>
       </div>
     </div>
   );

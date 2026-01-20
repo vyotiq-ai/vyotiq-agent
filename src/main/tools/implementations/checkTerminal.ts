@@ -18,16 +18,44 @@ interface CheckTerminalArgs extends Record<string, unknown> {
 
 export const checkTerminalTool: ToolDefinition<CheckTerminalArgs> = {
   name: 'check_terminal',
-  description: `Check the output and status of a terminal process. Use this to:
-- Get output from background processes
-- Check if a process is still running
-- Filter output with regex patterns
-- Get incremental output since last check`,
+  description: `Check the output and status of a terminal process.
+
+## When to Use
+- **Monitor background processes**: Check on servers, watchers, builds
+- **Get command output**: See what a background command produced
+- **Verify process status**: Check if still running or completed
+- **Debug issues**: See error output from failed commands
+
+## Workflow Integration
+Use with run's background mode:
+\`\`\`
+run("npm run dev", run_in_background: true) → get PID
+[do other work]
+check_terminal(pid) → see server output
+[when done]
+kill_terminal(pid) → stop server
+\`\`\`
+
+## Parameters
+- **pid** (required): Process ID returned from run command
+- **incremental**: Only return new output since last check (default: false)
+- **filter**: Regex pattern to filter output lines
+
+## Output
+- Process status (RUNNING or COMPLETED)
+- Exit code (if completed)
+- stdout and stderr output
+- Command that was run
+
+## Tips
+- Use incremental: true for long-running processes to avoid repeated output
+- Use filter to find specific patterns (e.g., "error|warning")
+- Check periodically for servers to ensure they started correctly`,
   requiresApproval: false,
   category: 'terminal',
   riskLevel: 'safe',
   allowedCallers: ['direct', 'code_execution'],
-  searchKeywords: ['check', 'status', 'output', 'terminal', 'process', 'background', 'monitor'],
+  searchKeywords: ['check', 'status', 'output', 'terminal', 'process', 'background', 'monitor', 'server', 'watch'],
   schema: {
     type: 'object',
     properties: {

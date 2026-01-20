@@ -1,6 +1,11 @@
 /**
  * Request Builder
  * Builds provider requests with system prompts, tools, and context management
+ * 
+ * Features:
+ * - Context-aware tool selection (only loads relevant tools)
+ * - Agent-controlled tool loading via request_tools
+ * - Session-scoped tool persistence
  */
 
 import type { LLMProviderName, PromptSettings, RoutingDecision } from '../../../shared/types';
@@ -12,6 +17,13 @@ import type { LLMProvider, ProviderRequest, ProviderToolDefinition } from '../pr
 import type { EditorState, WorkspaceDiagnostics } from './types';
 import type { ContextBuilder } from './contextBuilder';
 import { ContextWindowManager, ConversationSummarizer, type ContextMetrics } from '../context';
+import { 
+  selectToolsForContext, 
+  detectWorkspaceType, 
+  extractRecentToolUsage,
+  getToolSelectionSummary,
+  type ToolSelectionContext,
+} from '../context';
 import { ComplianceValidator, PromptOptimizer } from '../compliance';
 import { buildSystemPrompt, DEFAULT_PROMPT_SETTINGS, type SystemPromptContext } from '../systemPrompt';
 import { buildImageGenerationSystemPrompt } from '../imageGenerationPrompt';
@@ -119,7 +131,7 @@ export class RequestBuilder {
     _runId?: string,
     routingDecision?: RoutingDecision
   ): string | undefined {
-    const sessionModelId = session.state.config.manualOverrideModel || session.state.config.selectedModelId;
+    const sessionModelId = session.state.config.selectedModelId;
     if (sessionModelId) {
       if (modelBelongsToProvider(sessionModelId, provider.name)) {
         return sessionModelId;
@@ -161,21 +173,89 @@ export class RequestBuilder {
   }
 
   /**
-   * Get tool definitions for a provider
+   * Get tool definitions for a provider with dynamic context-aware filtering
+   * 
+   * This method implements TRUE dynamic tool loading where:
+   * - Core tools are always loaded (essential for any task)
+   * - Deferred tools are ONLY loaded when explicitly requested by the agent
+   * - Agent-requested tools persist for the entire session
+   * - Task intent detection adds relevant tools dynamically
+   * 
+   * This approach significantly reduces context token usage by:
+   * - Not loading all tool schemas upfront
+   * - Only including tools relevant to the current task
+   * - Allowing the agent to request additional tools as needed
+   * 
    * @param providerName - The provider name for logging/debugging purposes
-   * @param _session - The session context (reserved for future use)
+   * @param session - The session context for tool selection
    */
-  getToolDefinitions(providerName?: LLMProviderName, _session?: InternalSession): ProviderToolDefinition[] {
-    const tools = this.toolRegistry.list();
+  getToolDefinitions(providerName?: LLMProviderName, session?: InternalSession): ProviderToolDefinition[] {
+    const allTools = this.toolRegistry.list();
 
-    // Log provider context for debugging tool selection
-    if (providerName) {
-      this.logger.debug('Getting tool definitions for provider', {
+    // If no session, return only non-deferred tools (minimal set)
+    if (!session) {
+      const nonDeferredTools = allTools.filter(tool => !tool.deferLoading);
+      this.logger.debug('No session context, returning non-deferred tools only', {
         provider: providerName,
-        toolCount: tools.length,
+        totalTools: allTools.length,
+        loadedTools: nonDeferredTools.length,
+        deferredTools: allTools.length - nonDeferredTools.length,
       });
+      return this.convertToProviderFormat(nonDeferredTools);
     }
 
+    // Build selection context with session ID for proper state tracking
+    const recentMessages = session.state.messages.slice(-10);
+    const recentToolUsage = extractRecentToolUsage(session.state.messages);
+    const workspace = session.state.workspaceId
+      ? this.workspaceManager.list().find(w => w.id === session.state.workspaceId)
+      : this.workspaceManager.getActive();
+    const workspaceType = detectWorkspaceType(workspace?.path || null);
+
+    const selectionContext: ToolSelectionContext = {
+      recentMessages,
+      recentToolUsage,
+      workspaceType,
+      sessionId: session.state.id,
+      maxTools: 18, // Reduced to minimize token consumption - agent can request more via request_tools
+      useSuccessRateBoost: true,
+      // Include error recovery tools if there were recent errors
+      includeErrorRecoveryTools: true,
+    };
+
+    // Select relevant tools using the context-aware selection
+    // This respects deferLoading flags and session tool state
+    const selectedTools = selectToolsForContext(allTools, selectionContext);
+
+    // Calculate token savings from deferred loading
+    const deferredCount = allTools.filter(t => t.deferLoading).length;
+    const loadedDeferredCount = selectedTools.filter(t => t.deferLoading).length;
+    const tokensSaved = (deferredCount - loadedDeferredCount) * 150; // ~150 tokens per tool schema
+
+    // Log selection summary with dynamic loading metrics
+    const summary = getToolSelectionSummary(selectedTools, allTools.length);
+    this.logger.debug('Dynamic tool selection complete', {
+      provider: providerName,
+      sessionId: session.state.id,
+      summary,
+      workspaceType,
+      recentToolCount: recentToolUsage.length,
+      dynamicLoadingMetrics: {
+        totalTools: allTools.length,
+        selectedTools: selectedTools.length,
+        deferredToolsTotal: deferredCount,
+        deferredToolsLoaded: loadedDeferredCount,
+        estimatedTokensSaved: tokensSaved,
+      },
+    });
+
+    return this.convertToProviderFormat(selectedTools);
+  }
+
+  /**
+   * Convert tool definitions to provider format
+   */
+  private convertToProviderFormat(tools: import('../../tools/types').ToolDefinition[]): ProviderToolDefinition[] {
     return tools.map(tool => {
       const schema = tool.schema ? normalizeStrictJsonSchema(tool.schema as unknown as Record<string, unknown>) : {};
       return {

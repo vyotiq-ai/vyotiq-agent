@@ -352,46 +352,44 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
           </div>
         </div>
 
-        {/* Content - right aligned with right border */}
-        <div className="flex justify-end">
-          <div className="pr-3 mr-2 border-r border-[var(--color-accent-primary)]/20">
-            {/* Attachments */}
-            {message.attachments && message.attachments.length > 0 && (
-              <div className="text-[10px] text-[var(--color-text-muted)] mb-1 text-right">
-                {message.attachments.map((att) => (
-                  <div key={att.id} className="flex items-center justify-end gap-1.5">
-                    <span className="text-[var(--color-info)]">{att.name}</span>
-                    <span className="text-[var(--color-text-dim)]">{Math.round(att.size / 1024)}kb</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {/* Content */}
-            {isEditing ? (
-              <div className="space-y-2 text-left max-w-[500px]">
-                <textarea
-                  ref={editTextareaRef}
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  onKeyDown={handleEditKeyDown}
-                  className="w-full min-h-[60px] p-2 text-[12px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] focus:border-[var(--color-accent-primary)] text-[var(--color-text-primary)] resize-none outline-none"
-                />
-                <div className="flex justify-end gap-2">
-                  <button onClick={handleCancelEdit} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]">
-                    <X size={12} />
-                  </button>
-                  <button onClick={handleSaveEdit} className="p-1 text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)]">
-                    <Check size={12} />
-                  </button>
+        {/* Content - full width with subtle left accent */}
+        <div className="pl-3 ml-2 border-l border-[var(--color-accent-primary)]/20">
+          {/* Attachments */}
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="text-[10px] text-[var(--color-text-muted)] mb-1">
+              {message.attachments.map((att) => (
+                <div key={att.id} className="flex items-center gap-1.5">
+                  <span className="text-[var(--color-info)]">{att.name}</span>
+                  <span className="text-[var(--color-text-dim)]">{Math.round(att.size / 1024)}kb</span>
                 </div>
+              ))}
+            </div>
+          )}
+          
+          {/* Content */}
+          {isEditing ? (
+            <div className="space-y-2 text-left">
+              <textarea
+                ref={editTextareaRef}
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                onKeyDown={handleEditKeyDown}
+                className="w-full min-h-[60px] p-2 text-[12px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] focus:border-[var(--color-accent-primary)] text-[var(--color-text-primary)] resize-none outline-none"
+              />
+              <div className="flex justify-end gap-2">
+                <button onClick={handleCancelEdit} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]">
+                  <X size={12} />
+                </button>
+                <button onClick={handleSaveEdit} className="p-1 text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)]">
+                  <Check size={12} />
+                </button>
               </div>
-            ) : displayContent && (
-              <div className="text-[12px] text-[var(--color-text-primary)] leading-relaxed break-words text-right max-w-[600px]">
-                <ContentRenderer content={displayContent} useMarkdown={renderMarkdownUser} messageType="user" />
-              </div>
-            )}
-          </div>
+            </div>
+          ) : displayContent && (
+            <div className="text-[12px] text-[var(--color-text-primary)] leading-relaxed break-words">
+              <ContentRenderer content={displayContent} useMarkdown={renderMarkdownUser} messageType="user" />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -592,12 +590,21 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
               audio={message.generatedAudio}
             />
           )}
+          
+          {/* Streaming cursor - inline with content */}
+          {isStreaming && displayContent && (
+            <span 
+              className="inline-block w-[2px] h-[14px] bg-[var(--color-accent-primary)] animate-pulse ml-0.5 align-middle"
+              style={{ animationDuration: '800ms' }}
+              aria-hidden="true"
+            />
+          )}
         </div>
 
         {/* Tool executions */}
         {children && <div className="mt-2">{children}</div>}
 
-        {/* Streaming indicator */}
+        {/* Streaming indicator - shows when no content yet */}
         {isStreaming && !displayContent && !message.isThinkingStreaming && (
           <div className="flex items-center gap-1.5 text-[10px] py-1">
             <span className="w-1.5 h-1.5 bg-[var(--color-accent-primary)] animate-pulse rounded-full" />

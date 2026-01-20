@@ -23,20 +23,45 @@ interface DefinitionArgs extends Record<string, unknown> {
 
 export const lspDefinitionTool: ToolDefinition<DefinitionArgs> = {
   name: 'lsp_definition',
-  description: `Find the definition location of a symbol at a specific position.
+  description: `Find the definition location of a symbol at a specific position. Essential for understanding code structure.
 
-Use this to:
-- Jump to where a function, class, or variable is defined
-- Find the type definition of a variable
-- Find implementations of an interface or abstract method
+## When to Use
+- **Navigate to source**: Jump to where a function, class, or variable is defined
+- **Understand imports**: Find where imported symbols come from
+- **Explore types**: Find type definitions for variables
+- **Find implementations**: Locate concrete implementations of interfaces
 
-Parameters:
-- file (required): File path relative to workspace
-- line (required): Line number (1-indexed)
-- column (required): Column number (1-indexed)
-- type (optional): 'definition' (default), 'type', or 'implementation'
+## Workflow Integration
+Use as part of code exploration:
+\`\`\`
+grep("functionName") → find usages
+lsp_definition(file, line, col) → go to source definition
+read(definition_file) → understand implementation
+[make changes based on understanding]
+\`\`\`
 
-Returns the file path and position of the definition.`,
+## Code Intelligence Flow
+\`\`\`
+lsp_symbols("query") → find symbol
+lsp_definition(file, line, col) → go to source
+lsp_references(file, line, col) → find all usages
+[make changes across all usages]
+read_lints() → verify
+\`\`\`
+
+## Parameters
+- **file** (required): File path relative to workspace
+- **line** (required): Line number (1-indexed)
+- **column** (required): Column number (1-indexed)
+- **type** (optional): 'definition' (default), 'type', or 'implementation'
+
+## Definition Types
+- **definition**: Where the symbol is declared/defined
+- **type**: The type definition of a variable
+- **implementation**: Concrete implementations of interfaces/abstract methods
+
+## Returns
+File path and position of the definition(s).`,
   requiresApproval: false,
   category: 'code-intelligence',
   riskLevel: 'safe',

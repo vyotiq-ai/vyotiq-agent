@@ -66,48 +66,56 @@ interface GrepArgs extends Record<string, unknown> {
   head_limit?: number;
   /** Enable multiline mode where . matches newlines */
   multiline?: boolean;
-  /** @deprecated Use path instead */
-  file?: string;
-  /** @deprecated Use '-B'/'-A' instead */
-  before?: number;
-  /** @deprecated Use '-B'/'-A' instead */
-  after?: number;
-  /** @deprecated Use '-i' instead */
-  flags?: string;
 }
 
 export const grepTool: ToolDefinition<GrepArgs> = {
   name: 'grep',
-  description: `A powerful search tool built on ripgrep-style pattern matching.
+  description: `A powerful search tool built on ripgrep-style pattern matching. Use this to search file contents.
 
-IMPORTANT: ALWAYS use this Grep tool for search tasks. NEVER invoke \`grep\` or \`rg\` as a terminal command. The Grep tool has been optimized for correct permissions and access.
+## IMPORTANT
+ALWAYS use this Grep tool for search tasks. NEVER invoke \`grep\` or \`rg\` as a terminal command. The Grep tool has been optimized for correct permissions and access.
 
-Usage:
-- Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
-- Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
-- Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
-- Pattern syntax: Uses ripgrep-style matching - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)
-- Multiline matching: By default patterns match within single lines only. For cross-line patterns like \`struct \\{[\\s\\S]*?field\`, use \`multiline: true\`
+## When to Use
+- **Find code patterns**: function declarations, imports, class definitions
+- **Search for text**: error messages, comments, strings
+- **Locate usages**: find where a function/variable is used
+- **Code review**: find TODOs, FIXMEs, console.logs
 
-Parameters:
-- pattern (required): The regular expression pattern to search for in file contents
-- path (optional): File or directory to search in. Defaults to workspace root
-- glob (optional): Glob pattern to filter files (e.g., "*.js", "*.{ts,tsx}")
-- output_mode (optional): "content" | "files_with_matches" | "count". Default: "files_with_matches"
-- -B (optional): Number of lines to show before each match. Requires output_mode: "content"
-- -A (optional): Number of lines to show after each match. Requires output_mode: "content"
-- -C (optional): Number of lines to show before AND after each match. Requires output_mode: "content"
-- -n (optional): Show line numbers in output. Requires output_mode: "content"
-- -i (optional): Case insensitive search
-- type (optional): File type to search (js, py, rust, go, java, etc.). More efficient than glob for standard file types
-- head_limit (optional): Limit output to first N lines/entries
-- multiline (optional): Enable multiline mode where . matches newlines and patterns can span lines`,
+## Output Modes
+- **files_with_matches** (default): Just file paths - fastest, use when you only need to know which files
+- **content**: Shows matching lines with context - use when you need to see the matches
+- **count**: Shows match counts per file - use for statistics
+
+## Key Parameters
+- **pattern** (required): Regex pattern to search for
+- **path**: Directory or file to search (defaults to workspace root)
+- **glob**: Filter files by pattern (e.g., "*.ts", "**/*.tsx")
+- **type**: Filter by file type (js, ts, py, rust, go, etc.)
+- **-i**: Case insensitive search
+- **-C/-B/-A**: Context lines (before/after/both)
+- **-n**: Show line numbers (default: true)
+- **multiline**: Enable patterns that span multiple lines
+
+## Pattern Examples
+- \`function\\s+\\w+\` - Find function declarations
+- \`import.*react\` - Find React imports
+- \`console\\.log\` - Find console.log calls (escape the dot!)
+- \`FIXME|TODO\` - Find todos and fixmes
+- \`class\\s+\\w+\\s+extends\` - Find class inheritance
+
+## Workflow Integration
+Use grep as the first step to discover files, then read them:
+\`\`\`
+grep("pattern") → get file list
+read(files) → understand context
+edit(file, old, new) → make changes
+\`\`\``,
   requiresApproval: false,
   category: 'file-search',
   riskLevel: 'safe',
   allowedCallers: ['direct', 'code_execution'],
   deferLoading: true,
-  searchKeywords: ['search', 'find', 'pattern', 'regex', 'grep', 'match', 'content', 'text search', 'ripgrep', 'rg'],
+  searchKeywords: ['search', 'find', 'pattern', 'regex', 'grep', 'match', 'content', 'text search', 'ripgrep', 'rg', 'locate', 'discover'],
   ui: {
     icon: 'search',
     label: 'Grep',
@@ -126,7 +134,7 @@ Parameters:
     },
     // Example 2: Search with content and context
     {
-      pattern: 'TODO|FIXME',
+      pattern: 'FIXME',
       path: '/home/user/project',
       output_mode: 'content',
       '-B': 2,
@@ -231,16 +239,16 @@ Parameters:
       return {
         toolName: 'grep',
         success: false,
-        output: `═══ INVALID PATTERN ═══\n\nPattern must be a non-empty string.\n\n═══ EXAMPLES ═══\n• "TODO|FIXME" - Find todos and fixmes\n• "function\\s+\\w+" - Find function declarations\n• "import.*react" - Find React imports\n• "console\\.log" - Find console.log calls (escape the dot)`,
+        output: `═══ INVALID PATTERN ═══\n\nPattern must be a non-empty string.\n\n═══ EXAMPLES ═══\n• "FIXME" - Find fixmes\n• "function\\s+\\w+" - Find function declarations\n• "import.*react" - Find React imports\n• "console\\.log" - Find console.log calls (escape the dot)`,
       };
     }
 
-    // Support both new and legacy parameter names
-    const searchPath = args.path?.trim() || args.file?.trim() || '.';
+    // Use new parameter names
+    const searchPath = args.path?.trim() || '.';
     const outputMode = args.output_mode || 'files_with_matches';
-    const caseInsensitive = args['-i'] || (args.flags?.includes('i') ?? false);
-    const beforeContext = args['-C'] ?? args['-B'] ?? args.before ?? 0;
-    const afterContext = args['-C'] ?? args['-A'] ?? args.after ?? 0;
+    const caseInsensitive = args['-i'] || false;
+    const beforeContext = args['-C'] ?? args['-B'] ?? 0;
+    const afterContext = args['-C'] ?? args['-A'] ?? 0;
     const showLineNumbers = args['-n'] !== false; // Default to showing line numbers
     const headLimit = args.head_limit;
     const multiline = args.multiline === true;
@@ -559,6 +567,7 @@ async function collectFiles(
         entry.name === 'node_modules' ||
         entry.name === 'dist' ||
         entry.name === 'build' ||
+        entry.name === 'out' ||
         entry.name === '__pycache__') {
         continue;
       }

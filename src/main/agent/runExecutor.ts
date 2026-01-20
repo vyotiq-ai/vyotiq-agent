@@ -11,6 +11,7 @@ import type {
   PromptSettings,
   ComplianceSettings,
   RoutingDecision,
+  ToolConfigSettings,
 } from '../../shared/types';
 import type { InternalSession, AgenticContext } from './types';
 import type { Logger } from '../logger';
@@ -58,6 +59,7 @@ interface RunExecutorDeps {
   getPromptSettings?: () => PromptSettings | undefined;
   getComplianceSettings?: () => ComplianceSettings | undefined;
   getAccessLevelSettings?: () => AccessLevelSettings | undefined;
+  getToolSettings?: () => ToolConfigSettings | undefined;
   getEditorState?: () => {
     openFiles: string[];
     activeFile: string | null;
@@ -77,8 +79,11 @@ interface RunExecutorDeps {
   getWorkspaceDiagnostics?: () => Promise<{
     diagnostics: Array<{
       filePath: string;
+      fileName: string;
       line: number;
       column: number;
+      endLine?: number;
+      endColumn?: number;
       message: string;
       severity: 'error' | 'warning' | 'info' | 'hint';
       source: 'typescript' | 'eslint';
@@ -106,6 +111,7 @@ export class RunExecutor {
   private readonly getPromptSettings: () => PromptSettings | undefined;
   private readonly getComplianceSettings: () => ComplianceSettings | undefined;
   private readonly getAccessLevelSettings: () => AccessLevelSettings | undefined;
+  private readonly getToolSettings: () => ToolConfigSettings | undefined;
   private readonly getEditorState?: () => {
     openFiles: string[];
     activeFile: string | null;
@@ -125,8 +131,11 @@ export class RunExecutor {
   private readonly getWorkspaceDiagnostics?: () => Promise<{
     diagnostics: Array<{
       filePath: string;
+      fileName: string;
       line: number;
       column: number;
+      endLine?: number;
+      endColumn?: number;
       message: string;
       severity: 'error' | 'warning' | 'info' | 'hint';
       source: 'typescript' | 'eslint';
@@ -186,6 +195,7 @@ export class RunExecutor {
     this.getPromptSettings = deps.getPromptSettings ?? (() => undefined);
     this.getComplianceSettings = deps.getComplianceSettings ?? (() => undefined);
     this.getAccessLevelSettings = deps.getAccessLevelSettings ?? (() => undefined);
+    this.getToolSettings = deps.getToolSettings ?? (() => undefined);
     this.getEditorState = deps.getEditorState;
     this.getWorkspaceDiagnostics = deps.getWorkspaceDiagnostics;
 
@@ -260,7 +270,8 @@ export class RunExecutor {
       this.complianceValidator,
       this.updateSessionState,
       this.getAccessLevelSettings,
-      this.activeControllers
+      this.activeControllers,
+      this.getToolSettings
     );
     this.sessionQueueManager = new SessionQueueManager(
       this.logger,
@@ -961,7 +972,7 @@ export class RunExecutor {
     }
 
     // Record model quality metrics
-    const modelId = session.state.config.selectedModelId || session.state.config.manualOverrideModel;
+    const modelId = session.state.config.selectedModelId;
     const provider = session.agenticContext?.currentProvider || session.state.config.preferredProvider;
     if (modelId && provider && provider !== 'auto') {
       const qualityTracker = getModelQualityTracker();
@@ -1021,7 +1032,7 @@ export class RunExecutor {
     agentMetrics.completeRun(runId, 'error');
 
     // Record model quality metrics for failed run
-    const modelId = session.state.config.selectedModelId || session.state.config.manualOverrideModel;
+    const modelId = session.state.config.selectedModelId;
     const provider = session.agenticContext?.currentProvider || session.state.config.preferredProvider;
     if (modelId && provider && provider !== 'auto') {
       const qualityTracker = getModelQualityTracker();

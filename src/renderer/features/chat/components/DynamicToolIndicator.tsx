@@ -6,7 +6,7 @@
  * - Tooltip with tool info
  * - Lifecycle state
  */
-import React, { useState } from 'react';
+import React, { memo, useState } from 'react';
 import { cn } from '../../../utils/cn';
 
 interface DynamicToolIndicatorProps {
@@ -18,7 +18,7 @@ interface DynamicToolIndicatorProps {
   className?: string;
 }
 
-export const DynamicToolIndicator: React.FC<DynamicToolIndicatorProps> = ({
+const DynamicToolIndicatorComponent: React.FC<DynamicToolIndicatorProps> = ({
   toolName,
   createdBy,
   usageCount = 0,
@@ -150,3 +150,5 @@ export const DynamicToolIndicator: React.FC<DynamicToolIndicatorProps> = ({
     </div>
   );
 };
+
+export const DynamicToolIndicator = memo(DynamicToolIndicatorComponent);

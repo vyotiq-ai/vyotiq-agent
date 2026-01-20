@@ -10,9 +10,11 @@
  * - Search by keywords, name, or description
  * - Session-scoped tool loading (discovered tools stay loaded for session)
  * - Token savings tracking
+ * - Integration with ToolContextManager for session state persistence
  */
 
 import type { ToolDefinition, ToolCategory } from '../types';
+import { addDiscoveredTools } from '../../agent/context/ToolContextManager';
 
 // =============================================================================
 // Types
@@ -541,6 +543,13 @@ export function createToolSearchTool(manager: ToolSearchManager): ToolDefinition
         };
       }
       
+      // Add discovered tools to ToolContextManager's session state
+      // This ensures they persist for the entire session and are included in tool selection
+      const discoveredToolNames = tools.map(t => t.name);
+      if (sessionId && discoveredToolNames.length > 0) {
+        addDiscoveredTools(sessionId, discoveredToolNames);
+      }
+      
       // Format results for LLM
       const lines = [
         `Found ${result.results.length} tools matching "${query}":`,
@@ -566,7 +575,7 @@ export function createToolSearchTool(manager: ToolSearchManager): ToolDefinition
         metadata: {
           query,
           matchCount: result.results.length,
-          loadedTools: tools.map(t => t.name),
+          loadedTools: discoveredToolNames,
           tokenSavings: result.tokenSavings,
         },
       };

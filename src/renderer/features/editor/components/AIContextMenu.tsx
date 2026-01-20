@@ -182,8 +182,8 @@ export const AIContextMenu: React.FC<AIContextMenuProps> = memo(({
       ref={menuRef}
       className={cn(
         'fixed z-[60] min-w-[160px] max-w-[220px] max-h-[60vh] overflow-y-auto',
-        'bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)]',
-        'shadow-2xl font-mono text-[11px]',
+        'bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]/60',
+        'rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.25)] font-mono text-[11px]',
         'animate-in fade-in-0 slide-in-from-top-1 duration-100',
         'scrollbar-thin scrollbar-thumb-[var(--color-border-subtle)] scrollbar-track-transparent'
       )}
@@ -192,7 +192,7 @@ export const AIContextMenu: React.FC<AIContextMenuProps> = memo(({
       aria-label="AI actions menu"
     >
       {/* Header */}
-      <div className="sticky top-0 px-2.5 py-1.5 bg-[var(--color-surface-base)] border-b border-[var(--color-border-subtle)]">
+      <div className="sticky top-0 px-2.5 py-1.5 bg-[var(--color-surface-1)] border-b border-[var(--color-border-subtle)]/30 rounded-t-lg">
         <div className="flex items-center gap-1.5">
           <Sparkles size={10} className="text-[var(--color-accent-primary)]" />
           <span className="text-[var(--color-text-muted)] text-[9px] uppercase tracking-wide">
@@ -215,7 +215,7 @@ export const AIContextMenu: React.FC<AIContextMenuProps> = memo(({
               <button
                 type="button"
                 className={cn(
-                  'w-full flex items-center gap-2 px-2.5 py-1 text-left transition-colors duration-75',
+                  'w-full flex items-center gap-2 px-2.5 py-1.5 text-left transition-colors duration-75',
                   'focus-visible:outline-none focus-visible:bg-[var(--color-surface-2)]',
                   isDisabled 
                     ? 'text-[var(--color-text-dim)] cursor-not-allowed' 
@@ -243,7 +243,7 @@ export const AIContextMenu: React.FC<AIContextMenuProps> = memo(({
                 <span className="flex-1 truncate">{item.label}</span>
               </button>
               {item.divider && (
-                <div className="my-0.5 mx-2 border-t border-[var(--color-border-subtle)]/50" />
+                <div className="my-1 mx-2 border-t border-[var(--color-border-subtle)]/40" />
               )}
             </React.Fragment>
           );
@@ -252,7 +252,7 @@ export const AIContextMenu: React.FC<AIContextMenuProps> = memo(({
 
       {/* Footer hint */}
       {!hasSelection && (
-        <div className="sticky bottom-0 px-2.5 py-1 bg-[var(--color-surface-base)] border-t border-[var(--color-border-subtle)]">
+        <div className="sticky bottom-0 px-2.5 py-1.5 bg-[var(--color-surface-1)] border-t border-[var(--color-border-subtle)]/30 rounded-b-lg">
           <span className="text-[9px] text-[var(--color-text-placeholder)]">
             select code for more actions
           </span>

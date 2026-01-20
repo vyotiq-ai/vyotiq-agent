@@ -74,8 +74,17 @@ export class LSPManager extends EventEmitter {
   
   private clients = new Map<SupportedLanguage, LSPClient>();
   private startingClients = new Set<SupportedLanguage>();
+  private failedClients = new Map<SupportedLanguage, number>(); // Track failed start attempts
   private diagnosticsCache = new Map<string, DiagnosticsCache>();
   private installedServers = new Set<SupportedLanguage>();
+  
+  // Rate limiting for "server not installed" warnings
+  private serverNotInstalledWarnings = new Map<SupportedLanguage, number>();
+  private static readonly WARNING_COOLDOWN_MS = 600000; // 10 minutes between warnings (increased from 5)
+  private static readonly FAILED_START_COOLDOWN_MS = 600000; // 10 minutes between retry attempts (increased from 5)
+  
+  // Track permanently disabled servers to avoid repeated attempts
+  private permanentlyDisabledServers = new Set<SupportedLanguage>();
 
   constructor(logger: Logger, config: Partial<LSPManagerConfig> = {}) {
     super();
@@ -88,6 +97,11 @@ export class LSPManager extends EventEmitter {
    */
   async initialize(workspacePath: string): Promise<void> {
     this.workspacePath = workspacePath;
+    
+    // Reset state when initializing for a new workspace
+    this.permanentlyDisabledServers.clear();
+    this.failedClients.clear();
+    this.serverNotInstalledWarnings.clear();
     
     // Check which servers are installed
     await this.detectInstalledServers();
@@ -160,9 +174,27 @@ export class LSPManager extends EventEmitter {
     if (this.startingClients.has(language)) {
       return false; // Already starting
     }
+    
+    // Check if this server is permanently disabled (e.g., TypeScript not installed)
+    if (this.permanentlyDisabledServers.has(language)) {
+      return false; // Silently skip - already logged once
+    }
+
+    // Check if we recently failed to start this server
+    const lastFailure = this.failedClients.get(language);
+    if (lastFailure && Date.now() - lastFailure < LSPManager.FAILED_START_COOLDOWN_MS) {
+      // Silently skip - we already logged the error
+      return false;
+    }
 
     if (!this.installedServers.has(language)) {
-      this.logger.warn(`Server not installed: ${language}`);
+      // Rate-limit "server not installed" warnings to avoid log spam
+      const lastWarning = this.serverNotInstalledWarnings.get(language) || 0;
+      const now = Date.now();
+      if (now - lastWarning > LSPManager.WARNING_COOLDOWN_MS) {
+        this.logger.warn(`Server not installed: ${language}`);
+        this.serverNotInstalledWarnings.set(language, now);
+      }
       return false;
     }
 
@@ -205,14 +237,32 @@ export class LSPManager extends EventEmitter {
       
       if (started) {
         this.clients.set(language, client);
+        this.failedClients.delete(language); // Clear failure tracking on success
         this.logger.info(`Started ${language} language server`);
+      } else {
+        // Track the failure to avoid repeated attempts
+        this.failedClients.set(language, Date.now());
       }
 
       return started;
     } catch (error) {
-      this.logger.error(`Failed to start ${language} server`, {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      // Track the failure to avoid repeated attempts
+      this.failedClients.set(language, Date.now());
+      
+      // Check if this is a permanent failure (TypeScript not installed)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isTypeScriptNotInstalled = errorMessage.includes('TypeScript not installed') ||
+                                        errorMessage.includes('Could not find a valid TypeScript');
+      
+      if (isTypeScriptNotInstalled) {
+        // Mark as permanently disabled to avoid repeated attempts
+        this.permanentlyDisabledServers.add(language);
+        this.logger.info(`LSP server ${language} permanently disabled: TypeScript not installed in workspace`);
+      } else {
+        this.logger.error(`Failed to start ${language} server`, {
+          error: errorMessage,
+        });
+      }
       return false;
     } finally {
       this.startingClients.delete(language);
@@ -640,9 +690,11 @@ export class LSPManager extends EventEmitter {
     source: string
   ): NormalizedDiagnostic[] {
     const filePath = fileURLToPath(uri);
+    const fileName = filePath.split(/[/\\]/).pop() || filePath;
     
     return diagnostics.map(d => ({
       filePath,
+      fileName,
       line: d.range.start.line + 1,
       column: d.range.start.character + 1,
       endLine: d.range.end.line + 1,

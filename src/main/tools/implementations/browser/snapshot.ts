@@ -323,19 +323,55 @@ async function executeSnapshot(
 
 export const browserSnapshotTool: ToolDefinition<SnapshotArgs> = {
   name: 'browser_snapshot',
-  description: `Capture accessibility snapshot of the page structure.
+  description: `Capture accessibility snapshot of the page structure. Essential for finding elements to interact with.
 
-**Better than screenshots for:**
+## When to Use
+- **Find elements**: Discover interactive elements and their selectors
+- **Understand structure**: See page hierarchy before interacting
+- **Get references**: Obtain ref IDs for use with click/type tools
+- **Debug interactions**: Verify elements exist before clicking
+
+## Workflow Integration
+Use before interactions:
+\`\`\`
+browser_navigate(url) → load page
+browser_snapshot() → see available elements
+[find the ref for target element]
+browser_click([data-vyotiq-ref="e5"]) → interact
+browser_screenshot() → verify result
+\`\`\`
+
+## Form Filling Pattern
+\`\`\`
+browser_navigate("http://localhost:3000/form")
+browser_snapshot(interactiveOnly: true) → see form fields
+browser_fill_form(fields: [...]) → fill using refs
+browser_screenshot() → verify
+\`\`\`
+
+## Better Than Screenshots For
 - Understanding page structure
 - Finding interactive elements
 - Getting element references for interactions
+- Debugging why clicks don't work
 
-**Returns:**
+## Returns
 - Hierarchical tree of elements with roles and names
 - Reference IDs (ref) for use with other browser tools
 - Element states (focused, checked, disabled)
 
-**Use refs in selectors:** [data-vyotiq-ref="e5"]`,
+## Parameters
+- **selector** (optional): Root element to snapshot (default: whole page)
+- **maxDepth** (optional): Maximum depth to traverse (default: 10)
+- **interactiveOnly** (optional): Only include interactive elements
+
+## Using Refs
+Use refs in selectors: \`[data-vyotiq-ref="e5"]\`
+
+## Best Practices
+- Use interactiveOnly: true for forms to reduce noise
+- Use selector to focus on specific page sections
+- Combine with browser_click and browser_type for interactions`,
 
   requiresApproval: false,
   category: 'browser-read',

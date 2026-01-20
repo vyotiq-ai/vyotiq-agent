@@ -106,6 +106,11 @@ class GitService {
     );
   }
 
+  private isNotARepoError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /not a git repository|fatal: not a git repository/i.test(message);
+  }
+
   private isMissingIdentityError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
     return /Please tell me who you are|unable to auto-detect email address|user\.name|user\.email/i.test(
@@ -235,6 +240,15 @@ class GitService {
         isClean: status.isClean(),
       };
     } catch (error) {
+      // Handle "not a git repository" gracefully - this is expected when .git is deleted
+      if (this.isNotARepoError(error)) {
+        this._isRepo = false;
+        logger.debug('Git repository no longer exists', { 
+          error: error instanceof Error ? error.message : String(error) 
+        });
+        return null;
+      }
+      
       logger.error('Failed to get git status', { 
         error: error instanceof Error ? error.message : String(error) 
       });

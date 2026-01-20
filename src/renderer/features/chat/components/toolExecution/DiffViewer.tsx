@@ -1,28 +1,38 @@
 /**
  * DiffViewer Component
  * 
- * Monaco-based inline diff viewer for file changes in chat.
- * Uses Monaco's built-in diff editor - zero new dependencies.
- * 
+ * Modern, semantic diff viewer with enhanced visual design.
  * Features:
- * - Split view: Side-by-side with synchronized scroll
- * - Unified view: Single column, additions/deletions inline (GitHub PR style)
- * - Inline annotations: Hover to see old value without switching views
- * - Collapsible unchanged regions: Show only changed hunks with expandable context
- * - Accept/Reject/Edit actions per change with persistence
+ * - Always shows diffs by default (no collapse on initial render)
+ * - Semantic word-level inline diffs with character-level highlighting  
+ * - Split (Monaco) and unified view modes with smooth transitions
+ * - GitHub-style line highlighting with refined One Dark colors
+ * - Expandable context regions with smart collapse
+ * - Inline syntax highlighting for changed words
+ * - Accept/Reject/Edit actions with persistence and undo
+ * - Keyboard navigation (j/k or arrows) for accessibility
+ * - Clean terminal-friendly styling without +/- prefix symbols
+ * - Responsive design with adaptive width and height
+ * - Loading states with skeleton placeholders
+ * - Copy to clipboard with visual feedback
  */
-import React, { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { memo, useRef, useEffect, useState, useCallback, useMemo, useTransition } from 'react';
 import * as monaco from 'monaco-editor';
 import { 
-  Check, X, Pencil, SplitSquareHorizontal, AlignJustify, 
-  ChevronDown, ChevronUp, Copy, FileText, ExternalLink,
-  RotateCcw
+  Check, X, Pencil, Columns2, AlignLeft,
+  ChevronDown, ChevronUp, ChevronRight, Copy, ExternalLink,
+  RotateCcw, FileCode2, Loader2
 } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 import { useEditor } from '../../../../state/EditorProvider';
 import { getLanguageFromPath } from '../../../editor/utils/languageUtils';
 import { registerCustomThemes } from '../../../editor/utils/themeUtils';
-import { computeDiffStats, computeDiffHunks, computeInlineDiff, type DiffHunk } from './diffUtils';
+import { 
+  computeDiffStats, 
+  buildSemanticDiffLines, 
+  type SemanticDiffLine,
+  type InlineDiffPart
+} from './diffUtils';
 
 // Ensure theme is registered once
 let themeRegistered = false;
@@ -33,7 +43,10 @@ function ensureThemeRegistered() {
   }
 }
 
-// Persistence keys
+// ============================================================================
+// Persistence
+// ============================================================================
+
 const DIFF_VIEW_MODE_KEY = 'vyotiq-diff-view-mode';
 const DIFF_ACTIONS_KEY = 'vyotiq-diff-actions';
 
@@ -44,20 +57,6 @@ interface DiffActionRecord {
   filePath: string;
   state: DiffActionState;
   timestamp: number;
-}
-
-export interface DiffViewerProps {
-  filePath: string;
-  originalContent: string;
-  modifiedContent: string;
-  isNewFile?: boolean;
-  onAccept?: () => void;
-  onReject?: () => void;
-  onEdit?: () => void;
-  actionsDisabled?: boolean;
-  defaultCollapsed?: boolean;
-  maxHeight?: number;
-  diffId?: string;
 }
 
 function getStoredViewMode(): DiffViewMode {
@@ -90,6 +89,7 @@ function setStoredDiffAction(diffId: string, record: DiffActionRecord): void {
     const actions: Record<string, DiffActionRecord> = stored ? JSON.parse(stored) : {};
     actions[diffId] = record;
     
+    // Limit storage to 100 entries
     const entries = Object.entries(actions);
     if (entries.length > 100) {
       entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
@@ -105,6 +105,84 @@ function generateDiffId(filePath: string, original: string, modified: string): s
   return btoa(hash).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
 }
 
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+function getFileName(filePath: string): string {
+  return filePath.split(/[/\\]/).pop() || filePath;
+}
+
+// ============================================================================
+// Props
+// ============================================================================
+
+export interface DiffViewerProps {
+  filePath: string;
+  originalContent: string;
+  modifiedContent: string;
+  isNewFile?: boolean;
+  onAccept?: () => void;
+  onReject?: () => void;
+  onEdit?: () => void;
+  actionsDisabled?: boolean;
+  defaultCollapsed?: boolean;
+  maxHeight?: number;
+  diffId?: string;
+}
+
+// ============================================================================
+// Inline Diff Part Renderer
+// ============================================================================
+
+interface DiffPartRendererProps {
+  parts: InlineDiffPart[];
+  lineType: 'added' | 'removed';
+}
+
+/**
+ * Renders inline word-level diffs with character-level highlighting.
+ * Changed parts are highlighted with background colors matching
+ * the line type (red for removed, green for added).
+ * Uses CSS variables for theme consistency.
+ */
+const DiffPartRenderer: React.FC<DiffPartRendererProps> = memo(({ parts, lineType }) => {
+  if (!parts || parts.length === 0) return null;
+  
+  return (
+    <>
+      {parts.map((part, idx) => {
+        const isHighlighted = part.type !== 'unchanged';
+        return (
+          <span
+            key={idx}
+            className={cn(
+              // Word-level highlight for changed parts
+              isHighlighted && lineType === 'removed' && [
+                'bg-[var(--color-diff-removed-word-bg)]',
+                'text-[var(--color-diff-removed-word-text)]',
+                'rounded-sm px-[2px] -mx-[1px]'
+              ],
+              isHighlighted && lineType === 'added' && [
+                'bg-[var(--color-diff-added-word-bg)]',
+                'text-[var(--color-diff-added-word-text)]',
+                'rounded-sm px-[2px] -mx-[1px]'
+              ]
+            )}
+          >
+            {part.text}
+          </span>
+        );
+      })}
+    </>
+  );
+});
+
+DiffPartRenderer.displayName = 'DiffPartRenderer';
+
+// ============================================================================
+// Main Component
+// ============================================================================
 
 export const DiffViewer: React.FC<DiffViewerProps> = memo(({
   filePath,
@@ -116,17 +194,25 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
   onEdit,
   actionsDisabled = false,
   defaultCollapsed = false,
-  maxHeight = 300,
+  maxHeight = 450,
   diffId: providedDiffId,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
+  const diffContainerRef = useRef<HTMLDivElement>(null);
+  
+  // State
   const [viewMode, setViewMode] = useState<DiffViewMode>(getStoredViewMode);
+  // Initialize collapsed state from prop - respects caller's preference
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [copied, setCopied] = useState(false);
-  const [contextCollapsed, setContextCollapsed] = useState(true);
+  const [expandedRegions, setExpandedRegions] = useState<Set<number>>(new Set());
+  const [focusedLineIdx, setFocusedLineIdx] = useState<number | null>(null);
+  const [isPending, startTransition] = useTransition();
+  
   const { openFile, showEditor, revertFile, tabs, updateContent } = useEditor();
   
+  // Computed values
   const diffId = useMemo(
     () => providedDiffId || generateDiffId(filePath, originalContent, modifiedContent),
     [providedDiffId, filePath, originalContent, modifiedContent]
@@ -139,43 +225,47 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
   
   const language = useMemo(() => getLanguageFromPath(filePath), [filePath]);
   const stats = useMemo(() => computeDiffStats(originalContent, modifiedContent), [originalContent, modifiedContent]);
-  const fileName = useMemo(() => filePath.split('/').pop() || filePath, [filePath]);
+  const fileName = useMemo(() => getFileName(filePath), [filePath]);
   
-  const contextInfo = useMemo(() => {
-    const totalLines = Math.max(originalContent.split('\n').length, modifiedContent.split('\n').length);
-    const changedLines = stats.added + stats.removed + stats.changed;
-    return { totalLines, unchangedLines: totalLines - changedLines };
-  }, [originalContent, modifiedContent, stats]);
+  // Build semantic diff lines for unified view
+  // Use deferred value pattern for large files to prevent UI blocking
+  const diffLines: SemanticDiffLine[] = useMemo(() => {
+    // For very large files, computation is expensive - but useMemo handles caching
+    return buildSemanticDiffLines(originalContent, modifiedContent, 3);
+  }, [originalContent, modifiedContent]);
   
-  // Compute diff hunks for unified view
-  const diffHunks: DiffHunk[] = useMemo(() => 
-    computeDiffHunks(originalContent, modifiedContent, 3),
-    [originalContent, modifiedContent]
-  );
+  // Track if file is large for performance warnings
+  const isLargeFile = originalContent.length > 50000 || modifiedContent.length > 50000;
   
-  // Track expanded context regions
-  const [expandedRegions, setExpandedRegions] = useState<Set<number>>(new Set());
-  
-  // Inline annotation hover state
-  const [hoveredLine, setHoveredLine] = useState<{ lineNum: number; oldValue: string } | null>(null);
-  
+  // Handlers - use startTransition for non-urgent updates to prevent UI blocking
   const handleViewModeToggle = useCallback(() => {
-    const newMode = viewMode === 'split' ? 'unified' : 'split';
-    setViewMode(newMode);
-    setStoredViewMode(newMode);
-  }, [viewMode]);
+    startTransition(() => {
+      const newMode = viewMode === 'split' ? 'unified' : 'split';
+      setViewMode(newMode);
+      setStoredViewMode(newMode);
+    });
+  }, [viewMode, startTransition]);
   
   const toggleRegionExpanded = useCallback((regionIdx: number) => {
-    setExpandedRegions(prev => {
-      const next = new Set(prev);
-      if (next.has(regionIdx)) {
-        next.delete(regionIdx);
-      } else {
-        next.add(regionIdx);
-      }
-      return next;
+    startTransition(() => {
+      setExpandedRegions(prev => {
+        const next = new Set(prev);
+        if (next.has(regionIdx)) {
+          next.delete(regionIdx);
+        } else {
+          next.add(regionIdx);
+        }
+        return next;
+      });
     });
-  }, []);
+  }, [startTransition]);
+  
+  // Toggle collapsed state with smooth transition
+  const toggleCollapsed = useCallback(() => {
+    startTransition(() => {
+      setIsCollapsed(prev => !prev);
+    });
+  }, [startTransition]);
   
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(modifiedContent);
@@ -231,13 +321,31 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
     setActionState('pending');
     setStoredDiffAction(diffId, { filePath, state: 'pending', timestamp: Date.now() });
   }, [diffId, filePath]);
-
   
+  // Keyboard navigation for diff lines (accessibility)
+  const handleKeyNavigation = useCallback((e: React.KeyboardEvent) => {
+    if (viewMode !== 'unified' || isCollapsed) return;
+    
+    const changeLines = diffLines.filter(l => l.type === 'added' || l.type === 'removed');
+    if (changeLines.length === 0) return;
+    
+    if (e.key === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const currentIdx = focusedLineIdx ?? -1;
+      const nextIdx = Math.min(currentIdx + 1, changeLines.length - 1);
+      setFocusedLineIdx(nextIdx);
+    } else if (e.key === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const currentIdx = focusedLineIdx ?? changeLines.length;
+      const prevIdx = Math.max(currentIdx - 1, 0);
+      setFocusedLineIdx(prevIdx);
+    }
+  }, [viewMode, isCollapsed, diffLines, focusedLineIdx]);
+
+  // Monaco editor for split view
   useEffect(() => {
-    // Only use Monaco for split view
     if (!containerRef.current || isCollapsed || viewMode === 'unified') return;
     
-    // Ensure theme is registered before creating editor
     ensureThemeRegistered();
     
     const timestamp = Date.now();
@@ -262,22 +370,45 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
       minimap: { enabled: false },
       lineNumbers: 'on',
       glyphMargin: false,
-      folding: contextCollapsed,
+      folding: true,
       lineDecorationsWidth: 0,
       lineNumbersMinChars: 3,
       scrollbar: {
         vertical: 'auto',
         horizontal: 'auto',
-        verticalScrollbarSize: 8,
-        horizontalScrollbarSize: 8,
+        verticalScrollbarSize: 6,
+        horizontalScrollbarSize: 6,
       },
       fontSize: 11,
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-      padding: { top: 4, bottom: 4 },
+      padding: { top: 8, bottom: 8 },
       diffWordWrap: 'on',
       renderWhitespace: 'none',
       useInlineViewWhenSpaceIsLimited: false,
       diffAlgorithm: 'advanced',
+      // Unicode highlighting - consistent with MonacoEditor
+      unicodeHighlight: {
+        ambiguousCharacters: false,
+        invisibleCharacters: true,
+        nonBasicASCII: false,
+        includeComments: false,
+        includeStrings: false,
+        allowedCharacters: {
+          '\u251C': true, '\u2502': true, '\u2514': true, '\u2500': true, '\u250C': true, '\u2510': true,
+          '\u2518': true, '\u2524': true, '\u252C': true, '\u2534': true, '\u253C': true,
+          '\u2554': true, '\u2557': true, '\u255A': true, '\u255D': true, '\u2551': true, '\u2550': true,
+          '\u2192': true, '\u2190': true, '\u2191': true, '\u2193': true, '\u21D2': true, '\u21D0': true,
+          '\u2713': true, '\u2717': true, '\u2714': true, '\u2718': true,
+          '\u2022': true, '\u25E6': true, '\u25AA': true, '\u25AB': true,
+          '\u00A9': true, '\u00AE': true, '\u2122': true,
+          '\u00B0': true, '\u00B1': true, '\u00D7': true, '\u00F7': true,
+          '\u2026': true, '\u2014': true, '\u2013': true,
+          '\u2018': true, '\u2019': true, '\u201C': true, '\u201D': true,
+          '\u00AB': true, '\u00BB': true,
+          '\u20AC': true, '\u00A3': true, '\u00A5': true,
+        },
+        allowedLocales: { _os: true, _vscode: true },
+      },
     });
     
     try {
@@ -292,174 +423,98 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
       modifiedModel.dispose();
       editorRef.current = null;
     };
-  }, [originalContent, modifiedContent, language, viewMode, isCollapsed, contextCollapsed]);
-  
-  useEffect(() => {
-    if (editorRef.current && viewMode === 'split') {
-      editorRef.current.updateOptions({ renderSideBySide: true });
-    }
-  }, [viewMode]);
+  }, [originalContent, modifiedContent, language, viewMode, isCollapsed]);
 
-  const showActions = (onAccept || onReject || onEdit) && actionState === 'pending';
-  const showActionFeedback = actionState !== 'pending';
-  
-  // Render unified diff view (GitHub PR style)
+  // Render unified diff view
   const renderUnifiedDiff = useCallback(() => {
     const originalLines = originalContent.split('\n');
-    const modifiedLines = modifiedContent.split('\n');
-    
-    // Build unified diff display
-    const diffLines: Array<{
-      type: 'context' | 'added' | 'removed' | 'hunk-header' | 'expand';
-      content: string;
-      oldLineNum?: number;
-      newLineNum?: number;
-      inlineDiff?: { oldParts: Array<{ text: string; changed: boolean }>; newParts: Array<{ text: string; changed: boolean }> };
-      expandInfo?: { before: number; after: number; regionIdx: number };
-    }> = [];
-    
-    let lastOrigEnd = 0;
-    let lastModEnd = 0;
-    
-    diffHunks.forEach((hunk, hunkIdx) => {
-      // Add collapsed region indicator if there's a gap
-      const gapOrig = hunk.originalStart - lastOrigEnd;
-      const gapMod = hunk.modifiedStart - lastModEnd;
-      
-      if (gapOrig > 0 || gapMod > 0) {
-        const gapLines = Math.max(gapOrig, gapMod);
-        if (gapLines > 0 && !expandedRegions.has(hunkIdx)) {
-          diffLines.push({
-            type: 'expand',
-            content: `${gapLines} unchanged line${gapLines !== 1 ? 's' : ''}`,
-            expandInfo: { before: lastOrigEnd, after: hunk.originalStart, regionIdx: hunkIdx }
-          });
-        } else if (expandedRegions.has(hunkIdx)) {
-          // Show expanded context
-          for (let i = lastOrigEnd; i < hunk.originalStart; i++) {
-            diffLines.push({
-              type: 'context',
-              content: originalLines[i] || '',
-              oldLineNum: i + 1,
-              newLineNum: lastModEnd + (i - lastOrigEnd) + 1
-            });
-          }
-        }
-      }
-      
-      // Add hunk header
-      diffLines.push({
-        type: 'hunk-header',
-        content: `@@ -${hunk.originalStart + 1},${hunk.originalEnd - hunk.originalStart} +${hunk.modifiedStart + 1},${hunk.modifiedEnd - hunk.modifiedStart} @@`
-      });
-      
-      // Process hunk lines - interleave removed and added for better readability
-      const origHunkLines = hunk.originalLines;
-      const modHunkLines = hunk.modifiedLines;
-      
-      // Find matching pairs for inline diff
-      let origIdx = 0;
-      let modIdx = 0;
-      
-      while (origIdx < origHunkLines.length || modIdx < modHunkLines.length) {
-        const origLine = origIdx < origHunkLines.length ? origHunkLines[origIdx] : null;
-        const modLine = modIdx < modHunkLines.length ? modHunkLines[modIdx] : null;
-        
-        // Check if lines are equal (context)
-        if (origLine !== null && modLine !== null && origLine === modLine) {
-          diffLines.push({
-            type: 'context',
-            content: origLine,
-            oldLineNum: hunk.originalStart + origIdx + 1,
-            newLineNum: hunk.modifiedStart + modIdx + 1
-          });
-          origIdx++;
-          modIdx++;
-        } else {
-          // Show removed lines first, then added
-          if (origLine !== null && (modLine === null || origLine !== modLine)) {
-            const inlineDiff = modLine !== null ? computeInlineDiff(origLine, modLine) : undefined;
-            diffLines.push({
-              type: 'removed',
-              content: origLine,
-              oldLineNum: hunk.originalStart + origIdx + 1,
-              inlineDiff
-            });
-            origIdx++;
-          }
-          if (modLine !== null && (origLine === null || origLine !== modLine)) {
-            const inlineDiff = origLine !== null ? computeInlineDiff(origHunkLines[origIdx - 1] || '', modLine) : undefined;
-            diffLines.push({
-              type: 'added',
-              content: modLine,
-              newLineNum: hunk.modifiedStart + modIdx + 1,
-              inlineDiff
-            });
-            modIdx++;
-          }
-        }
-      }
-      
-      lastOrigEnd = hunk.originalEnd;
-      lastModEnd = hunk.modifiedEnd;
-    });
-    
-    // Add trailing collapsed region
-    const trailingOrig = originalLines.length - lastOrigEnd;
-    const trailingMod = modifiedLines.length - lastModEnd;
-    const trailingGap = Math.max(trailingOrig, trailingMod);
-    
-    if (trailingGap > 0 && !expandedRegions.has(diffHunks.length)) {
-      diffLines.push({
-        type: 'expand',
-        content: `${trailingGap} unchanged line${trailingGap !== 1 ? 's' : ''}`,
-        expandInfo: { before: lastOrigEnd, after: originalLines.length, regionIdx: diffHunks.length }
-      });
-    } else if (expandedRegions.has(diffHunks.length) && trailingGap > 0) {
-      for (let i = lastOrigEnd; i < originalLines.length; i++) {
-        diffLines.push({
-          type: 'context',
-          content: originalLines[i] || '',
-          oldLineNum: i + 1,
-          newLineNum: lastModEnd + (i - lastOrigEnd) + 1
-        });
-      }
-    }
+    let expandRegionCounter = 0;
     
     return (
       <div 
-        className="font-mono text-[11px] leading-relaxed overflow-auto scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent"
+        className="font-mono text-[11px] leading-[1.65] overflow-auto scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent"
         style={{ maxHeight }}
       >
         {diffLines.map((line, idx) => {
+          // Expand button for collapsed regions
           if (line.type === 'expand') {
+            const regionIdx = expandRegionCounter++;
+            const isExpanded = expandedRegions.has(regionIdx);
+            
+            if (isExpanded && line.expandInfo) {
+              // Show expanded lines
+              const expandedLines: React.ReactNode[] = [];
+              for (let i = line.expandInfo.startLine; i < line.expandInfo.endLine; i++) {
+                const contextLine = originalLines[i] || '';
+                expandedLines.push(
+                  <div
+                    key={`expanded-${i}`}
+                    className="flex items-stretch hover:bg-[var(--color-surface-2)]/20"
+                  >
+                    {/* Line numbers for expanded context */}
+                    <div className="flex-shrink-0 w-[68px] flex select-none">
+                      <span className="w-[34px] text-right pr-2 py-px text-[9px] text-[var(--color-text-dim)]/35 tabular-nums font-medium border-r border-[var(--color-border-subtle)]/10">
+                        {i + 1}
+                      </span>
+                      <span className="w-[34px] text-right pr-2 py-px text-[9px] text-[var(--color-text-dim)]/35 tabular-nums font-medium border-r border-[var(--color-border-subtle)]/10">
+                        {i + 1}
+                      </span>
+                    </div>
+                    {/* Empty change indicator */}
+                    <div className="flex-shrink-0 w-[3px]" />
+                    {/* Content */}
+                    <div className="flex-1 px-3 py-px whitespace-pre overflow-x-auto text-[var(--color-text-secondary)]/55 leading-[1.65]">
+                      {contextLine || '\u00A0'}
+                    </div>
+                  </div>
+                );
+              }
+              
+              return (
+                <div key={`expand-region-${idx}`}>
+                  <button
+                    type="button"
+                    onClick={() => toggleRegionExpanded(regionIdx)}
+                    className={cn(
+                      'w-full flex items-center justify-center gap-2 py-1.5',
+                      'text-[9px] font-mono text-[var(--color-diff-expand-text)]/70',
+                      'bg-[var(--color-diff-expand-bg)]',
+                      'hover:bg-[var(--color-diff-expand-bg-hover)] hover:text-[var(--color-diff-expand-text)]',
+                      'border-y border-[var(--color-diff-expand-border)] transition-colors duration-100',
+                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-diff-expand-text)]/30'
+                    )}
+                    aria-expanded={true}
+                    aria-label="Collapse expanded lines"
+                  >
+                    <ChevronUp size={10} className="opacity-70" />
+                    <span className="tracking-wide">collapse</span>
+                    <ChevronUp size={10} className="opacity-70" />
+                  </button>
+                  {expandedLines}
+                </div>
+              );
+            }
+            
             return (
               <button
-                key={idx}
+                key={`expand-${idx}`}
                 type="button"
-                onClick={() => line.expandInfo && toggleRegionExpanded(line.expandInfo.regionIdx)}
+                onClick={() => toggleRegionExpanded(regionIdx)}
                 className={cn(
-                  'w-full flex items-center justify-center gap-2 py-1 px-3',
-                  'text-[9px] font-mono text-[var(--color-text-muted)]',
-                  'bg-[var(--color-surface-1)]/30 hover:bg-[var(--color-surface-2)]/50',
-                  'border-y border-[var(--color-border-subtle)]/30 transition-colors'
+                  'w-full flex items-center justify-center gap-2 py-1.5',
+                  'text-[9px] font-mono text-[var(--color-diff-expand-text)]/70',
+                  'bg-[var(--color-diff-expand-bg)]',
+                  'hover:bg-[var(--color-diff-expand-bg-hover)] hover:text-[var(--color-diff-expand-text)]',
+                  'border-y border-[var(--color-diff-expand-border)]',
+                  'transition-all duration-100 cursor-pointer',
+                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-diff-expand-text)]/30'
                 )}
+                aria-label={`Expand ${line.expandInfo?.count || 0} unchanged lines`}
               >
-                <ChevronDown size={10} />
-                <span>{line.content}</span>
-                <ChevronDown size={10} />
+                <ChevronDown size={10} className="opacity-70" />
+                <span className="tracking-wide">{line.content}</span>
+                <ChevronDown size={10} className="opacity-70" />
               </button>
-            );
-          }
-          
-          if (line.type === 'hunk-header') {
-            return (
-              <div
-                key={idx}
-                className="px-3 py-0.5 text-[9px] text-[var(--color-info)] bg-[var(--color-info)]/5 border-y border-[var(--color-border-subtle)]/20"
-              >
-                {line.content}
-              </div>
             );
           }
           
@@ -467,220 +522,272 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
           const isAdded = line.type === 'added';
           const isContext = line.type === 'context';
           
+          // Check if this line is focused (for keyboard navigation)
+          const changeLineIndex = diffLines
+            .slice(0, idx)
+            .filter(l => l.type === 'added' || l.type === 'removed').length;
+          const isFocused = (isAdded || isRemoved) && focusedLineIdx === changeLineIndex;
+          
           return (
             <div
               key={idx}
               className={cn(
-                'flex items-stretch group relative',
-                isRemoved && 'bg-[#e06c75]/8',
-                isAdded && 'bg-[#98c379]/8',
-                isContext && 'hover:bg-[var(--color-surface-2)]/30'
+                'flex items-stretch group/line border-b border-[var(--color-border-subtle)]/10',
+                // Line background colors using CSS variables
+                isRemoved && 'bg-[var(--color-diff-removed-bg)] hover:bg-[var(--color-diff-removed-bg-hover)]',
+                isAdded && 'bg-[var(--color-diff-added-bg)] hover:bg-[var(--color-diff-added-bg-hover)]',
+                isContext && 'hover:bg-[var(--color-surface-2)]/20',
+                // Focus ring for keyboard navigation
+                isFocused && 'ring-1 ring-inset ring-[var(--color-accent-primary)]/50 bg-[var(--color-accent-primary)]/[0.05]'
               )}
-              onMouseEnter={() => {
-                if (isAdded && line.inlineDiff) {
-                  const oldValue = line.inlineDiff.oldParts.map(p => p.text).join('');
-                  if (oldValue.trim()) {
-                    setHoveredLine({ lineNum: line.newLineNum || 0, oldValue });
-                  }
-                }
-              }}
-              onMouseLeave={() => setHoveredLine(null)}
+              role={isAdded || isRemoved ? 'row' : undefined}
+              aria-label={isAdded ? `Added: ${line.content}` : isRemoved ? `Removed: ${line.content}` : undefined}
             >
-              {/* Line numbers */}
-              <div className="flex-shrink-0 w-[60px] flex text-[9px] text-[var(--color-text-dim)] select-none border-r border-[var(--color-border-subtle)]/20">
+              {/* Line numbers - dual column gutter with semantic coloring */}
+              <div className="flex-shrink-0 w-[68px] flex select-none" aria-hidden="true">
                 <span className={cn(
-                  'w-[30px] text-right pr-1',
-                  isRemoved && 'bg-[#e06c75]/15'
+                  'w-[34px] text-right pr-2 py-px text-[9px] tabular-nums font-medium',
+                  'border-r border-[var(--color-border-subtle)]/10',
+                  isRemoved ? 'text-[var(--color-diff-removed-text)] bg-[var(--color-diff-removed-gutter-bg)]' : 'text-[var(--color-text-dim)]/40'
                 )}>
                   {line.oldLineNum || ''}
                 </span>
                 <span className={cn(
-                  'w-[30px] text-right pr-1',
-                  isAdded && 'bg-[#98c379]/15'
+                  'w-[34px] text-right pr-2 py-px text-[9px] tabular-nums font-medium',
+                  'border-r border-[var(--color-border-subtle)]/10',
+                  isAdded ? 'text-[var(--color-diff-added-text)] bg-[var(--color-diff-added-gutter-bg)]' : 'text-[var(--color-text-dim)]/40'
                 )}>
                   {line.newLineNum || ''}
                 </span>
               </div>
               
-              {/* Change indicator */}
+              {/* Change indicator bar - colored vertical stripe for visual scanning */}
               <div className={cn(
-                'flex-shrink-0 w-[20px] text-center select-none',
-                isRemoved && 'text-[var(--color-error)] bg-[#e06c75]/10',
-                isAdded && 'text-[var(--color-success)] bg-[#98c379]/10',
-                isContext && 'text-[var(--color-text-dim)]'
-              )}>
-                {isRemoved ? '-' : isAdded ? '+' : ' '}
-              </div>
+                'flex-shrink-0 w-[4px]',
+                isRemoved && 'bg-[var(--color-diff-removed-indicator)]',
+                isAdded && 'bg-[var(--color-diff-added-indicator)]'
+              )} />
               
-              {/* Line content */}
+              {/* Line content with inline diff highlighting */}
               <div className={cn(
-                'flex-1 px-2 whitespace-pre overflow-x-auto',
-                isRemoved && 'text-[var(--color-text-secondary)]',
-                isAdded && 'text-[var(--color-text-primary)]',
-                isContext && 'text-[var(--color-text-secondary)]'
+                'flex-1 px-3 py-px whitespace-pre overflow-x-auto leading-[1.65]',
+                isRemoved && 'text-[var(--color-diff-removed-text-content)]',
+                isAdded && 'text-[var(--color-diff-added-text-content)]',
+                isContext && 'text-[var(--color-text-secondary)]/60'
               )}>
                 {line.inlineDiff && (isAdded || isRemoved) ? (
-                  <span>
-                    {(isRemoved ? line.inlineDiff.oldParts : line.inlineDiff.newParts).map((part, pIdx) => (
-                      <span
-                        key={pIdx}
-                        className={cn(
-                          part.changed && isRemoved && 'bg-[#e06c75]/25 rounded-sm',
-                          part.changed && isAdded && 'bg-[#98c379]/25 rounded-sm'
-                        )}
-                      >
-                        {part.text}
-                      </span>
-                    ))}
-                  </span>
+                  <DiffPartRenderer 
+                    parts={isRemoved ? line.inlineDiff.oldParts : line.inlineDiff.newParts}
+                    lineType={isRemoved ? 'removed' : 'added'}
+                  />
                 ) : (
                   line.content || '\u00A0'
                 )}
               </div>
-              
-              {/* Inline annotation tooltip */}
-              {hoveredLine && hoveredLine.lineNum === line.newLineNum && isAdded && (
-                <div className="absolute right-2 z-10 px-2 py-1 rounded bg-[var(--color-surface-3)] border border-[var(--color-border-default)] shadow-lg text-[9px] text-[var(--color-text-muted)] max-w-[200px] truncate">
-                  <span className="text-[var(--color-text-dim)]">was: </span>
-                  <span className="text-[var(--color-error)]">{hoveredLine.oldValue}</span>
-                </div>
-              )}
             </div>
           );
         })}
       </div>
     );
-  }, [originalContent, modifiedContent, diffHunks, expandedRegions, maxHeight, hoveredLine, toggleRegionExpanded]);
+  }, [originalContent, diffLines, expandedRegions, maxHeight, toggleRegionExpanded, focusedLineIdx]);
 
+  // Computed flags
+  const showActions = (onAccept || onReject || onEdit) && actionState === 'pending';
+  const showActionFeedback = actionState !== 'pending';
+  const hasChanges = stats.totalChanges > 0;
 
   return (
-    <div className="ml-4 mt-1.5 mb-2 rounded-lg overflow-hidden border border-[var(--color-border-subtle)]/60 bg-[var(--color-surface-editor)]">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--color-surface-1)]/50 border-b border-[var(--color-border-subtle)]/40">
-        <FileText size={12} className="text-[var(--color-text-muted)] flex-shrink-0" />
-        <span className="text-[10px] font-mono text-[var(--color-text-secondary)] truncate flex-1" title={filePath}>
+    <div className="mt-2 rounded-xl overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)] shadow-[0_6px_20px_rgba(0,0,0,0.18)]">
+      {/* Header bar - clean, modern design */}
+      <div 
+        className={cn(
+          'flex items-center gap-2.5 px-3.5 py-2.5',
+          'bg-gradient-to-r from-[var(--color-surface-1)]/70 via-[var(--color-surface-1)]/60 to-[var(--color-surface-1)]/50',
+          'border-b border-[var(--color-border-subtle)]/30',
+          'font-mono cursor-pointer transition-colors duration-150',
+          'hover:from-[var(--color-surface-1)]/90 hover:via-[var(--color-surface-1)]/80 hover:to-[var(--color-surface-1)]/70'
+        )}
+        onClick={() => toggleCollapsed()}
+        role="button"
+        tabIndex={0}
+        aria-expanded={!isCollapsed}
+        aria-label={`${isNewFile ? 'New file' : 'Modified file'}: ${fileName}. ${stats.added} additions, ${stats.removed} deletions. Press Enter to ${isCollapsed ? 'expand' : 'collapse'}.`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleCollapsed();
+          }
+        }}
+      >
+        {/* Expand/collapse indicator - ChevronRight when collapsed, ChevronDown when expanded */}
+        <span 
+          className={cn(
+            'text-[var(--color-text-dim)] flex-shrink-0 transition-transform duration-150',
+            isPending && 'opacity-50'
+          )} 
+          aria-hidden="true"
+        >
+          {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+        </span>
+        
+        {/* File icon with status color */}
+        <FileCode2 
+          size={13} 
+          className={cn(
+            'flex-shrink-0',
+            isNewFile ? 'text-[var(--color-diff-added-text)]' : 'text-[var(--color-diff-expand-text)]'
+          )} 
+          aria-hidden="true" 
+        />
+        
+        {/* File name (prominent) */}
+        <span className="text-[11px] font-medium text-[var(--color-text-primary)] flex-shrink-0">
           {fileName}
         </span>
         
-        {/* Diff stats */}
-        <div className="flex items-center gap-1.5 text-[9px] font-mono">
-          {stats.added > 0 && <span className="text-[var(--color-success)]">+{stats.added}</span>}
-          {stats.removed > 0 && <span className="text-[var(--color-error)]">-{stats.removed}</span>}
-          {stats.changed > 0 && <span className="text-[var(--color-warning)]">~{stats.changed}</span>}
-          {isNewFile && (
-            <span className="px-1.5 py-0.5 rounded bg-[var(--color-success)]/15 text-[var(--color-success)]">new</span>
-          )}
-        </div>
-        
-        {/* Context toggle */}
-        {contextInfo.unchangedLines > 5 && (
-          <button
-            type="button"
-            onClick={() => setContextCollapsed(!contextCollapsed)}
-            className={cn(
-              'px-1.5 py-0.5 rounded text-[9px] font-mono transition-colors',
-              'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
-              'hover:bg-[var(--color-surface-2)]',
-              !contextCollapsed && 'bg-[var(--color-surface-2)]'
-            )}
-            title={contextCollapsed ? 'Show all context' : 'Hide unchanged context'}
+        {/* File path (subdued) - only show parent directories */}
+        {filePath !== fileName && (
+          <span 
+            className="text-[10px] text-[var(--color-text-dim)]/70 truncate flex-1 min-w-0" 
+            title={filePath}
           >
-            {contextCollapsed ? `+${contextInfo.unchangedLines} lines` : 'hide context'}
-          </button>
+            {filePath.replace(new RegExp(`${fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), '').replace(/[/\\]$/, '')}
+          </span>
         )}
         
-        {/* View mode toggle */}
-        <button
-          type="button"
-          onClick={handleViewModeToggle}
-          className={cn(
-            'p-1 rounded transition-colors',
-            'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
-            'hover:bg-[var(--color-surface-2)]'
-          )}
-          title={viewMode === 'split' ? 'Switch to unified view' : 'Switch to split view'}
-        >
-          {viewMode === 'split' ? <AlignJustify size={12} /> : <SplitSquareHorizontal size={12} />}
-        </button>
+        {/* Spacer when no path */}
+        {filePath === fileName && <span className="flex-1" />}
         
-        {/* Copy button */}
-        <button
-          type="button"
-          onClick={handleCopy}
-          className={cn(
-            'p-1 rounded transition-colors',
-            'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
-            'hover:bg-[var(--color-surface-2)]'
-          )}
-          title="Copy modified content"
-        >
-          {copied ? <Check size={12} className="text-[var(--color-success)]" /> : <Copy size={12} />}
-        </button>
+        {/* Status badge - minimal pill design */}
+        <span className={cn(
+          'text-[8px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ring-1 ring-inset',
+          isNewFile 
+            ? 'bg-[var(--color-diff-added-text)]/12 text-[var(--color-diff-added-text)] ring-[var(--color-diff-added-text)]/25' 
+            : 'bg-[var(--color-diff-expand-text)]/12 text-[var(--color-diff-expand-text)] ring-[var(--color-diff-expand-text)]/25'
+        )}>
+          {isNewFile ? 'new' : 'modified'}
+        </span>
         
-        {/* Open in editor */}
-        <button
-          type="button"
-          onClick={handleOpenFile}
-          className={cn(
-            'p-1 rounded transition-colors',
-            'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
-            'hover:bg-[var(--color-surface-2)]'
-          )}
-          title="Open in editor"
-        >
-          <ExternalLink size={12} />
-        </button>
+        {/* Diff stats - clean monospace display */}
+        {hasChanges && (
+          <span className="text-[10px] flex-shrink-0 flex items-center gap-2 font-mono tabular-nums">
+            {stats.added > 0 && (
+              <span className="text-[var(--color-diff-added-text)] font-semibold">
+                add {stats.added}
+              </span>
+            )}
+            {stats.removed > 0 && (
+              <span className="text-[var(--color-diff-removed-text)] font-semibold">
+                remove {stats.removed}
+              </span>
+            )}
+          </span>
+        )}
         
-        {/* Collapse toggle */}
-        <button
-          type="button"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className={cn(
-            'p-1 rounded transition-colors',
-            'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
-            'hover:bg-[var(--color-surface-2)]'
-          )}
-          title={isCollapsed ? 'Expand diff' : 'Collapse diff'}
+        {/* Action buttons - refined with separator */}
+        <div 
+          className="flex items-center gap-0.5 flex-shrink-0 ml-2 pl-2 border-l border-[var(--color-border-subtle)]/20" 
+          onClick={(e) => e.stopPropagation()}
         >
-          {isCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
-        </button>
+          <button
+            type="button"
+            onClick={handleViewModeToggle}
+            className={cn(
+              'p-1.5 rounded transition-colors duration-100',
+              'text-[var(--color-text-dim)] hover:text-[var(--color-text-primary)]',
+              'hover:bg-[var(--color-surface-2)]/60',
+              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
+            )}
+            title={viewMode === 'split' ? 'Switch to unified view' : 'Switch to split view'}
+            aria-label={viewMode === 'split' ? 'Switch to unified view' : 'Switch to split view'}
+          >
+            {viewMode === 'split' ? <AlignLeft size={12} /> : <Columns2 size={12} />}
+          </button>
+          
+          <button
+            type="button"
+            onClick={handleCopy}
+            className={cn(
+              'p-1.5 rounded transition-colors duration-100',
+              'text-[var(--color-text-dim)] hover:text-[var(--color-text-primary)]',
+              'hover:bg-[var(--color-surface-2)]/60',
+              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
+            )}
+            title="Copy new content"
+            aria-label="Copy new content to clipboard"
+          >
+            {copied ? <Check size={12} className="text-[var(--color-diff-added-text)]" /> : <Copy size={12} />}
+          </button>
+          
+          <button
+            type="button"
+            onClick={handleOpenFile}
+            className={cn(
+              'p-1.5 rounded transition-colors duration-100',
+              'text-[var(--color-text-dim)] hover:text-[var(--color-text-primary)]',
+              'hover:bg-[var(--color-surface-2)]/60',
+              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
+            )}
+            title="Open in editor"
+            aria-label="Open file in editor"
+          >
+            <ExternalLink size={12} />
+          </button>
+        </div>
       </div>
       
-      {/* Diff editor container */}
+      {/* Diff content */}
       {!isCollapsed && (
-        viewMode === 'unified' ? (
-          renderUnifiedDiff()
-        ) : (
-          <div ref={containerRef} style={{ height: maxHeight }} className="w-full" />
-        )
+        <div
+          ref={diffContainerRef}
+          onKeyDown={handleKeyNavigation}
+          tabIndex={viewMode === 'unified' ? 0 : -1}
+          role="region"
+          aria-label="File diff content"
+          className="outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30 focus-visible:ring-inset"
+        >
+          {isPending && isLargeFile && (
+            <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-[var(--color-text-muted)]">
+              <Loader2 size={12} className="animate-spin" />
+              <span>Computing diff...</span>
+            </div>
+          )}
+          {viewMode === 'unified' ? (
+            renderUnifiedDiff()
+          ) : (
+            <div ref={containerRef} style={{ height: maxHeight }} className="w-full" />
+          )}
+        </div>
       )}
-
       
-      {/* Action buttons footer */}
+      {/* Action buttons footer - clean, minimal design */}
       {!isCollapsed && (showActions || showActionFeedback) && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-t border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-1)]/30">
+        <div className="flex items-center gap-3 px-3 py-2 border-t border-[var(--color-border-subtle)]/20 bg-[var(--color-surface-1)]/30">
           <div className="flex-1" />
           
           {/* Action feedback with undo */}
           {showActionFeedback && (
             <div className="flex items-center gap-2">
               <span className={cn(
-                'text-[9px] font-medium px-2 py-0.5 rounded',
+                'text-[9px] font-medium px-2 py-1 rounded flex items-center gap-1.5',
                 actionState === 'accepted' 
-                  ? 'text-[var(--color-success)] bg-[var(--color-success)]/10'
-                  : 'text-[var(--color-error)] bg-[var(--color-error)]/10'
+                  ? 'text-[var(--color-diff-added-text)] bg-[var(--color-diff-added-text)]/10'
+                  : 'text-[var(--color-diff-removed-text)] bg-[var(--color-diff-removed-text)]/10'
               )}>
-                {actionState === 'accepted' ? 'Changes accepted' : 'Changes rejected'}
+                {actionState === 'accepted' ? <Check size={10} /> : <X size={10} />}
+                {actionState === 'accepted' ? 'Accepted' : 'Rejected'}
               </span>
               <button
                 type="button"
                 onClick={handleUndo}
                 className={cn(
-                  'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors',
-                  'text-[var(--color-text-muted)] bg-[var(--color-surface-2)]',
-                  'hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-secondary)]'
+                  'flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-colors duration-100',
+                  'text-[var(--color-text-muted)] bg-[var(--color-surface-2)]/60',
+                  'hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-secondary)]',
+                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
                 )}
                 title="Undo action"
+                aria-label="Undo last action"
               >
                 <RotateCcw size={10} />
                 Undo
@@ -688,22 +795,25 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
             </div>
           )}
           
-          {/* Action buttons */}
+          {/* Action buttons - clean pill style */}
           {showActions && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {onReject && (
                 <button
                   type="button"
                   onClick={handleReject}
                   disabled={actionsDisabled}
                   className={cn(
-                    'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors',
-                    'text-[var(--color-error)] bg-[var(--color-error)]/10',
-                    'hover:bg-[var(--color-error)]/20',
-                    'disabled:opacity-50 disabled:cursor-not-allowed'
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-medium transition-colors duration-100',
+                    'text-[var(--color-diff-removed-text)] bg-[var(--color-diff-removed-text)]/10 border border-[var(--color-diff-removed-text)]/20',
+                    'hover:bg-[var(--color-diff-removed-text)]/15 hover:border-[var(--color-diff-removed-text)]/30',
+                    'active:bg-[var(--color-diff-removed-text)]/20',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-diff-removed-text)]/30',
+                    'disabled:opacity-40 disabled:cursor-not-allowed'
                   )}
+                  aria-label="Reject changes"
                 >
-                  <X size={10} />
+                  <X size={11} />
                   Reject
                 </button>
               )}
@@ -713,13 +823,16 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
                   onClick={onEdit}
                   disabled={actionsDisabled}
                   className={cn(
-                    'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors',
-                    'text-[var(--color-text-secondary)] bg-[var(--color-surface-2)]',
-                    'hover:bg-[var(--color-surface-3)]',
-                    'disabled:opacity-50 disabled:cursor-not-allowed'
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-medium transition-colors duration-100',
+                    'text-[var(--color-text-secondary)] bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]/30',
+                    'hover:bg-[var(--color-surface-3)] hover:border-[var(--color-border-subtle)]/50',
+                    'active:bg-[var(--color-surface-3)]',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/30',
+                    'disabled:opacity-40 disabled:cursor-not-allowed'
                   )}
+                  aria-label="Edit changes"
                 >
-                  <Pencil size={10} />
+                  <Pencil size={11} />
                   Edit
                 </button>
               )}
@@ -729,13 +842,16 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
                   onClick={handleAccept}
                   disabled={actionsDisabled}
                   className={cn(
-                    'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors',
-                    'text-[var(--color-success)] bg-[var(--color-success)]/10',
-                    'hover:bg-[var(--color-success)]/20',
-                    'disabled:opacity-50 disabled:cursor-not-allowed'
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-medium transition-colors duration-100',
+                    'text-[var(--color-diff-added-text)] bg-[var(--color-diff-added-text)]/10 border border-[var(--color-diff-added-text)]/20',
+                    'hover:bg-[var(--color-diff-added-text)]/15 hover:border-[var(--color-diff-added-text)]/30',
+                    'active:bg-[var(--color-diff-added-text)]/20',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-diff-added-text)]/30',
+                    'disabled:opacity-40 disabled:cursor-not-allowed'
                   )}
+                  aria-label="Accept changes"
                 >
-                  <Check size={10} />
+                  <Check size={11} />
                   Accept
                 </button>
               )}

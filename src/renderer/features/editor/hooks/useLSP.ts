@@ -11,6 +11,7 @@ import * as monaco from 'monaco-editor';
 
 export interface LSPDiagnostic {
   filePath: string;
+  fileName?: string;
   line: number;
   column: number;
   endLine?: number;

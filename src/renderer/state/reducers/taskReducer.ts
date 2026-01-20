@@ -1,10 +1,11 @@
 /**
  * Task Reducer
  * 
- * Handles progress groups, artifacts, agent status, and tool results state.
+ * Handles progress groups, artifacts, agent status, tool results, and todo state.
  */
 
 import type { ProgressGroup, ProgressItem, ArtifactCard, LLMProviderName, ContextMetricsSnapshot } from '../../../shared/types';
+import type { TodoItem } from '../../../shared/types/todo';
 import type { AgentUIState, AgentStatusInfo, InlineArtifactState, RoutingDecisionState } from '../agentReducer';
 import { createLogger } from '../../utils/logger';
 
@@ -45,7 +46,10 @@ export type TaskAction =
   // Terminal streaming actions for real-time output display
   | { type: 'TERMINAL_OUTPUT'; payload: { pid: number; data: string; stream: 'stdout' | 'stderr' } }
   | { type: 'TERMINAL_EXIT'; payload: { pid: number; code: number } }
-  | { type: 'TERMINAL_CLEAR'; payload: { pid: number } };
+  | { type: 'TERMINAL_CLEAR'; payload: { pid: number } }
+  // Todo list actions
+  | { type: 'TODO_UPDATE'; payload: { sessionId: string; runId: string; todos: TodoItem[]; timestamp: number } }
+  | { type: 'TODO_CLEAR'; payload: string };
 
 /**
  * Handle progress group update (accumulates items per group)
@@ -133,6 +137,7 @@ export function taskReducer(
 
     case 'CLEAR_SESSION_TASK_STATE': {
       const sessionId = action.payload;
+      const { [sessionId]: _removedTodos, ...remainingTodos } = state.todos;
       return {
         ...state,
         progressGroups: {
@@ -143,6 +148,7 @@ export function taskReducer(
           ...state.artifacts,
           [sessionId]: [],
         },
+        todos: remainingTodos,
       };
     }
 
@@ -411,6 +417,27 @@ export function taskReducer(
       return {
         ...state,
         terminalStreams: remaining,
+      };
+    }
+
+    // Todo list actions
+    case 'TODO_UPDATE': {
+      const { sessionId, runId, todos, timestamp } = action.payload;
+      return {
+        ...state,
+        todos: {
+          ...state.todos,
+          [sessionId]: { runId, todos, timestamp },
+        },
+      };
+    }
+
+    case 'TODO_CLEAR': {
+      const sessionId = action.payload;
+      const { [sessionId]: _removed, ...remainingTodos } = state.todos;
+      return {
+        ...state,
+        todos: remainingTodos,
       };
     }
 

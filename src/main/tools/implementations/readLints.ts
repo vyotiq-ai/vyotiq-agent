@@ -39,24 +39,48 @@ interface LintResult {
 
 export const readLintsTool: ToolDefinition<ReadLintsArgs> = {
   name: 'read_lints',
-  description: `Read linting errors and warnings from specified files using ESLint.
+  description: `Read linting errors and warnings from specified files using ESLint/TypeScript.
 
-Use this tool to:
-- Check for linting errors after editing files
-- Verify code quality before completing a task
-- Find and fix code style issues
+## CRITICAL: Use After Every Edit
+This is an essential verification step. Run read_lints() after EVERY file edit to catch issues immediately.
 
-Parameters:
-- files (required): Array of file paths to check (relative to workspace root)
-- include_warnings (optional): Include warnings in output (default: true)
-- fix (optional): Attempt to auto-fix issues (default: false)
+## When to Use
+- **After editing files**: Verify no syntax/type errors introduced
+- **Before completing tasks**: Ensure code quality
+- **Debugging issues**: Find and understand errors
+- **Pre-commit check**: Validate all changed files
 
-Returns formatted list of linting issues with file, line, column, severity, message, and rule ID.`,
+## Workflow Integration
+This is the VERIFY step in the core loop:
+\`\`\`
+read(file) → understand code
+edit(file, old, new) → make change
+read_lints([file]) → VERIFY no errors
+[if errors] → fix immediately
+[if clean] → continue to next task
+\`\`\`
+
+## Parameters
+- **files** (required): Array of file paths to check (relative to workspace)
+- **include_warnings**: Include warnings in output (default: true)
+- **fix**: Attempt to auto-fix issues (default: false)
+
+## Output
+- File path with line:column for each issue
+- Severity indicator (✗ error, ⚠ warning)
+- Message and rule ID
+- Summary of total errors/warnings
+
+## Best Practices
+- Check files immediately after editing
+- Fix errors before moving to next task
+- Don't accumulate technical debt
+- Use fix: true for auto-fixable issues`,
   requiresApproval: false,
   category: 'code-intelligence',
   riskLevel: 'safe',
   allowedCallers: ['direct', 'code_execution'],
-  searchKeywords: ['lint', 'eslint', 'error', 'warning', 'check', 'validate', 'code quality', 'diagnostics'],
+  searchKeywords: ['lint', 'eslint', 'error', 'warning', 'check', 'validate', 'code quality', 'diagnostics', 'verify', 'typescript'],
   ui: {
     icon: 'alert-triangle',
     label: 'Lint',

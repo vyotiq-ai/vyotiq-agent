@@ -46,6 +46,7 @@ html.dark {
   --color-text-placeholder: #6b7280;  /* gray-500 - input placeholders */
   --color-text-dim: #9ca3af;          /* gray-400 - dim but readable */
   --color-text-on-accent: #052e16;    /* emerald-950 - text on accent bg */
+  --color-text-reasoning: #8b9dc3;    /* slate-blue - reasoning/thinking content */
   
   /* Semantic Colors */
   --color-success: #34d399;           /* emerald-400 */
@@ -57,6 +58,41 @@ html.dark {
   --color-terminal-prompt: #34d399;
   --color-terminal-command: #e4e4e7;
   --color-terminal-output: #a1a1aa;
+  
+  /* Diff Colors - Added lines (green) */
+  --color-diff-added-bg: #1a2e1a;
+  --color-diff-added-bg-hover: #223a22;
+  --color-diff-added-gutter: rgba(152, 195, 121, 0.6);
+  --color-diff-added-gutter-bg: #1f3a1f;
+  --color-diff-added-text: #98c379;
+  --color-diff-added-text-content: #b5d6a0;
+  --color-diff-added-indicator: #98c379;
+  --color-diff-added-word-bg: rgba(152, 195, 121, 0.35);
+  --color-diff-added-word-ring: rgba(152, 195, 121, 0.2);
+  --color-diff-added-word-text: #d4f0c7;
+  
+  /* Diff Colors - Removed lines (red) */
+  --color-diff-removed-bg: #2e1a1a;
+  --color-diff-removed-bg-hover: #3a2222;
+  --color-diff-removed-gutter: rgba(224, 108, 117, 0.6);
+  --color-diff-removed-gutter-bg: #3a1f1f;
+  --color-diff-removed-text: #e06c75;
+  --color-diff-removed-text-content: #d6a0a5;
+  --color-diff-removed-indicator: #e06c75;
+  --color-diff-removed-word-bg: rgba(224, 108, 117, 0.35);
+  --color-diff-removed-word-ring: rgba(224, 108, 117, 0.2);
+  --color-diff-removed-word-text: #f0c7ca;
+  
+  /* Diff Colors - Modified (amber/yellow) */
+  --color-diff-modified-text: #e5c07b;
+  --color-diff-modified-bg: rgba(229, 192, 123, 0.15);
+  --color-diff-modified-ring: rgba(229, 192, 123, 0.2);
+  
+  /* Diff Colors - Expand/context */
+  --color-diff-expand-text: #61afef;
+  --color-diff-expand-bg: rgba(97, 175, 239, 0.04);
+  --color-diff-expand-bg-hover: rgba(97, 175, 239, 0.08);
+  --color-diff-expand-border: rgba(97, 175, 239, 0.12);
   
   /* Shadow */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -109,6 +145,7 @@ html.light {
   --color-text-dim: #a1a1aa;          /* zinc-400 - dim text in light mode */
   --color-text-placeholder: #a1a1aa;  /* zinc-400 */
   --color-text-on-accent: #ffffff;    /* white - text on accent bg in light mode */
+  --color-text-reasoning: #64748b;    /* slate-500 - reasoning/thinking content */
   
   /* Semantic Colors */
   --color-success: #059669;           /* emerald-600 */
@@ -120,6 +157,41 @@ html.light {
   --color-terminal-prompt: #059669;
   --color-terminal-command: #18181b;
   --color-terminal-output: #52525b;
+  
+  /* Diff Colors - Added lines (green) */
+  --color-diff-added-bg: #e6ffec;
+  --color-diff-added-bg-hover: #d4f8dd;
+  --color-diff-added-gutter: rgba(26, 127, 55, 0.6);
+  --color-diff-added-gutter-bg: #ccffd8;
+  --color-diff-added-text: #1a7f37;
+  --color-diff-added-text-content: #24632c;
+  --color-diff-added-indicator: #1a7f37;
+  --color-diff-added-word-bg: rgba(26, 127, 55, 0.2);
+  --color-diff-added-word-ring: rgba(26, 127, 55, 0.2);
+  --color-diff-added-word-text: #116329;
+  
+  /* Diff Colors - Removed lines (red) */
+  --color-diff-removed-bg: #ffebe9;
+  --color-diff-removed-bg-hover: #ffd7d5;
+  --color-diff-removed-gutter: rgba(207, 34, 46, 0.6);
+  --color-diff-removed-gutter-bg: #ffc0be;
+  --color-diff-removed-text: #cf222e;
+  --color-diff-removed-text-content: #82071e;
+  --color-diff-removed-indicator: #cf222e;
+  --color-diff-removed-word-bg: rgba(207, 34, 46, 0.2);
+  --color-diff-removed-word-ring: rgba(207, 34, 46, 0.2);
+  --color-diff-removed-word-text: #82071e;
+  
+  /* Diff Colors - Modified (amber/yellow) */
+  --color-diff-modified-text: #9a6700;
+  --color-diff-modified-bg: rgba(154, 103, 0, 0.15);
+  --color-diff-modified-ring: rgba(154, 103, 0, 0.2);
+  
+  /* Diff Colors - Expand/context */
+  --color-diff-expand-text: #0969da;
+  --color-diff-expand-bg: rgba(9, 105, 218, 0.04);
+  --color-diff-expand-bg-hover: rgba(9, 105, 218, 0.08);
+  --color-diff-expand-border: rgba(9, 105, 218, 0.12);
   
   /* Shadow */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -1160,40 +1232,25 @@ html.light .hljs-deletion {
   margin-bottom: 0;
 }
 
-/* Ensure proper list styling */
-.markdown-content ul {
-  list-style-type: disc;
-  list-style-position: outside;
-}
-
+/* Lists - custom bullet styling handled by React component */
+.markdown-content ul,
 .markdown-content ol {
-  list-style-type: decimal;
-  list-style-position: outside;
+  list-style: none;
+  padding-left: 0;
+  margin-left: 0;
 }
 
 .markdown-content li {
-  display: list-item;
-}
-
-.markdown-content li::marker {
-  color: var(--color-accent-primary);
+  list-style: none;
 }
 
 /* Nested lists */
 .markdown-content ul ul,
-.markdown-content ol ul {
-  list-style-type: circle;
+.markdown-content ol ul,
+.markdown-content ul ol,
+.markdown-content ol ol {
   margin-left: 1rem;
-}
-
-.markdown-content ul ul ul,
-.markdown-content ol ul ul {
-  list-style-type: square;
-}
-
-.markdown-content ol ol,
-.markdown-content ul ol {
-  margin-left: 1rem;
+  margin-top: 0.25rem;
 }
 
 /* Inline code */
@@ -1204,7 +1261,7 @@ html.light .hljs-deletion {
 
 /* Code blocks */
 .markdown-content pre {
-  margin: 0.75em 0;
+  margin: 0.5em 0;
 }
 
 .markdown-content pre code {
@@ -1213,15 +1270,14 @@ html.light .hljs-deletion {
   line-height: 1.5;
 }
 
-/* Task lists - remove default bullets */
+/* Task lists */
 .markdown-content .task-list-item {
   list-style: none;
-  margin-left: -1rem;
 }
 
 /* Definition lists */
 .markdown-content dl {
-  margin: 0.75em 0;
+  margin: 0.5em 0;
 }
 
 .markdown-content dt {

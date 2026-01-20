@@ -31,7 +31,7 @@ interface ChatSubmitOptions {
   sendMessage: (
     content: string, 
     attachments: AttachmentPayload[], 
-    config?: Partial<{ preferredProvider: LLMProviderName | 'auto'; selectedModelId?: string; manualOverrideModel?: string }>
+    config?: Partial<{ preferredProvider: LLMProviderName | 'auto'; selectedModelId?: string }>
   ) => Promise<void>;
   updateSessionConfig: (sessionId: string, config: Partial<AgentSessionState['config']>) => Promise<void>;
 }
@@ -79,8 +79,7 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
 
       await sendMessage(finalMessage, attachments, {
         preferredProvider: selectedProvider,
-        selectedModelId: selectedModelId,
-        manualOverrideModel: manualModel || selectedModelId || undefined,
+        selectedModelId: manualModel || selectedModelId || undefined,
       });
       
       logger.info('Message sent successfully');

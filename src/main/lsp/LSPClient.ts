@@ -71,6 +71,10 @@ export class LSPClient extends EventEmitter {
   private contentLength = -1;
   private openDocuments = new Set<string>();
   private documentVersions = new Map<string, number>();
+  
+  // Track failed start attempts to avoid repeated warnings
+  private startFailedAt = 0;
+  private static readonly START_RETRY_COOLDOWN_MS = 300000; // 5 minutes between retry attempts
 
   constructor(
     logger: Logger,
@@ -101,6 +105,15 @@ export class LSPClient extends EventEmitter {
   async start(): Promise<boolean> {
     if (this.state === 'running') {
       return true;
+    }
+
+    // Check if we recently failed to start - avoid repeated attempts
+    if (this.state === 'error' && this.startFailedAt > 0) {
+      const timeSinceFailure = Date.now() - this.startFailedAt;
+      if (timeSinceFailure < LSPClient.START_RETRY_COOLDOWN_MS) {
+        // Silently skip - we already logged the error
+        return false;
+      }
     }
 
     this.state = 'starting';
@@ -165,18 +178,36 @@ export class LSPClient extends EventEmitter {
       
       // Check for common recoverable errors
       const isTypeScriptNotInstalled = errorMessage.includes('Could not find a valid TypeScript installation') ||
-                                        errorMessage.includes('typescript') && errorMessage.includes('not found');
+                                        errorMessage.includes('typescript') && errorMessage.includes('not found') ||
+                                        errorMessage.includes('Cannot find module');
       
       if (isTypeScriptNotInstalled) {
-        // This is expected when workspace doesn't have TypeScript - log as warning, not error
+        // This is expected when workspace doesn't have TypeScript - log as warning once, not repeatedly
+        // The LSPManager will mark this as permanently disabled
         this.logger.warn(`[${this.config.language}] TypeScript not installed in workspace - LSP features disabled`, {
           workspaceRoot: this.workspaceRoot,
         });
+        
+        // Throw a specific error so LSPManager can handle it appropriately
+        const tsError = new Error('TypeScript not installed in workspace');
+        this.state = 'error';
+        this.startFailedAt = Date.now();
+        this.emit('state-change', this.state);
+        this.emit('error', tsError);
+        
+        // Clean up the process if it's still running
+        if (this.process && !this.process.killed) {
+          this.process.kill('SIGTERM');
+        }
+        this.process = null;
+        
+        throw tsError;
       } else {
         this.logger.error(`[${this.config.language}] Failed to start server`, { error: errorMessage });
       }
       
       this.state = 'error';
+      this.startFailedAt = Date.now(); // Track when we failed to avoid repeated attempts
       this.emit('state-change', this.state);
       this.emit('error', error);
       

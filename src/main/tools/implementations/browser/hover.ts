@@ -117,13 +117,45 @@ async function executeHover(
 
 export const browserHoverTool: ToolDefinition<HoverArgs> = {
   name: 'browser_hover',
-  description: `Hover over an element to trigger hover states.
+  description: `Hover over an element to trigger hover states. Useful for menus and tooltips.
 
-**Use for:**
-- Triggering CSS hover effects
-- Opening dropdown menus
-- Showing tooltips
-- Testing hover interactions`,
+## When to Use
+- **Dropdown menus**: Trigger hover-activated menus
+- **Tooltips**: Show tooltip content
+- **Hover effects**: Test CSS hover states
+- **Preview content**: Trigger hover previews
+
+## Workflow Integration
+Use for hover-triggered interactions:
+\`\`\`
+browser_navigate(url)
+browser_hover(selector: ".dropdown-trigger")
+browser_wait(selector: ".dropdown-menu")
+browser_click(".dropdown-menu .item")
+\`\`\`
+
+## Tooltip Pattern
+\`\`\`
+browser_hover(selector: "[data-tooltip]", duration: 1000)
+browser_screenshot() → capture tooltip
+\`\`\`
+
+## Menu Pattern
+\`\`\`
+browser_hover(selector: ".nav-item")
+browser_wait(selector: ".submenu")
+browser_snapshot() → see submenu items
+browser_click(".submenu-item")
+\`\`\`
+
+## Parameters
+- **selector** (required): CSS selector for the element to hover
+- **duration** (optional): How long to hover in ms (default: 500)
+
+## Best Practices
+- Use with browser_wait for hover-triggered content
+- Increase duration for slow animations
+- Combine with screenshot to capture hover states`,
 
   requiresApproval: false,
   category: 'browser-write',

@@ -5,6 +5,8 @@ import type { InternalSession } from './types';
 import type { WorkspaceManager } from '../workspaces/workspaceManager';
 import { SessionStorage } from './storage';
 import { createLogger } from '../logger';
+import { cleanupSession } from './context/ToolContextManager';
+
 
 const logger = createLogger('SessionManager');
 
@@ -15,10 +17,25 @@ export interface SessionManagerConfig {
   storageBasePath: string;
 }
 
+/** Default debounce interval for session persistence (ms) */
+const PERSIST_DEBOUNCE_MS = 1000;
+
+/** Maximum time to wait before forcing persistence (ms) */
+const PERSIST_MAX_WAIT_MS = 5000;
+
 export class SessionManager {
   private sessions = new Map<string, InternalSession>();
   private storage: SessionStorage;
   private initialized = false;
+  
+  /** Debounce timers for session persistence to avoid excessive disk I/O */
+  private persistDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  
+  /** Track when each session was last persisted */
+  private lastPersistTime = new Map<string, number>();
+  
+  /** Pending sessions that need to be persisted */
+  private pendingPersist = new Set<string>();
 
   constructor(
     private readonly workspaceManager: WorkspaceManager,
@@ -122,13 +139,105 @@ export class SessionManager {
   }
 
   /**
-   * Persist a specific session to disk.
+   * Persist a specific session to disk immediately.
    */
-  private async persistSession(sessionId: string): Promise<void> {
+  private async persistSessionImmediate(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) {
       await this.storage.saveSession(session.state);
+      this.lastPersistTime.set(sessionId, Date.now());
+      this.pendingPersist.delete(sessionId);
     }
+  }
+
+  /**
+   * Schedule debounced persistence for a session.
+   * This reduces disk I/O by batching multiple updates within the debounce window.
+   */
+  private schedulePersist(sessionId: string, immediate = false): void {
+    // If immediate persistence requested, skip debouncing
+    if (immediate) {
+      const existingTimer = this.persistDebounceTimers.get(sessionId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        this.persistDebounceTimers.delete(sessionId);
+      }
+      this.persistSessionImmediate(sessionId).catch(err => {
+        logger.error('Failed to persist session immediately', {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      return;
+    }
+
+    // Mark session as pending persistence
+    this.pendingPersist.add(sessionId);
+
+    // Check if we've exceeded max wait time since last persist
+    const lastPersist = this.lastPersistTime.get(sessionId) ?? 0;
+    const timeSinceLastPersist = Date.now() - lastPersist;
+    
+    if (timeSinceLastPersist >= PERSIST_MAX_WAIT_MS) {
+      // Force immediate persistence if we've waited too long
+      const existingTimer = this.persistDebounceTimers.get(sessionId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        this.persistDebounceTimers.delete(sessionId);
+      }
+      this.persistSessionImmediate(sessionId).catch(err => {
+        logger.error('Failed to persist session (max wait exceeded)', {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      return;
+    }
+
+    // Clear existing timer if any
+    const existingTimer = this.persistDebounceTimers.get(sessionId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    // Schedule new debounced persistence
+    const timer = setTimeout(() => {
+      this.persistDebounceTimers.delete(sessionId);
+      this.persistSessionImmediate(sessionId).catch(err => {
+        logger.error('Failed to persist session (debounced)', {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, PERSIST_DEBOUNCE_MS);
+
+    this.persistDebounceTimers.set(sessionId, timer);
+  }
+
+  /**
+   * Flush all pending session persistence immediately.
+   * Call this before app shutdown or when immediate persistence is critical.
+   */
+  async flushPendingPersistence(): Promise<void> {
+    const pendingSessions = Array.from(this.pendingPersist);
+    
+    // Clear all debounce timers
+    for (const [sessionId, timer] of this.persistDebounceTimers) {
+      clearTimeout(timer);
+      this.persistDebounceTimers.delete(sessionId);
+    }
+
+    // Persist all pending sessions in parallel
+    await Promise.all(
+      pendingSessions.map(sessionId => 
+        this.persistSessionImmediate(sessionId).catch(err => {
+          logger.error('Failed to flush session persistence', {
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        })
+      )
+    );
   }
 
   createSession(payload: StartSessionPayload, defaultConfig: AgentConfig): InternalSession {
@@ -171,33 +280,23 @@ export class SessionManager {
 
     this.sessions.set(sessionId, session);
     
-    // Persist immediately to individual file with error handling
-    this.persistSession(sessionId).catch(err => {
-      logger.error('Failed to persist session after creation', {
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
+    // Persist immediately for session creation (critical operation)
+    this.schedulePersist(sessionId, true);
     
     return session;
   }
 
   /**
-   * Update session state and persist to disk.
+   * Update session state and schedule debounced persistence.
    * This is the primary method for updating session state.
+   * Persistence is debounced to reduce disk I/O during rapid updates.
    */
   updateSessionState(sessionId: string, update: Partial<AgentSessionState>): void {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.state = { ...session.state, ...update, updatedAt: Date.now() };
-      // Persist to individual session file with error handling
-      this.persistSession(sessionId).catch(err => {
-        logger.error('Failed to persist session state update', {
-          sessionId,
-          error: err instanceof Error ? err.message : String(err),
-          updateKeys: Object.keys(update),
-        });
-      });
+      // Schedule debounced persistence to reduce disk I/O
+      this.schedulePersist(sessionId, false);
     }
   }
 
@@ -209,7 +308,21 @@ export class SessionManager {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.state = { ...session.state, ...update, updatedAt: Date.now() };
-      await this.persistSession(sessionId);
+      // Immediate persistence for critical updates
+      await this.persistSessionImmediate(sessionId);
+    }
+  }
+
+  /**
+   * Update session state with immediate persistence.
+   * Use this for critical updates that must be persisted immediately (e.g., session creation, deletion).
+   */
+  updateSessionStateImmediate(sessionId: string, update: Partial<AgentSessionState>): void {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.state = { ...session.state, ...update, updatedAt: Date.now() };
+      // Schedule immediate persistence
+      this.schedulePersist(sessionId, true);
     }
   }
 
@@ -250,14 +363,8 @@ export class SessionManager {
     session.state.messages = session.state.messages.slice(0, messageIndex + 1);
     session.state.updatedAt = Date.now();
 
-    // Persist changes
-    this.persistSession(sessionId).catch(err => {
-      logger.error('Failed to persist after message edit', {
-        sessionId,
-        messageId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
+    // Schedule debounced persistence (message edits are user-triggered, debounce is fine)
+    this.schedulePersist(sessionId, false);
 
     return { success: true, truncatedMessages };
   }
@@ -317,7 +424,20 @@ export class SessionManager {
   deleteSession(sessionId: string): boolean {
     const result = this.sessions.delete(sessionId);
     if (result) {
+      // Clean up session-specific data
       void this.storage.deleteSession(sessionId);
+      // Clean up session tool state (agent-requested tools), cache entries, and free memory
+      // Note: cleanupSession now handles cache clearing internally
+      const cleanupStats = cleanupSession(sessionId);
+      if (cleanupStats) {
+        logger.info('Session cleanup completed during deletion', {
+          sessionId,
+          requestedToolsCleared: cleanupStats.requestedToolsCleared,
+          discoveredToolsCleared: cleanupStats.discoveredToolsCleared,
+          cacheEntriesCleared: cleanupStats.cacheEntriesCleared,
+          cacheBytesFreed: cleanupStats.cacheBytesFreed,
+        });
+      }
     }
     return result;
   }
@@ -424,14 +544,8 @@ export class SessionManager {
     session.state.activeBranchId = branch.id;
     session.state.updatedAt = Date.now();
 
-    // Persist
-    this.persistSession(sessionId).catch(err => {
-      logger.error('Failed to persist after creating branch', {
-        sessionId,
-        branchId: branch.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
+    // Schedule immediate persistence for branch creation (structural change)
+    this.schedulePersist(sessionId, true);
 
     return { success: true, branch };
   }
@@ -456,14 +570,8 @@ export class SessionManager {
     session.state.activeBranchId = branchId ?? undefined;
     session.state.updatedAt = Date.now();
 
-    // Persist
-    this.persistSession(sessionId).catch(err => {
-      logger.error('Failed to persist after switching branch', {
-        sessionId,
-        branchId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
+    // Schedule debounced persistence for branch switch
+    this.schedulePersist(sessionId, false);
 
     return { success: true };
   }
@@ -499,14 +607,8 @@ export class SessionManager {
 
     session.state.updatedAt = Date.now();
 
-    // Persist
-    this.persistSession(sessionId).catch(err => {
-      logger.error('Failed to persist after deleting branch', {
-        sessionId,
-        branchId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
+    // Schedule immediate persistence for branch deletion (structural change)
+    this.schedulePersist(sessionId, true);
 
     return { success: true };
   }

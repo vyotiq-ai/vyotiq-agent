@@ -61,19 +61,15 @@ export {
 export {
   DynamicToolFactory,
   getDynamicToolFactory,
+  initDynamicToolFactory,
+  type ToolCreationOptions,
+  type CompositeStep,
+  type ToolCreationResult,
 } from './factory';
 
-// Phase 2: Tool Composer for workflow composition
-export {
-  ToolComposer,
-  getToolComposer,
-  WorkflowBuilder,
-  workflow,
-  WorkflowValidator,
-  getWorkflowValidator,
-  DataTransformer,
-  getDataTransformer,
-} from './composer';
+// Note: Tool Composer functionality is provided by DynamicToolFactory
+// which supports workflow composition through composite tool steps
+
 
 // All type definitions
 export * from './types';
@@ -89,6 +85,17 @@ export {
   runTerminalTool,
   checkTerminalTool,
   killTerminalTool,
+  // Agent tool control
+  requestToolsTool,
+  // Todo/Task tracking tools
+  todoWriteTool,
+  createPlanTool,
+  verifyTasksTool,
+  getActivePlanTool,
+  listPlansTool,
+  deletePlanTool,
+  getTodoManager,
+  getTaskManager,
   // Browser tools - modular
   BROWSER_TOOLS,
   PRIMARY_BROWSER_TOOLS,

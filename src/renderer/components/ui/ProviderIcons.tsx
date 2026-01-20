@@ -71,6 +71,55 @@ export const OpenRouterIcon: React.FC<IconProps> = ({ size = 16, className }) =>
   </svg>
 );
 
+/** xAI (Grok) - X logo */
+export const XAIIcon: React.FC<IconProps> = ({ size = 16, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+    <path
+      d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+/** Mistral AI - Wind/breeze logo */
+export const MistralIcon: React.FC<IconProps> = ({ size = 16, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+    <rect x="2" y="4" width="4" height="4" fill="currentColor" />
+    <rect x="6" y="4" width="4" height="4" fill="currentColor" opacity="0.7" />
+    <rect x="14" y="4" width="4" height="4" fill="currentColor" opacity="0.7" />
+    <rect x="18" y="4" width="4" height="4" fill="currentColor" />
+    <rect x="2" y="10" width="4" height="4" fill="currentColor" />
+    <rect x="10" y="10" width="4" height="4" fill="currentColor" />
+    <rect x="18" y="10" width="4" height="4" fill="currentColor" />
+    <rect x="2" y="16" width="4" height="4" fill="currentColor" />
+    <rect x="6" y="16" width="4" height="4" fill="currentColor" opacity="0.7" />
+    <rect x="14" y="16" width="4" height="4" fill="currentColor" opacity="0.7" />
+    <rect x="18" y="16" width="4" height="4" fill="currentColor" />
+  </svg>
+);
+
+/** Z.AI GLM - Brain/neural network logo */
+export const GLMIcon: React.FC<IconProps> = ({ size = 16, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+    <path
+      d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
+      fill="currentColor"
+    />
+    <path
+      d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"
+      fill="currentColor"
+      opacity="0.7"
+    />
+    <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+    <path
+      d="M12 8v-2M12 18v-2M8 12H6M18 12h-2M9.17 9.17L7.76 7.76M16.24 16.24l-1.41-1.41M9.17 14.83l-1.41 1.41M16.24 7.76l-1.41 1.41"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 /** Auto/Smart routing icon - sparkle/magic wand */
 export const AutoIcon: React.FC<IconProps> = ({ size = 16, className }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
@@ -94,6 +143,9 @@ export const PROVIDER_ICONS: Record<LLMProviderName | 'auto', React.FC<IconProps
   deepseek: DeepSeekIcon,
   gemini: GeminiIcon,
   openrouter: OpenRouterIcon,
+  xai: XAIIcon,
+  mistral: MistralIcon,
+  glm: GLMIcon,
   auto: AutoIcon,
 };
 

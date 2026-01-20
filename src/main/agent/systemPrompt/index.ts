@@ -1,12 +1,33 @@
 /**
  * System Prompt Module
  * 
- * Clean, consolidated system prompt with:
+ * Unified system prompt with single priority structure:
+ * - Single coherent instruction set (no fragmented priorities)
  * - Dynamic context injection
  * - Caching support for provider-level optimization
  * - Modular sections for maintainability
  * 
- * Structure follows 2025/2026 best practices:
+ * ## Architecture
+ * 
+ * The system prompt is built from:
+ * 1. Static unified prompt (sections.ts) - Core identity, rules, tools, workflows
+ * 2. Dynamic sections (dynamicSections.ts) - Context-aware sections per-request
+ * 3. Context injection (contextInjection.ts) - User-defined injection rules
+ * 4. Caching (cache.ts) - Performance optimization for static content
+ * 
+ * ## Usage
+ * 
+ * ```typescript
+ * import { buildSystemPrompt, getStaticContent } from './systemPrompt';
+ * 
+ * // Build complete prompt with context
+ * const prompt = buildSystemPrompt(context);
+ * 
+ * // Get just the static content
+ * const staticPrompt = getStaticContent();
+ * ```
+ * 
+ * ## Best Practices (2025/2026)
  * - XML-structured sections for clear parsing
  * - Single persistent prompt (not chains)
  * - Recency effect placement for critical rules
@@ -20,25 +41,35 @@ export type { SystemPromptContext } from './types';
 // Cache
 export { SystemPromptCache, getSystemPromptCache } from './cache';
 
-// Sections
+// Sections - PRIMARY EXPORTS (use these)
 export { PROMPT_SECTIONS, getStaticSections, getStaticContent } from './sections';
 
-// Static section content (for backward compatibility)
-import { PROMPT_SECTIONS as _SECTIONS } from './sections';
-export const CORE_IDENTITY = _SECTIONS.IDENTITY.content as string;
-export const CRITICAL_RULES = _SECTIONS.CRITICAL_RULES.content as string;
-export const TOOL_USAGE = _SECTIONS.TOOL_USAGE.content as string;
-export const IMPORTANT_REMINDERS = _SECTIONS.REMINDERS.content as string;
-export const CLOSING_REMINDER = _SECTIONS.FINAL_REMINDER.content as string;
+// =============================================================================
+// DEPRECATED LEGACY EXPORTS
+// =============================================================================
+// These are kept for backward compatibility only. Use getStaticContent() instead.
+// All these exports point to the same unified prompt content.
 
-// Legacy exports for backward compatibility (point to closest equivalent)
-export const TOOL_CHAINING = TOOL_USAGE;
-export const TOOL_WORKFLOWS = TOOL_USAGE;
-export const TOOL_HINTS = TOOL_USAGE;
-export const TOOLS_REFERENCE = TOOL_USAGE;
-export const EDIT_TOOL_GUIDE = TOOL_USAGE;
-export const COMMON_TASKS = TOOL_USAGE;
-export const OUTPUT_FORMATTING = _SECTIONS.OUTPUT_FORMATTING.content as string;
+/** @deprecated Use getStaticContent() */
+export { CORE_IDENTITY } from './sections';
+/** @deprecated Use getStaticContent() */
+export { CRITICAL_RULES_CONTENT as CRITICAL_RULES } from './sections';
+/** @deprecated Use getStaticContent() */
+export { TOOL_CHAINING } from './sections';
+/** @deprecated Use getStaticContent() */
+export { TOOL_WORKFLOWS } from './sections';
+/** @deprecated Use getStaticContent() */
+export { TOOL_HINTS } from './sections';
+/** @deprecated Use getStaticContent() */
+export { EDIT_TOOL_GUIDE_CONTENT as EDIT_TOOL_GUIDE } from './sections';
+/** @deprecated Use getStaticContent() */
+export { COMMON_TASKS } from './sections';
+/** @deprecated Use getStaticContent() */
+export { TASK_MANAGEMENT_CONTENT as TASK_MANAGEMENT } from './sections';
+/** @deprecated Use getStaticContent() */
+export { OUTPUT_FORMATTING_CONTENT as OUTPUT_FORMATTING } from './sections';
+/** @deprecated Use getStaticContent() */
+export { SAFETY_GUIDELINES } from './sections';
 
 // Types
 export type {
@@ -54,10 +85,11 @@ export type {
   InternalTerminalSettings,
 } from './types';
 
-// Dynamic section builders (for backward compatibility)
+// Dynamic section builders
 export {
   buildCoreContext,
   buildCoreTools,
+  buildToolsReference,
   buildTerminalContext,
   buildEditorContext,
   buildWorkspaceDiagnostics as buildWorkspaceDiagnosticsContext,
@@ -68,6 +100,8 @@ export {
   buildCustomPrompt as buildCustomPromptSection,
   buildAdditionalInstructions,
   buildCommunicationStyle,
+  buildToolCategories,
+  DYNAMIC_TOOL_CATEGORIES,
 } from './dynamicSections';
 
 // Context injection

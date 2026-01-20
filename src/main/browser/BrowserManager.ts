@@ -542,10 +542,19 @@ export class BrowserManager extends EventEmitter {
     const maxRetries = options?.retries ?? 2; // Default to 2 retries for temporary network issues
     const timeout = options?.timeout ?? this.navigationTimeout;
 
-    // Normalize URL
-    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('file://')) {
-      url = 'https://' + url;
+    // Validate and normalize URL
+    const urlValidation = this.validateAndNormalizeUrl(url);
+    if (!urlValidation.valid) {
+      logger.warn('Invalid URL provided', { url, error: urlValidation.error });
+      this.updateState({ error: urlValidation.error });
+      return {
+        success: false,
+        url,
+        title: '',
+        error: urlValidation.error,
+      };
     }
+    url = urlValidation.normalizedUrl!;
 
     // Security check before navigation
     const security = getBrowserSecurity();
@@ -656,6 +665,84 @@ export class BrowserManager extends EventEmitter {
       title: '',
       error: errorMessage,
     };
+  }
+
+  /**
+   * Validate and normalize a URL before navigation
+   */
+  private validateAndNormalizeUrl(url: string): { valid: boolean; normalizedUrl?: string; error?: string } {
+    if (!url || typeof url !== 'string') {
+      return { valid: false, error: 'URL is required and must be a string' };
+    }
+    
+    url = url.trim();
+    
+    if (!url) {
+      return { valid: false, error: 'URL cannot be empty' };
+    }
+    
+    // Add protocol if missing
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('file://')) {
+      url = 'https://' + url;
+    }
+    
+    // Validate URL format
+    try {
+      const parsed = new URL(url);
+      
+      // Check for obviously invalid hostnames
+      if (!parsed.hostname || parsed.hostname.length === 0) {
+        return { valid: false, error: 'URL has no hostname' };
+      }
+      
+      // Check for invalid TLDs (single character or obviously wrong)
+      const hostParts = parsed.hostname.split('.');
+      if (hostParts.length < 2 && !['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+        return { valid: false, error: `Invalid hostname "${parsed.hostname}" - missing domain extension` };
+      }
+      
+      // Check for common typos in popular domains
+      const typoSuggestions = this.checkForCommonTypos(parsed.hostname);
+      if (typoSuggestions) {
+        return { 
+          valid: false, 
+          error: `Invalid hostname "${parsed.hostname}" - did you mean "${typoSuggestions}"?` 
+        };
+      }
+      
+      return { valid: true, normalizedUrl: url };
+    } catch (e) {
+      return { valid: false, error: `Invalid URL format: ${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
+
+  /**
+   * Check for common typos in domain names
+   */
+  private checkForCommonTypos(hostname: string): string | null {
+    const typoMap: Record<string, string> = {
+      // Google typos
+      'gogle.com': 'google.com',
+      'googel.com': 'google.com',
+      'gooogle.com': 'google.com',
+      'goggle.com': 'google.com',
+      // GitHub typos
+      'gihub.com': 'github.com',
+      'githb.com': 'github.com',
+      'gitub.com': 'github.com',
+      // Common documentation site typos
+      'docs.generativeai.google': 'ai.google.dev',
+      'generativeai.google': 'ai.google.dev',
+      // OpenAI typos
+      'openai.con': 'openai.com',
+      'opanai.com': 'openai.com',
+      // Anthropic typos
+      'antropic.com': 'anthropic.com',
+      'anthopic.com': 'anthropic.com',
+    };
+    
+    const lowerHostname = hostname.toLowerCase();
+    return typoMap[lowerHostname] || null;
   }
 
   /**
@@ -794,12 +881,111 @@ export class BrowserManager extends EventEmitter {
   // ===========================================================================
 
   /**
-   * Extract content from the current page
+   * Wait for page to be fully loaded (including dynamic content)
+   * This is critical for SPAs that load content asynchronously
    */
-  async extractContent(options?: { includeHtml?: boolean; maxLength?: number }): Promise<PageContent> {
+  private async waitForPageReady(timeout = 5000): Promise<void> {
+    const view = this.ensureBrowserView();
+    const startTime = Date.now();
+    
+    try {
+      // Wait for document ready state
+      await view.webContents.executeJavaScript(`
+        new Promise((resolve) => {
+          if (document.readyState === 'complete') {
+            resolve();
+          } else {
+            window.addEventListener('load', resolve, { once: true });
+            // Fallback timeout
+            setTimeout(resolve, ${timeout});
+          }
+        })
+      `);
+      
+      // Additional wait for dynamic content (React, Vue, Angular, etc.)
+      // Check for common SPA framework indicators and wait for them to settle
+      await view.webContents.executeJavaScript(`
+        new Promise((resolve) => {
+          const checkReady = () => {
+            // Check for React root
+            const reactRoot = document.getElementById('root') || document.getElementById('app') || document.getElementById('__next');
+            if (reactRoot && reactRoot.children.length > 0) {
+              // React/Next.js app has rendered
+              resolve();
+              return;
+            }
+            
+            // Check for Vue app
+            const vueApp = document.querySelector('[data-v-app]') || document.querySelector('#app[data-server-rendered]');
+            if (vueApp) {
+              resolve();
+              return;
+            }
+            
+            // Check for Angular app
+            const angularApp = document.querySelector('[ng-version]') || document.querySelector('app-root');
+            if (angularApp && angularApp.children.length > 0) {
+              resolve();
+              return;
+            }
+            
+            // Check for main content area
+            const mainContent = document.querySelector('main, article, [role="main"], .content, #content');
+            if (mainContent && mainContent.textContent && mainContent.textContent.trim().length > 100) {
+              resolve();
+              return;
+            }
+            
+            // Check if body has substantial content
+            if (document.body && document.body.innerText && document.body.innerText.trim().length > 200) {
+              resolve();
+              return;
+            }
+            
+            // Not ready yet, check again
+            return false;
+          };
+          
+          if (checkReady() !== false) return;
+          
+          // Poll for readiness
+          let attempts = 0;
+          const maxAttempts = ${Math.floor(timeout / 100)};
+          const interval = setInterval(() => {
+            attempts++;
+            if (checkReady() !== false || attempts >= maxAttempts) {
+              clearInterval(interval);
+              resolve();
+            }
+          }, 100);
+        })
+      `);
+      
+      const elapsed = Date.now() - startTime;
+      if (elapsed > 1000) {
+        logger.debug('Page ready after waiting for dynamic content', { elapsed });
+      }
+    } catch (error) {
+      logger.warn('Error waiting for page ready', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      // Continue anyway - page may still have content
+    }
+  }
+
+  /**
+   * Extract content from the current page with improved SPA handling
+   */
+  async extractContent(options?: { includeHtml?: boolean; maxLength?: number; waitForContent?: boolean }): Promise<PageContent> {
     const view = this.ensureBrowserView();
     // Use provided maxLength or fall back to stored setting
     const maxLength = options?.maxLength ?? this.maxContentLength;
+    const waitForContent = options?.waitForContent ?? true;
+
+    // Wait for dynamic content to load (important for SPAs)
+    if (waitForContent) {
+      await this.waitForPageReady();
+    }
 
     const result = await view.webContents.executeJavaScript(`
       (function() {

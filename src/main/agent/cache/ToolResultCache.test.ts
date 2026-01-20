@@ -267,6 +267,64 @@ describe('ToolResultCache', () => {
       expect(stats.byTool.read).toBe(2);
       expect(stats.byTool.grep).toBe(1);
     });
+
+    it('should reset statistics counters', () => {
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: 'content',
+      };
+
+      cache.set('read', { path: '/file.ts' }, result);
+      
+      // Generate some hits and misses
+      cache.get('read', { path: '/file.ts' }); // hit
+      cache.get('read', { path: '/file.ts' }); // hit
+      cache.get('read', { path: '/other.ts' }); // miss
+      
+      const statsBefore = cache.getStats();
+      expect(statsBefore.hits).toBe(2);
+      expect(statsBefore.misses).toBe(1);
+      expect(statsBefore.estimatedTokensSaved).toBeGreaterThan(0);
+      
+      // Reset statistics
+      cache.resetStats();
+      
+      const statsAfter = cache.getStats();
+      expect(statsAfter.hits).toBe(0);
+      expect(statsAfter.misses).toBe(0);
+      expect(statsAfter.hitRate).toBe(0);
+      expect(statsAfter.estimatedTokensSaved).toBe(0);
+      
+      // Cache entries should still exist
+      expect(statsAfter.size).toBe(1);
+      expect(cache.get('read', { path: '/file.ts' })).not.toBeNull();
+    });
+
+    it('should preserve cache entries after stats reset', () => {
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: 'content',
+      };
+
+      cache.set('read', { path: '/file1.ts' }, result);
+      cache.set('read', { path: '/file2.ts' }, result);
+      
+      // Generate some activity
+      cache.get('read', { path: '/file1.ts' });
+      
+      const sizeBefore = cache.getStats().size;
+      
+      // Reset statistics
+      cache.resetStats();
+      
+      // Cache entries should be preserved
+      const sizeAfter = cache.getStats().size;
+      expect(sizeAfter).toBe(sizeBefore);
+      expect(cache.get('read', { path: '/file1.ts' })).not.toBeNull();
+      expect(cache.get('read', { path: '/file2.ts' })).not.toBeNull();
+    });
   });
 
   describe('cleanup', () => {
@@ -285,6 +343,309 @@ describe('ToolResultCache', () => {
       const removed = cache.cleanup();
       
       expect(removed).toBe(1);
+    });
+  });
+
+  describe('compression', () => {
+    it('should compress outputs larger than threshold', () => {
+      const compressCache = new ToolResultCache({
+        maxSize: 10,
+        maxAge: 60000,
+        enableLRU: true,
+        compressionThreshold: 100, // Low threshold for testing
+        enableCompression: true,
+      });
+
+      // Create a large output (> 100 bytes)
+      const largeOutput = 'x'.repeat(500);
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: largeOutput,
+      };
+
+      compressCache.set('read', { path: '/large-file.ts' }, result);
+      
+      // Retrieve and verify decompression works
+      const cached = compressCache.get('read', { path: '/large-file.ts' });
+      expect(cached).not.toBeNull();
+      expect(cached!.output).toBe(largeOutput);
+      
+      // Check stats show compression
+      const stats = compressCache.getStats();
+      expect(stats.compressedEntries).toBe(1);
+      expect(stats.compressionBytesSaved).toBeGreaterThan(0);
+      expect(stats.averageCompressionRatio).toBeGreaterThan(1);
+    });
+
+    it('should not compress outputs smaller than threshold', () => {
+      const compressCache = new ToolResultCache({
+        maxSize: 10,
+        maxAge: 60000,
+        enableLRU: true,
+        compressionThreshold: 4096, // Default 4KB
+        enableCompression: true,
+      });
+
+      // Create a small output (< 4KB)
+      const smallOutput = 'small content';
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: smallOutput,
+      };
+
+      compressCache.set('read', { path: '/small-file.ts' }, result);
+      
+      // Retrieve and verify
+      const cached = compressCache.get('read', { path: '/small-file.ts' });
+      expect(cached).not.toBeNull();
+      expect(cached!.output).toBe(smallOutput);
+      
+      // Check stats show no compression
+      const stats = compressCache.getStats();
+      expect(stats.compressedEntries).toBe(0);
+    });
+
+    it('should not compress when compression is disabled', () => {
+      const noCompressCache = new ToolResultCache({
+        maxSize: 10,
+        maxAge: 60000,
+        enableLRU: true,
+        compressionThreshold: 100,
+        enableCompression: false, // Disabled
+      });
+
+      const largeOutput = 'x'.repeat(500);
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: largeOutput,
+      };
+
+      noCompressCache.set('read', { path: '/large-file.ts' }, result);
+      
+      const cached = noCompressCache.get('read', { path: '/large-file.ts' });
+      expect(cached).not.toBeNull();
+      expect(cached!.output).toBe(largeOutput);
+      
+      const stats = noCompressCache.getStats();
+      expect(stats.compressedEntries).toBe(0);
+    });
+
+    it('should handle compression of various content types', () => {
+      const compressCache = new ToolResultCache({
+        maxSize: 10,
+        maxAge: 60000,
+        enableLRU: true,
+        compressionThreshold: 100,
+        enableCompression: true,
+      });
+
+      // Test with JSON-like content (compresses well)
+      const jsonContent = JSON.stringify({ data: Array(100).fill({ key: 'value', num: 123 }) });
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: jsonContent,
+      };
+
+      compressCache.set('read', { path: '/data.json' }, result);
+      
+      const cached = compressCache.get('read', { path: '/data.json' });
+      expect(cached).not.toBeNull();
+      expect(cached!.output).toBe(jsonContent);
+    });
+  });
+});
+
+describe('session management', () => {
+  let cache: ToolResultCache;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetToolResultCache();
+    cache = new ToolResultCache({
+      maxAge: 60000,
+      maxSize: 100,
+      enableLRU: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('clearSession', () => {
+    it('should clear all cache entries for a specific session', () => {
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: 'content',
+      };
+
+      // Add entries for session-1
+      cache.set('read', { path: '/file1.ts' }, result, 'session-1');
+      cache.set('read', { path: '/file2.ts' }, result, 'session-1');
+      
+      // Add entries for session-2
+      cache.set('read', { path: '/file3.ts' }, result, 'session-2');
+
+      // Clear session-1
+      const cleanup = cache.clearSession('session-1');
+
+      expect(cleanup.entriesCleared).toBe(2);
+      expect(cleanup.bytesFreed).toBeGreaterThan(0);
+      
+      // Session-1 entries should be gone
+      expect(cache.get('read', { path: '/file1.ts' })).toBeNull();
+      expect(cache.get('read', { path: '/file2.ts' })).toBeNull();
+      
+      // Session-2 entries should remain
+      expect(cache.get('read', { path: '/file3.ts' })).not.toBeNull();
+    });
+
+    it('should return zero stats when clearing non-existent session', () => {
+      const cleanup = cache.clearSession('non-existent-session');
+      
+      expect(cleanup.entriesCleared).toBe(0);
+      expect(cleanup.bytesFreed).toBe(0);
+    });
+
+    it('should handle entries without session ID', () => {
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: 'content',
+      };
+
+      // Add entry without session ID
+      cache.set('read', { path: '/file1.ts' }, result);
+      
+      // Add entry with session ID
+      cache.set('read', { path: '/file2.ts' }, result, 'session-1');
+
+      // Clear session-1
+      const cleanup = cache.clearSession('session-1');
+
+      expect(cleanup.entriesCleared).toBe(1);
+      
+      // Entry without session should remain
+      expect(cache.get('read', { path: '/file1.ts' })).not.toBeNull();
+      // Session-1 entry should be gone
+      expect(cache.get('read', { path: '/file2.ts' })).toBeNull();
+    });
+
+    it('should update cache stats after clearing session', () => {
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: 'content',
+      };
+
+      cache.set('read', { path: '/file1.ts' }, result, 'session-1');
+      cache.set('read', { path: '/file2.ts' }, result, 'session-1');
+      cache.set('read', { path: '/file3.ts' }, result, 'session-2');
+
+      const statsBefore = cache.getStats();
+      expect(statsBefore.size).toBe(3);
+      expect(statsBefore.sessionsWithCache).toBe(2);
+
+      cache.clearSession('session-1');
+
+      const statsAfter = cache.getStats();
+      expect(statsAfter.size).toBe(1);
+      expect(statsAfter.sessionsWithCache).toBe(1);
+    });
+
+    it('should correctly report bytes freed for compressed entries', () => {
+      const compressCache = new ToolResultCache({
+        maxSize: 100,
+        maxAge: 60000,
+        enableLRU: true,
+        compressionThreshold: 100,
+        enableCompression: true,
+      });
+
+      // Create a large output that will be compressed
+      const largeOutput = 'x'.repeat(500);
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: largeOutput,
+      };
+
+      compressCache.set('read', { path: '/large-file.ts' }, result, 'session-1');
+
+      const cleanup = compressCache.clearSession('session-1');
+
+      expect(cleanup.entriesCleared).toBe(1);
+      // Bytes freed should be the compressed size, not original
+      expect(cleanup.bytesFreed).toBeGreaterThan(0);
+      expect(cleanup.bytesFreed).toBeLessThan(largeOutput.length);
+    });
+  });
+
+  describe('getSessionEntryCount', () => {
+    it('should return correct count for session entries', () => {
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: 'content',
+      };
+
+      cache.set('read', { path: '/file1.ts' }, result, 'session-1');
+      cache.set('read', { path: '/file2.ts' }, result, 'session-1');
+      cache.set('read', { path: '/file3.ts' }, result, 'session-2');
+
+      expect(cache.getSessionEntryCount('session-1')).toBe(2);
+      expect(cache.getSessionEntryCount('session-2')).toBe(1);
+      expect(cache.getSessionEntryCount('non-existent')).toBe(0);
+    });
+  });
+
+  describe('getSessionsWithCache', () => {
+    it('should return all session IDs with cache entries', () => {
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: 'content',
+      };
+
+      cache.set('read', { path: '/file1.ts' }, result, 'session-1');
+      cache.set('read', { path: '/file2.ts' }, result, 'session-2');
+      cache.set('read', { path: '/file3.ts' }, result, 'session-3');
+
+      const sessions = cache.getSessionsWithCache();
+
+      expect(sessions).toHaveLength(3);
+      expect(sessions).toContain('session-1');
+      expect(sessions).toContain('session-2');
+      expect(sessions).toContain('session-3');
+    });
+
+    it('should return empty array when no sessions have cache', () => {
+      const sessions = cache.getSessionsWithCache();
+      expect(sessions).toHaveLength(0);
+    });
+  });
+
+  describe('bySession stats', () => {
+    it('should track entries by session in stats', () => {
+      const result: ToolExecutionResult = {
+        toolName: 'read',
+        success: true,
+        output: 'content',
+      };
+
+      cache.set('read', { path: '/file1.ts' }, result, 'session-1');
+      cache.set('read', { path: '/file2.ts' }, result, 'session-1');
+      cache.set('read', { path: '/file3.ts' }, result, 'session-2');
+
+      const stats = cache.getStats();
+
+      expect(stats.bySession['session-1']).toBe(2);
+      expect(stats.bySession['session-2']).toBe(1);
     });
   });
 });

@@ -79,11 +79,14 @@ export type { EditorContextInfo as EditorContext };
 export interface WorkspaceDiagnosticsInfo {
   diagnostics: Array<{
     filePath: string;
+    fileName: string;
     line: number;
     column: number;
+    endLine?: number;
+    endColumn?: number;
     message: string;
     severity: 'error' | 'warning' | 'info' | 'hint';
-    source: 'typescript' | 'eslint';
+    source: string;
     code?: string | number;
   }>;
   errorCount: number;
@@ -104,6 +107,8 @@ export interface TaskAnalysisContext {
   recommendedSpecialization?: string;
   confidence: number;
   estimatedTokens?: number;
+  /** Estimated number of steps to complete the task */
+  estimatedSteps?: number;
 }
 
 /**
@@ -116,6 +121,14 @@ export interface WorkspaceStructureContext {
   testDirectories?: string[];
   packageManager?: string;
   framework?: string;
+  /** Detected frameworks (React, Vue, Angular, etc.) */
+  frameworks?: string[];
+  /** Detected programming languages */
+  languages?: string[];
+  /** Test framework (jest, vitest, mocha, etc.) */
+  testFramework?: string;
+  /** Build tool (vite, webpack, esbuild, etc.) */
+  buildTool?: string;
 }
 
 /**

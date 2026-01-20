@@ -220,21 +220,49 @@ function truncateUrl(url: string, maxLength: number): string {
 
 export const browserNetworkTool: ToolDefinition<NetworkArgs> = {
   name: 'browser_network',
-  description: `Monitor and retrieve network requests made by the browser.
+  description: `Monitor and retrieve network requests made by the browser. Essential for debugging API issues.
 
-**Captures:**
+## When to Use
+- **Debug API calls**: Check if requests succeed or fail
+- **Verify requests**: Confirm expected API calls are made
+- **Performance**: Monitor request timing and sizes
+- **Troubleshoot**: Find CORS, auth, or network issues
+
+## Workflow Integration
+Use after interactions to check API responses:
+\`\`\`
+browser_navigate(url)
+browser_click(submit_button)
+browser_network(type: "xhr", status: "error") → check for failed API calls
+[if errors found, investigate]
+\`\`\`
+
+## API Debugging Pattern
+\`\`\`
+browser_fill_form(fields, submit: true)
+browser_wait(text: "Success")
+browser_network(urlPattern: "/api/") → check API calls
+browser_console(level: "errors") → check for JS errors
+\`\`\`
+
+## Captures
 - XHR/Fetch API calls
 - Document/script/stylesheet loads
 - Image and font requests
 - Request/response status and timing
 
-**Use cases:**
-- Debug failed API calls
-- Check if resources are loading correctly
-- Monitor network performance
-- Identify CORS or authentication issues
+## Parameters
+- **type** (optional): Filter by resource type - all, xhr, fetch, document, script, etc.
+- **status** (optional): Filter by request status - all, success, error, pending
+- **limit** (optional): Maximum number of requests to return (default: 50)
+- **clear** (optional): Clear requests after retrieving (default: false)
+- **urlPattern** (optional): Filter by URL pattern
 
-**Best Practice:** Call this after page interactions to check API responses.`,
+## Best Practices
+- Use type: "xhr" to focus on API calls
+- Use status: "error" to find failed requests
+- Use urlPattern to filter specific endpoints
+- Combine with browser_console for full debugging`,
 
   requiresApproval: false,
   category: 'browser-read',

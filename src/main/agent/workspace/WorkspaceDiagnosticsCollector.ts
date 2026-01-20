@@ -19,13 +19,14 @@ import type { Logger } from '../../logger';
 
 export interface WorkspaceDiagnostic {
   filePath: string;
+  fileName: string;
   line: number;
   column: number;
   endLine?: number;
   endColumn?: number;
   message: string;
   severity: 'error' | 'warning' | 'info' | 'hint';
-  source: 'typescript' | 'eslint';
+  source: string;
   code?: string | number;
 }
 
@@ -263,8 +264,10 @@ export class WorkspaceDiagnosticsCollector extends EventEmitter {
           const match = line.match(regex);
           if (match) {
             const [, filePath, lineStr, colStr, severity, code, message] = match;
+            const resolvedPath = path.isAbsolute(filePath) ? filePath : path.join(workspacePath, filePath);
             diagnostics.push({
-              filePath: path.isAbsolute(filePath) ? filePath : path.join(workspacePath, filePath),
+              filePath: resolvedPath,
+              fileName: path.basename(resolvedPath),
               line: parseInt(lineStr, 10),
               column: parseInt(colStr, 10),
               message: message.trim(),
@@ -326,6 +329,7 @@ export class WorkspaceDiagnosticsCollector extends EventEmitter {
               for (const msg of result.messages) {
                 diagnostics.push({
                   filePath: result.filePath,
+                  fileName: path.basename(result.filePath),
                   line: msg.line,
                   column: msg.column,
                   endLine: msg.endLine,
