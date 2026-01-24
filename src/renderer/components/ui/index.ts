@@ -5,6 +5,8 @@ export { ElapsedTime } from './ElapsedTime';
 export { Input, Textarea } from './Input';
 export { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 export { Modal } from './Modal';
+export { Select } from './Select';
+export type { SelectOption } from './Select';
 export { StatusIndicator, StatusDot as StatusIndicatorDot } from './StatusIndicator';
 export { Toggle, Checkbox, RadioGroup } from './Toggle';
 

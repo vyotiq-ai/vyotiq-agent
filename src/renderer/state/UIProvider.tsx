@@ -113,14 +113,14 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   // Undo history panel state
   const [undoHistoryOpen, setUndoHistoryOpen] = useState(false);
-  
+
   const openUndoHistory = useCallback(() => setUndoHistoryOpen(true), []);
   const closeUndoHistory = useCallback(() => setUndoHistoryOpen(false), []);
   const toggleUndoHistory = useCallback(() => setUndoHistoryOpen(prev => !prev), []);
 
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  
+
   const openCommandPalette = useCallback(() => setCommandPaletteOpen(true), []);
   const closeCommandPalette = useCallback(() => setCommandPaletteOpen(false), []);
   const toggleCommandPalette = useCallback(() => setCommandPaletteOpen(prev => !prev), []);
@@ -134,7 +134,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         setMetricsDashboardOpen(false);
         return;
       }
-      
+
       // ? to show shortcuts (when no modals are open and not in an input)
       if (e.key === '?' && !settingsOpen && !shortcutsOpen) {
         const target = e.target as HTMLElement;
@@ -144,13 +144,13 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           setShortcutsOpen(true);
         }
       }
-      
+
       // Ctrl/Cmd + , to open settings
       if ((e.ctrlKey || e.metaKey) && e.key === ',') {
         e.preventDefault();
         setSettingsOpen(true);
       }
-      
+
       // Ctrl/Cmd + Shift + H to toggle undo history
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'H') {
         e.preventDefault();
@@ -174,7 +174,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         e.preventDefault();
         toggleMetricsDashboard();
       }
-      
+
       // Note: Ctrl+E for editor toggle, Ctrl+S for save, Ctrl+W for close tab
       // are handled in EditorView.tsx
     };
@@ -184,16 +184,16 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   }, [settingsOpen, shortcutsOpen, metricsDashboardOpen, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard]);
 
   // Memoize the context value to prevent unnecessary re-renders
-  const contextValue = useMemo(() => ({ 
-    settingsOpen, 
+  const contextValue = useMemo(() => ({
+    settingsOpen,
     shortcutsOpen,
     undoHistoryOpen,
     browserPanelOpen,
     browserPanelWidth,
     commandPaletteOpen,
     metricsDashboardOpen,
-    openSettings, 
-    closeSettings, 
+    openSettings,
+    closeSettings,
     toggleSettings,
     openShortcuts,
     closeShortcuts,
@@ -212,15 +212,15 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     closeMetricsDashboard,
     toggleMetricsDashboard,
   }), [
-    settingsOpen, 
+    settingsOpen,
     shortcutsOpen,
     undoHistoryOpen,
     browserPanelOpen,
     browserPanelWidth,
     commandPaletteOpen,
     metricsDashboardOpen,
-    openSettings, 
-    closeSettings, 
+    openSettings,
+    closeSettings,
     toggleSettings,
     openShortcuts,
     closeShortcuts,

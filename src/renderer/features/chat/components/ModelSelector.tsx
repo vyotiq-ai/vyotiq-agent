@@ -294,7 +294,7 @@ export const ModelSelectorComponent: React.FC<ModelSelectorProps> = ({
                   : "border-[var(--color-border-subtle)] hover:border-[var(--color-accent-primary)]/30 text-[var(--color-text-secondary)]"
               )}
             >
-              {currentProvider === 'auto' ? '✓ Auto Mode Selected' : 'Select Auto Mode'}
+              {currentProvider === 'auto' ? '[OK] Auto Mode Selected' : 'Select Auto Mode'}
             </button>
           </div>
         )}

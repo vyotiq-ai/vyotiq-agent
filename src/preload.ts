@@ -278,17 +278,17 @@ interface GLMConnectParams {
 const glmAPI = {
 	fetchModels: (): Promise<{ success: boolean; models: GLMModel[]; error?: string }> =>
 		ipcRenderer.invoke('glm:fetch-models'),
-	
+
 	// GLM Subscription methods
 	connect: (params: GLMConnectParams): Promise<{ success: boolean; error?: string }> =>
 		ipcRenderer.invoke('glm:connect', params),
-	
+
 	disconnect: (): Promise<{ success: boolean; error?: string }> =>
 		ipcRenderer.invoke('glm:disconnect'),
-	
+
 	getSubscriptionStatus: (): Promise<GLMSubscriptionStatus> =>
 		ipcRenderer.invoke('glm:get-subscription-status'),
-	
+
 	updateSettings: (settings: { useCodingEndpoint?: boolean }): Promise<{ success: boolean; error?: string }> =>
 		ipcRenderer.invoke('glm:update-settings', settings),
 };
@@ -1540,6 +1540,7 @@ const terminalAPI = {
 		return () => ipcRenderer.removeListener('terminal:exit', listener);
 	},
 };
+
 
 contextBridge.exposeInMainWorld('vyotiq', {
 	agent: agentAPI,

@@ -160,6 +160,19 @@ export function computeDiffStats(original: string, modified: string): DiffStats 
   const originalLines = original.split('\n');
   const modifiedLines = modified.split('\n');
   
+  // Handle empty content edge cases
+  if (originalLines.length === 1 && originalLines[0] === '') {
+    // Original is empty, all modified lines are additions
+    const addedCount = modifiedLines.length === 1 && modifiedLines[0] === '' ? 0 : modifiedLines.length;
+    return { added: addedCount, removed: 0, changed: 0, totalChanges: addedCount };
+  }
+  
+  if (modifiedLines.length === 1 && modifiedLines[0] === '') {
+    // Modified is empty, all original lines are removals
+    const removedCount = originalLines.length === 1 && originalLines[0] === '' ? 0 : originalLines.length;
+    return { added: 0, removed: removedCount, changed: 0, totalChanges: removedCount };
+  }
+  
   const lcs = computeLCS(originalLines, modifiedLines);
   
   let added = 0;
@@ -392,11 +405,21 @@ export function buildSemanticDiffLines(
   modified: string,
   contextLines = 3
 ): SemanticDiffLine[] {
+  // Handle empty content edge case
+  if (original === '' && modified === '') {
+    return [];
+  }
+  
   const originalLines = original.split('\n');
   const modifiedLines = modified.split('\n');
   const result: SemanticDiffLine[] = [];
   
   const hunks = computeDiffHunks(original, modified, contextLines);
+  
+  // If no hunks, content is identical
+  if (hunks.length === 0) {
+    return [];
+  }
   
   let lastOrigEnd = 0;
   let lastModEnd = 0;
@@ -476,6 +499,10 @@ export function buildSemanticDiffLines(
     // Sort pairs by their position in the original file for predictable output
     const sortedPairs = [...pairs].sort((a, b) => a.removed.origIdx - b.removed.origIdx);
     
+    // Create lookup sets for faster paired line detection
+    const pairedRemovedIndices = new Set(sortedPairs.map(p => p.removed.origIdx));
+    const pairedAddedIndices = new Set(sortedPairs.map(p => p.added.modIdx));
+    
     // Track context line insertion for interleaving
     let contextIdx = 0;
     
@@ -513,7 +540,6 @@ export function buildSemanticDiffLines(
         hunkModIdx++;
       } else {
         // Check if this removed line is paired - use sortedPairs for lookup
-        const removedIdx = removedInHunk.findIndex(r => r.origIdx === oIdx);
         const pair = sortedPairs.find(p => p.removed.origIdx === oIdx);
         
         if (origLine !== null && pair) {
@@ -535,32 +561,36 @@ export function buildSemanticDiffLines(
           currentModLine = pair.added.modIdx + 1;
           oIdx++;
           hunkOrigIdx++;
-          // Skip the paired added line when we encounter it
-        } else if (origLine !== null) {
-          // Unpaired removed line - verify it's in removedInHunk
-          if (removedIdx !== -1) {
-            result.push({
-              type: 'removed',
-              content: origLine,
-              oldLineNum: oIdx + 1
-            });
-            currentOrigLine = oIdx + 1;
-          }
+          // Note: We don't increment mIdx here because the paired added line
+          // will be skipped when we encounter it in the modLine branch
+        } else if (origLine !== null && !pairedRemovedIndices.has(oIdx)) {
+          // Unpaired removed line
+          result.push({
+            type: 'removed',
+            content: origLine,
+            oldLineNum: oIdx + 1
+          });
+          currentOrigLine = oIdx + 1;
           oIdx++;
           hunkOrigIdx++;
+        } else if (origLine !== null) {
+          // This removed line is paired but we haven't processed it yet
+          // This shouldn't happen with correct logic, but skip it
+          oIdx++;
+          hunkOrigIdx++;
+        } else if (modLine !== null && !pairedAddedIndices.has(mIdx)) {
+          // Unpaired added line (not part of a modification pair)
+          result.push({
+            type: 'added',
+            content: modLine,
+            newLineNum: mIdx + 1
+          });
+          currentModLine = mIdx + 1;
+          mIdx++;
+          hunkModIdx++;
         } else if (modLine !== null) {
-          // Check if this added line is already paired
-          const addedIdx = addedInHunk.findIndex(a => a.modIdx === mIdx);
-          const isPaired = sortedPairs.some(p => p.added.modIdx === mIdx);
-          
-          if (!isPaired && addedIdx !== -1) {
-            result.push({
-              type: 'added',
-              content: modLine,
-              newLineNum: mIdx + 1
-            });
-            currentModLine = mIdx + 1;
-          }
+          // This added line is paired and was already processed with its removed counterpart
+          // Skip it
           mIdx++;
           hunkModIdx++;
         }

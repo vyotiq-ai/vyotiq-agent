@@ -16,6 +16,8 @@ export {
   isValidationError,
   createTimeoutError,
   aggregateErrors,
+  serializeError,
+  getErrorMessage,
   ContextualError,
   RetryExhaustedError,
 } from './errorHandling';

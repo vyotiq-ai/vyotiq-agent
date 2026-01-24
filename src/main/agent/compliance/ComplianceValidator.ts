@@ -548,7 +548,7 @@ export class ComplianceValidator {
       if (template) {
         messages.push(template);
       } else {
-        messages.push(`⚠️ COMPLIANCE ISSUE: ${violation.message}\nRULE: ${violation.rule}\nACTION: ${violation.suggestion}`);
+        messages.push(`[!] COMPLIANCE ISSUE: ${violation.message}\nRULE: ${violation.rule}\nACTION: ${violation.suggestion}`);
       }
     }
 

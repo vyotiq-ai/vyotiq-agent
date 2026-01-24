@@ -122,7 +122,7 @@ kill_terminal(pid) → stop server
       parts.push(`Status: ${status}`);
       
       if (!isRunning && result.exitCode !== null) {
-        const exitIcon = result.exitCode === 0 ? '✓' : '✗';
+        const exitIcon = result.exitCode === 0 ? '[OK]' : '[ERR]';
         parts.push(`Exit code: ${exitIcon} ${result.exitCode}`);
       }
       

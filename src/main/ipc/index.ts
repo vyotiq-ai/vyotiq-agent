@@ -23,6 +23,8 @@ import { registerLspHandlers } from './lspHandlers';
 import { registerEditorAiHandlers } from './editorAiHandlers';
 import { registerClaudeHandlers } from './claudeHandlers';
 import { registerTerminalHandlers, cleanupTerminalSessions } from './terminalHandlers';
+import { registerGLMHandlers } from './glmHandlers';
+import { registerCacheHandlers } from './cacheHandlers';
 
 // Re-export types
 export type { IpcContext } from './types';
@@ -63,6 +65,8 @@ export function registerAllHandlers(
   registerEditorAiHandlers(context);
   registerClaudeHandlers(context);
   registerTerminalHandlers(context);
+  registerGLMHandlers(context);
+  registerCacheHandlers(context);
 }
 
 // Export individual handler registration functions for testing/selective use
@@ -78,4 +82,6 @@ export {
   registerEditorAiHandlers,
   registerClaudeHandlers,
   registerTerminalHandlers,
+  registerGLMHandlers,
+  registerCacheHandlers,
 };

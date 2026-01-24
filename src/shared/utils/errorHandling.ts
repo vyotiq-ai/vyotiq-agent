@@ -431,3 +431,27 @@ export function serializeError(error: unknown): Record<string, unknown> {
   }
   return { value: String(error) };
 }
+
+/**
+ * Safely extract error message from any error type.
+ * Handles Error objects, strings, and unknown types.
+ * 
+ * @param error - The error to extract message from
+ * @returns A string error message
+ * 
+ * @example
+ * ```typescript
+ * try { ... } catch (error) {
+ *   logger.error('Operation failed', { error: getErrorMessage(error) });
+ * }
+ * ```
+ */
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return String(error);
+}

@@ -93,7 +93,7 @@ async function executeState(
     if (consoleLogs.length > 0) {
       output += `\n## Console Logs (${consoleLogs.length})\n\n`;
       for (const log of consoleLogs) {
-        const icon = log.level === 'error' ? '❌' : log.level === 'warning' ? '⚠️' : 'ℹ️';
+        const icon = log.level === 'error' ? '[ERR]' : log.level === 'warning' ? '[WARN]' : '[INFO]';
         output += `${icon} **[${log.level.toUpperCase()}]** ${log.message.slice(0, 200)}${log.message.length > 200 ? '...' : ''}\n`;
       }
     } else {
@@ -107,9 +107,9 @@ async function executeState(
     if (networkReqs.length > 0) {
       output += `\n## Network Requests (${networkReqs.length})\n\n`;
       for (const req of networkReqs) {
-        const icon = req.status && req.status >= 200 && req.status < 400 ? '✅' : '❌';
+        const icon = req.status && req.status >= 200 && req.status < 400 ? '[OK]' : '[ERR]';
         const statusStr = req.status ? `${req.status}` : 'pending';
-        output += `${icon} **${req.method}** \`${req.url.slice(0, 60)}${req.url.length > 60 ? '...' : ''}\` → ${statusStr}\n`;
+        output += `${icon} **${req.method}** \`${req.url.slice(0, 60)}${req.url.length > 60 ? '...' : ''}\` -> ${statusStr}\n`;
       }
     } else {
       output += `\n## Network Requests\n\nNo network requests captured.\n`;

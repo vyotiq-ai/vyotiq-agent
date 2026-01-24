@@ -18,6 +18,19 @@ export {
   clearPersistenceManagers 
 } from './taskPersistence';
 
+// Format utilities (shared across todo tools)
+export {
+  STATUS_ICONS,
+  PRIORITY_ICONS,
+  VERIFICATION_ICONS,
+  generateProgressBar,
+  formatTimestamp,
+  formatShortDate,
+  getComplexityLabel,
+  getProgressColor,
+  calculatePercentage,
+} from './formatUtils';
+
 // Markdown generator for beautiful plan output
 export {
   generatePlanMarkdown,

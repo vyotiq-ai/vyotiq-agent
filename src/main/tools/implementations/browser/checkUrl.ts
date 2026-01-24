@@ -50,12 +50,12 @@ async function executeCheckUrl(
     
     // Overall verdict
     if (safetyCheck.safe) {
-      output += '## ✅ URL Appears Safe\n\n';
+      output += '## [SAFE] URL Appears Safe\n\n';
       if (safetyCheck.riskScore > 0) {
         output += `Risk Score: ${safetyCheck.riskScore}/100 (low risk)\n\n`;
       }
     } else {
-      output += '## ⚠️ URL May Be Dangerous\n\n';
+      output += '## [WARN] URL May Be Dangerous\n\n';
       output += `Risk Score: ${safetyCheck.riskScore}/100\n\n`;
     }
     
@@ -63,7 +63,7 @@ async function executeCheckUrl(
     if (safetyCheck.warnings.length > 0) {
       output += '### Warnings\n';
       for (const warning of safetyCheck.warnings) {
-        output += `- ⚠️ ${warning}\n`;
+        output += `- [!] ${warning}\n`;
       }
       output += '\n';
     }
@@ -77,14 +77,14 @@ async function executeCheckUrl(
         
         // Protocol check
         const isSecure = parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'file:';
-        output += `- **Protocol:** ${parsedUrl.protocol.replace(':', '')} ${isSecure ? '✓' : '(insecure)'}\n`;
+        output += `- **Protocol:** ${parsedUrl.protocol.replace(':', '')} ${isSecure ? '[OK]' : '(insecure)'}\n`;
         
         // Domain analysis
         output += `- **Domain:** ${parsedUrl.hostname}\n`;
         
         const domainParts = parsedUrl.hostname.split('.');
         if (domainParts.length > 4) {
-          output += `  - ⚠️ Excessive subdomains detected\n`;
+          output += `  - [!] Excessive subdomains detected\n`;
         }
         
         // Port check
@@ -106,7 +106,7 @@ async function executeCheckUrl(
         // IP address check
         const isIPAddress = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(parsedUrl.hostname);
         if (isIPAddress && !isLocalhost) {
-          output += `  - ⚠️ IP address instead of domain name\n`;
+          output += `  - [!] IP address instead of domain name\n`;
         }
         
       } catch (parseError) {

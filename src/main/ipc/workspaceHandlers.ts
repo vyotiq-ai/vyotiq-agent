@@ -42,7 +42,7 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
 
     const diagnosticsLogger = createLogger('TypeScriptDiagnostics');
     service = initTypeScriptDiagnosticsService(diagnosticsLogger);
-    
+
     const success = await service.initialize(workspacePath);
     if (!success) {
       logger.debug('TypeScript diagnostics service not available for workspace', { workspacePath });
@@ -71,7 +71,7 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
     await getWorkspaceManager().add(result.filePaths[0]);
     const entries = getWorkspaceManager().list();
     emitToRenderer({ type: 'workspace-update', workspaces: entries });
-    
+
     const active = entries.find((entry) => entry.isActive);
     if (active) {
       try {
@@ -84,7 +84,7 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
         });
       }
     }
-    
+
     return entries;
   });
 
@@ -92,15 +92,15 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
     await getWorkspaceManager().setActive(workspaceId);
     const entries = getWorkspaceManager().list();
     emitToRenderer({ type: 'workspace-update', workspaces: entries });
-    
+
     const active = entries.find((entry) => entry.isActive);
     if (active) {
       await getGitService().init(active.path);
-      
+
       try {
         const { watchWorkspace, setLSPChangeHandler } = await import('../workspaces/fileWatcher');
         await watchWorkspace(active.path);
-        
+
         const { getLSPBridge } = await import('../lsp');
         setLSPChangeHandler((filePath, changeType) => {
           const bridge = getLSPBridge();
@@ -108,14 +108,14 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
             bridge.onFileChanged(filePath, changeType);
           }
         });
-        
+
         logger.info('File watcher updated for workspace', { workspacePath: active.path });
       } catch (error) {
         logger.warn('Failed to update file watcher for workspace', {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-      
+
       try {
         const { getLSPManager } = await import('../lsp');
         const lspManager = getLSPManager();
@@ -128,7 +128,7 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-      
+
       try {
         const existingService = getTypeScriptDiagnosticsService();
         if (existingService) {
@@ -136,10 +136,10 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
         }
         const tsDiagnosticsService = initTypeScriptDiagnosticsService(logger);
         await tsDiagnosticsService.initialize(active.path);
-        
+
         // Note: Event listener is set up in workspace:diagnostics-subscribe
         // This ensures consistent event format and avoids duplicate listeners
-        
+
         logger.info('TypeScript diagnostics service initialized for workspace', { workspacePath: active.path });
       } catch (error) {
         logger.warn('Failed to initialize TypeScript diagnostics service', {
@@ -164,21 +164,21 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
   ipcMain.handle('workspace:get-diagnostics', async (_event, options?: { forceRefresh?: boolean }) => {
     try {
       logger.debug('workspace:get-diagnostics called', { forceRefresh: options?.forceRefresh });
-      
+
       const initialized = await initDiagnosticsServiceForWorkspace();
       const service = getTypeScriptDiagnosticsService();
-      
+
       if (!initialized || !service) {
         const orchestrator = getOrchestrator();
         if (!orchestrator) {
           return { success: false, error: 'Orchestrator not initialized' };
         }
-        
+
         const diagnostics = await orchestrator.getWorkspaceDiagnostics();
         if (!diagnostics) {
           return { success: true, diagnostics: [], message: 'No active workspace' };
         }
-        
+
         return {
           success: true,
           diagnostics: diagnostics.diagnostics,
@@ -224,7 +224,7 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
       const initialized = await initDiagnosticsServiceForWorkspace();
       const service = getTypeScriptDiagnosticsService();
       const mainWindow = getMainWindow();
-      
+
       if (!initialized || !service || !mainWindow) {
         logger.debug('Diagnostics subscription not available');
         return { success: false, error: 'Diagnostics service not available' };
@@ -277,7 +277,7 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
   ipcMain.handle('workspace:diagnostics-unsubscribe', () => {
     try {
       const service = getTypeScriptDiagnosticsService();
-      
+
       if (service && diagnosticsListener) {
         service.removeListener('diagnostics', diagnosticsListener);
         diagnosticsListener = null;

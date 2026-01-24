@@ -9,14 +9,13 @@ import * as path from 'node:path';
 import type { TaskSession, TaskItem, UserPlan, VerificationAttempt } from '../../../../shared/types/todoTask';
 import { sanitizeFolderName, calculateTaskStats } from '../../../../shared/types/todoTask';
 import { createLogger } from '../../../logger';
-import { generatePlanMarkdown, generateTaskListMarkdown } from './planMarkdownGenerator';
+import { generatePlanMarkdown } from './planMarkdownGenerator';
 
 const logger = createLogger('TaskPersistence');
 
 const VYOTIQ_FOLDER = '.vyotiq';
 const TASK_FILE = 'task.json';
 const PLAN_FILE = 'plan.md';
-const TASKS_FILE = 'tasks.md';
 const HISTORY_FILE = 'history.json';
 
 /**
@@ -138,15 +137,6 @@ export class TaskPersistenceManager {
     await fs.promises.writeFile(
       planFilePath,
       planMarkdown,
-      'utf-8'
-    );
-
-    // Save tasks as separate markdown file for quick reference
-    const tasksFilePath = path.join(taskFolder, TASKS_FILE);
-    const tasksMarkdown = generateTaskListMarkdown(session.tasks);
-    await fs.promises.writeFile(
-      tasksFilePath,
-      tasksMarkdown,
       'utf-8'
     );
 
@@ -376,13 +366,6 @@ export class TaskPersistenceManager {
    */
   getPlanMarkdownPath(folderName: string): string {
     return path.join(this.getTaskFolderPath(folderName), PLAN_FILE);
-  }
-
-  /**
-   * Get the path to the tasks markdown file
-   */
-  getTasksMarkdownPath(folderName: string): string {
-    return path.join(this.getTaskFolderPath(folderName), TASKS_FILE);
   }
 }
 

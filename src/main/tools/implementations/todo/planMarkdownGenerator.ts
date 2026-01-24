@@ -6,77 +6,30 @@
  * diagrams, and custom task list formats.
  */
 import type { TaskSession, TaskItem, UserPlan, VerificationAttempt } from '../../../../shared/types/todoTask';
-
-/**
- * Status icons for task display
- */
-const STATUS_ICONS = {
-  completed: '✅',
-  in_progress: '🔄',
-  pending: '⬜',
-} as const;
-
-/**
- * Priority indicators
- */
-const PRIORITY_ICONS = ['🔴', '🟠', '🟡', '🟢', '🔵'] as const;
-
-/**
- * Verification status icons
- */
-const VERIFICATION_ICONS = {
-  verified: '✓',
-  failed: '✗',
-  pending: '○',
-} as const;
-
-/**
- * Generate a progress bar using unicode characters
- */
-function generateProgressBar(percentage: number, width = 20): string {
-  const filled = Math.round((percentage / 100) * width);
-  const empty = width - filled;
-  const filledChar = '█';
-  const emptyChar = '░';
-  return `${filledChar.repeat(filled)}${emptyChar.repeat(empty)}`;
-}
-
-/**
- * Format a timestamp to a readable date string
- */
-function formatTimestamp(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-/**
- * Calculate estimated complexity label
- */
-function getComplexityLabel(complexity?: number): string {
-  if (!complexity) return '';
-  const labels = ['', 'Simple', 'Easy', 'Medium', 'Complex', 'Very Complex'];
-  return labels[complexity] || '';
-}
+import {
+  STATUS_ICONS,
+  PRIORITY_ICONS,
+  VERIFICATION_ICONS,
+  generateProgressBar,
+  formatTimestamp,
+  getComplexityLabel,
+  getProgressColor,
+  calculatePercentage,
+} from './formatUtils';
 
 /**
  * Generate the plan header section
  */
 function generateHeader(session: TaskSession): string {
-  const status = session.plan.isCompleted ? '✅ Completed' : '🚀 In Progress';
+  const status = session.plan.isCompleted ? 'Completed' : 'In Progress';
   const progressBar = generateProgressBar(session.stats.completionPercentage);
-  const progressColor = session.stats.completionPercentage === 100 ? '🟢' :
-                        session.stats.completionPercentage >= 50 ? '🟡' : '🔴';
+  const progressLabel = getProgressColor(session.stats.completionPercentage);
   
-  return `# 📋 ${session.taskName}
+  return `# ${session.taskName}
 
 <div align="center">
 
-${progressColor} **${status}** ${progressColor}
+**${status}** | ${progressLabel}
 
 \`\`\`
 ${progressBar} ${session.stats.completionPercentage}%
@@ -86,7 +39,7 @@ ${progressBar} ${session.stats.completionPercentage}%
 
 ---
 
-## 📊 Overview
+## Overview
 
 | Property | Value |
 |----------|-------|
@@ -97,9 +50,9 @@ ${progressBar} ${session.stats.completionPercentage}%
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| ✅ Completed | ${session.stats.completed} | ${session.stats.total > 0 ? Math.round((session.stats.completed / session.stats.total) * 100) : 0}% |
-| 🔄 In Progress | ${session.stats.inProgress} | ${session.stats.total > 0 ? Math.round((session.stats.inProgress / session.stats.total) * 100) : 0}% |
-| ⬜ Pending | ${session.stats.pending} | ${session.stats.total > 0 ? Math.round((session.stats.pending / session.stats.total) * 100) : 0}% |
+| Completed | ${session.stats.completed} | ${calculatePercentage(session.stats.completed, session.stats.total)}% |
+| In Progress | ${session.stats.inProgress} | ${calculatePercentage(session.stats.inProgress, session.stats.total)}% |
+| Pending | ${session.stats.pending} | ${calculatePercentage(session.stats.pending, session.stats.total)}% |
 | **Total** | **${session.stats.total}** | **100%** |
 
 `;
@@ -111,7 +64,7 @@ ${progressBar} ${session.stats.completionPercentage}%
 function generateRequestSection(plan: UserPlan): string {
   return `---
 
-## 📝 Original Request
+## Original Request
 
 ${plan.originalRequest}
 
@@ -128,7 +81,7 @@ function generateRequirementsSection(plan: UserPlan, tasks: TaskItem[]): string 
 
   const lines: string[] = [];
   lines.push('---\n');
-  lines.push('## 🎯 Requirements\n');
+  lines.push('## Requirements\n');
   lines.push('');
 
   for (let i = 0; i < plan.requirements.length; i++) {
@@ -139,7 +92,7 @@ function generateRequirementsSection(plan: UserPlan, tasks: TaskItem[]): string 
       (t.content.toLowerCase().includes(req.toLowerCase().substring(0, 20)) ||
        req.toLowerCase().includes(t.content.toLowerCase().substring(0, 20)))
     );
-    const icon = isAddressed ? '✅' : '⬜';
+    const icon = isAddressed ? '[x]' : '[ ]';
     lines.push(`- ${icon} **${i + 1}.** ${req}`);
   }
 
@@ -153,7 +106,7 @@ function generateRequirementsSection(plan: UserPlan, tasks: TaskItem[]): string 
 function generateDesignSection(session: TaskSession): string {
   const lines: string[] = [];
   lines.push('---\n');
-  lines.push('## 💡 Design Approach\n');
+  lines.push('## Design Approach\n');
   lines.push('');
   
   // Analyze task complexity
@@ -181,17 +134,17 @@ function generateDesignSection(session: TaskSession): string {
   const hasMultipleFiles = session.tasks.some(t => (t.targetFiles?.length || 0) > 1);
   const hasDependencies = session.tasks.some(t => t.dependencies?.length);
   
-  lines.push('### 📐 Implementation Strategy');
+  lines.push('### Implementation Strategy');
   lines.push('');
   
   if (hasDependencies) {
-    lines.push('> ⚠️ **Sequential execution required** - Some tasks have dependencies');
+    lines.push('> **Sequential execution required** - Some tasks have dependencies');
     lines.push('> Complete dependent tasks before proceeding to the next.');
   } else if (hasMultipleFiles) {
-    lines.push('> 📁 **Multi-file changes** - This plan involves changes across multiple files.');
+    lines.push('> **Multi-file changes** - This plan involves changes across multiple files.');
     lines.push('> Consider testing incrementally after each major change.');
   } else {
-    lines.push('> ✨ **Independent tasks** - Tasks can be completed in any order.');
+    lines.push('> **Independent tasks** - Tasks can be completed in any order.');
     lines.push('> Focus on one task at a time for best results.');
   }
   
@@ -226,7 +179,7 @@ function generateArchitectureSection(session: TaskSession): string {
 
   const lines: string[] = [];
   lines.push('---\n');
-  lines.push('## 🏗️ Architecture Overview\n');
+  lines.push('## Architecture Overview\n');
   lines.push('');
   lines.push('### Affected Directories\n');
   lines.push('');
@@ -235,7 +188,7 @@ function generateArchitectureSection(session: TaskSession): string {
   // Sort directories and display as tree-like structure
   const sortedDirs = Array.from(directories).sort();
   for (const dir of sortedDirs) {
-    lines.push(`📁 ${dir}/`);
+    lines.push(`${dir}/`);
   }
   
   lines.push('```\n');
@@ -263,7 +216,7 @@ function generateArchitectureSection(session: TaskSession): string {
   if (filesByStatus.completed.length > 0) {
     lines.push('**Modified Files (Completed):**');
     for (const file of filesByStatus.completed) {
-      lines.push(`- ✅ \`${file}\``);
+      lines.push(`- [x] \`${file}\``);
     }
     lines.push('');
   }
@@ -271,7 +224,7 @@ function generateArchitectureSection(session: TaskSession): string {
   if (filesByStatus.in_progress.length > 0) {
     lines.push('**Files In Progress:**');
     for (const file of filesByStatus.in_progress) {
-      lines.push(`- 🔄 \`${file}\``);
+      lines.push(`- [~] \`${file}\``);
     }
     lines.push('');
   }
@@ -279,7 +232,7 @@ function generateArchitectureSection(session: TaskSession): string {
   if (filesByStatus.pending.length > 0) {
     lines.push('**Pending Files:**');
     for (const file of filesByStatus.pending) {
-      lines.push(`- ⬜ \`${file}\``);
+      lines.push(`- [ ] \`${file}\``);
     }
     lines.push('');
   }
@@ -343,7 +296,7 @@ function generateTaskItem(task: TaskItem, index: number): string {
   if (task.modifiedFiles && task.modifiedFiles.length > 0) {
     lines.push('**Modified Files:**');
     for (const file of task.modifiedFiles) {
-      lines.push(`- ✅ \`${file}\``);
+      lines.push(`- [x] \`${file}\``);
     }
     lines.push('');
   }
@@ -357,7 +310,7 @@ function generateTaskItem(task: TaskItem, index: number): string {
   
   // Error if any
   if (task.error) {
-    lines.push('**⚠️ Error:**');
+    lines.push('**Error:**');
     lines.push('```');
     lines.push(task.error);
     lines.push('```');
@@ -387,7 +340,7 @@ function generateTaskListSection(tasks: TaskItem[]): string {
 
   const lines: string[] = [];
   lines.push('---\n');
-  lines.push('## 📋 Task List\n');
+  lines.push('## Task List\n');
   lines.push('');
   
   // Quick overview with custom checkbox format
@@ -412,7 +365,7 @@ function generateTaskListSection(tasks: TaskItem[]): string {
   
   // In Progress first
   if (inProgress.length > 0) {
-    lines.push('#### 🔄 In Progress\n');
+    lines.push('#### In Progress\n');
     for (let i = 0; i < inProgress.length; i++) {
       lines.push(generateTaskItem(inProgress[i], tasks.indexOf(inProgress[i])));
     }
@@ -420,7 +373,7 @@ function generateTaskListSection(tasks: TaskItem[]): string {
   
   // Pending next
   if (pending.length > 0) {
-    lines.push('#### ⬜ Pending\n');
+    lines.push('#### Pending\n');
     for (let i = 0; i < pending.length; i++) {
       lines.push(generateTaskItem(pending[i], tasks.indexOf(pending[i])));
     }
@@ -428,7 +381,7 @@ function generateTaskListSection(tasks: TaskItem[]): string {
   
   // Completed last
   if (completed.length > 0) {
-    lines.push('#### ✅ Completed\n');
+    lines.push('#### Completed\n');
     for (let i = 0; i < completed.length; i++) {
       lines.push(generateTaskItem(completed[i], tasks.indexOf(completed[i])));
     }
@@ -447,14 +400,14 @@ function generateVerificationHistorySection(history: VerificationAttempt[]): str
 
   const lines: string[] = [];
   lines.push('---\n');
-  lines.push('## 🔍 Verification History\n');
+  lines.push('## Verification History\n');
   lines.push('');
   
   for (let i = 0; i < history.length; i++) {
     const attempt = history[i];
-    const resultIcon = attempt.result === 'success' ? '✅' : attempt.result === 'partial' ? '🟡' : '❌';
+    const resultLabel = attempt.result === 'success' ? '[PASS]' : attempt.result === 'partial' ? '[PARTIAL]' : '[FAIL]';
     
-    lines.push(`### Attempt ${i + 1} ${resultIcon}\n`);
+    lines.push(`### Attempt ${i + 1} ${resultLabel}\n`);
     lines.push('');
     lines.push(`| Property | Value |`);
     lines.push(`|----------|-------|`);
@@ -477,7 +430,7 @@ function generateVerificationHistorySection(history: VerificationAttempt[]): str
     if (attempt.passedTasks.length > 0) {
       lines.push('**Passed Tasks:**');
       for (const taskId of attempt.passedTasks) {
-        lines.push(`- ✅ \`${taskId}\``);
+        lines.push(`- [x] \`${taskId}\``);
       }
       lines.push('');
     }
@@ -485,7 +438,7 @@ function generateVerificationHistorySection(history: VerificationAttempt[]): str
     if (attempt.failedTasks.length > 0) {
       lines.push('**Failed Tasks:**');
       for (const taskId of attempt.failedTasks) {
-        lines.push(`- ❌ \`${taskId}\``);
+        lines.push(`- [!] \`${taskId}\``);
       }
       lines.push('');
     }
@@ -504,66 +457,66 @@ function generateWorkflowDiagram(tasks: TaskItem[]): string {
 
   const lines: string[] = [];
   lines.push('---\n');
-  lines.push('## 📈 Workflow Diagram\n');
+  lines.push('## Workflow Diagram\n');
   lines.push('');
   lines.push('```mermaid');
   lines.push('flowchart TD');
-  lines.push('    START([🚀 Start]) --> T1');
+  lines.push('    START([Start]) --> T1');
   
   // Generate task nodes
   for (let i = 0; i < tasks.length; i++) {
     const task = tasks[i];
     const nodeId = `T${i + 1}`;
     const nextNodeId = i < tasks.length - 1 ? `T${i + 2}` : 'VERIFY';
-    const statusEmoji = task.status === 'completed' ? '✅' : 
-                        task.status === 'in_progress' ? '🔄' : '⬜';
+    const statusLabel = task.status === 'completed' ? '[x]' : 
+                        task.status === 'in_progress' ? '[~]' : '[ ]';
     const truncatedContent = task.content.length > 30 
       ? task.content.substring(0, 27) + '...' 
       : task.content;
     
-    lines.push(`    ${nodeId}["${statusEmoji} ${truncatedContent}"] --> ${nextNodeId}`);
+    lines.push(`    ${nodeId}["${statusLabel} ${truncatedContent}"] --> ${nextNodeId}`);
   }
   
-  lines.push('    VERIFY{{"🔍 Verify"}} --> |Pass| DONE([✅ Complete])');
+  lines.push('    VERIFY{{"Verify"}} --> |Pass| DONE([Complete])');
   lines.push('    VERIFY --> |Fail| T1');
   lines.push('```');
   lines.push('');
   
   // Also include ASCII fallback
   lines.push('<details>');
-  lines.push('<summary>📊 ASCII Flow (if Mermaid not supported)</summary>');
+  lines.push('<summary>ASCII Flow (if Mermaid not supported)</summary>');
   lines.push('');
   lines.push('```');
-  lines.push('┌─────────────────────────────────────────┐');
-  lines.push('│              🚀 START                   │');
-  lines.push('└────────────────────┬────────────────────┘');
-  lines.push('                     │');
+  lines.push('+-----------------------------------------+');
+  lines.push('|                 START                   |');
+  lines.push('+-----------------------------------------+');
+  lines.push('                     |');
   
   for (let i = 0; i < tasks.length; i++) {
     const task = tasks[i];
-    const statusIcon = task.status === 'completed' ? '✓' : 
-                       task.status === 'in_progress' ? '→' : ' ';
+    const statusIcon = task.status === 'completed' ? 'x' : 
+                       task.status === 'in_progress' ? '~' : ' ';
     const truncatedContent = task.content.length > 35 
       ? task.content.substring(0, 32) + '...' 
       : task.content.padEnd(35);
     
-    lines.push('                     ▼');
-    lines.push('┌─────────────────────────────────────────┐');
-    lines.push(`│ [${statusIcon}] ${truncatedContent} │`);
-    lines.push('└────────────────────┬────────────────────┘');
-    lines.push('                     │');
+    lines.push('                     v');
+    lines.push('+-----------------------------------------+');
+    lines.push(`| [${statusIcon}] ${truncatedContent} |`);
+    lines.push('+-----------------------------------------+');
+    lines.push('                     |');
   }
   
-  lines.push('                     ▼');
-  lines.push('┌─────────────────────────────────────────┐');
-  lines.push('│            🔍 VERIFICATION              │');
-  lines.push('└────────────────────┬────────────────────┘');
-  lines.push('                     │');
-  lines.push('          ┌──────────┴──────────┐');
-  lines.push('          ▼                     ▼');
-  lines.push('    ┌──────────┐          ┌──────────┐');
-  lines.push('    │ ✅ DONE  │          │ 🔄 RETRY │');
-  lines.push('    └──────────┘          └──────────┘');
+  lines.push('                     v');
+  lines.push('+-----------------------------------------+');
+  lines.push('|              VERIFICATION               |');
+  lines.push('+-----------------------------------------+');
+  lines.push('                     |');
+  lines.push('          +----------+----------+');
+  lines.push('          v                     v');
+  lines.push('    +----------+          +----------+');
+  lines.push('    |   DONE   |          |  RETRY   |');
+  lines.push('    +----------+          +----------+');
   lines.push('```');
   lines.push('</details>');
   lines.push('');
@@ -577,7 +530,7 @@ function generateWorkflowDiagram(tasks: TaskItem[]): string {
 function generateFooter(session: TaskSession): string {
   const lines: string[] = [];
   lines.push('---\n');
-  lines.push('## 📌 Quick Reference\n');
+  lines.push('## Quick Reference\n');
   lines.push('');
   lines.push('| Command | Description |');
   lines.push('|---------|-------------|');
@@ -588,11 +541,11 @@ function generateFooter(session: TaskSession): string {
   lines.push('');
   lines.push('---');
   lines.push('');
-  lines.push(`> 📁 **Storage:** \`.vyotiq/${session.folderName}/\``);
+  lines.push(`> **Storage:** \`.vyotiq/${session.folderName}/\``);
   lines.push('');
   lines.push('---');
   lines.push('');
-  lines.push(`*Generated by Vyotiq Agent • ${formatTimestamp(Date.now())}*`);
+  lines.push(`*Generated by Vyotiq Agent - ${formatTimestamp(Date.now())}*`);
   
   return lines.join('\n');
 }
@@ -642,7 +595,7 @@ export function generateTaskListMarkdown(tasks: TaskItem[]): string {
   }
 
   const lines: string[] = [];
-  lines.push('# 📋 Task List\n');
+  lines.push('# Task List\n');
   lines.push('');
   
   for (let i = 0; i < tasks.length; i++) {
@@ -666,11 +619,11 @@ export function generatePlanSummaryMarkdown(session: TaskSession): string {
   const progressBar = generateProgressBar(session.stats.completionPercentage, 15);
   
   const lines: string[] = [];
-  lines.push(`## 📋 ${session.taskName}`);
+  lines.push(`## ${session.taskName}`);
   lines.push('');
   lines.push(`\`${progressBar}\` **${session.stats.completionPercentage}%**`);
   lines.push('');
-  lines.push(`✅ ${session.stats.completed} done • 🔄 ${session.stats.inProgress} active • ⬜ ${session.stats.pending} pending`);
+  lines.push(`${session.stats.completed} done | ${session.stats.inProgress} active | ${session.stats.pending} pending`);
   lines.push('');
   lines.push('**Tasks:**');
   

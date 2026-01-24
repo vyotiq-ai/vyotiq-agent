@@ -8,6 +8,7 @@ import type { ToolDefinition, ToolExecutionContext } from '../../types';
 import type { ToolExecutionResult } from '../../../../shared/types';
 import type { CreatePlanArgs, TaskSession, TaskItem } from '../../../../shared/types/todoTask';
 import { getTaskManager } from './taskManager';
+import { generateProgressBar } from './formatUtils';
 
 interface CreatePlanToolArgs {
   /** The user's original request/task description */
@@ -17,15 +18,6 @@ interface CreatePlanToolArgs {
   /** Optional: Pre-parsed requirements (if you've already broken them down) */
   requirements?: string[];
   [key: string]: unknown;
-}
-
-/**
- * Generate a progress bar using unicode characters
- */
-function generateProgressBar(percentage: number, width = 20): string {
-  const filled = Math.round((percentage / 100) * width);
-  const empty = width - filled;
-  return `${'█'.repeat(filled)}${'░'.repeat(empty)}`;
 }
 
 /**
@@ -48,11 +40,11 @@ function formatPlanOutput(session: TaskSession): string {
   const progressBar = generateProgressBar(session.stats.completionPercentage);
   
   // Header with centered progress
-  lines.push(`# 📋 Plan Created: ${session.taskName}`);
+  lines.push(`# Plan Created: ${session.taskName}`);
   lines.push('');
   lines.push('<div align="center">');
   lines.push('');
-  lines.push('🚀 **Ready to Start** 🚀');
+  lines.push('**Ready to Start**');
   lines.push('');
   lines.push('```');
   lines.push(`${progressBar} ${session.stats.completionPercentage}%`);
@@ -64,7 +56,7 @@ function formatPlanOutput(session: TaskSession): string {
   lines.push('');
   
   // Plan details table
-  lines.push('## 📊 Plan Details');
+  lines.push('## Plan Details');
   lines.push('');
   lines.push(`| Property | Value |`);
   lines.push(`|----------|-------|`);
@@ -78,7 +70,7 @@ function formatPlanOutput(session: TaskSession): string {
   // Original request
   lines.push('---');
   lines.push('');
-  lines.push('## 📝 Original Request');
+  lines.push('## Original Request');
   lines.push('');
   const truncatedRequest = session.plan.originalRequest.length > 400 
     ? session.plan.originalRequest.substring(0, 400) + '...' 
@@ -89,38 +81,38 @@ function formatPlanOutput(session: TaskSession): string {
   // Requirements section
   lines.push('---');
   lines.push('');
-  lines.push('## 🎯 Requirements');
+  lines.push('## Requirements');
   lines.push('');
   for (let i = 0; i < session.plan.requirements.length; i++) {
-    lines.push(`- ⬜ **${i + 1}.** ${session.plan.requirements[i]}`);
+    lines.push(`- [ ] **${i + 1}.** ${session.plan.requirements[i]}`);
   }
   lines.push('');
   
   // Task list section
   lines.push('---');
   lines.push('');
-  lines.push('## 📋 Task List');
+  lines.push('## Task List');
   lines.push('');
   for (let i = 0; i < session.tasks.length; i++) {
     const task = session.tasks[i];
-    lines.push(`${i + 1}. ⬜ ${task.content}`);
+    lines.push(`${i + 1}. [ ] ${task.content}`);
   }
   lines.push('');
   
   // Workflow mini-diagram
   lines.push('---');
   lines.push('');
-  lines.push('## 📈 Workflow');
+  lines.push('## Workflow');
   lines.push('');
   lines.push('```');
-  lines.push('START → Task 1 → Task 2 → ... → Verify → DONE');
+  lines.push('START -> Task 1 -> Task 2 -> ... -> Verify -> DONE');
   lines.push('```');
   lines.push('');
   
   // Quick reference table
   lines.push('---');
   lines.push('');
-  lines.push('## 📌 Quick Reference');
+  lines.push('## Quick Reference');
   lines.push('');
   lines.push('| Command | Description |');
   lines.push('|---------|-------------|');
@@ -131,7 +123,7 @@ function formatPlanOutput(session: TaskSession): string {
   lines.push('');
   lines.push('---');
   lines.push('');
-  lines.push(`> 📁 **Files saved to:** \`.vyotiq/${session.folderName}/plan.md\``);
+  lines.push(`> **Files saved to:** \`.vyotiq/${session.folderName}/plan.md\``);
 
   return lines.join('\n');
 }

@@ -7,6 +7,7 @@ import type { ToolDefinition, ToolExecutionContext } from '../../types';
 import type { ToolExecutionResult } from '../../../../shared/types';
 import type { TaskSession } from '../../../../shared/types/todoTask';
 import { getTaskManager } from './taskManager';
+import { generateProgressBar, formatShortDate } from './formatUtils';
 
 interface ListPlansToolArgs {
   /** Optional: Filter by completion status */
@@ -17,37 +18,17 @@ interface ListPlansToolArgs {
 }
 
 /**
- * Generate a progress bar using unicode characters
- */
-function generateProgressBar(percentage: number, width = 10): string {
-  const filled = Math.round((percentage / 100) * width);
-  const empty = width - filled;
-  return `${'█'.repeat(filled)}${'░'.repeat(empty)}`;
-}
-
-/**
- * Format timestamp to readable date
- */
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-/**
  * Format plan list for output with beautiful markdown
  */
 function formatPlanListOutput(sessions: TaskSession[], status: string): string {
   if (sessions.length === 0) {
-    return `# 📋 Task Plans
+    return `# Task Plans
 
 ---
 
 No ${status === 'all' ? '' : status + ' '}task plans found in this workspace.
 
-## 📌 Create a New Plan
+## Create a New Plan
 
 To create a new plan, use \`CreatePlan\` with:
 
@@ -61,22 +42,22 @@ To create a new plan, use \`CreatePlan\` with:
   const activeCount = sessions.filter(s => !s.plan.isCompleted).length;
   const completedCount = sessions.filter(s => s.plan.isCompleted).length;
   
-  lines.push(`# 📋 Task Plans`);
+  lines.push(`# Task Plans`);
   lines.push('');
   lines.push('---');
   lines.push('');
-  lines.push('## 📊 Summary');
+  lines.push('## Summary');
   lines.push('');
   lines.push(`| Status | Count |`);
   lines.push(`|--------|-------|`);
-  lines.push(`| 🚀 Active | ${activeCount} |`);
-  lines.push(`| ✅ Completed | ${completedCount} |`);
+  lines.push(`| Active | ${activeCount} |`);
+  lines.push(`| Completed | ${completedCount} |`);
   lines.push(`| **Total** | **${sessions.length}** |`);
   lines.push('');
   
   lines.push('---');
   lines.push('');
-  lines.push('## 📁 Plans');
+  lines.push('## Plans');
   lines.push('');
 
   // Active plans first
@@ -84,33 +65,33 @@ To create a new plan, use \`CreatePlan\` with:
   const completedPlans = sessions.filter(s => s.plan.isCompleted);
 
   if (activePlans.length > 0 && (status === 'all' || status === 'active')) {
-    lines.push('### 🚀 Active Plans');
+    lines.push('### Active Plans');
     lines.push('');
     lines.push('| Plan | Progress | Tasks | Created | Plan ID |');
     lines.push('|------|----------|-------|---------|---------|');
     
     for (const session of activePlans) {
       const progressBar = generateProgressBar(session.stats.completionPercentage);
-      lines.push(`| **${session.taskName}** | \`${progressBar}\` ${session.stats.completionPercentage}% | ${session.stats.completed}/${session.stats.total} | ${formatDate(session.createdAt)} | \`${session.plan.id.substring(0, 15)}...\` |`);
+      lines.push(`| **${session.taskName}** | \`${progressBar}\` ${session.stats.completionPercentage}% | ${session.stats.completed}/${session.stats.total} | ${formatShortDate(session.createdAt)} | \`${session.plan.id.substring(0, 15)}...\` |`);
     }
     lines.push('');
   }
 
   if (completedPlans.length > 0 && (status === 'all' || status === 'completed')) {
-    lines.push('### ✅ Completed Plans');
+    lines.push('### Completed Plans');
     lines.push('');
     lines.push('| Plan | Tasks | Created | Location |');
     lines.push('|------|-------|---------|----------|');
     
     for (const session of completedPlans) {
-      lines.push(`| ~~${session.taskName}~~ | ${session.stats.total} | ${formatDate(session.createdAt)} | \`.vyotiq/${session.folderName}/\` |`);
+      lines.push(`| ~~${session.taskName}~~ | ${session.stats.total} | ${formatShortDate(session.createdAt)} | \`.vyotiq/${session.folderName}/\` |`);
     }
     lines.push('');
   }
 
   lines.push('---');
   lines.push('');
-  lines.push('## 📌 Actions');
+  lines.push('## Actions');
   lines.push('');
   lines.push('| Command | Description |');
   lines.push('|---------|-------------|');

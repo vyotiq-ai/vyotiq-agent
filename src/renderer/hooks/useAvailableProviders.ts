@@ -44,6 +44,13 @@ export function useAvailableProviders(): UseAvailableProvidersResult {
   const [error, setError] = useState<Error | null>(null);
 
   const fetchProviders = useCallback(async () => {
+    // Guard against preload not being ready
+    if (!window.vyotiq?.agent?.getAvailableProviders || !window.vyotiq?.agent?.getProvidersCooldown) {
+      logger.warn('vyotiq.agent API not available yet');
+      setIsLoading(false);
+      return;
+    }
+    
     try {
       setIsLoading(true);
       setError(null);
@@ -68,6 +75,11 @@ export function useAvailableProviders(): UseAvailableProvidersResult {
 
   // Listen for settings updates to refetch providers
   useEffect(() => {
+    // Guard against preload not being ready
+    if (!window.vyotiq?.agent?.onEvent) {
+      return;
+    }
+    
     const unsubscribe = window.vyotiq.agent.onEvent((event) => {
       // Refetch when settings are updated (API keys may have changed)
       if (event.type === 'settings-update') {

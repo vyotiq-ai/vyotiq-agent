@@ -15,6 +15,7 @@ import type {
   ComplianceSettings,
   TokenUsage,
   RoutingDecision,
+  TaskRoutingSettings,
 } from '../../../shared/types';
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
@@ -43,6 +44,7 @@ export interface RunExecutorDeps {
   getPromptSettings?: () => PromptSettings | undefined;
   getComplianceSettings?: () => ComplianceSettings | undefined;
   getAccessLevelSettings?: () => AccessLevelSettings | undefined;
+  getTaskRoutingSettings?: () => TaskRoutingSettings | undefined;
   getEditorState?: () => EditorState;
   getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>;
 }

@@ -22,9 +22,9 @@ export { useChatInput } from '../features/chat/hooks/useChatInput';
 export { useChatScroll } from './useChatScroll';
 
 // Chat-specific composable hooks
-export { 
-  useMessageState, 
-  useProviderSelection, 
+export {
+  useMessageState,
+  useProviderSelection,
   useChatSubmit,
   useClipboardPaste,
   type MessageState,
@@ -69,8 +69,8 @@ export { useSessionCost, useMessageCost } from '../features/sessions/hooks/useSe
 // Performance Hooks
 // =============================================================================
 
-export { 
-  useVirtualizedList, 
+export {
+  useVirtualizedList,
   useVirtualItemMeasure,
   type VirtualizedListOptions,
   type VirtualizedListResult,

@@ -201,13 +201,13 @@ export const OutputPanel: React.FC<OutputPanelProps> = memo(({ className }) => {
       switch (event.type) {
         case 'tool-call': {
           const toolCall = 'toolCall' in event ? event.toolCall : null;
-          addEntry('Agent', 'info', `▶ Executing: ${toolCall?.name || 'unknown tool'}`);
+          addEntry('Agent', 'info', `> Executing: ${toolCall?.name || 'unknown tool'}`);
           break;
         }
         case 'tool-result': {
           const result = 'result' in event ? event.result : null;
           const level = result?.success === false ? 'error' : 'info';
-          const icon = result?.success ? '✓' : '✗';
+          const icon = result?.success ? '[OK]' : '[ERR]';
           addEntry('Agent', level, `${icon} ${result?.toolName || 'unknown'}: ${result?.success ? 'Success' : 'Failed'}`);
           break;
         }

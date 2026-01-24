@@ -52,7 +52,7 @@ Use lsp_diagnostics for quick type checking, read_lints for full linting.
 ## Output
 - Diagnostics grouped by file
 - Line and column for each issue
-- Severity indicator (✗ error, ⚠ warning, ℹ info, 💡 hint)
+- Severity indicator ([ERR] error, [WARN] warning, [i] info, [TIP] hint)
 - Summary counts
 
 ## Best Practices
@@ -152,7 +152,7 @@ Use lsp_diagnostics for quick type checking, read_lints for full linting.
         return {
           toolName: 'lsp_diagnostics',
           success: true,
-          output: `✓ No diagnostics found${filterNote}.`,
+          output: `[OK] No diagnostics found${filterNote}.`,
           metadata: { errorCount: 0, warningCount: 0 },
         };
       }
@@ -178,9 +178,9 @@ Use lsp_diagnostics for quick type checking, read_lints for full linting.
       for (const [file, fileDiags] of byFile) {
         lines.push(`\n${file}:`);
         for (const diag of fileDiags) {
-          const icon = diag.severity === 'error' ? '✗' : 
-                       diag.severity === 'warning' ? '⚠' : 
-                       diag.severity === 'info' ? 'ℹ' : '💡';
+          const icon = diag.severity === 'error' ? '[ERR]' : 
+                       diag.severity === 'warning' ? '[WARN]' : 
+                       diag.severity === 'info' ? '[i]' : '[TIP]';
           const code = diag.code ? ` [${diag.code}]` : '';
           lines.push(`  ${diag.line}:${diag.column}  ${icon} ${diag.message}${code}`);
         }

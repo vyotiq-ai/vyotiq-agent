@@ -56,6 +56,22 @@
 
 ---
 
+## 📢 Recent Updates
+
+### Diff Display Fix (January 2026)
+Fixed a critical issue in the diff viewer where identical lines were incorrectly shown as changed. This was particularly visible in import statements where file paths were being highlighted as different even though they were the same.
+
+**Improvements:**
+- ✅ Identical lines are never shown as changed
+- ✅ Import statements with the same paths are correctly identified as unchanged  
+- ✅ Only actual modifications are highlighted in the diff view
+- ✅ Performance improved with O(1) lookups instead of O(n) searches
+- ✅ Comprehensive test coverage added for diff algorithms
+
+See [DIFF_FIX_SUMMARY.md](./DIFF_FIX_SUMMARY.md) for technical details.
+
+---
+
 ## 🚀 Features
 
 ### 🤖 AI Capabilities

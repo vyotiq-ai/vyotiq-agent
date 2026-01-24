@@ -193,7 +193,7 @@ export class PromptOptimizer {
 
     // Add violation-specific reminders
     if (recentViolations && recentViolations.length > 0) {
-      reminder += `⚠️ RECENT COMPLIANCE ISSUES DETECTED:\n`;
+      reminder += `[!] RECENT COMPLIANCE ISSUES DETECTED:\n`;
       for (const violation of recentViolations.slice(0, 3)) {
         reminder += `- ${violation}\n`;
       }

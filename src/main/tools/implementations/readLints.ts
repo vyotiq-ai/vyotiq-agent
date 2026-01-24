@@ -67,7 +67,7 @@ read_lints([file]) → VERIFY no errors
 
 ## Output
 - File path with line:column for each issue
-- Severity indicator (✗ error, ⚠ warning)
+- Severity indicator ([ERR] error, [WARN] warning)
 - Message and rule ID
 - Summary of total errors/warnings
 
@@ -212,7 +212,7 @@ read_lints([file]) → VERIFY no errors
         return {
           toolName: 'read_lints',
           success: true,
-          output: `✓ No linting issues found in ${resolvedFiles.length} file(s).`,
+          output: `[OK] No linting issues found in ${resolvedFiles.length} file(s).`,
           metadata: {
             filesChecked: resolvedFiles.length,
             errorCount: 0,
@@ -287,7 +287,7 @@ async function runSimpleLint(
     return {
       toolName: 'read_lints',
       success: true,
-      output: `✓ No linting issues found in ${files.length} file(s).`,
+      output: `[OK] No linting issues found in ${files.length} file(s).`,
       metadata: {
         filesChecked: files.length,
         errorCount: 0,
@@ -308,7 +308,7 @@ async function runSimpleLint(
   return {
     toolName: 'read_lints',
     success: true,
-    output: filteredOutput || '✓ No errors found (warnings filtered).',
+    output: filteredOutput || '[OK] No errors found (warnings filtered).',
     metadata: {
       filesChecked: files.length,
       rawOutput: true,
@@ -353,7 +353,7 @@ async function runTypeCheck(
       return {
         toolName: 'read_lints',
         success: true,
-        output: `✓ No TypeScript errors found in ${files.length} file(s).`,
+        output: `[OK] No TypeScript errors found in ${files.length} file(s).`,
         metadata: {
           filesChecked: files.length,
           errorCount: 0,
@@ -426,7 +426,7 @@ function formatLintResults(
     outputLines.push(`\n${relativePath}:`);
     
     for (const msg of messages) {
-      const severity = msg.severity === 'error' ? '✗' : '⚠';
+      const severity = msg.severity === 'error' ? '[ERR]' : '[WARN]';
       const rule = msg.ruleId ? ` (${msg.ruleId})` : '';
       outputLines.push(`  ${msg.line}:${msg.column}  ${severity} ${msg.message}${rule}`);
     }
@@ -437,7 +437,7 @@ function formatLintResults(
     return {
       toolName: 'read_lints',
       success: true,
-      output: `✓ No linting issues found${fixNote}.`,
+      output: `[OK] No linting issues found${fixNote}.`,
       metadata: {
         errorCount: 0,
         warningCount: 0,

@@ -57,11 +57,11 @@ async function executeSecurityStatus(
     if (includeConfig) {
       const config = security.getConfig();
       output += '## Security Configuration\n';
-      output += `- **URL Filtering:** ${config.urlFilteringEnabled ? '✓ Enabled' : '✗ Disabled'}\n`;
-      output += `- **Popup Blocking:** ${config.popupBlockingEnabled ? '✓ Enabled' : '✗ Disabled'}\n`;
-      output += `- **Ad Blocking:** ${config.adBlockingEnabled ? '✓ Enabled' : '✗ Disabled'}\n`;
-      output += `- **Tracker Blocking:** ${config.trackerBlockingEnabled ? '✓ Enabled' : '✗ Disabled'}\n`;
-      output += `- **Download Protection:** ${config.downloadProtectionEnabled ? '✓ Enabled' : '✗ Disabled'}\n`;
+      output += `- **URL Filtering:** ${config.urlFilteringEnabled ? '[ON]' : '[OFF]'}\n`;
+      output += `- **Popup Blocking:** ${config.popupBlockingEnabled ? '[ON]' : '[OFF]'}\n`;
+      output += `- **Ad Blocking:** ${config.adBlockingEnabled ? '[ON]' : '[OFF]'}\n`;
+      output += `- **Tracker Blocking:** ${config.trackerBlockingEnabled ? '[ON]' : '[OFF]'}\n`;
+      output += `- **Download Protection:** ${config.downloadProtectionEnabled ? '[ON]' : '[OFF]'}\n`;
       
       if (config.allowList.length > 0) {
         output += `- **Allow List:** ${config.allowList.slice(0, 10).join(', ')}${config.allowList.length > 10 ? '...' : ''}\n`;
@@ -81,7 +81,7 @@ async function executeSecurityStatus(
         
         for (const event of events.slice(-eventLimit)) {
           const time = new Date(event.timestamp).toLocaleTimeString();
-          const icon = event.type === 'blocked' ? '🚫' : event.type === 'warning' ? '⚠️' : '✓';
+          const icon = event.type === 'blocked' ? '[BLOCKED]' : event.type === 'warning' ? '[WARN]' : '[OK]';
           output += `${icon} **[${time}]** ${event.category}: ${event.reason}\n`;
           output += `   URL: ${event.url.slice(0, 100)}${event.url.length > 100 ? '...' : ''}\n\n`;
         }

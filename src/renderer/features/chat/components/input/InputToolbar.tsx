@@ -88,7 +88,7 @@ const ContextIndicator: React.FC<{
   const tooltip = [
     `Context: ${pct}%`,
     `${formatTokenCount(info.totalTokens)} / ${formatTokenCount(info.maxInputTokens)}`,
-    info.needsPruning ? '⚠ Pruning needed' : info.isWarning ? '⚠ Near limit' : '',
+    info.needsPruning ? '[!] Pruning needed' : info.isWarning ? '[!] Near limit' : '',
   ].filter(Boolean).join('\n');
 
   return (

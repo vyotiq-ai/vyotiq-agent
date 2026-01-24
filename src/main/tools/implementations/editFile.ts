@@ -624,8 +624,8 @@ String preview (first 100 chars):
           
           if (foundLines.length > 0 && missingLines.length > 0) {
             suggestion = 'PARTIAL MATCH: Some lines found but context doesn\'t match.';
-            diagnostics.push('Found in file:\n' + foundLines.map(l => `  ✓ ${l}`).join('\n'));
-            diagnostics.push('Not found:\n' + missingLines.map(l => `  ✗ ${l}`).join('\n'));
+            diagnostics.push('Found in file:\n' + foundLines.map(l => `  [+] ${l}`).join('\n'));
+            diagnostics.push('Not found:\n' + missingLines.map(l => `  [-] ${l}`).join('\n'));
           } else if (missingLines.length > 0 && foundLines.length === 0) {
             suggestion = 'NO MATCH: The specified text does not appear to exist in this file.';
             diagnostics.push('Neither first nor last line of old_string was found in the file.');

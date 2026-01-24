@@ -7,6 +7,7 @@ import type { ToolDefinition, ToolExecutionContext } from '../../types';
 import type { ToolExecutionResult } from '../../../../shared/types';
 import type { TaskSession } from '../../../../shared/types/todoTask';
 import { getTaskManager } from './taskManager';
+import { STATUS_ICONS, generateProgressBar, calculatePercentage } from './formatUtils';
 
 interface GetActivePlanToolArgs {
   /** Optional: Include full task details (default: true) */
@@ -15,35 +16,17 @@ interface GetActivePlanToolArgs {
 }
 
 /**
- * Status icons for task display
- */
-const STATUS_ICONS = {
-  completed: '✅',
-  in_progress: '🔄',
-  pending: '⬜',
-} as const;
-
-/**
- * Generate a progress bar using unicode characters
- */
-function generateProgressBar(percentage: number, width = 20): string {
-  const filled = Math.round((percentage / 100) * width);
-  const empty = width - filled;
-  return `${'█'.repeat(filled)}${'░'.repeat(empty)}`;
-}
-
-/**
  * Format active plan for output with beautiful markdown
  */
 function formatActivePlanOutput(session: TaskSession | null, includeDetails: boolean): string {
   if (!session) {
-    return `# ℹ️ No Active Plan
+    return `# No Active Plan
 
 ---
 
 No active task plan found in this workspace.
 
-## 📌 Create a New Plan
+## Create a New Plan
 
 To create a new plan, use \`CreatePlan\` with:
 
@@ -60,16 +43,15 @@ To create a new plan, use \`CreatePlan\` with:
   const lines: string[] = [];
   const progressBar = generateProgressBar(session.stats.completionPercentage);
   const isComplete = session.stats.completionPercentage === 100;
-  const statusEmoji = isComplete ? '✅' : session.stats.inProgress > 0 ? '🔄' : '🚀';
   const statusLabel = isComplete ? 'Completed' : session.stats.inProgress > 0 ? 'In Progress' : 'Active';
-  const progressColor = isComplete ? '🟢' : session.stats.completionPercentage >= 50 ? '🟡' : '🔴';
+  const progressStatus = isComplete ? 'DONE' : session.stats.completionPercentage >= 50 ? 'PROGRESS' : 'STARTED';
   
   // Header with centered progress
-  lines.push(`# ${statusEmoji} Active Plan: ${session.taskName}`);
+  lines.push(`# Active Plan: ${session.taskName}`);
   lines.push('');
   lines.push('<div align="center">');
   lines.push('');
-  lines.push(`${progressColor} **${statusLabel}** ${progressColor}`);
+  lines.push(`**${statusLabel}** | ${progressStatus}`);
   lines.push('');
   lines.push('```');
   lines.push(`${progressBar} ${session.stats.completionPercentage}%`);
@@ -81,7 +63,7 @@ To create a new plan, use \`CreatePlan\` with:
   lines.push('');
   
   // Stats overview table
-  lines.push('## 📊 Overview');
+  lines.push('## Overview');
   lines.push('');
   lines.push(`| Property | Value |`);
   lines.push(`|----------|-------|`);
@@ -91,16 +73,16 @@ To create a new plan, use \`CreatePlan\` with:
   lines.push('');
   lines.push('| Status | Count | Percentage |');
   lines.push('|--------|-------|------------|');
-  lines.push(`| ✅ Completed | ${session.stats.completed} | ${session.stats.total > 0 ? Math.round((session.stats.completed / session.stats.total) * 100) : 0}% |`);
-  lines.push(`| 🔄 In Progress | ${session.stats.inProgress} | ${session.stats.total > 0 ? Math.round((session.stats.inProgress / session.stats.total) * 100) : 0}% |`);
-  lines.push(`| ⬜ Pending | ${session.stats.pending} | ${session.stats.total > 0 ? Math.round((session.stats.pending / session.stats.total) * 100) : 0}% |`);
+  lines.push(`| Completed | ${session.stats.completed} | ${calculatePercentage(session.stats.completed, session.stats.total)}% |`);
+  lines.push(`| In Progress | ${session.stats.inProgress} | ${calculatePercentage(session.stats.inProgress, session.stats.total)}% |`);
+  lines.push(`| Pending | ${session.stats.pending} | ${calculatePercentage(session.stats.pending, session.stats.total)}% |`);
   lines.push(`| **Total** | **${session.stats.total}** | **100%** |`);
   lines.push('');
 
   if (includeDetails) {
     lines.push('---');
     lines.push('');
-    lines.push('## 📝 Original Request');
+    lines.push('## Original Request');
     lines.push('');
     const truncatedRequest = session.plan.originalRequest.length > 400 
       ? session.plan.originalRequest.substring(0, 400) + '...' 
@@ -110,7 +92,7 @@ To create a new plan, use \`CreatePlan\` with:
 
     lines.push('---');
     lines.push('');
-    lines.push('## 📋 Current Tasks');
+    lines.push('## Current Tasks');
     lines.push('');
     
     // Group tasks by status
@@ -119,7 +101,7 @@ To create a new plan, use \`CreatePlan\` with:
     const completed = session.tasks.filter(t => t.status === 'completed');
     
     if (inProgress.length > 0) {
-      lines.push('### 🔄 In Progress');
+      lines.push('### In Progress');
       lines.push('');
       for (const task of inProgress) {
         lines.push(`- ${STATUS_ICONS.in_progress} **${task.content}**`);
@@ -129,7 +111,7 @@ To create a new plan, use \`CreatePlan\` with:
     }
     
     if (pending.length > 0) {
-      lines.push('### ⬜ Pending');
+      lines.push('### Pending');
       lines.push('');
       for (const task of pending) {
         lines.push(`- ${STATUS_ICONS.pending} ${task.content}`);
@@ -139,7 +121,7 @@ To create a new plan, use \`CreatePlan\` with:
     }
     
     if (completed.length > 0) {
-      lines.push('### ✅ Completed');
+      lines.push('### Completed');
       lines.push('');
       for (const task of completed) {
         lines.push(`- ${STATUS_ICONS.completed} ~~${task.content}~~`);
@@ -151,7 +133,7 @@ To create a new plan, use \`CreatePlan\` with:
 
   lines.push('---');
   lines.push('');
-  lines.push('## 📌 Quick Reference');
+  lines.push('## Quick Reference');
   lines.push('');
   lines.push('| Command | Description |');
   lines.push('|---------|-------------|');
@@ -161,16 +143,16 @@ To create a new plan, use \`CreatePlan\` with:
   lines.push('');
   
   if (isComplete) {
-    lines.push('> 🎉 **All tasks complete!** Run `VerifyTasks` to confirm requirements are met.');
+    lines.push('> **All tasks complete!** Run `VerifyTasks` to confirm requirements are met.');
   } else if (session.stats.inProgress > 0) {
-    lines.push(`> 🔄 **${session.stats.inProgress} task(s) in progress.** Continue working and update with \`TodoWrite\`.`);
+    lines.push(`> **${session.stats.inProgress} task(s) in progress.** Continue working and update with \`TodoWrite\`.`);
   } else {
-    lines.push(`> 🚀 **Ready to start!** Use \`TodoWrite\` to mark tasks as in progress.`);
+    lines.push(`> **Ready to start!** Use \`TodoWrite\` to mark tasks as in progress.`);
   }
   lines.push('');
   lines.push('---');
   lines.push('');
-  lines.push(`> 📁 **Plan file:** \`.vyotiq/${session.folderName}/plan.md\``);
+  lines.push(`> **Plan file:** \`.vyotiq/${session.folderName}/plan.md\``);
 
   return lines.join('\n');
 }

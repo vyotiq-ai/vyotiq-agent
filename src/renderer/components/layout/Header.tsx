@@ -6,9 +6,9 @@
  * - Right: Panel toggles grouped together, settings separate
  */
 import React, { memo, useMemo } from 'react';
-import { 
-  Plus, 
-  PanelLeft, 
+import {
+  Plus,
+  PanelLeft,
   Settings,
   History,
   Globe,
@@ -48,8 +48,8 @@ const IconButton: React.FC<{
     className={cn(
       'p-1.5 transition-colors rounded-sm',
       'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
-      active 
-        ? 'text-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10' 
+      active
+        ? 'text-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10'
         : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-2)]'
     )}
     onClick={onClick}
@@ -64,17 +64,17 @@ IconButton.displayName = 'IconButton';
 // Main Header Component
 // =============================================================================
 
-export const Header: React.FC<HeaderProps> = memo(function Header({ 
-  collapsed, 
-  onToggle, 
+export const Header: React.FC<HeaderProps> = memo(function Header({
+  collapsed,
+  onToggle,
   onOpenSettings,
   hasWorkspace = false,
   isMobile = false,
 }) {
   useLifecycleProfiler('Header');
-  
+
   const { handleNewSession, isWorking } = useAgentStatus();
-  
+
   const agentHeader = useAgentSelector(
     (state) => {
       const activeWorkspace = state.workspaces.find((w) => w.isActive);
@@ -92,20 +92,20 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
       a.activeSessionId === b.activeSessionId &&
       a.activeSessionTitle === b.activeSessionTitle,
   );
-  
-  const { 
-    undoHistoryOpen, toggleUndoHistory, 
+
+  const {
+    undoHistoryOpen, toggleUndoHistory,
     browserPanelOpen, toggleBrowserPanel,
   } = useUI();
 
   const workspaceLabel = useMemo(() => {
-    return agentHeader.activeWorkspace?.label || 
-           agentHeader.activeWorkspace?.path?.split(/[/\\]/).pop() || 
-           '';
+    return agentHeader.activeWorkspace?.label ||
+      agentHeader.activeWorkspace?.path?.split(/[/\\]/).pop() ||
+      '';
   }, [agentHeader.activeWorkspace]);
 
   return (
-    <header 
+    <header
       className={cn(
         'h-[32px] flex items-center justify-between shrink-0 drag-region z-30 select-none',
         'px-2 font-mono text-[10px]',
@@ -122,13 +122,13 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
         >
           <PanelLeft size={14} />
         </IconButton>
-        
+
         {/* CLI-style Path */}
         <div className="flex items-center gap-1.5 text-[11px] min-w-0 overflow-hidden ml-1">
           <span className="text-[var(--color-accent-primary)] flex-shrink-0 text-sm font-medium opacity-90">λ</span>
-          
+
           {hasWorkspace && workspaceLabel ? (
-            <span 
+            <span
               className="text-[var(--color-text-secondary)] truncate max-w-[120px] sm:max-w-[160px]"
               title={agentHeader.activeWorkspace?.path}
             >
@@ -138,7 +138,7 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
             <span className="text-[var(--color-text-placeholder)]">~</span>
           )}
         </div>
-        
+
         {/* Session selector - CLI style */}
         {hasWorkspace && (
           <div className="ml-2 pl-2 border-l border-[var(--color-border-subtle)]">
@@ -164,7 +164,7 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
           <Plus size={12} />
           {!isMobile && <span>new</span>}
         </button>
-        
+
         {/* Panel Toggles - grouped */}
         <div className="flex items-center gap-0.5 ml-1 pl-1.5 border-l border-[var(--color-border-subtle)]">
           <IconButton
@@ -174,7 +174,7 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
           >
             <Globe size={13} />
           </IconButton>
-          
+
           <IconButton
             onClick={toggleUndoHistory}
             title={undoHistoryOpen ? 'Hide history [Ctrl+Shift+H]' : 'Show history [Ctrl+Shift+H]'}
@@ -183,7 +183,7 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
             <History size={13} />
           </IconButton>
         </div>
-        
+
         {/* Settings - separate */}
         <div className="ml-1 pl-1.5 border-l border-[var(--color-border-subtle)]">
           <IconButton

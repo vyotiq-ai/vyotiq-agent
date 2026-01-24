@@ -537,7 +537,7 @@ export class ConversationSummarizer {
    */
   private createToolResultSummary(content: string, toolName: string, success?: boolean): string {
     const toolLower = toolName.toLowerCase();
-    const statusPrefix = success === false ? '❌ Failed: ' : success === true ? '✓ ' : '';
+    const statusPrefix = success === false ? '[FAIL] ' : success === true ? '[OK] ' : '';
 
     // For read operations - just note what was read
     if (toolLower.includes('read')) {

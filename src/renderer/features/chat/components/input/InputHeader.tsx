@@ -173,7 +173,7 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
             className="text-[8px] text-[var(--color-warning)] hidden lg:inline"
             title={workspaceWarning}
           >
-            ⚠
+            [!]
           </span>
         )}
         {(isWorking || statusPhase === 'paused' || isPaused) && (

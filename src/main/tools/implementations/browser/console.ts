@@ -171,11 +171,11 @@ async function executeConsole(
     let output = `## Browser Console Logs (${logs.length})\n\n`;
     
     const levelIcons: Record<string, string> = {
-      error: '❌',
-      warning: '⚠️',
-      info: 'ℹ️',
-      debug: '🔍',
-      log: '📝',
+      error: '[ERR]',
+      warning: '[WARN]',
+      info: '[INFO]',
+      debug: '[DBG]',
+      log: '[LOG]',
     };
     
     for (const log of logs) {

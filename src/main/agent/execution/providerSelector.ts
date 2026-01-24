@@ -3,14 +3,130 @@
  * Handles provider selection, fallback logic, and cooldown management
  */
 
-import type { LLMProviderName, RoutingDecision } from '../../../shared/types';
+import type { LLMProviderName, RoutingDecision, TaskRoutingSettings, RoutingTaskType, TaskModelMapping } from '../../../shared/types';
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
 import type { ProviderMap } from '../providers';
 import type { LLMProvider } from '../providers/baseProvider';
 import type { ProviderSelectionResult } from './types';
-import { analyzeUserQuery, selectBestModel, hasCapableProvider } from '../routing';
+import { analyzeUserQuery, selectBestModel, hasCapableProvider, type TaskAnalysis, type TaskType } from '../routing';
 import { ensureModelsCached } from '../providers/modelCache';
+import { ROUTING_TASK_INFO } from '../../../shared/types';
+
+/**
+ * Map from routing system's TaskType to user-facing RoutingTaskType
+ * This bridges the automatic task detection to user's configured task mappings
+ */
+function mapTaskTypeToRoutingType(taskType: TaskType): RoutingTaskType[] {
+  // Return array of potential matches since one routing type might map to multiple user types
+  switch (taskType) {
+    case 'coding':
+      // Coding tasks could be frontend, backend, or general coding
+      return ['frontend', 'backend', 'general'];
+    case 'reasoning':
+      // Reasoning maps to planning and analysis
+      return ['planning', 'analysis'];
+    case 'analysis':
+      // Analysis maps directly to analysis
+      return ['analysis', 'debugging'];
+    case 'creative':
+      // Creative could be documentation or frontend design
+      return ['documentation', 'frontend'];
+    case 'vision':
+      // Vision analysis could be debugging or analysis
+      return ['debugging', 'analysis'];
+    case 'image-generation':
+      // Image generation is a special case, use general
+      return ['general'];
+    case 'general':
+    default:
+      return ['general'];
+  }
+}
+
+/**
+ * Apply user's task routing settings to override automatic routing
+ */
+function applyTaskRoutingSettings(
+  taskAnalysis: TaskAnalysis,
+  routingSettings: TaskRoutingSettings | undefined,
+  availableProviders: LLMProviderName[],
+  logger: Logger
+): { provider: LLMProviderName | null; modelId?: string; mapping?: TaskModelMapping } | null {
+  // If routing is disabled or no settings, return null to use default routing
+  if (!routingSettings?.enabled) {
+    return null;
+  }
+
+  // Map the detected task type from routing to potential user task types
+  const detectedType = taskAnalysis.taskType;
+  const potentialUserTypes = mapTaskTypeToRoutingType(detectedType);
+  
+  // Find enabled mapping for any of the potential task types (in priority order)
+  const mapping = routingSettings.taskMappings.find(
+    m => m.enabled && potentialUserTypes.includes(m.taskType) && m.provider !== 'auto'
+  );
+
+  if (mapping && mapping.provider !== 'auto') {
+    // Check if the mapped provider is available
+    if (availableProviders.includes(mapping.provider)) {
+      logger.info('Applying user task routing settings', {
+        detectedTaskType: detectedType,
+        mappedToUserType: mapping.taskType,
+        provider: mapping.provider,
+        modelId: mapping.modelId,
+        confidence: taskAnalysis.confidence,
+      });
+      return { 
+        provider: mapping.provider, 
+        modelId: mapping.modelId,
+        mapping
+      };
+    } else {
+      // Try fallback provider if configured
+      if (mapping.fallbackProvider && availableProviders.includes(mapping.fallbackProvider)) {
+        logger.info('Using fallback provider from task routing', {
+          detectedTaskType: detectedType,
+          mappedToUserType: mapping.taskType,
+          primaryProvider: mapping.provider,
+          fallbackProvider: mapping.fallbackProvider,
+          fallbackModelId: mapping.fallbackModelId,
+        });
+        return { 
+          provider: mapping.fallbackProvider, 
+          modelId: mapping.fallbackModelId,
+          mapping
+        };
+      }
+      logger.warn('Task routing provider not available, falling back to default', {
+        detectedTaskType: detectedType,
+        mappedToUserType: mapping.taskType,
+        configuredProvider: mapping.provider,
+        availableProviders,
+      });
+    }
+  }
+
+  // Check default mapping if no specific task mapping found
+  if (routingSettings.defaultMapping?.enabled && routingSettings.defaultMapping.provider !== 'auto') {
+    const defaultProvider = routingSettings.defaultMapping.provider;
+    if (availableProviders.includes(defaultProvider)) {
+      logger.info('Applying default task routing mapping', {
+        detectedTaskType: detectedType,
+        potentialUserTypes,
+        provider: defaultProvider,
+        modelId: routingSettings.defaultMapping.modelId,
+      });
+      return { 
+        provider: defaultProvider, 
+        modelId: routingSettings.defaultMapping.modelId,
+        mapping: routingSettings.defaultMapping
+      };
+    }
+  }
+
+  return null;
+}
 
 export class ProviderSelector {
   private readonly providers: ProviderMap;
@@ -73,7 +189,8 @@ export class ProviderSelector {
    */
   async selectProvidersWithFallback(
     session: InternalSession,
-    emitEvent?: (event: { type: string; sessionId: string; status: string; message: string; timestamp: number }) => void
+    emitEvent?: (event: { type: string; sessionId: string; status: string; message: string; timestamp: number }) => void,
+    taskRoutingSettings?: TaskRoutingSettings
   ): Promise<ProviderSelectionResult> {
     const preferredProvider = session.state.config.preferredProvider;
     const fallbackProviderName = session.state.config.fallbackProvider;
@@ -167,7 +284,7 @@ export class ProviderSelector {
         usingProvider: availableProviders[0].name,
       });
     } else {
-      // Auto mode: Use intelligent routing
+      // Auto mode: Use intelligent routing (with optional user task mappings)
       const lastUserMessage = session.state.messages.filter(m => m.role === 'user').pop();
       if (lastUserMessage?.content) {
         const taskAnalysis = analyzeUserQuery(lastUserMessage.content);
@@ -179,38 +296,82 @@ export class ProviderSelector {
           )
         );
         
-        const canHandleTask = hasCapableProvider(taskAnalysis.requiredCapabilities, availableProviderNames);
+        // First try user's task routing settings if enabled
+        const userRouting = applyTaskRoutingSettings(
+          taskAnalysis,
+          taskRoutingSettings,
+          availableProviderNames,
+          this.logger
+        );
         
-        if (!canHandleTask && Object.keys(taskAnalysis.requiredCapabilities).length > 0) {
-          this.logger.warn('No provider supports required capabilities for task', {
-            taskType: taskAnalysis.taskType,
-            requiredCapabilities: taskAnalysis.requiredCapabilities,
-            availableProviders: availableProviderNames,
-          });
-        }
-        
-        routingDecision = selectBestModel(taskAnalysis, availableProviderNames) ?? undefined;
-        
-        if (routingDecision) {
-          const bestProvider = availableProviders.find(p => p.name === routingDecision!.selectedProvider);
-          if (bestProvider) {
-            primary = bestProvider.provider;
+        if (userRouting?.provider) {
+          // User has configured a specific provider for this task type
+          const userProvider = availableProviders.find(p => p.name === userRouting.provider);
+          if (userProvider) {
+            primary = userProvider.provider;
             
-            this.logger.info('Auto mode: Intelligent routing selected provider', {
-              selectedProvider: routingDecision.selectedProvider,
-              selectedModel: routingDecision.selectedModel,
-              taskType: routingDecision.detectedTaskType,
-              confidence: routingDecision.confidence,
-              reason: routingDecision.reason,
+            routingDecision = {
+              detectedTaskType: taskAnalysis.taskType,
+              confidence: taskAnalysis.confidence,
+              selectedProvider: userRouting.provider,
+              selectedModel: userRouting.modelId || '',
+              reason: `User task routing: ${taskAnalysis.taskType} → ${userRouting.provider}${userRouting.modelId ? ` (${userRouting.modelId})` : ''}`,
+              usedDefault: false,
+              appliedMapping: userRouting.mapping,
+            };
+            
+            this.logger.info('Auto mode: User task routing applied', {
+              selectedProvider: userRouting.provider,
+              selectedModel: userRouting.modelId,
+              taskType: taskAnalysis.taskType,
+              confidence: taskAnalysis.confidence,
             });
-
-            // Reorder available providers
+            
+            // Reorder providers with user-selected first
             const reorderedProviders = [
-              bestProvider,
-              ...availableProviders.filter(p => p.name !== routingDecision!.selectedProvider),
+              userProvider,
+              ...availableProviders.filter(p => p.name !== userRouting.provider),
             ];
             availableProviders.length = 0;
             availableProviders.push(...reorderedProviders);
+          }
+        }
+        
+        // Fall back to automatic model selection if no user routing applied
+        if (!primary) {
+          const canHandleTask = hasCapableProvider(taskAnalysis.requiredCapabilities, availableProviderNames);
+          
+          if (!canHandleTask && Object.keys(taskAnalysis.requiredCapabilities).length > 0) {
+            this.logger.warn('No provider supports required capabilities for task', {
+              taskType: taskAnalysis.taskType,
+              requiredCapabilities: taskAnalysis.requiredCapabilities,
+              availableProviders: availableProviderNames,
+            });
+          }
+          
+          routingDecision = selectBestModel(taskAnalysis, availableProviderNames) ?? undefined;
+          
+          if (routingDecision) {
+            const bestProvider = availableProviders.find(p => p.name === routingDecision!.selectedProvider);
+            if (bestProvider) {
+              primary = bestProvider.provider;
+              
+              this.logger.info('Auto mode: Intelligent routing selected provider', {
+                selectedProvider: routingDecision.selectedProvider,
+                selectedModel: routingDecision.selectedModel,
+                taskType: routingDecision.detectedTaskType,
+                confidence: routingDecision.confidence,
+                reason: routingDecision.reason,
+              });
+
+              // Reorder available providers
+              const reorderedProviders = [
+                bestProvider,
+                ...availableProviders.filter(p => p.name !== routingDecision!.selectedProvider),
+              ];
+              availableProviders.length = 0;
+              availableProviders.push(...reorderedProviders);
+            }
           }
         }
       }

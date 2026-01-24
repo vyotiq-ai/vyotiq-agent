@@ -216,7 +216,7 @@ export function registerAICodeActionProvider(languages: string[] = ['typescript'
               }));
 
               actions.push({
-                title: `✨ AI: ${fix.title}`,
+                title: `[AI] ${fix.title}`,
                 kind: 'quickfix',
                 diagnostics: [marker],
                 isPreferred: fix.isPreferred,
@@ -341,7 +341,7 @@ export function registerAICodeLensProvider(languages: string[] = ['typescript', 
                 range: new monaco.Range(i + 1, 1, i + 1, 1),
                 command: {
                   id: 'editor.ai.explain',
-                  title: '✨ AI: Explain',
+                  title: '[AI] Explain',
                   arguments: [model.uri.path, i + 1, 'explain'],
                 },
               });

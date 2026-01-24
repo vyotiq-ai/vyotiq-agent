@@ -156,9 +156,9 @@ async function executeNetwork(
     let output = `## Network Requests (${requests.length})\n\n`;
     
     const statusIcons: Record<string, string> = {
-      success: '✅',
-      error: '❌',
-      pending: '⏳',
+      success: '[OK]',
+      error: '[ERR]',
+      pending: '[...]',
     };
     
     for (const req of requests) {

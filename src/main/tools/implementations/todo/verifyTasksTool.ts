@@ -7,6 +7,7 @@ import type { ToolDefinition, ToolExecutionContext } from '../../types';
 import type { ToolExecutionResult } from '../../../../shared/types';
 import type { VerificationResult } from '../../../../shared/types/todoTask';
 import { getTaskManager } from './taskManager';
+import { generateProgressBar, getProgressColor } from './formatUtils';
 
 interface VerifyTasksToolArgs {
   /** The plan ID to verify (from CreatePlan) */
@@ -17,31 +18,21 @@ interface VerifyTasksToolArgs {
 }
 
 /**
- * Generate a progress bar using unicode characters
- */
-function generateProgressBar(percentage: number, width = 20): string {
-  const filled = Math.round((percentage / 100) * width);
-  const empty = width - filled;
-  return `${'█'.repeat(filled)}${'░'.repeat(empty)}`;
-}
-
-/**
  * Format verification result for output with beautiful markdown
  */
 function formatVerificationOutput(result: VerificationResult, planId: string): string {
   const lines: string[] = [];
   const progressBar = generateProgressBar(result.completionPercentage);
   
-  const statusEmoji = result.success ? '✅' : (result.completionPercentage > 50 ? '⚠️' : '❌');
-  const statusLabel = result.success ? 'Verification Passed' : 'Verification Incomplete';
-  const progressColor = result.success ? '🟢' : result.completionPercentage >= 50 ? '🟡' : '🔴';
+  const statusLabel = result.success ? '[PASS] Verification Passed' : (result.completionPercentage > 50 ? '[WARN] Verification Incomplete' : '[FAIL] Verification Incomplete');
+  const progressStatus = getProgressColor(result.completionPercentage);
   
   // Header with centered progress
-  lines.push(`# ${statusEmoji} ${statusLabel}`);
+  lines.push(`# ${statusLabel}`);
   lines.push('');
   lines.push('<div align="center">');
   lines.push('');
-  lines.push(`${progressColor} **${result.completionPercentage}% Complete** ${progressColor}`);
+  lines.push(`**${result.completionPercentage}% Complete** | ${progressStatus}`);
   lines.push('');
   lines.push('```');
   lines.push(`${progressBar} ${result.completionPercentage}%`);
@@ -53,12 +44,12 @@ function formatVerificationOutput(result: VerificationResult, planId: string): s
   lines.push('');
   
   // Summary stats table
-  lines.push('## 📊 Summary');
+  lines.push('## Summary');
   lines.push('');
   lines.push(`| Metric | Value |`);
   lines.push(`|--------|-------|`);
   lines.push(`| **Plan ID** | \`${planId}\` |`);
-  lines.push(`| **Status** | ${result.success ? '✅ PASSED' : '❌ INCOMPLETE'} |`);
+  lines.push(`| **Status** | ${result.success ? 'PASSED' : 'INCOMPLETE'} |`);
   lines.push(`| **Passed Tasks** | ${result.passedTasks.length} |`);
   lines.push(`| **Failed Tasks** | ${result.failedTasks.length} |`);
   lines.push(`| **Unmet Requirements** | ${result.unmetRequirements.length} |`);
@@ -67,10 +58,10 @@ function formatVerificationOutput(result: VerificationResult, planId: string): s
   if (result.passedTasks.length > 0) {
     lines.push('---');
     lines.push('');
-    lines.push('## ✅ Completed Tasks');
+    lines.push('## Completed Tasks');
     lines.push('');
     for (const task of result.passedTasks) {
-      lines.push(`- ✅ ~~${task.content}~~`);
+      lines.push(`- [x] ~~${task.content}~~`);
       if (task.description) {
         lines.push(`  > ${task.description}`);
       }
@@ -81,12 +72,12 @@ function formatVerificationOutput(result: VerificationResult, planId: string): s
   if (result.failedTasks.length > 0) {
     lines.push('---');
     lines.push('');
-    lines.push('## ❌ Incomplete Tasks');
+    lines.push('## Incomplete Tasks');
     lines.push('');
     for (const task of result.failedTasks) {
-      const statusIcon = task.status === 'in_progress' ? '🔄' : '⬜';
-      const statusLabel = task.status === 'in_progress' ? '(in progress)' : '(not started)';
-      lines.push(`- ${statusIcon} **${task.content}** ${statusLabel}`);
+      const statusIcon = task.status === 'in_progress' ? '[~]' : '[ ]';
+      const statusText = task.status === 'in_progress' ? '(in progress)' : '(not started)';
+      lines.push(`- ${statusIcon} **${task.content}** ${statusText}`);
       lines.push(`  - ID: \`${task.id}\``);
     }
     lines.push('');
@@ -95,12 +86,12 @@ function formatVerificationOutput(result: VerificationResult, planId: string): s
   if (result.unmetRequirements.length > 0) {
     lines.push('---');
     lines.push('');
-    lines.push('## ⚠️ Unmet Requirements');
+    lines.push('## Unmet Requirements');
     lines.push('');
     lines.push('The following requirements from the original plan have not been addressed:');
     lines.push('');
     for (let i = 0; i < result.unmetRequirements.length; i++) {
-      lines.push(`${i + 1}. ⬜ ${result.unmetRequirements[i]}`);
+      lines.push(`${i + 1}. [ ] ${result.unmetRequirements[i]}`);
     }
     lines.push('');
   }
@@ -108,7 +99,7 @@ function formatVerificationOutput(result: VerificationResult, planId: string): s
   if (!result.success && result.suggestedTasks.length > 0) {
     lines.push('---');
     lines.push('');
-    lines.push('## 📝 Suggested Next Tasks');
+    lines.push('## Suggested Next Tasks');
     lines.push('');
     lines.push('To complete the plan, consider adding these tasks:');
     lines.push('');
@@ -132,7 +123,7 @@ function formatVerificationOutput(result: VerificationResult, planId: string): s
 
   lines.push('---');
   lines.push('');
-  lines.push('## 📌 Quick Reference');
+  lines.push('## Quick Reference');
   lines.push('');
   lines.push('| Command | Description |');
   lines.push('|---------|-------------|');
@@ -142,11 +133,11 @@ function formatVerificationOutput(result: VerificationResult, planId: string): s
   lines.push('');
   
   if (result.success) {
-    lines.push('> 🎉 **All requirements met!** The task is complete.');
+    lines.push('> **All requirements met!** The task is complete.');
     lines.push('>');
     lines.push('> Use `DeletePlan` to clean up the plan files and report completion to the user.');
   } else {
-    lines.push('> ⚠️ **Plan incomplete.** Address the failed tasks and unmet requirements above.');
+    lines.push('> **Plan incomplete.** Address the failed tasks and unmet requirements above.');
     lines.push('>');
     lines.push('> Use `TodoWrite` to update task statuses, then run `VerifyTasks` again.');
   }

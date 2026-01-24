@@ -107,6 +107,7 @@ export class AgentOrchestrator extends EventEmitter {
       getPromptSettings: () => this.settingsStore.get().promptSettings,
       getComplianceSettings: () => this.settingsStore.get().complianceSettings,
       getAccessLevelSettings: () => this.settingsStore.get().accessLevelSettings,
+      getTaskRoutingSettings: () => this.settingsStore.get().taskRoutingSettings,
       getToolSettings: () => {
         const settings = this.settingsStore.get();
         const toolSettings = settings.autonomousFeatureFlags?.toolSettings;

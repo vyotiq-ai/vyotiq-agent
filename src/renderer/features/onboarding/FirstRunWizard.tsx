@@ -144,17 +144,17 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ onComplete, onSk
               </div>
               <div className="p-3 space-y-2">
                 <div className="flex items-center gap-2 text-[10px]">
-                  <span className="text-[var(--color-success)]">✓</span>
+                  <span className="text-[var(--color-success)] font-bold">[+]</span>
                   <span className="text-[var(--color-text-muted)]">--provider</span>
                   <span className="text-[var(--color-text-secondary)]">Multi-provider AI with automatic routing</span>
                 </div>
                 <div className="flex items-center gap-2 text-[10px]">
-                  <span className="text-[var(--color-success)]">✓</span>
+                  <span className="text-[var(--color-success)] font-bold">[+]</span>
                   <span className="text-[var(--color-text-muted)]">--analyze</span>
                   <span className="text-[var(--color-text-secondary)]">Automatic task decomposition</span>
                 </div>
                 <div className="flex items-center gap-2 text-[10px]">
-                  <span className="text-[var(--color-success)]">✓</span>
+                  <span className="text-[var(--color-success)] font-bold">[+]</span>
                   <span className="text-[var(--color-text-muted)]">--tools</span>
                   <span className="text-[var(--color-text-secondary)]">File editing, terminal, browser integration</span>
                 </div>

@@ -20,27 +20,27 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
   // Persisted layout preferences
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage('vyotiq-sidebar-collapsed', false);
   const [sidebarWidth, setSidebarWidth] = useLocalStorage('vyotiq-sidebar-width', DEFAULT_SIDEBAR_WIDTH);
-  
+
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  
+
   const activeWorkspace = useActiveWorkspace();
 
   // Handle responsive behavior with debounced resize
   useEffect(() => {
     let resizeTimeout: ReturnType<typeof setTimeout>;
-    
+
     const handleResize = () => {
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
         const width = window.innerWidth;
         const mobile = width < MOBILE_BREAKPOINT;
         const tablet = width >= MOBILE_BREAKPOINT && width < TABLET_BREAKPOINT;
-        
+
         setIsMobile(mobile);
         setIsTablet(tablet);
-        
+
         // Auto-collapse sidebar on mobile
         if (mobile && !sidebarCollapsed) {
           setSidebarCollapsed(true);
@@ -105,7 +105,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      
+
       // Ctrl/Cmd + B for sidebar toggle
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
@@ -139,22 +139,22 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
       <div className="flex flex-1 overflow-hidden relative z-0">
         {/* Mobile overlay */}
         {isMobile && !sidebarCollapsed && (
-          <div 
+          <div
             className="fixed inset-0 bg-black/60 z-10 animate-in fade-in duration-200 backdrop-blur-sm"
             onClick={handleOverlayClick}
             aria-hidden="true"
           />
         )}
-        
+
         {/* Sidebar with resizable support */}
-        <div 
+        <div
           className={cn(
             'shrink-0 relative',
             isMobile && !sidebarCollapsed && 'fixed left-0 top-[32px] bottom-0 z-20',
             !sidebarCollapsed && !isMobile && 'transition-none',
             sidebarCollapsed && 'transition-all duration-300 ease-in-out'
           )}
-          style={{ 
+          style={{
             width: sidebarCollapsed ? 0 : (isMobile ? 248 : sidebarWidth),
           }}
         >
@@ -162,7 +162,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
             collapsed={sidebarCollapsed}
             width={sidebarWidth}
           />
-          
+
           {/* Resize handle - enhanced with visual indicator */}
           {!sidebarCollapsed && !isMobile && (
             <div
@@ -174,7 +174,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
               onMouseDown={handleResizeStart}
             >
               {/* Visual drag handle indicator */}
-              <div 
+              <div
                 className={cn(
                   'absolute top-1/2 -translate-y-1/2 left-0 w-full h-12 flex flex-col justify-center items-center gap-0.5',
                   'opacity-0 group-hover:opacity-100 transition-opacity',
@@ -188,7 +188,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
             </div>
           )}
         </div>
-        
+
         {chatContent}
       </div>
     </div>

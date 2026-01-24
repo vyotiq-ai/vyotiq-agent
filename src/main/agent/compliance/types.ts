@@ -185,31 +185,31 @@ export const MODEL_PROMPT_CONFIGS: Record<string, ModelPromptConfig> = {
  * Corrective message templates
  */
 export const CORRECTIVE_MESSAGES = {
-  'file-not-read-before-edit': `⚠️ COMPLIANCE REMINDER: You attempted to edit a file without reading it first.   
+  'file-not-read-before-edit': `[!] COMPLIANCE REMINDER: You attempted to edit a file without reading it first.   
 RULE: Always use the read tool BEFORE using the edit tool on any file.
 ACTION: Please read the file first before attempting to edit.`,
 
-  'excessive-changes': `⚠️ COMPLIANCE REMINDER: You made more changes than were requested.
+  'excessive-changes': `[!] COMPLIANCE REMINDER: You made more changes than were requested.
 RULE: Only make the changes that were explicitly requested in the user prompt.
 ACTION: Revert any unrequested changes and only apply those that were asked for.`,
 
-  'incomplete-implementation': `⚠️ COMPLIANCE REMINDER: You made changes but did not verify they fully implement the user request.
+  'incomplete-implementation': `[!] COMPLIANCE REMINDER: You made changes but did not verify they fully implement the user request.
 RULE: After making changes, always verify that they completely fulfill the user's request.
 ACTION: Review the user request and ensure all aspects have been addressed in your changes.`,
 
-  'no-lint-check-after-edit': `⚠️ COMPLIANCE REMINDER: You edited file(s) but did not run read_lints to check for errors.
+  'no-lint-check-after-edit': `[!] COMPLIANCE REMINDER: You edited file(s) but did not run read_lints to check for errors.
 RULE: Always use read_lints tool AFTER editing any file to verify no errors were introduced.
 ACTION: Please run read_lints on the edited file(s) now.`,
 
-  'unnecessary-file-creation': `⚠️ COMPLIANCE REMINDER: You are creating a new file when editing an existing file might be more appropriate.
+  'unnecessary-file-creation': `[!] COMPLIANCE REMINDER: You are creating a new file when editing an existing file might be more appropriate.
 RULE: Only create files when absolutely required. Always prefer editing existing files.
 ACTION: Consider if you can achieve the goal by editing an existing file instead.`,
 
-  'edit-string-mismatch': `⚠️ COMPLIANCE REMINDER: The old_string in your edit does not match the file content exactly.
+  'edit-string-mismatch': `[!] COMPLIANCE REMINDER: The old_string in your edit does not match the file content exactly.
 RULE: old_string MUST be copied EXACTLY from the read tool output, including ALL whitespace and indentation.
 ACTION: Re-read the file and copy the exact text you want to replace.`,
 
-  'missing-context-in-edit': `⚠️ COMPLIANCE REMINDER: Your edit old_string may not have enough context to be unique.
+  'missing-context-in-edit': `[!] COMPLIANCE REMINDER: Your edit old_string may not have enough context to be unique.
 RULE: Include 3+ lines of surrounding context to ensure unique matching.
 ACTION: Add more surrounding lines to make the match unique.`,
 };

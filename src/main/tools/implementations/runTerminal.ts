@@ -251,7 +251,7 @@ function formatOutput(result: {
       ? `${((result.finishedAt - result.startedAt) / 1000).toFixed(2)}s`
       : 'unknown';
     
-    const exitStatus = result.exitCode === 0 ? '✓' : '✗';
+    const exitStatus = result.exitCode === 0 ? 'OK' : 'ERR';
     parts.push(`\n[${exitStatus} Exit: ${result.exitCode ?? 'unknown'} | Duration: ${duration}]`);
   }
 

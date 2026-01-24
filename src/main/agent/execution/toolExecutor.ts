@@ -3,7 +3,7 @@
  * Handles tool execution, access control, and result processing
  */
 
-import type { ToolCallPayload, RendererEvent, AgentEvent, ChatMessage } from '../../../shared/types';
+import type { ToolCallPayload, RendererEvent, AgentEvent, ChatMessage, SafetySettings } from '../../../shared/types';
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
 import type { ToolRegistry, TerminalManager, ToolExecutionContext } from '../../tools';
@@ -27,6 +27,7 @@ export class ToolExecutor {
   private readonly progressTracker: ProgressTracker;
   private readonly debugEmitter: DebugEmitter;
   private readonly getAccessLevelSettings: () => AccessLevelSettings | undefined;
+  private readonly getSafetySettings: () => SafetySettings | undefined;
   
   // Safety managers per run
   private readonly safetyManagers = new Map<string, SafetyManager>();
@@ -39,7 +40,8 @@ export class ToolExecutor {
     emitEvent: (event: RendererEvent | AgentEvent) => void,
     progressTracker: ProgressTracker,
     debugEmitter: DebugEmitter,
-    getAccessLevelSettings: () => AccessLevelSettings | undefined
+    getAccessLevelSettings: () => AccessLevelSettings | undefined,
+    getSafetySettings?: () => SafetySettings | undefined
   ) {
     this.toolRegistry = toolRegistry;
     this.terminalManager = terminalManager;
@@ -49,6 +51,7 @@ export class ToolExecutor {
     this.progressTracker = progressTracker;
     this.debugEmitter = debugEmitter;
     this.getAccessLevelSettings = getAccessLevelSettings;
+    this.getSafetySettings = getSafetySettings ?? (() => undefined);
   }
 
   /**
@@ -65,11 +68,17 @@ export class ToolExecutor {
 
   /**
    * Get or create a SafetyManager for a run
+   * Automatically applies user's SafetySettings
    */
   getOrCreateSafetyManager(runId: string): SafetyManager {
     let manager = this.safetyManagers.get(runId);
     if (!manager) {
       manager = new SafetyManager();
+      // Apply user's safety settings
+      const safetySettings = this.getSafetySettings();
+      if (safetySettings) {
+        manager.updateUserSettings(safetySettings);
+      }
       this.safetyManagers.set(runId, manager);
     }
     return manager;

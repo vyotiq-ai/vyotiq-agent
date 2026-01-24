@@ -10,6 +10,7 @@ import type { TodoItem, TodoStats } from '../../../shared/types/todo';
 import { calculateTodoStats } from '../../../shared/types/todo';
 import { getTodoManager } from './todo/todoManager';
 import { getTaskManager } from './todo/taskManager';
+import { STATUS_ICONS, generateProgressBar, getProgressColor } from './todo/formatUtils';
 
 /**
  * Extended TodoWrite arguments with optional plan ID
@@ -35,43 +36,25 @@ interface TodoWriteArgsExtended {
 }
 
 /**
- * Status icons for task display
- */
-const STATUS_ICONS = {
-  completed: '✅',
-  in_progress: '🔄',
-  pending: '⬜',
-} as const;
-
-/**
- * Generate a progress bar using unicode characters
- */
-function generateProgressBar(percentage: number, width = 15): string {
-  const filled = Math.round((percentage / 100) * width);
-  const empty = width - filled;
-  return `${'█'.repeat(filled)}${'░'.repeat(empty)}`;
-}
-
-/**
  * Format todo list for output display with beautiful markdown
  */
 function formatTodoOutput(todos: TodoItem[], stats: TodoStats, planId?: string): string {
   if (todos.length === 0) {
-    return '# ✅ Todo List Cleared\n\nNo tasks remaining.';
+    return '# Todo List Cleared\n\nNo tasks remaining.';
   }
 
   const lines: string[] = [];
   const progressBar = generateProgressBar(stats.completionPercentage, 20);
   const isComplete = stats.completionPercentage === 100;
-  const progressColor = isComplete ? '🟢' : stats.completionPercentage >= 50 ? '🟡' : '🔴';
+  const progressStatus = getProgressColor(stats.completionPercentage);
   const statusLabel = isComplete ? 'Completed' : stats.inProgress > 0 ? 'In Progress' : 'Active';
   
   // Header with centered progress
-  lines.push(`# 📋 Task Progress`);
+  lines.push(`# Task Progress`);
   lines.push('');
   lines.push('<div align="center">');
   lines.push('');
-  lines.push(`${progressColor} **${statusLabel}** ${progressColor}`);
+  lines.push(`**${statusLabel}** | ${progressStatus}`);
   lines.push('');
   lines.push('```');
   lines.push(`${progressBar} ${stats.completionPercentage}%`);
@@ -97,7 +80,7 @@ function formatTodoOutput(todos: TodoItem[], stats: TodoStats, planId?: string):
   const completed = todos.filter(t => t.status === 'completed');
   
   if (inProgress.length > 0) {
-    lines.push('## 🔄 In Progress');
+    lines.push('## In Progress');
     lines.push('');
     for (const todo of inProgress) {
       lines.push(`- ${STATUS_ICONS.in_progress} **${todo.content}**`);
@@ -106,7 +89,7 @@ function formatTodoOutput(todos: TodoItem[], stats: TodoStats, planId?: string):
   }
   
   if (pending.length > 0) {
-    lines.push('## ⬜ Pending');
+    lines.push('## Pending');
     lines.push('');
     for (const todo of pending) {
       lines.push(`- ${STATUS_ICONS.pending} ${todo.content}`);
@@ -115,7 +98,7 @@ function formatTodoOutput(todos: TodoItem[], stats: TodoStats, planId?: string):
   }
   
   if (completed.length > 0) {
-    lines.push('## ✅ Completed');
+    lines.push('## Completed');
     lines.push('');
     for (const todo of completed) {
       lines.push(`- ${STATUS_ICONS.completed} ~~${todo.content}~~`);
@@ -127,9 +110,9 @@ function formatTodoOutput(todos: TodoItem[], stats: TodoStats, planId?: string):
   lines.push('');
   
   if (isComplete) {
-    lines.push('> 🎉 **All tasks completed!** Use `VerifyTasks` to confirm all requirements are met.');
+    lines.push('> **All tasks completed!** Use `VerifyTasks` to confirm all requirements are met.');
   } else if (planId) {
-    lines.push('> 📌 Use `TodoWrite` to continue updating task statuses.');
+    lines.push('> Use `TodoWrite` to continue updating task statuses.');
   }
 
   return lines.join('\n');

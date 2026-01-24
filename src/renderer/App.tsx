@@ -10,7 +10,7 @@ import { useFirstRun } from './hooks/useFirstRun';
 import { Loader2, Code, Save, X } from 'lucide-react';
 
 // Lazy load the Settings panel for better initial load performance
-const SettingsPanel = lazy(() => 
+const SettingsPanel = lazy(() =>
   import('./features/settings').then(module => ({ default: module.SettingsPanel }))
 );
 
@@ -71,11 +71,11 @@ const MetricsLoader: React.FC = () => (
 );
 
 const App: React.FC = () => {
-  const { 
-    settingsOpen, 
-    openSettings, 
-    closeSettings, 
-    shortcutsOpen, 
+  const {
+    settingsOpen,
+    openSettings,
+    closeSettings,
+    shortcutsOpen,
     openShortcuts,
     closeShortcuts,
     browserPanelOpen,
@@ -110,7 +110,7 @@ const App: React.FC = () => {
       a.activeSessionStatus === b.activeSessionStatus &&
       a.activeRunId === b.activeRunId,
   );
-  
+
   const {
     tabs,
     activeTabId,
@@ -443,107 +443,107 @@ const App: React.FC = () => {
 
   return (
     <>
-    <MainLayout onOpenSettings={openSettings}>
-      <div className="flex flex-col h-full w-full">
-        <div className="flex flex-1 min-h-0">
-          {/* Main chat area */}
-          <div className="flex-1 min-w-0 h-full">
-            <Home />
-          </div>
-          {/* Browser panel on the right */}
-          {browserPanelOpen && (
-            <div 
-              className="relative flex-shrink-0 border-l border-[var(--color-border-subtle)] animate-slide-in-right"
-              style={{ width: browserPanelWidth }}
-            >
-              {/* Resize handle */}
+      <MainLayout onOpenSettings={openSettings}>
+        <div className="flex flex-col h-full w-full">
+          <div className="flex flex-1 min-h-0">
+            {/* Main chat area */}
+            <div className="flex-1 min-w-0 h-full">
+              <Home />
+            </div>
+            {/* Browser panel on the right */}
+            {browserPanelOpen && (
               <div
-                className={
-                  'absolute left-0 top-0 bottom-0 w-1.5 -ml-1.5 cursor-col-resize z-30 group ' +
-                  (isResizingBrowser ? 'bg-[var(--color-accent-primary)]/30' : 'hover:bg-[var(--color-accent-primary)]/20')
-                }
-                onMouseDown={startBrowserResize}
-                aria-label="Resize browser panel"
-                role="separator"
-                aria-orientation="vertical"
-              />
-              <Suspense fallback={<BrowserLoader />}>
-                <BrowserPanel 
-                  isOpen={browserPanelOpen} 
-                  onClose={closeBrowserPanel}
-                />
-              </Suspense>
-            </div>
-          )}
-        </div>
-      </div>
-      {settingsOpen && (
-        <Suspense fallback={<SettingsLoader />}>
-          <SettingsPanel open={settingsOpen} onClose={closeSettings} />
-        </Suspense>
-      )}
-      {undoHistoryOpen && (
-        <Suspense fallback={<UndoHistoryLoader />}>
-          <UndoHistoryPanel 
-            isOpen={undoHistoryOpen} 
-            onClose={closeUndoHistory}
-            sessionId={agentSnapshot.activeSessionId}
-          />
-        </Suspense>
-      )}
-      <KeyboardShortcutsModal open={shortcutsOpen} onClose={closeShortcuts} />
-      <CommandPalette 
-        isOpen={commandPaletteOpen} 
-        onClose={closeCommandPalette} 
-        commands={commands}
-      />
-      {/* First Run Wizard */}
-      {showWizard && (
-        <Suspense fallback={<SettingsLoader />}>
-          <FirstRunWizard 
-            onComplete={handleWizardComplete}
-            onSkip={handleWizardSkip}
-          />
-        </Suspense>
-      )}
-    </MainLayout>
-    {/* Metrics Dashboard Modal - rendered outside MainLayout to avoid overflow issues */}
-    {metricsDashboardOpen && (
-      <Suspense fallback={<MetricsLoader />}>
-        <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-scale-in"
-          onClick={(e) => {
-            // Close on backdrop click
-            if (e.target === e.currentTarget) {
-              closeMetricsDashboard();
-            }
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="metrics-dashboard-title"
-        >
-          <div className="relative w-full max-w-5xl max-h-[90vh] m-4 bg-[var(--color-surface-base)] rounded-lg border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
-              <span id="metrics-dashboard-title" className="text-xs font-medium text-[var(--color-text-primary)]">Metrics Dashboard</span>
-              <button
-                onClick={closeMetricsDashboard}
-                className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
-                aria-label="Close metrics dashboard"
+                className="relative flex-shrink-0 border-l border-[var(--color-border-subtle)] animate-slide-in-right"
+                style={{ width: browserPanelWidth }}
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            {/* Content */}
-            <div className="overflow-y-auto max-h-[calc(90vh-60px)]">
-              <MetricsDashboard period="day" />
-            </div>
+                {/* Resize handle */}
+                <div
+                  className={
+                    'absolute left-0 top-0 bottom-0 w-1.5 -ml-1.5 cursor-col-resize z-30 group ' +
+                    (isResizingBrowser ? 'bg-[var(--color-accent-primary)]/30' : 'hover:bg-[var(--color-accent-primary)]/20')
+                  }
+                  onMouseDown={startBrowserResize}
+                  aria-label="Resize browser panel"
+                  role="separator"
+                  aria-orientation="vertical"
+                />
+                <Suspense fallback={<BrowserLoader />}>
+                  <BrowserPanel
+                    isOpen={browserPanelOpen}
+                    onClose={closeBrowserPanel}
+                  />
+                </Suspense>
+              </div>
+            )}
           </div>
         </div>
-      </Suspense>
-    )}
+        {settingsOpen && (
+          <Suspense fallback={<SettingsLoader />}>
+            <SettingsPanel open={settingsOpen} onClose={closeSettings} />
+          </Suspense>
+        )}
+        {undoHistoryOpen && (
+          <Suspense fallback={<UndoHistoryLoader />}>
+            <UndoHistoryPanel
+              isOpen={undoHistoryOpen}
+              onClose={closeUndoHistory}
+              sessionId={agentSnapshot.activeSessionId}
+            />
+          </Suspense>
+        )}
+        <KeyboardShortcutsModal open={shortcutsOpen} onClose={closeShortcuts} />
+        <CommandPalette
+          isOpen={commandPaletteOpen}
+          onClose={closeCommandPalette}
+          commands={commands}
+        />
+        {/* First Run Wizard */}
+        {showWizard && (
+          <Suspense fallback={<SettingsLoader />}>
+            <FirstRunWizard
+              onComplete={handleWizardComplete}
+              onSkip={handleWizardSkip}
+            />
+          </Suspense>
+        )}
+      </MainLayout>
+      {/* Metrics Dashboard Modal - rendered outside MainLayout to avoid overflow issues */}
+      {metricsDashboardOpen && (
+        <Suspense fallback={<MetricsLoader />}>
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-scale-in"
+            onClick={(e) => {
+              // Close on backdrop click
+              if (e.target === e.currentTarget) {
+                closeMetricsDashboard();
+              }
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="metrics-dashboard-title"
+          >
+            <div className="relative w-full max-w-5xl max-h-[90vh] m-4 bg-[var(--color-surface-base)] rounded-lg border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
+                <span id="metrics-dashboard-title" className="text-xs font-medium text-[var(--color-text-primary)]">Metrics Dashboard</span>
+                <button
+                  onClick={closeMetricsDashboard}
+                  className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                  aria-label="Close metrics dashboard"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              {/* Content */}
+              <div className="overflow-y-auto max-h-[calc(90vh-60px)]">
+                <MetricsDashboard period="day" />
+              </div>
+            </div>
+          </div>
+        </Suspense>
+      )}
     </>
   );
 };

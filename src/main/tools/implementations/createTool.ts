@@ -151,7 +151,7 @@ Use this to create reusable workflows that combine multiple tool calls.
         toolName: 'create_tool',
         success: true,
         output: [
-          `✅ Created composite tool: "${name}"`,
+          `[OK] Created composite tool: "${name}"`,
           '',
           `**Description**: ${description}`,
           `**Steps**:`,

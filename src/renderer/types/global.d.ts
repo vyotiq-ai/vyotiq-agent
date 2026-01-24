@@ -544,26 +544,16 @@ declare global {
       cache: {
         // Get all cache statistics
         getStats: () => Promise<{
-          prompt: {
-            totalHits: number;
-            totalMisses: number;
-            hitRate: number;
-            tokensSaved: number;
-            costSaved: number;
-            creations: number;
-            byProvider: Record<string, { hits: number; misses: number; tokensSaved: number; costSaved: number }>;
-          };
-          toolResult: {
-            size: number;
-            maxSize: number;
+          promptCache: {
             hits: number;
             misses: number;
             hitRate: number;
-            byTool: Record<string, number>;
+            tokensSaved: number;
+            costSaved: number;
           };
-          context: {
-            entries: number;
-            sizeBytes: number;
+          toolCache: {
+            size: number;
+            maxSize: number;
             hits: number;
             misses: number;
             hitRate: number;

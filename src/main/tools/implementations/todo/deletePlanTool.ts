@@ -177,13 +177,13 @@ async function deletePlanSession(
     return {
       toolName: 'DeletePlan',
       success: false,
-      output: `# ⚠️ Cannot Delete Active Plan
+      output: `# Cannot Delete Active Plan
 
 ---
 
 The plan **"${session.taskName}"** is still active and incomplete.
 
-## 📊 Current Status
+## Current Status
 
 | Property | Value |
 |----------|-------|
@@ -193,7 +193,7 @@ The plan **"${session.taskName}"** is still active and incomplete.
 
 ---
 
-## 📌 Options
+## Options
 
 1. **Complete the plan first:**
    - Use \`TodoWrite\` to finish remaining tasks
@@ -202,7 +202,7 @@ The plan **"${session.taskName}"** is still active and incomplete.
 
 2. **Force delete:**
    - Set \`confirmDelete: true\` to delete anyway
-   - ⚠️ This will permanently remove all task data`,
+   - WARNING: This will permanently remove all task data`,
     };
   }
 
@@ -213,7 +213,7 @@ The plan **"${session.taskName}"** is still active and incomplete.
     return {
       toolName: 'DeletePlan',
       success: false,
-      output: `# ❌ Delete Failed
+      output: `# Delete Failed
 
 Error: Failed to delete plan folder: \`.vyotiq/${session.folderName}/\``,
     };
@@ -230,20 +230,20 @@ Error: Failed to delete plan folder: \`.vyotiq/${session.folderName}/\``,
   return {
     toolName: 'DeletePlan',
     success: true,
-    output: `# ✅ Plan Deleted
+    output: `# Plan Deleted
 
 ---
 
 Successfully removed plan: **"${session.taskName}"**
 
-## 📋 Deleted Items
+## Deleted Items
 
 | Property | Value |
 |----------|-------|
 | **Plan ID** | \`${session.plan.id}\` |
 | **Folder** | \`.vyotiq/${session.folderName}/\` |
 | **Tasks** | ${session.stats.total} items |
-| **Previous Status** | ${session.plan.isCompleted ? '✅ Completed' : '🔄 Active'} |
+| **Previous Status** | ${session.plan.isCompleted ? 'Completed' : 'Active'} |
 
 ---
 

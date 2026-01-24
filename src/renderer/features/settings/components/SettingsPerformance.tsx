@@ -52,28 +52,18 @@ const formatCost = (cost: number): string => {
   return '$0.00';
 };
 
-// Cache statistics type
+// Cache statistics type - matches the API response from preload
 interface CacheStats {
-  prompt: {
-    totalHits: number;
-    totalMisses: number;
-    hitRate: number;
-    tokensSaved: number;
-    costSaved: number;
-    creations: number;
-    byProvider: Record<string, { hits: number; misses: number; tokensSaved: number; costSaved: number }>;
-  };
-  toolResult: {
-    size: number;
-    maxSize: number;
+  promptCache: {
     hits: number;
     misses: number;
     hitRate: number;
-    byTool: Record<string, number>;
+    tokensSaved: number;
+    costSaved: number;
   };
-  context: {
-    entries: number;
-    sizeBytes: number;
+  toolCache: {
+    size: number;
+    maxSize: number;
     hits: number;
     misses: number;
     hitRate: number;
@@ -194,7 +184,7 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
         )}
 
         {stats ? (
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {/* Prompt Cache Stats */}
             <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-3 space-y-2">
               <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)]">
@@ -204,19 +194,19 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
               <div className="space-y-1 text-[9px]">
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-muted)]">hit rate</span>
-                  <span className="text-[var(--color-accent-primary)]">{(stats.prompt.hitRate * 100).toFixed(1)}%</span>
+                  <span className="text-[var(--color-accent-primary)]">{(stats.promptCache.hitRate * 100).toFixed(1)}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-muted)]">hits / misses</span>
-                  <span className="text-[var(--color-text-secondary)]">{stats.prompt.totalHits} / {stats.prompt.totalMisses}</span>
+                  <span className="text-[var(--color-text-secondary)]">{stats.promptCache.hits} / {stats.promptCache.misses}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-muted)]">tokens saved</span>
-                  <span className="text-[var(--color-success)]">{stats.prompt.tokensSaved.toLocaleString()}</span>
+                  <span className="text-[var(--color-success)]">{stats.promptCache.tokensSaved.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-muted)]">cost saved</span>
-                  <span className="text-[var(--color-success)]">{formatCost(stats.prompt.costSaved)}</span>
+                  <span className="text-[var(--color-success)]">{formatCost(stats.promptCache.costSaved)}</span>
                 </div>
               </div>
             </div>
@@ -230,44 +220,19 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
               <div className="space-y-1 text-[9px]">
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-muted)]">hit rate</span>
-                  <span className="text-[var(--color-accent-primary)]">{stats.toolResult.hitRate.toFixed(1)}%</span>
+                  <span className="text-[var(--color-accent-primary)]">{stats.toolCache.hitRate.toFixed(1)}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-muted)]">hits / misses</span>
-                  <span className="text-[var(--color-text-secondary)]">{stats.toolResult.hits} / {stats.toolResult.misses}</span>
+                  <span className="text-[var(--color-text-secondary)]">{stats.toolCache.hits} / {stats.toolCache.misses}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-muted)]">entries</span>
-                  <span className="text-[var(--color-text-secondary)]">{stats.toolResult.size} / {stats.toolResult.maxSize}</span>
+                  <span className="text-[var(--color-text-secondary)]">{stats.toolCache.size} / {stats.toolCache.maxSize}</span>
                 </div>
               </div>
             </div>
 
-            {/* Context Cache Stats */}
-            <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-3 space-y-2">
-              <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)]">
-                <HardDrive size={11} className="text-[var(--color-accent-secondary)]" />
-                Context Cache
-              </div>
-              <div className="space-y-1 text-[9px]">
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">hit rate</span>
-                  <span className="text-[var(--color-accent-primary)]">{(stats.context.hitRate * 100).toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">entries</span>
-                  <span className="text-[var(--color-text-secondary)]">{stats.context.entries}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">size</span>
-                  <span className="text-[var(--color-text-secondary)]">{formatBytes(stats.context.sizeBytes)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">evictions</span>
-                  <span className="text-[var(--color-text-dim)]">{stats.context.evictions}</span>
-                </div>
-              </div>
-            </div>
           </div>
         ) : (
           <div className="text-[10px] text-[var(--color-text-muted)] py-4 text-center">

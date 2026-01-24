@@ -133,7 +133,7 @@ Returns a list of available code actions with their edits.`,
 
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i];
-        const preferred = action.isPreferred ? ' ⭐' : '';
+        const preferred = action.isPreferred ? ' [*]' : '';
         const kind = action.kind ? ` [${action.kind}]` : '';
         lines.push(`${i + 1}. ${action.title}${kind}${preferred}`);
         

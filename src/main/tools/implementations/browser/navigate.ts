@@ -163,7 +163,7 @@ async function executeNavigate(
           output: `Navigated to: ${result.url}\n` +
             `Title: ${result.title}\n` +
             `Load time: ${result.loadTime}ms\n\n` +
-            `⚠️ Warning: Selector "${waitForSelector}" not found after navigation.\n\n` +
+            `[WARN] Selector "${waitForSelector}" not found after navigation.\n\n` +
             `The page loaded but the expected element wasn't found.\n` +
             `Suggestions:\n` +
             `- The selector may be incorrect - use browser_snapshot to see available elements\n` +

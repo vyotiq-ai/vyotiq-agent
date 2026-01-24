@@ -357,15 +357,15 @@ function handleRequest(args: RequestToolsArgs, sessionId?: string): ToolExecutio
   }
 
   const lines = [
-    `✓ Loaded ${validTools.length} tool${validTools.length > 1 ? 's' : ''}:`,
+    `[OK] Loaded ${validTools.length} tool${validTools.length > 1 ? 's' : ''}:`,
     '',
-    ...validTools.map(t => `  • ${t}${TOOL_DESCRIPTIONS[t] ? ` - ${TOOL_DESCRIPTIONS[t]}` : ''}`),
+    ...validTools.map(t => `  - ${t}${TOOL_DESCRIPTIONS[t] ? ` - ${TOOL_DESCRIPTIONS[t]}` : ''}`),
     '',
     'These tools are now available. You can use them in your next response.',
   ];
 
   if (invalidTools.length > 0) {
-    lines.push('', `⚠ Unknown tools (skipped): ${invalidTools.join(', ')}`);
+    lines.push('', `[!] Unknown tools (skipped): ${invalidTools.join(', ')}`);
   }
 
   return {
@@ -555,9 +555,9 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
   // Successful tools (recently used successfully)
   const successfulTools = Array.from(state.successfulTools);
   if (successfulTools.length > 0) {
-    lines.push(`Recently successful tools (${successfulTools.length}):`);
+    lines.push(`Recently successful tools (${successfulTools.length}):`);  
     for (const tool of successfulTools.slice(0, 10)) {
-      lines.push(`  ✓ ${tool}`);
+      lines.push(`  [x] ${tool}`);
     }
     if (successfulTools.length > 10) {
       lines.push(`  ... and ${successfulTools.length - 10} more`);
@@ -603,7 +603,7 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
     lines.push(`Recent errors (${recentErrors.length}):`);
     for (const { toolName, error } of recentErrors.slice(0, 5)) {
       const shortError = error.length > 80 ? error.slice(0, 80) + '...' : error;
-      lines.push(`  ✗ ${toolName}: ${shortError}`);
+      lines.push(`  [!] ${toolName}: ${shortError}`);
     }
     lines.push('');
     lines.push('Use action="recover" error="<error message>" to get recovery suggestions.');
@@ -726,7 +726,7 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
   }
   
   if (suggestion.isAlternative) {
-    lines.push('⚠️ This is an alternative approach since previous attempts failed repeatedly.');
+    lines.push('[!] This is an alternative approach since previous attempts failed repeatedly.');
     lines.push('');
   }
   
@@ -762,7 +762,7 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
   }
   
   if (toolsToLoad.length > 0) {
-    lines.push(`✓ Loaded ${toolsToLoad.length} recovery tools: ${toolsToLoad.join(', ')}`);
+    lines.push(`[OK] Loaded ${toolsToLoad.length} recovery tools: ${toolsToLoad.join(', ')}`);
     lines.push('');
     lines.push('These tools are now available to help you recover from the error.');
   }
@@ -802,7 +802,7 @@ function handleResetCacheStats(): ToolExecutionResult {
     `  Hit rate: ${statsBefore.hitRate}%`,
     `  Estimated tokens saved: ~${statsBefore.estimatedTokensSaved.toLocaleString()}`,
     '',
-    '✓ Statistics have been reset to zero.',
+    '[OK] Statistics have been reset to zero.',
     '',
     'Current statistics:',
     `  Hits: ${statsAfter.hits}`,

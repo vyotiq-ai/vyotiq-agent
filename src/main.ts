@@ -53,23 +53,23 @@ const emitToRenderer = (event: RendererEvent): void => {
 
 const bootstrapInfrastructure = async () => {
   if (infraInitialized) return;
-  
+
   try {
     const userData = app.getPath('userData');
-    
+
     // Initialize all services
     settingsStore = new SettingsStore(path.join(userData, 'settings.json'));
     workspaceManager = new WorkspaceManager(path.join(userData, 'workspaces.json'));
-    
+
     // Load all data in parallel
     await Promise.all([settingsStore.load(), workspaceManager.load()]);
-    
+
     // Apply cache settings from persisted settings
     const settings = settingsStore.get();
     if (settings.cacheSettings) {
       const toolCache = getToolResultCache();
       const contextCache = getContextCache();
-      
+
       // Apply tool cache settings
       if (settings.cacheSettings.toolCache) {
         toolCache.updateConfig({
@@ -78,7 +78,7 @@ const bootstrapInfrastructure = async () => {
           enableLRU: settings.cacheSettings.enableLruEviction,
         });
       }
-      
+
       // Apply context cache settings
       if (settings.cacheSettings.contextCache) {
         contextCache.setConfig({
@@ -87,19 +87,19 @@ const bootstrapInfrastructure = async () => {
           enableTTL: settings.cacheSettings.contextCache.enabled,
         });
       }
-      
+
       logger.info('Cache settings applied', {
         toolCacheEnabled: settings.cacheSettings.toolCache?.enabled,
         contextCacheEnabled: settings.cacheSettings.contextCache?.enabled,
         strategy: settings.cacheSettings.promptCacheStrategy,
       });
     }
-    
+
     // Auto-import Claude Code credentials if not already connected
     if (!settings.claudeSubscription) {
       try {
         const { autoImportCredentials, setSubscriptionUpdateCallback, setStatusChangeCallback } = await import('./main/agent/claudeAuth');
-        
+
         // Set callback to emit status changes to renderer
         setStatusChangeCallback((event) => {
           emitToRenderer({
@@ -109,30 +109,30 @@ const bootstrapInfrastructure = async () => {
             tier: event.tier,
           });
         });
-        
+
         const subscription = await autoImportCredentials();
         if (subscription) {
           await settingsStore.update({ claudeSubscription: subscription });
-          
+
           // Set callback to auto-save refreshed tokens
           setSubscriptionUpdateCallback(async (updated) => {
             await settingsStore.update({ claudeSubscription: updated });
             emitToRenderer({ type: 'settings-update', settings: settingsStore.get() });
             logger.debug('Claude subscription auto-updated after refresh');
           });
-          
+
           logger.info('Claude Code credentials auto-imported', { tier: subscription.tier });
         }
       } catch (err) {
-        logger.debug('Claude Code auto-import skipped', { 
-          error: err instanceof Error ? err.message : String(err) 
+        logger.debug('Claude Code auto-import skipped', {
+          error: err instanceof Error ? err.message : String(err)
         });
       }
     } else {
       // Start background refresh for existing subscription
       try {
         const { startBackgroundRefresh, setSubscriptionUpdateCallback, setStatusChangeCallback } = await import('./main/agent/claudeAuth');
-        
+
         // Set callback to emit status changes to renderer
         setStatusChangeCallback((event) => {
           emitToRenderer({
@@ -142,7 +142,7 @@ const bootstrapInfrastructure = async () => {
             tier: event.tier,
           });
         });
-        
+
         setSubscriptionUpdateCallback(async (updated) => {
           await settingsStore.update({ claudeSubscription: updated });
           emitToRenderer({ type: 'settings-update', settings: settingsStore.get() });
@@ -151,31 +151,31 @@ const bootstrapInfrastructure = async () => {
         startBackgroundRefresh(settings.claudeSubscription);
         logger.info('Claude Code background refresh started');
       } catch (err) {
-        logger.debug('Failed to start Claude background refresh', { 
-          error: err instanceof Error ? err.message : String(err) 
+        logger.debug('Failed to start Claude background refresh', {
+          error: err instanceof Error ? err.message : String(err)
         });
       }
     }
-    
+
     // Create orchestrator AFTER settings are fully loaded
-    orchestrator = new AgentOrchestrator({ 
-      settingsStore, 
-      workspaceManager, 
+    orchestrator = new AgentOrchestrator({
+      settingsStore,
+      workspaceManager,
       logger,
       sessionsPath: path.join(userData, 'sessions.json')
     });
-    
+
     // Initialize orchestrator (load sessions, validate configuration)
     await orchestrator.init();
-    
+
     // Initialize LSP manager for multi-language code intelligence
     const { initLSPManager, getLSPManager, initLSPBridge, getLSPBridge } = await import('./main/lsp');
     initLSPManager(logger);
     logger.info('LSP manager initialized');
-    
+
     // Initialize LSP bridge for real-time file change synchronization
     const lspBridge = initLSPBridge(logger);
-    
+
     // Initialize LSP for active workspace if one exists
     const activeWorkspace = workspaceManager.getActive();
     if (activeWorkspace?.path) {
@@ -184,12 +184,12 @@ const bootstrapInfrastructure = async () => {
         await lspManager.initialize(activeWorkspace.path);
         logger.info('LSP manager initialized for active workspace', { workspacePath: activeWorkspace.path });
       }
-      
+
       // Initialize TypeScript diagnostics service for the workspace
       const { initTypeScriptDiagnosticsService } = await import('./main/agent/workspace/TypeScriptDiagnosticsService');
       const tsDiagnosticsService = initTypeScriptDiagnosticsService(logger);
       await tsDiagnosticsService.initialize(activeWorkspace.path);
-      
+
       // Forward diagnostics events to renderer in the expected format
       tsDiagnosticsService.on('diagnostics', (event) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -211,10 +211,10 @@ const bootstrapInfrastructure = async () => {
           }
         }
       });
-      
+
       logger.info('TypeScript diagnostics service initialized');
     }
-    
+
     // Connect file watcher to LSP bridge for real-time updates
     const { setLSPChangeHandler } = await import('./main/workspaces/fileWatcher');
     setLSPChangeHandler((filePath, changeType) => {
@@ -223,19 +223,19 @@ const bootstrapInfrastructure = async () => {
         bridge.onFileChanged(filePath, changeType);
       }
     });
-    
+
     // Forward LSP diagnostics updates to renderer
     lspBridge.on('diagnostics', (event) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('lsp:diagnostics-updated', event);
       }
     });
-    
+
     logger.info('LSP bridge connected to file watcher');
-    
+
     // Setup event forwarding AFTER initialization is complete
     orchestrator.on('event', (event) => emitToRenderer(event));
-    
+
     infraInitialized = true;
     logger.info('Infrastructure fully initialized', {
       hasProviders: orchestrator?.hasAvailableProviders() ?? false,
@@ -245,7 +245,7 @@ const bootstrapInfrastructure = async () => {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
     });
-    
+
     // Don't throw - allow the app to start even if some services fail
     // The UI will show appropriate error messages
     infraInitialized = true; // Mark as initialized to prevent retry loops
@@ -348,21 +348,21 @@ app.on('before-quit', async (event) => {
       stopBackgroundRefresh();
       stopCredentialsWatcher();
       logger.info('Claude background refresh stopped');
-      
+
       // Stop file watcher
       await stopWatching();
       logger.info('File watcher stopped');
-      
+
       // Shutdown LSP manager
       const { shutdownLSPManager } = await import('./main/lsp');
       await shutdownLSPManager();
       logger.info('LSP manager shutdown complete');
-      
+
       // Cleanup terminal sessions
       const { cleanupTerminalSessions } = await import('./main/ipc');
       cleanupTerminalSessions();
       logger.info('Terminal sessions cleaned up');
-      
+
       await orchestrator.cleanup();
     } catch (error) {
       logger.error('Error during cleanup', { error: error instanceof Error ? error.message : String(error) });

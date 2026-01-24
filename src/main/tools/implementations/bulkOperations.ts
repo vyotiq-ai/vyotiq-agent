@@ -311,14 +311,14 @@ grep("OldName") → verify no remaining references
     // Build output with visual formatting
     const lines: string[] = [];
     const allSucceeded = failCount === 0;
-    const statusIcon = allSucceeded ? '✓' : (successCount > 0 ? '⚠' : '✗');
+    const statusIcon = allSucceeded ? '[OK]' : (successCount > 0 ? '[!]' : '[ERR]');
     
     lines.push(`═══ BULK OPERATIONS ${statusIcon} ═══`);
     lines.push(`Succeeded: ${successCount} | Failed: ${failCount} | Total: ${args.operations.length}`);
     lines.push('');
 
     for (const result of results) {
-      const status = result.success ? '✓' : '✗';
+      const status = result.success ? '[OK]' : '[ERR]';
       const op = result.operation;
       let desc = `${op.type}: ${op.source}`;
       if (op.destination) {

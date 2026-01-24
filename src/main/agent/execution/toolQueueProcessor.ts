@@ -33,6 +33,7 @@ import { getErrorRecoveryManager } from '../recovery/ErrorRecoveryManager';
 import { getToolExecutionLogger, createToolSpecificLogger } from '../logging/ToolExecutionLogger';
 import { getOutputTruncator } from '../output/OutputTruncator';
 import type { EnhancedToolResult } from '../../tools/types';
+import type { SafetySettings } from '../../../shared/types';
 
 export class ToolQueueProcessor {
   private readonly toolRegistry: ToolRegistry;
@@ -46,6 +47,7 @@ export class ToolQueueProcessor {
   private readonly updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void;
   private readonly getAccessLevelSettings: () => AccessLevelSettings | undefined;
   private readonly getToolSettings: () => ToolConfigSettings | undefined;
+  private readonly getSafetySettings: () => SafetySettings | undefined;
   private readonly activeControllers: Map<string, AbortController>;
   private readonly safetyManagers = new Map<string, SafetyManager>();
 
@@ -61,7 +63,8 @@ export class ToolQueueProcessor {
     updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void,
     getAccessLevelSettings: () => AccessLevelSettings | undefined,
     activeControllers: Map<string, AbortController>,
-    getToolSettings?: () => ToolConfigSettings | undefined
+    getToolSettings?: () => ToolConfigSettings | undefined,
+    getSafetySettings?: () => SafetySettings | undefined
   ) {
     this.toolRegistry = toolRegistry;
     this.terminalManager = terminalManager;
@@ -75,6 +78,7 @@ export class ToolQueueProcessor {
     this.getAccessLevelSettings = getAccessLevelSettings;
     this.activeControllers = activeControllers;
     this.getToolSettings = getToolSettings ?? (() => undefined);
+    this.getSafetySettings = getSafetySettings ?? (() => undefined);
   }
 
   /**
@@ -381,7 +385,7 @@ export class ToolQueueProcessor {
         const loopMessage: ChatMessage = {
           id: randomUUID(),
           role: 'tool',
-          content: `⚠️ Loop detected: ${loopResult.description}\n\nSuggestion: ${loopResult.suggestion}`,
+          content: `[WARN] Loop detected: ${loopResult.description}\n\nSuggestion: ${loopResult.suggestion}`,
           toolCallId: tool.callId,
           toolName: tool.name,
           createdAt: Date.now(),
@@ -577,7 +581,7 @@ export class ToolQueueProcessor {
       
       // Add truncation summary if output was truncated
       if (truncationResult.wasTruncated && truncationResult.summary) {
-        toolResultContent += `\n\n📊 ${truncationResult.summary}`;
+        toolResultContent += `\n\n[STATS] ${truncationResult.summary}`;
       }
       
       if (!result.success) {
@@ -591,14 +595,14 @@ export class ToolQueueProcessor {
         
         // Add recovery suggestion if available
         if (recoverySuggestion.confidence > 0.3) {
-          toolResultContent += `\n\n💡 Recovery suggestion: ${recoverySuggestion.suggestedAction}`;
+          toolResultContent += `\n\n[TIP] Recovery suggestion: ${recoverySuggestion.suggestedAction}`;
           if (recoverySuggestion.suggestedTools.length > 0) {
             toolResultContent += `\n   Suggested tools: ${recoverySuggestion.suggestedTools.join(', ')}`;
           }
           
           // Add alternative approach warning if this is a repeated error
           if (recoverySuggestion.isAlternative) {
-            toolResultContent += `\n\n⚠️ This error has occurred repeatedly. Consider trying a different approach.`;
+            toolResultContent += `\n\n[!] This error has occurred repeatedly. Consider trying a different approach.`;
           }
         }
       }
@@ -763,14 +767,14 @@ export class ToolQueueProcessor {
       
       // Add recovery suggestion if available
       if (recoverySuggestion.confidence > 0.3) {
-        errorContent += `\n\n💡 Recovery suggestion: ${recoverySuggestion.suggestedAction}`;
+        errorContent += `\n\n[TIP] Recovery suggestion: ${recoverySuggestion.suggestedAction}`;
         if (recoverySuggestion.suggestedTools.length > 0) {
           errorContent += `\n   Suggested tools: ${recoverySuggestion.suggestedTools.join(', ')}`;
         }
         
         // Add alternative approach warning if this is a repeated error
         if (recoverySuggestion.isAlternative) {
-          errorContent += `\n\n⚠️ This error has occurred repeatedly. Consider trying a different approach.`;
+          errorContent += `\n\n[!] This error has occurred repeatedly. Consider trying a different approach.`;
         }
       }
 
@@ -809,11 +813,17 @@ export class ToolQueueProcessor {
 
   /**
    * Get or create a SafetyManager for a run
+   * Automatically applies user's SafetySettings
    */
   getOrCreateSafetyManager(runId: string): SafetyManager {
     let manager = this.safetyManagers.get(runId);
     if (!manager) {
       manager = new SafetyManager();
+      // Apply user's safety settings
+      const safetySettings = this.getSafetySettings();
+      if (safetySettings) {
+        manager.updateUserSettings(safetySettings);
+      }
       this.safetyManagers.set(runId, manager);
     }
     return manager;

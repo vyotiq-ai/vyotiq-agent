@@ -384,6 +384,12 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
 
   // Subscribe to file change events
   useEffect(() => {
+    // Guard against preload not being ready
+    if (!window.vyotiq?.files?.onFileChange) {
+      logger.debug('vyotiq.files API not available yet');
+      return;
+    }
+    
     const unsubscribe = window.vyotiq.files.onFileChange((event) => {
       if (event.type === 'delete') {
         setTabs(prev => {
@@ -453,6 +459,11 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
       code: d.code,
     }));
 
+    // Guard against preload not being ready
+    if (!window.vyotiq?.agent?.updateEditorState) {
+      return;
+    }
+
     window.vyotiq.agent.updateEditorState({
       openFiles: tabs.map(t => t.path),
       activeFile: activeTab?.path || null,
@@ -465,6 +476,11 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
 
   // Load file content
   const loadFileContent = useCallback(async (path: string) => {
+    // Guard against preload not being ready
+    if (!window.vyotiq?.files?.read) {
+      return { content: '', error: 'API not ready' };
+    }
+    
     try {
       const result = await window.vyotiq.files.read([path]);
       if (result && result.length > 0 && result[0].content) {
@@ -512,7 +528,10 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
 
   const openFile = useCallback(async (path: string) => {
     if (!isTextFile(path)) {
-      await window.vyotiq.files.open(path);
+      // Guard against preload not being ready
+      if (window.vyotiq?.files?.open) {
+        await window.vyotiq.files.open(path);
+      }
       return;
     }
 
@@ -639,6 +658,12 @@ export const EditorProvider: React.FC<EditorProviderProps> = ({ children }) => {
   const saveFile = useCallback(async (tabId: string) => {
     const tab = tabs.find(t => t.id === tabId);
     if (!tab || !tab.isDirty) return true;
+
+    // Guard against preload not being ready
+    if (!window.vyotiq?.files?.write) {
+      logger.error('Cannot save file - API not ready');
+      return false;
+    }
 
     try {
       const result = await window.vyotiq.files.write(tab.path, tab.content);

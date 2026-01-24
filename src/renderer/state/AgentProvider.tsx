@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, startTransition, useSyncExternalStore } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, startTransition, useSyncExternalStore } from 'react';
 import type {
   AgentConfig,
   AgentEvent,
@@ -634,9 +634,36 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     [appendDelta, clearBuffer, flushSession, batchedDispatch, getCurrentState, scheduleTerminalFlush],
   );
 
+  // Track if vyotiq API is ready
+  const [apiReady, setApiReady] = useState(() => !!window.vyotiq?.agent);
+  
+  // Check for API readiness
+  useEffect(() => {
+    if (apiReady) return;
+    
+    // Poll for API availability
+    const checkInterval = setInterval(() => {
+      if (window.vyotiq?.agent) {
+        setApiReady(true);
+        clearInterval(checkInterval);
+      }
+    }, 50);
+    
+    // Cleanup after 5 seconds (give up)
+    const timeout = setTimeout(() => {
+      clearInterval(checkInterval);
+      logger.error('window.vyotiq API never became available');
+    }, 5000);
+    
+    return () => {
+      clearInterval(checkInterval);
+      clearTimeout(timeout);
+    };
+  }, [apiReady]);
+
   useEffect(() => {
     // Guard against preload script not being ready
-    if (!window.vyotiq?.agent) {
+    if (!apiReady || !window.vyotiq?.agent) {
       logger.warn('window.vyotiq not available yet');
       return;
     }
@@ -713,9 +740,11 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           logger.debug('No active workspace found - user needs to select one');
         }
 
-        // 3. Load settings
-        const settings = await window.vyotiq.settings.get();
-        dispatchRef.current({ type: 'SETTINGS_UPDATE', payload: settings });
+        // 3. Load settings (with guard)
+        if (window.vyotiq?.settings?.get) {
+          const settings = await window.vyotiq.settings.get();
+          dispatchRef.current({ type: 'SETTINGS_UPDATE', payload: settings });
+        }
 
       } catch (error) {
         logger.error('Failed to load initial data', { error: error instanceof Error ? error.message : String(error) });
@@ -729,7 +758,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       // Reset flag on unmount to allow reloading if component remounts
       initialDataLoadedRef.current = false;
     };
-  }, [handleAgentEvent]);
+  }, [handleAgentEvent, apiReady]);
 
   const startSession = useCallback(async (initialConfig?: Partial<AgentConfig>) => {
     if (!window.vyotiq?.agent) return undefined;

@@ -170,7 +170,7 @@ async function executeFillForm(
     let output = `Form Fill Results: ${successCount}/${results.length} fields filled\n\n`;
     
     for (const result of results) {
-      const status = result.success ? '✓' : '✗';
+      const status = result.success ? '[OK]' : '[ERR]';
       output += `${status} ${result.field}${result.error ? `: ${result.error}` : ''}\n`;
     }
     

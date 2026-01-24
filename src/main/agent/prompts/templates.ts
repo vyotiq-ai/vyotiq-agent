@@ -156,16 +156,16 @@ export function progressReport(options: {
 **Progress**: [${bar}] ${options.percentComplete}%
 
 ### Completed
-${options.completed.map(c => `- ✓ ${c}`).join('\n')}
+${options.completed.map(c => `- [x] ${c}`).join('\n')}
 
 ### Remaining
-${options.remaining.map(r => `- ○ ${r}`).join('\n')}
+${options.remaining.map(r => `- [ ] ${r}`).join('\n')}
 `;
 
   if (options.blockers && options.blockers.length > 0) {
     template += `
 ### Blockers
-${options.blockers.map(b => `- ⚠ ${b}`).join('\n')}
+${options.blockers.map(b => `- [!] ${b}`).join('\n')}
 `;
   }
 
@@ -182,7 +182,7 @@ export function completionSummary(options: {
   metrics?: { key: string; value: string }[];
   nextSteps?: string[];
 }): string {
-  const status = options.success ? '✓ Completed Successfully' : '✗ Completed with Issues';
+  const status = options.success ? '[OK] Completed Successfully' : '[!] Completed with Issues';
 
   let template = `
 ## Task Completion
@@ -316,7 +316,7 @@ ${options.steps.map((s, i) => {
   if (options.warnings && options.warnings.length > 0) {
     template += `
 ### Warnings
-${options.warnings.map(w => `⚠ ${w}`).join('\n')}
+${options.warnings.map(w => `[!] ${w}`).join('\n')}
 `;
   }
 
@@ -335,16 +335,16 @@ export function constraintsAndRequirements(options: {
 ## Requirements
 
 ### Must Do
-${options.mustDo.map(r => `- ✓ ${r}`).join('\n')}
+${options.mustDo.map(r => `- [x] ${r}`).join('\n')}
 
 ### Must Not Do
-${options.mustNotDo.map(r => `- ✗ ${r}`).join('\n')}
+${options.mustNotDo.map(r => `- [!] ${r}`).join('\n')}
 `;
 
   if (options.preferences && options.preferences.length > 0) {
     template += `
 ### Preferences (if possible)
-${options.preferences.map(p => `- ○ ${p}`).join('\n')}
+${options.preferences.map(p => `- [ ] ${p}`).join('\n')}
 `;
   }
 

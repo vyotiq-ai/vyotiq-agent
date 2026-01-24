@@ -12,6 +12,7 @@ import type {
   ComplianceSettings,
   RoutingDecision,
   ToolConfigSettings,
+  TaskRoutingSettings,
 } from '../../shared/types';
 import type { InternalSession, AgenticContext } from './types';
 import type { Logger } from '../logger';
@@ -60,6 +61,7 @@ interface RunExecutorDeps {
   getComplianceSettings?: () => ComplianceSettings | undefined;
   getAccessLevelSettings?: () => AccessLevelSettings | undefined;
   getToolSettings?: () => ToolConfigSettings | undefined;
+  getTaskRoutingSettings?: () => TaskRoutingSettings | undefined;
   getEditorState?: () => {
     openFiles: string[];
     activeFile: string | null;
@@ -112,6 +114,7 @@ export class RunExecutor {
   private readonly getComplianceSettings: () => ComplianceSettings | undefined;
   private readonly getAccessLevelSettings: () => AccessLevelSettings | undefined;
   private readonly getToolSettings: () => ToolConfigSettings | undefined;
+  private readonly getTaskRoutingSettings: () => TaskRoutingSettings | undefined;
   private readonly getEditorState?: () => {
     openFiles: string[];
     activeFile: string | null;
@@ -196,6 +199,7 @@ export class RunExecutor {
     this.getComplianceSettings = deps.getComplianceSettings ?? (() => undefined);
     this.getAccessLevelSettings = deps.getAccessLevelSettings ?? (() => undefined);
     this.getToolSettings = deps.getToolSettings ?? (() => undefined);
+    this.getTaskRoutingSettings = deps.getTaskRoutingSettings ?? (() => undefined);
     this.getEditorState = deps.getEditorState;
     this.getWorkspaceDiagnostics = deps.getWorkspaceDiagnostics;
 
@@ -271,7 +275,8 @@ export class RunExecutor {
       this.updateSessionState,
       this.getAccessLevelSettings,
       this.activeControllers,
-      this.getToolSettings
+      this.getToolSettings,
+      this.getSafetySettings
     );
     this.sessionQueueManager = new SessionQueueManager(
       this.logger,
@@ -415,7 +420,12 @@ export class RunExecutor {
       }
 
       if (!providerForContinuation) {
-        const { primary } = await this.providerSelector.selectProvidersWithFallback(session);
+        const taskRoutingSettings = this.getTaskRoutingSettings();
+        const { primary } = await this.providerSelector.selectProvidersWithFallback(
+          session, 
+          undefined, 
+          taskRoutingSettings
+        );
         providerForContinuation = primary;
       }
 
@@ -603,12 +613,17 @@ export class RunExecutor {
     });
 
     try {
+      const taskRoutingSettings = this.getTaskRoutingSettings();
       const { primary, fallback, allAvailable, routingDecision }: { 
         primary: LLMProvider | null; 
         fallback: LLMProvider | null; 
         allAvailable: LLMProvider[]; 
         routingDecision?: RoutingDecision;
-      } = await this.providerSelector.selectProvidersWithFallback(session);
+      } = await this.providerSelector.selectProvidersWithFallback(
+        session, 
+        undefined, 
+        taskRoutingSettings
+      );
 
       if (routingDecision && session.agenticContext) {
         session.agenticContext.routingDecision = routingDecision;
