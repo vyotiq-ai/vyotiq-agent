@@ -2,7 +2,13 @@
 
 ## Overview
 
-Comprehensive documentation has been created for the Vyotiq AI project. All documentation is complete, accurate, and reflects the current state of the codebase as of December 28, 2025.
+Comprehensive documentation has been created for the Vyotiq AI project. All documentation is complete, accurate, and reflects the current state of the codebase as of January 25, 2026.
+
+### Recent Updates (January 2026)
+- **Semantic Indexing**: Added local vector embeddings for AI-powered codebase search
+- **codebase_search Tool**: New tool for semantic code discovery
+- **Settings Panel**: New Indexing tab for semantic search configuration
+- **useSemanticIndex Hook**: React hook for index management
 
 ## Documentation Files Created
 
@@ -133,6 +139,7 @@ Comprehensive documentation has been created for the Vyotiq AI project. All docu
 ### Tool System
 - 40+ built-in tools documented
 - File operations (read, write, edit, ls, grep, glob, bulkOperations)
+- Semantic search (codebase_search) - AI-powered code search
 - Terminal management (run, checkTerminal, killTerminal)
 - Browser automation (21 tools)
 - LSP integration (8 tools)
@@ -157,6 +164,7 @@ Comprehensive documentation has been created for the Vyotiq AI project. All docu
 - Metrics dashboard
 
 ### Advanced Features
+- **Semantic Search**: Local vector embeddings for codebase search
 - Context compression and summarization
 - Prompt caching (provider-specific)
 - Tool result caching
@@ -301,6 +309,6 @@ The documentation is ready for developers, contributors, and users to get starte
 
 ---
 
-**Documentation Updated**: January 1, 2026
-**Vyotiq AI Version**: 1.0.0
+**Documentation Updated**: January 25, 2026
+**Vyotiq AI Version**: 1.1.0
 **Status**: Complete and Ready for Use

@@ -81,6 +81,7 @@ src/main/
 │   ├── providers/            # LLM provider integrations
 │   ├── context/              # Context management & summarization
 │   ├── cache/                # Caching systems (prompt, tool result, context)
+│   ├── semantic/             # Vector embeddings & semantic search
 │   ├── compliance/           # Safety & compliance checks
 │   ├── recovery/             # Error recovery & self-healing
 │   ├── debugging/            # Execution tracing & debugging
@@ -160,6 +161,9 @@ Tools are the interface between the agent and the system. Each tool:
 - `grep` - Search file contents
 - `glob` - Find files by pattern
 - `bulkOperations` - Batch file operations
+
+**Semantic Search (1 tool)**
+- `codebase_search` - AI-powered semantic code search using vector embeddings
 
 **Terminal (3 tools)**
 - `run` - Execute shell commands
@@ -753,11 +757,83 @@ UI shows updated diagnostics
 
 ---
 
-## Future Improvements
+## Semantic Indexing Module
 
-- [ ] Multi-workspace support in single session
-- [ ] Collaborative editing with other users
-- [ ] Plugin system for custom tools
-- [ ] Advanced prompt engineering UI
-- [ ] Real-time code collaboration
-- [ ] Mobile companion app
+*Added: January 2026*
+
+The `semantic/` module provides local vector embeddings and AI-powered code search:
+
+```
+src/main/agent/semantic/
+├── index.ts                  # Module exports
+├── EmbeddingService.ts       # Transformers.js embedding generation
+├── VectorStore.ts            # SQLite-backed vector storage with HNSW
+├── CodeChunker.ts            # Language-aware code chunking
+├── SemanticIndexer.ts        # Workspace indexing orchestrator
+├── SemanticContextProvider.ts # Context retrieval for prompts
+└── WorkspaceAnalyzer.ts      # Project structure analysis
+```
+
+### Components
+
+#### EmbeddingService
+- Uses Transformers.js with ONNX runtime for local inference
+- Supports GPU acceleration (optional)
+- Caches embeddings for repeated queries
+- Quality presets: fast, balanced, quality
+
+#### VectorStore
+- SQLite-backed persistent storage
+- HNSW algorithm for similarity search
+- Configurable M and efSearch parameters
+- Automatic index optimization
+
+#### CodeChunker
+- Language-aware code splitting (15+ languages)
+- Preserves semantic boundaries (functions, classes)
+- Configurable chunk sizes
+
+#### SemanticIndexer
+- Orchestrates workspace indexing
+- Progress tracking with time estimates
+- File change watching for incremental updates
+- Abort capability for long operations
+
+### Usage
+
+```typescript
+import { getSemanticIndexer, getSemanticContextForQuery } from './semantic';
+
+// Index a workspace
+const indexer = getSemanticIndexer();
+await indexer.indexWorkspace('/path/to/workspace', {
+  onProgress: (progress) => console.log(progress),
+});
+
+// Search the codebase
+const result = await indexer.search({
+  query: 'authentication logic',
+  options: { limit: 10, minScore: 0.3 },
+});
+
+// Get context for prompt injection
+const context = await getSemanticContextForQuery(
+  '/path/to/workspace',
+  'user query',
+  { maxSnippets: 5, maxTotalLength: 4000 }
+);
+```
+
+### Settings
+
+Configurable via Settings → Indexing:
+- Enable/disable indexing
+- Auto-index on startup
+- Watch for file changes
+- Chunk size configuration
+- File type filters
+- Exclude patterns
+- GPU acceleration
+- HNSW parameters
+
+---

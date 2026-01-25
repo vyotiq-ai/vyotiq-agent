@@ -51,12 +51,23 @@
 | 🤖 **Autonomous Agents** | Advanced task execution with tool confirmation and safety guardrails |
 | 💻 **Integrated IDE** | Monaco editor, xterm.js terminal, and browser automation |
 | 🧠 **Context-Aware** | Smart summarization, prompt caching, and context window optimization |
-| 📊 **Git Integration** | Review changes with git diff and commit directly |
+| � **Semantic Search** | AI-powered codebase search using local vector embeddings |
+| �📊 **Git Integration** | Review changes with git diff and commit directly |
 | 🔒 **Local-First** | All data stays on your machine—complete privacy |
 
 ---
 
 ## 📢 Recent Updates
+
+### Semantic Codebase Search (January 2026)
+Added local AI-powered semantic search capabilities using vector embeddings. Search your codebase by meaning, not just text patterns.
+
+**Features:**
+- 🧠 **Semantic Search**: Find code by meaning with `codebase_search` tool
+- ⚡ **Local Embeddings**: Transformers.js with ONNX runtime - no external API calls
+- 🔧 **Language-Aware Chunking**: Smart code splitting for 15+ languages
+- 📊 **Index Management**: Settings panel for configuration and statistics
+- 🎯 **GPU Support**: Optional GPU acceleration for faster indexing
 
 ### Diff Display Fix (January 2026)
 Fixed a critical issue in the diff viewer where identical lines were incorrectly shown as changed. This was particularly visible in import statements where file paths were being highlighted as different even though they were the same.
@@ -177,6 +188,7 @@ Supported languages: TypeScript, JavaScript, Python, Go, Rust, Java, C/C++, and 
 | Category | Tools |
 |----------|-------|
 | **File Operations** | `read`, `write`, `edit`, `ls`, `grep`, `glob`, `bulkOperations` |
+| **Semantic Search** | `codebase_search` - AI-powered semantic code search using vector embeddings |
 | **Terminal** | `run`, `checkTerminal`, `killTerminal` |
 | **Browser** | `browser_fetch`, `browser_navigate`, `browser_extract`, `browser_snapshot`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_fill_form`, `browser_wait`, `browser_hover`, `browser_evaluate`, `browser_state`, `browser_back`, `browser_forward`, `browser_reload`, `browser_console`, `browser_network`, `browser_tabs`, `browser_security_status`, `browser_check_url` |
 | **LSP** | `lsp_hover`, `lsp_definition`, `lsp_references`, `lsp_symbols`, `lsp_diagnostics`, `lsp_completions`, `lsp_code_actions`, `lsp_rename` |
@@ -347,6 +359,7 @@ vyotiq/
 │   │   │   ├── providers/        # LLM provider integrations
 │   │   │   ├── context/          # Context management
 │   │   │   ├── cache/            # Caching systems
+│   │   │   ├── semantic/         # Vector embeddings & semantic search
 │   │   │   ├── compliance/       # Safety & compliance
 │   │   │   ├── recovery/         # Error recovery
 │   │   │   └── debugging/        # Execution tracing
@@ -402,6 +415,7 @@ vyotiq/
 | [xterm.js](https://xtermjs.org/) | 5.5 | Terminal emulator |
 | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) | 12.5 | Local database |
 | [node-pty](https://github.com/microsoft/node-pty) | 1.1 | Terminal process management |
+| [@huggingface/transformers](https://huggingface.co/docs/transformers.js) | 3.x | Local AI embeddings for semantic search |
 
 ---
 
@@ -414,6 +428,7 @@ All settings are accessible via the Settings panel (`Ctrl + ,`):
 - **AI Providers**: Configure API keys and default models
 - **Editor**: Font size, theme, tab size, word wrap
 - **Terminal**: Shell path, font family, cursor style
+- **Indexing**: Semantic indexing, chunk size, file types, exclude patterns, GPU acceleration
 - **Safety**: Tool confirmation, file limits, protected paths, blocked commands
 - **Cache**: Prompt caching, tool result caching, context caching
 - **Debug**: Verbose logging, trace export, breakpoints

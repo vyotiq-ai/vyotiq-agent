@@ -87,6 +87,7 @@ main/
 │   ├── providers/            # LLM providers
 │   ├── context/              # Context management
 │   ├── cache/                # Caching systems
+│   ├── semantic/             # Vector embeddings & semantic search
 │   ├── compliance/           # Safety checks
 │   ├── recovery/             # Error recovery
 │   └── debugging/            # Execution tracing
@@ -791,6 +792,77 @@ const DEFAULT_SETTINGS: Settings = {
 3. Include code examples where helpful
 4. Keep sections organized with headers
 5. Update table of contents if adding new sections
+
+---
+
+## Semantic Indexing Development
+
+*Added: January 2026*
+
+### Architecture
+
+The semantic module (`src/main/agent/semantic/`) provides local vector embeddings:
+
+```
+semantic/
+├── index.ts                  # Module exports
+├── EmbeddingService.ts       # Transformers.js embedding generation
+├── VectorStore.ts            # SQLite-backed vector storage
+├── CodeChunker.ts            # Language-aware code chunking
+├── SemanticIndexer.ts        # Workspace indexing orchestrator
+├── SemanticContextProvider.ts # Context retrieval for prompts
+└── WorkspaceAnalyzer.ts      # Project structure analysis
+```
+
+### Key Dependencies
+
+- `@huggingface/transformers` - Local AI inference
+- `onnxruntime-node` - ONNX model execution
+- `better-sqlite3` - Vector storage
+
+### Adding Language Support
+
+To add chunking support for a new language:
+
+```typescript
+// src/main/agent/semantic/CodeChunker.ts
+const LANGUAGE_PATTERNS: Record<string, LanguagePatterns> = {
+  // Add new language
+  mylang: {
+    functionPattern: /function\s+(\w+)/g,
+    classPattern: /class\s+(\w+)/g,
+    importPattern: /import\s+.+/g,
+    commentPatterns: [/\/\/.*/g, /\/\*[\s\S]*?\*\//g],
+  },
+};
+```
+
+### Testing Semantic Search
+
+```typescript
+// Test embedding service
+const service = getEmbeddingService();
+await service.initialize();
+const embedding = await service.embed('test query');
+
+// Test vector store
+const store = getVectorStore();
+await store.initialize('/path/to/workspace');
+await store.addDocument({ id: 'test', content: 'code', embedding });
+const results = await store.search(queryEmbedding, { limit: 5 });
+
+// Test full indexing
+const indexer = getSemanticIndexer();
+await indexer.indexWorkspace('/path/to/workspace');
+const searchResult = await indexer.search({ query: 'test' });
+```
+
+### Debugging Tips
+
+1. **Model loading issues**: Check `onnxruntime-node` is properly externalized in vite config
+2. **Slow indexing**: Enable GPU acceleration in settings or reduce chunk size
+3. **Poor search results**: Lower `minSearchScore` or increase `targetChunkSize`
+4. **Memory issues**: Reduce `maxCacheEntries` in settings
 
 ---
 
