@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, Save, X, PlugZap, Layers, Bot, SlidersHorizontal, Palette, ShieldAlert, Gauge, Bug, MessageSquare, ShieldCheck, Shield, Globe, GitBranch, Sparkles } from 'lucide-react';
+import { Loader2, Save, X, PlugZap, Layers, Bot, SlidersHorizontal, Palette, ShieldAlert, Gauge, Bug, MessageSquare, ShieldCheck, Shield, Globe, GitBranch, Sparkles, Database } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { SettingsProviders } from './components/SettingsProviders';
 import { SettingsModels } from './components/SettingsModels';
@@ -15,6 +15,7 @@ import { SettingsPrompts } from './components/SettingsPrompts';
 import { SettingsBrowser } from './components/SettingsBrowser';
 import { SettingsRouting } from './components/SettingsRouting';
 import { SettingsEditorAI } from './components/SettingsEditorAI';
+import { SettingsIndexing } from './components/SettingsIndexing';
 
 import { useSettings } from '../../hooks';
 import { cn } from '../../utils/cn';
@@ -24,7 +25,7 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-type SettingsTab = 'providers' | 'models' | 'routing' | 'agent' | 'prompts' | 'editor-ai' | 'browser' | 'access' | 'safety' | 'compliance' | 'performance' | 'debugging' | 'appearance' | 'advanced';
+type SettingsTab = 'providers' | 'models' | 'routing' | 'agent' | 'prompts' | 'editor-ai' | 'browser' | 'indexing' | 'access' | 'safety' | 'compliance' | 'performance' | 'debugging' | 'appearance' | 'advanced';
 
 interface TabConfig {
   id: SettingsTab;
@@ -41,6 +42,7 @@ const tabs: TabConfig[] = [
   { id: 'prompts', label: 'Prompts', command: 'prompts', icon: <MessageSquare size={14} /> },
   { id: 'editor-ai', label: 'Editor AI', command: 'editor-ai', icon: <Sparkles size={14} /> },
   { id: 'browser', label: 'Browser', command: 'browser', icon: <Globe size={14} /> },
+  { id: 'indexing', label: 'Indexing', command: 'indexing', icon: <Database size={14} /> },
   { id: 'access', label: 'Access', command: 'access', icon: <Shield size={14} /> },
   { id: 'safety', label: 'Safety', command: 'safety', icon: <ShieldAlert size={14} /> },
   { id: 'compliance', label: 'Compliance', command: 'compliance', icon: <ShieldCheck size={14} /> },
@@ -74,6 +76,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     updateTaskRoutingSetting,
     updateTaskMapping,
     updateEditorAISetting,
+    updateSemanticSetting,
     saveSettings,
   } = useSettings(open);
 
@@ -153,6 +156,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
         ) : (
           <div className="text-[10px] text-[var(--color-text-muted)] font-mono">
             # loading browser settings...
+          </div>
+        );
+      case 'indexing':
+        return localSettings.semanticSettings ? (
+          <SettingsIndexing
+            settings={localSettings.semanticSettings}
+            onChange={updateSemanticSetting}
+          />
+        ) : (
+          <div className="text-[10px] text-[var(--color-text-muted)] font-mono">
+            # loading indexing settings...
           </div>
         );
       case 'access':

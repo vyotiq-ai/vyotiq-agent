@@ -77,11 +77,7 @@ export class LSPManager extends EventEmitter {
   private failedClients = new Map<SupportedLanguage, number>(); // Track failed start attempts
   private diagnosticsCache = new Map<string, DiagnosticsCache>();
   private installedServers = new Set<SupportedLanguage>();
-  
-  // Rate limiting for "server not installed" warnings
-  private serverNotInstalledWarnings = new Map<SupportedLanguage, number>();
-  private static readonly WARNING_COOLDOWN_MS = 600000; // 10 minutes between warnings (increased from 5)
-  private static readonly FAILED_START_COOLDOWN_MS = 600000; // 10 minutes between retry attempts (increased from 5)
+  private static readonly FAILED_START_COOLDOWN_MS = 600000; // 10 minutes between retry attempts
   
   // Track permanently disabled servers to avoid repeated attempts
   private permanentlyDisabledServers = new Set<SupportedLanguage>();
@@ -101,7 +97,6 @@ export class LSPManager extends EventEmitter {
     // Reset state when initializing for a new workspace
     this.permanentlyDisabledServers.clear();
     this.failedClients.clear();
-    this.serverNotInstalledWarnings.clear();
     
     // Check which servers are installed
     await this.detectInstalledServers();
@@ -188,13 +183,7 @@ export class LSPManager extends EventEmitter {
     }
 
     if (!this.installedServers.has(language)) {
-      // Rate-limit "server not installed" warnings to avoid log spam
-      const lastWarning = this.serverNotInstalledWarnings.get(language) || 0;
-      const now = Date.now();
-      if (now - lastWarning > LSPManager.WARNING_COOLDOWN_MS) {
-        this.logger.warn(`Server not installed: ${language}`);
-        this.serverNotInstalledWarnings.set(language, now);
-      }
+      // Silently skip - server not installed is expected for optional languages
       return false;
     }
 

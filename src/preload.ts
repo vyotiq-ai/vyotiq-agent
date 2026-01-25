@@ -1541,6 +1541,170 @@ const terminalAPI = {
 	},
 };
 
+// ==========================================================================
+// Semantic Indexing API
+// ==========================================================================
+
+interface IndexingProgress {
+	totalFiles: number;
+	indexedFiles: number;
+	currentFile: string | null;
+	isIndexing: boolean;
+	status: 'idle' | 'scanning' | 'indexing' | 'complete' | 'error';
+	error?: string;
+	startTime?: number;
+	estimatedTimeRemaining?: number;
+}
+
+interface IndexerStats {
+	indexedFiles: number;
+	totalChunks: number;
+	lastIndexTime: number | null;
+	indexSizeBytes: number;
+	indexHealth: 'healthy' | 'degraded' | 'needs-rebuild' | 'empty';
+}
+
+interface SearchOptions {
+	limit?: number;
+	minScore?: number;
+	filePathPattern?: string;
+	fileTypes?: string[];
+	languages?: string[];
+	symbolTypes?: string[];
+	includeContent?: boolean;
+}
+
+interface SemanticSearchResult {
+	results: Array<{
+		document: {
+			id: string;
+			filePath: string;
+			chunkIndex: number;
+			content: string;
+			metadata: {
+				fileType: string;
+				language?: string;
+				symbolType?: string;
+				symbolName?: string;
+				startLine?: number;
+				endLine?: number;
+			};
+		};
+		score: number;
+		distance: number;
+	}>;
+	queryTimeMs: number;
+	totalDocumentsSearched: number;
+}
+
+interface IndexingProgressEvent {
+	type: 'semantic:indexProgress';
+	totalFiles: number;
+	indexedFiles: number;
+	currentFile: string | null;
+	isIndexing: boolean;
+	status: string;
+}
+
+interface ModelStatusEvent {
+	type: 'semantic:modelStatus';
+	modelId: string;
+	isCached: boolean;
+	isLoaded: boolean;
+	status: 'cached' | 'needs-download' | 'loading' | 'ready' | 'error';
+}
+
+interface ModelProgressEvent {
+	type: 'semantic:modelProgress';
+	status: 'downloading' | 'loading' | 'ready' | 'error';
+	file?: string;
+	progress?: number;
+	loaded?: number;
+	total?: number;
+	error?: string;
+}
+
+const semanticAPI = {
+	/**
+	 * Index the current workspace
+	 */
+	indexWorkspace: (options?: {
+		forceReindex?: boolean;
+		fileTypes?: string[];
+		excludePatterns?: string[];
+	}): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('semantic:indexWorkspace', options),
+
+	/**
+	 * Perform semantic search
+	 */
+	search: (query: string, options?: SearchOptions): Promise<SemanticSearchResult | { success: false; error: string }> =>
+		ipcRenderer.invoke('semantic:search', query, options),
+
+	/**
+	 * Get indexing progress
+	 */
+	getProgress: (): Promise<IndexingProgress> =>
+		ipcRenderer.invoke('semantic:getProgress'),
+
+	/**
+	 * Get index statistics
+	 */
+	getStats: (): Promise<IndexerStats> =>
+		ipcRenderer.invoke('semantic:getStats'),
+
+	/**
+	 * Clear the index
+	 */
+	clearIndex: (): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('semantic:clearIndex'),
+
+	/**
+	 * Abort current indexing
+	 */
+	abortIndexing: (): Promise<{ success: boolean }> =>
+		ipcRenderer.invoke('semantic:abortIndexing'),
+
+	/**
+	 * Get indexed files
+	 */
+	getIndexedFiles: (): Promise<string[]> =>
+		ipcRenderer.invoke('semantic:getIndexedFiles'),
+
+	/**
+	 * Check if indexer is ready
+	 */
+	isReady: (): Promise<boolean> =>
+		ipcRenderer.invoke('semantic:isReady'),
+
+	/**
+	 * Subscribe to indexing progress events
+	 */
+	onProgress: (handler: (progress: IndexingProgressEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: IndexingProgressEvent) => handler(data);
+		ipcRenderer.on('semantic:indexProgress', listener);
+		return () => ipcRenderer.removeListener('semantic:indexProgress', listener);
+	},
+
+	/**
+	 * Subscribe to model status events (emitted when model loading state changes)
+	 */
+	onModelStatus: (handler: (status: ModelStatusEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: ModelStatusEvent) => handler(data);
+		ipcRenderer.on('semantic:modelStatus', listener);
+		return () => ipcRenderer.removeListener('semantic:modelStatus', listener);
+	},
+
+	/**
+	 * Subscribe to model download progress events
+	 */
+	onModelProgress: (handler: (progress: ModelProgressEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: ModelProgressEvent) => handler(data);
+		ipcRenderer.on('semantic:modelProgress', listener);
+		return () => ipcRenderer.removeListener('semantic:modelProgress', listener);
+	},
+};
+
 
 contextBridge.exposeInMainWorld('vyotiq', {
 	agent: agentAPI,
@@ -1577,4 +1741,7 @@ contextBridge.exposeInMainWorld('vyotiq', {
 
 	// Integrated Terminal API
 	terminal: terminalAPI,
+
+	// Semantic Indexing API
+	semantic: semanticAPI,
 });

@@ -6,7 +6,7 @@
 export * from './types';
 export { ProgressTracker } from './progressTracker';
 export { ProviderSelector } from './providerSelector';
-export { ContextBuilder } from './contextBuilder';
+export { ContextBuilder, setSemanticWorkspaceStructureGetter, type WorkspaceStructureGetter } from './contextBuilder';
 export { RequestBuilder } from './requestBuilder';
 export { DebugEmitter } from './debugEmitter';
 export { ToolExecutor } from './toolExecutor';

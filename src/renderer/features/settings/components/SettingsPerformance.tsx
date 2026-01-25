@@ -230,6 +230,10 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
                   <span className="text-[var(--color-text-muted)]">entries</span>
                   <span className="text-[var(--color-text-secondary)]">{stats.toolCache.size} / {stats.toolCache.maxSize}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-text-muted)]">est. memory</span>
+                  <span className="text-[var(--color-text-secondary)]">{formatBytes(stats.toolCache.size * 2048)}</span>
+                </div>
               </div>
             </div>
 

@@ -16,6 +16,23 @@ const DEFAULT_TERMINAL_SETTINGS: InternalTerminalSettings = {
   maxConcurrentProcesses: 5,
 };
 
+/**
+ * Callback type to get workspace structure from SemanticIndexer
+ * Returns rich workspace analysis if available, undefined otherwise
+ */
+export type WorkspaceStructureGetter = () => Promise<WorkspaceStructureContext | undefined>;
+
+// Module-level getter for semantic workspace structure
+let semanticWorkspaceStructureGetter: WorkspaceStructureGetter | null = null;
+
+/**
+ * Set the semantic workspace structure getter
+ * Called by main process to provide access to SemanticIndexer's workspace analysis
+ */
+export function setSemanticWorkspaceStructureGetter(getter: WorkspaceStructureGetter): void {
+  semanticWorkspaceStructureGetter = getter;
+}
+
 export class ContextBuilder {
   private readonly terminalManager: TerminalManager;
   private readonly logger: Logger;
@@ -89,7 +106,8 @@ export class ContextBuilder {
 
   /**
    * Build workspace structure context for system prompt
-   * Detects project type, framework, and key directories
+   * Uses SemanticIndexer's rich workspace analysis when available,
+   * falls back to basic detection otherwise
    */
   async buildWorkspaceStructureContext(
     workspacePath?: string
@@ -98,6 +116,25 @@ export class ContextBuilder {
       return undefined;
     }
 
+    // Try to get rich workspace structure from SemanticIndexer first
+    if (semanticWorkspaceStructureGetter) {
+      try {
+        const semanticStructure = await semanticWorkspaceStructureGetter();
+        if (semanticStructure) {
+          this.logger.debug('Using semantic workspace structure', {
+            projectType: semanticStructure.projectType,
+            framework: semanticStructure.framework,
+          });
+          return semanticStructure;
+        }
+      } catch (error) {
+        this.logger.warn('Failed to get semantic workspace structure, falling back to basic detection', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Fallback to basic workspace detection
     try {
       const fs = await import('node:fs/promises');
       const path = await import('node:path');

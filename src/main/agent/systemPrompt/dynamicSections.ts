@@ -131,18 +131,47 @@ export function buildTaskAnalysis(taskAnalysis?: TaskAnalysisContext): string {
 }
 
 // =============================================================================
-// WORKSPACE STRUCTURE - Compact
+// WORKSPACE STRUCTURE - Compact but informative
 // =============================================================================
 
 export function buildWorkspaceStructure(structure?: WorkspaceStructureContext): string {
   if (!structure) return '';
 
-  const parts: string[] = [];
-  if (structure.languages?.length) parts.push(`lang="${structure.languages.join(',')}"`);
-  if (structure.frameworks?.length) parts.push(`fw="${structure.frameworks.join(',')}"`);
-  if (structure.packageManager) parts.push(`pm="${structure.packageManager}"`);
+  const attrs: string[] = [];
+  
+  // Core project info
+  if (structure.projectType) attrs.push(`type="${structure.projectType}"`);
+  if (structure.languages?.length) attrs.push(`lang="${structure.languages.slice(0, 3).join(',')}"`);
+  if (structure.framework) attrs.push(`fw="${structure.framework}"`);
+  if (structure.frameworks?.length && !structure.framework) {
+    attrs.push(`fw="${structure.frameworks.slice(0, 2).join(',')}"`);
+  }
+  
+  // Build info
+  if (structure.packageManager) attrs.push(`pm="${structure.packageManager}"`);
+  if (structure.buildTool) attrs.push(`build="${structure.buildTool}"`);
+  if (structure.testFramework) attrs.push(`test="${structure.testFramework}"`);
 
-  return parts.length > 0 ? `<ws ${parts.join(' ')} />` : '';
+  // Include key directories for context (truncated for token efficiency)
+  const additionalInfo: string[] = [];
+  if (structure.sourceDirectories?.length) {
+    additionalInfo.push(`src="${structure.sourceDirectories.slice(0, 3).join(',')}"`);
+  }
+  if (structure.configFiles?.length && structure.configFiles.length > 0) {
+    // Include important config files
+    const keyConfigs = structure.configFiles.filter(f => 
+      f.includes('config') || f.includes('.json') || f === 'Cargo.toml' || f === 'go.mod'
+    ).slice(0, 3);
+    if (keyConfigs.length > 0) {
+      additionalInfo.push(`configs="${keyConfigs.join(',')}"`);
+    }
+  }
+
+  if (attrs.length === 0) return '';
+  
+  // Combine all info
+  const allAttrs = [...attrs, ...additionalInfo].join(' ');
+  return `<ws ${allAttrs} />`;
 }
 
 // =============================================================================
@@ -220,8 +249,8 @@ export function buildCoreTools(tools?: ToolDefForPrompt[]): string {
  */
 export const DYNAMIC_TOOL_CATEGORIES: Record<string, { tools: string[]; description: string }> = {
   file: {
-    tools: ['read', 'write', 'edit', 'ls', 'grep', 'glob', 'bulk', 'read_lints'],
-    description: 'File operations, search, diagnostics',
+    tools: ['read', 'write', 'edit', 'ls', 'grep', 'glob', 'codebase_search', 'bulk', 'read_lints'],
+    description: 'File operations, search, semantic search, diagnostics',
   },
   terminal: {
     tools: ['run', 'check_terminal', 'kill_terminal'],
@@ -272,5 +301,56 @@ export function buildToolCategories(): string {
   }
   
   parts.push('</tool_categories>');
+  return parts.join('\n');
+}
+
+// =============================================================================
+// SEMANTIC CONTEXT - Relevant code snippets
+// =============================================================================
+
+import type { SemanticContextInfo } from './types';
+
+/**
+ * Build semantic context section with relevant code snippets
+ * This provides the agent with relevant code from the codebase
+ * based on the user's query for improved contextual understanding.
+ */
+export function buildSemanticContext(semanticContext?: SemanticContextInfo): string {
+  if (!semanticContext || semanticContext.snippets.length === 0) return '';
+  
+  const parts: string[] = ['<relevant_code hint="Semantically retrieved code relevant to the current query">'];
+  
+  for (const snippet of semanticContext.snippets) {
+    const attrs: string[] = [
+      `file="${escapeXml(snippet.filePath)}"`,
+      `score="${snippet.score.toFixed(2)}"`,
+    ];
+    
+    if (snippet.language) {
+      attrs.push(`lang="${snippet.language}"`);
+    }
+    if (snippet.symbolType && snippet.symbolName) {
+      attrs.push(`symbol="${snippet.symbolType}:${escapeXml(snippet.symbolName)}"`);
+    }
+    if (snippet.startLine !== undefined) {
+      const lineRange = snippet.endLine 
+        ? `${snippet.startLine}-${snippet.endLine}`
+        : `${snippet.startLine}`;
+      attrs.push(`lines="${lineRange}"`);
+    }
+    
+    parts.push(`<snippet ${attrs.join(' ')}>`);
+    // Trim and limit content length for token efficiency
+    const content = snippet.content.trim();
+    const maxContentLength = 1500;
+    if (content.length > maxContentLength) {
+      parts.push(content.substring(0, maxContentLength) + '\n... (truncated)');
+    } else {
+      parts.push(content);
+    }
+    parts.push('</snippet>');
+  }
+  
+  parts.push('</relevant_code>');
   return parts.join('\n');
 }

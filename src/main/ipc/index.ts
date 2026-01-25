@@ -25,6 +25,7 @@ import { registerClaudeHandlers } from './claudeHandlers';
 import { registerTerminalHandlers, cleanupTerminalSessions } from './terminalHandlers';
 import { registerGLMHandlers } from './glmHandlers';
 import { registerCacheHandlers } from './cacheHandlers';
+import { registerSemanticHandlers } from './semanticHandlers';
 
 // Re-export types
 export type { IpcContext } from './types';
@@ -67,6 +68,7 @@ export function registerAllHandlers(
   registerTerminalHandlers(context);
   registerGLMHandlers(context);
   registerCacheHandlers(context);
+  registerSemanticHandlers(context);
 }
 
 // Export individual handler registration functions for testing/selective use
@@ -84,4 +86,5 @@ export {
   registerTerminalHandlers,
   registerGLMHandlers,
   registerCacheHandlers,
+  registerSemanticHandlers,
 };

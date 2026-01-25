@@ -478,6 +478,9 @@ export class RequestBuilder {
     const workspaceStructure = await this.contextBuilder.buildWorkspaceStructureContext(workspace?.path);
     const workspaceDiagnostics = await this.getWorkspaceDiagnostics?.();
 
+    // Retrieve semantic context from the latest user message
+    const semanticContext = await this.getSemanticContextForLatestMessage(session);
+
     const context: SystemPromptContext = {
       session,
       providerName: provider.name,
@@ -491,6 +494,7 @@ export class RequestBuilder {
       editorContext: this.getEditorState?.(),
       workspaceDiagnostics: workspaceDiagnostics ?? undefined,
       workspaceStructure,
+      semanticContext,
       logger: this.logger,
     };
 
@@ -524,6 +528,59 @@ export class RequestBuilder {
     }
 
     return systemPrompt;
+  }
+
+  /**
+   * Get semantic context for the latest user message
+   * Retrieves relevant code snippets based on the user's query
+   */
+  private async getSemanticContextForLatestMessage(
+    session: InternalSession
+  ): Promise<import('../semantic').SemanticContext | undefined> {
+    try {
+      // Get the latest user message
+      const userMessages = session.state.messages.filter(m => m.role === 'user');
+      const latestUserMessage = userMessages[userMessages.length - 1];
+      
+      if (!latestUserMessage?.content) {
+        return undefined;
+      }
+      
+      // ChatMessage.content is always a string
+      const queryText = latestUserMessage.content;
+      
+      // Skip if query is too short
+      if (queryText.trim().length < 10) {
+        return undefined;
+      }
+      
+      // Import and use the semantic context provider
+      const { getSemanticContextForQuery } = await import('../semantic');
+      
+      const semanticResult = await getSemanticContextForQuery(queryText, {
+        maxResults: 6,
+        minScore: 0.35,
+        maxTokens: 3000, // Limit tokens to prevent context overflow
+      });
+      
+      if (!semanticResult || semanticResult.snippets.length === 0) {
+        return undefined;
+      }
+      
+      this.logger.debug('Semantic context retrieved for message', {
+        sessionId: session.state.id,
+        snippetsCount: semanticResult.snippets.length,
+        estimatedTokens: semanticResult.estimatedTokens,
+        retrievalTimeMs: semanticResult.retrievalTimeMs,
+      });
+      
+      return semanticResult;
+    } catch (error) {
+      this.logger.debug('Failed to retrieve semantic context', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
   }
 
   /**

@@ -28,6 +28,7 @@ import {
   buildAdditionalInstructions,
   buildCommunicationStyle,
   buildToolCategories,
+  buildSemanticContext,
 } from './dynamicSections';
 import { buildInjectedContext } from './contextInjection';
 
@@ -62,6 +63,9 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
     buildAccessLevel(accessLevelSettings),
     buildToolsReference(context.toolDefinitions),
     buildToolCategories(),
+
+    // Semantic context - relevant code snippets
+    buildSemanticContext(context.semanticContext),
 
     // Terminal and editor context
     buildTerminalContext(context.terminalContext),

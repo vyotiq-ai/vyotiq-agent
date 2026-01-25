@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, ComplianceSettings, AccessLevelSettings, BrowserSettings, TaskRoutingSettings, RoutingTaskType, TaskModelMapping, EditorAISettings, AutonomousFeatureFlags } from '../../shared/types';
+import type { AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, ComplianceSettings, AccessLevelSettings, BrowserSettings, TaskRoutingSettings, RoutingTaskType, TaskModelMapping, EditorAISettings, AutonomousFeatureFlags, SemanticSettings } from '../../shared/types';
 import { useAgentSelector } from '../state/AgentProvider';
 import { getDefaultModel } from '../../shared/providers';
 import { createLogger } from '../utils/logger';
@@ -365,6 +365,23 @@ export const useSettings = (open: boolean) => {
     [],
   );
 
+  // Update semantic indexing settings
+  const updateSemanticSetting = useCallback(
+    (field: keyof SemanticSettings, value: SemanticSettings[keyof SemanticSettings]) => {
+      setLocalSettings((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          semanticSettings: {
+            ...prev.semanticSettings,
+            [field]: value,
+          } as SemanticSettings,
+        };
+      });
+    },
+    [],
+  );
+
   // Save settings to the store
   const saveSettings = useCallback(async () => {
     if (!localSettings) {
@@ -448,6 +465,7 @@ export const useSettings = (open: boolean) => {
     updateTaskMapping,
     updateEditorAISetting,
     updateAutonomousSetting,
+    updateSemanticSetting,
     saveSettings,
   };
 };

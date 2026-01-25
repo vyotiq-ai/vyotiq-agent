@@ -629,8 +629,9 @@ const ContentRenderer: React.FC<{
   onRunCode?: (code: string, language: string) => void;
   onInsertCode?: (code: string, language: string) => void;
 }> = memo(({ content, useMarkdown, messageType = 'assistant', onRunCode, onInsertCode }) => {
+  // Use CSS variables for consistent text colors across themes
   const textColorClass = messageType === 'user' 
-    ? 'text-white' 
+    ? 'text-[var(--color-text-primary)]' 
     : 'text-[var(--color-text-secondary)]';
 
   if (useMarkdown) {

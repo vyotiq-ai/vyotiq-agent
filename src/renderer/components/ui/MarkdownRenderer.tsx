@@ -38,10 +38,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = memo(({
   }), []);
 
   // Define text colors based on message type
+  // User messages use high-contrast colors for visibility
   const textColors = useMemo(() => ({
-    primary: messageType === 'user' ? 'text-white' : 'text-[var(--color-text-primary)]',
-    secondary: messageType === 'user' ? 'text-gray-100' : 'text-[var(--color-text-secondary)]',
-    muted: messageType === 'user' ? 'text-gray-300' : 'text-[var(--color-text-muted)]',
+    primary: 'text-[var(--color-text-primary)]',
+    secondary: messageType === 'user' ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)]',
+    muted: messageType === 'user' ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-muted)]',
   }), [messageType]);
 
   const components = useMemo(() => ({

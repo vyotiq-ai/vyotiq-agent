@@ -101,6 +101,15 @@ export const TOOL_UI_CONFIG: Record<string, ToolUIMetadata> = {
     completedLabel: 'Found',
   },
 
+  // Semantic Search
+  codebase_search: {
+    icon: 'Brain',
+    label: 'Semantic Search',
+    color: 'text-indigo-400',
+    runningLabel: 'Searching',
+    completedLabel: 'Found',
+  },
+
   // Terminal
   run: {
     icon: 'Terminal',
@@ -201,6 +210,7 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   grep: 'file-search',
   search: 'file-search',
   glob: 'file-search',
+  codebase_search: 'file-search',
   run: 'terminal',
   run_terminal_command: 'terminal',
   check_terminal_output: 'terminal',

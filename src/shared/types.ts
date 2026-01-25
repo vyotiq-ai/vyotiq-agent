@@ -1779,6 +1779,8 @@ export interface AgentSettings {
   claudeSubscription?: ClaudeSubscription;
   /** GLM Coding Plan subscription (API key-based) */
   glmSubscription?: GLMSubscription;
+  /** Semantic indexing settings */
+  semanticSettings?: SemanticSettings;
 }
 
 /**
@@ -1819,6 +1821,82 @@ export const DEFAULT_EDITOR_AI_SETTINGS: EditorAISettings = {
   contextLinesBefore: 50,
   contextLinesAfter: 10,
   preferredProvider: 'auto',
+};
+
+/**
+ * Embedding model quality preset
+ */
+export type EmbeddingModelQuality = 'fast' | 'balanced' | 'quality';
+
+/**
+ * Semantic Indexing Settings
+ * Configuration for local codebase vector embeddings and semantic search
+ */
+export interface SemanticSettings {
+  /** Enable semantic indexing */
+  enabled: boolean;
+  /** Auto-index workspace on startup */
+  autoIndexOnStartup: boolean;
+  /** Watch for file changes and auto re-index */
+  watchForChanges: boolean;
+  /** Target chunk size for code chunking (characters) */
+  targetChunkSize: number;
+  /** Minimum chunk size (characters) */
+  minChunkSize: number;
+  /** Maximum chunk size (characters) */
+  maxChunkSize: number;
+  /** File types to index (extensions without dot, empty = all supported) */
+  indexFileTypes: string[];
+  /** Patterns to exclude from indexing */
+  excludePatterns: string[];
+  /** Maximum file size to index (bytes) */
+  maxFileSize: number;
+  /** Enable embedding cache for faster repeated queries */
+  enableEmbeddingCache: boolean;
+  /** Maximum cache entries for embeddings */
+  maxCacheEntries: number;
+  /** Use GPU for embeddings if available */
+  useGpu: boolean;
+  /** Embedding model quality preset */
+  embeddingQuality: EmbeddingModelQuality;
+  /** HNSW index M parameter (connections per node, higher = more accurate but slower) */
+  hnswM: number;
+  /** HNSW efSearch parameter (query accuracy, higher = more accurate but slower) */
+  hnswEfSearch: number;
+  /** Minimum similarity score for search results (0-1) */
+  minSearchScore: number;
+  /** Auto-optimize index after N files indexed */
+  autoOptimizeAfter: number;
+}
+
+/**
+ * Default semantic settings
+ */
+export const DEFAULT_SEMANTIC_SETTINGS: SemanticSettings = {
+  enabled: true,
+  autoIndexOnStartup: true,
+  watchForChanges: true,
+  targetChunkSize: 1500,
+  minChunkSize: 200,
+  maxChunkSize: 3000,
+  indexFileTypes: [], // Empty = all supported file types
+  excludePatterns: [
+    '**/node_modules/**',
+    '**/.git/**',
+    '**/dist/**',
+    '**/build/**',
+    '**/.next/**',
+    '**/.cache/**',
+  ],
+  maxFileSize: 1048576, // 1MB
+  enableEmbeddingCache: true,
+  maxCacheEntries: 10000,
+  useGpu: false,
+  embeddingQuality: 'balanced',
+  hnswM: 16,
+  hnswEfSearch: 50,
+  minSearchScore: 0.3,
+  autoOptimizeAfter: 500,
 };
 
 // =============================================================================
@@ -2698,7 +2776,56 @@ export interface GLMSubscriptionEvent {
 import type { TodoUpdateEvent as TodoUpdateEventType } from './types/todo';
 export type TodoUpdateEvent = TodoUpdateEventType;
 
-export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent;
+/**
+ * Semantic indexing progress event
+ */
+export interface SemanticIndexProgressEvent {
+  type: 'semantic:indexProgress';
+  totalFiles: number;
+  indexedFiles: number;
+  currentFile: string | null;
+  isIndexing: boolean;
+  status: 'idle' | 'scanning' | 'analyzing' | 'indexing' | 'complete' | 'error' | 'downloading-model';
+  error?: string;
+  startTime?: number;
+  estimatedTimeRemaining?: number;
+  /** Files processed per second */
+  filesPerSecond?: number;
+  /** Total chunks created */
+  totalChunks?: number;
+  /** Current phase description */
+  phase?: string;
+  /** Model download progress (0-100) */
+  modelDownloadProgress?: number;
+  /** Model file being downloaded */
+  modelDownloadFile?: string;
+}
+
+/**
+ * Semantic model status event - emitted on startup to indicate model availability
+ */
+export interface SemanticModelStatusEvent {
+  type: 'semantic:modelStatus';
+  modelId: string;
+  isCached: boolean;
+  isLoaded: boolean;
+  status: 'cached' | 'needs-download' | 'loading' | 'ready' | 'error';
+}
+
+/**
+ * Semantic model download progress event - emitted during model download
+ */
+export interface SemanticModelProgressEvent {
+  type: 'semantic:modelProgress';
+  status: 'downloading' | 'loading' | 'ready' | 'error';
+  file?: string;
+  progress?: number;
+  loaded?: number;
+  total?: number;
+  error?: string;
+}
+
+export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent | SemanticIndexProgressEvent | SemanticModelStatusEvent | SemanticModelProgressEvent;
 
 
 export interface StartSessionPayload {

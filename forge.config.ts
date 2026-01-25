@@ -11,7 +11,7 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/{*.node,*.dll,*.so,*.dylib,better-sqlite3/**/*,node-pty/**/*,bindings/**/*}',
+      unpack: '**/{*.node,*.dll,*.so,*.dylib,better-sqlite3/**/*,node-pty/**/*,onnxruntime-node/**/*,bindings/**/*}',
     },
   },
   rebuildConfig: {
@@ -24,7 +24,7 @@ const config: ForgeConfig = {
       const fs = await import('fs/promises');
       const path = await import('path');
       
-      const nativeModules = ['better-sqlite3', 'bindings', 'file-uri-to-path'];
+      const nativeModules = ['better-sqlite3', 'bindings', 'file-uri-to-path', 'onnxruntime-node'];
       const nodeModulesPath = path.join(process.cwd(), 'node_modules');
       const destNodeModules = path.join(buildPath, 'node_modules');
       

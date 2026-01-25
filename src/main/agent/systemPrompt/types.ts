@@ -5,6 +5,7 @@
 import type { InternalSession } from '../types';
 import type { PromptSettings, AccessLevelSettings } from '../../../shared/types';
 import type { Logger } from '../../logger';
+import type { SemanticContext } from '../semantic';
 
 /**
  * Internal terminal settings (hardcoded defaults)
@@ -132,6 +133,12 @@ export interface WorkspaceStructureContext {
 }
 
 /**
+ * Semantic context for code understanding
+ * Re-exported from semantic module for convenience
+ */
+export type SemanticContextInfo = SemanticContext;
+
+/**
  * Complete context for building system prompt
  */
 export interface SystemPromptContext {
@@ -148,6 +155,8 @@ export interface SystemPromptContext {
   workspaceDiagnostics?: WorkspaceDiagnosticsInfo;
   taskAnalysis?: TaskAnalysisContext;
   workspaceStructure?: WorkspaceStructureContext;
+  /** Semantic context with relevant code snippets */
+  semanticContext?: SemanticContextInfo;
   logger?: Logger;
 }
 

@@ -1,8 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { safeStorage } from 'electron';
-import type { AgentConfig, AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, AutonomousFeatureFlags } from '../../shared/types';
-import { DEFAULT_CACHE_SETTINGS, DEFAULT_DEBUG_SETTINGS, DEFAULT_PROMPT_SETTINGS, DEFAULT_COMPLIANCE_SETTINGS, DEFAULT_ACCESS_LEVEL_SETTINGS, DEFAULT_BROWSER_SETTINGS, DEFAULT_TASK_ROUTING_SETTINGS, DEFAULT_EDITOR_AI_SETTINGS, DEFAULT_AUTONOMOUS_FEATURE_FLAGS, DEFAULT_TOOL_CONFIG_SETTINGS } from '../../shared/types';
+import type { AgentConfig, AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, AutonomousFeatureFlags, SemanticSettings } from '../../shared/types';
+import { DEFAULT_CACHE_SETTINGS, DEFAULT_DEBUG_SETTINGS, DEFAULT_PROMPT_SETTINGS, DEFAULT_COMPLIANCE_SETTINGS, DEFAULT_ACCESS_LEVEL_SETTINGS, DEFAULT_BROWSER_SETTINGS, DEFAULT_TASK_ROUTING_SETTINGS, DEFAULT_EDITOR_AI_SETTINGS, DEFAULT_AUTONOMOUS_FEATURE_FLAGS, DEFAULT_TOOL_CONFIG_SETTINGS, DEFAULT_SEMANTIC_SETTINGS } from '../../shared/types';
 import { getDefaultModel, PROVIDER_ORDER } from '../../shared/providers';
 import { createLogger } from '../logger';
 
@@ -114,6 +114,7 @@ const defaultSettings: AgentSettings = {
   taskRoutingSettings: DEFAULT_TASK_ROUTING_SETTINGS,
   editorAISettings: DEFAULT_EDITOR_AI_SETTINGS,
   autonomousFeatureFlags: DEFAULT_AUTONOMOUS_FEATURE_FLAGS,
+  semanticSettings: DEFAULT_SEMANTIC_SETTINGS,
 };
 
 export class SettingsStore {
@@ -243,6 +244,7 @@ export class SettingsStore {
           defaultSettings.autonomousFeatureFlags,
           parsed.autonomousFeatureFlags
         ),
+        semanticSettings: { ...defaultSettings.semanticSettings, ...(parsed.semanticSettings ?? {}) },
       };
       
       // Log loaded access level settings
@@ -413,6 +415,12 @@ export class SettingsStore {
       partial.autonomousFeatureFlags
     );
     
+    // Deep merge semantic settings with type safety
+    const mergedSemanticSettings = this.mergeSemanticSettings(
+      this.settings.semanticSettings,
+      partial.semanticSettings
+    );
+    
     this.settings = {
       ...this.settings,
       ...partial,
@@ -429,6 +437,7 @@ export class SettingsStore {
       editorAISettings: { ...this.settings.editorAISettings, ...(partial.editorAISettings ?? {}) },
       promptSettings: mergedPromptSettings,
       autonomousFeatureFlags: mergedAutonomousFlags,
+      semanticSettings: mergedSemanticSettings,
     };
     
     logger.debug('Settings updated via update()', {
@@ -515,6 +524,51 @@ export class SettingsStore {
       enablePerformanceMonitoring: incoming.enablePerformanceMonitoring ?? base.enablePerformanceMonitoring,
       enableAdvancedDebugging: incoming.enableAdvancedDebugging ?? base.enableAdvancedDebugging,
       toolSettings: mergedToolSettings,
+    };
+  }
+
+  /**
+   * Deep merge semantic settings to preserve all properties
+   */
+  private mergeSemanticSettings(
+    existing: SemanticSettings | undefined,
+    incoming: Partial<SemanticSettings> | undefined
+  ): SemanticSettings {
+    const base = existing ?? DEFAULT_SEMANTIC_SETTINGS;
+    
+    if (!incoming) {
+      return base;
+    }
+    
+    // Log semantic settings changes for debugging
+    if (incoming.enabled !== undefined && incoming.enabled !== base.enabled) {
+      logger.info('Semantic indexing enabled state changed', { from: base.enabled, to: incoming.enabled });
+    }
+    if (incoming.autoIndexOnStartup !== undefined && incoming.autoIndexOnStartup !== base.autoIndexOnStartup) {
+      logger.info('Semantic auto-index on startup changed', { from: base.autoIndexOnStartup, to: incoming.autoIndexOnStartup });
+    }
+    if (incoming.watchForChanges !== undefined && incoming.watchForChanges !== base.watchForChanges) {
+      logger.info('Semantic watch for changes changed', { from: base.watchForChanges, to: incoming.watchForChanges });
+    }
+    
+    return {
+      enabled: incoming.enabled ?? base.enabled,
+      autoIndexOnStartup: incoming.autoIndexOnStartup ?? base.autoIndexOnStartup,
+      watchForChanges: incoming.watchForChanges ?? base.watchForChanges,
+      targetChunkSize: incoming.targetChunkSize ?? base.targetChunkSize,
+      minChunkSize: incoming.minChunkSize ?? base.minChunkSize,
+      maxChunkSize: incoming.maxChunkSize ?? base.maxChunkSize,
+      indexFileTypes: incoming.indexFileTypes ?? base.indexFileTypes,
+      excludePatterns: incoming.excludePatterns ?? base.excludePatterns,
+      maxFileSize: incoming.maxFileSize ?? base.maxFileSize,
+      enableEmbeddingCache: incoming.enableEmbeddingCache ?? base.enableEmbeddingCache,
+      maxCacheEntries: incoming.maxCacheEntries ?? base.maxCacheEntries,
+      useGpu: incoming.useGpu ?? base.useGpu,
+      embeddingQuality: incoming.embeddingQuality ?? base.embeddingQuality,
+      hnswM: incoming.hnswM ?? base.hnswM,
+      hnswEfSearch: incoming.hnswEfSearch ?? base.hnswEfSearch,
+      minSearchScore: incoming.minSearchScore ?? base.minSearchScore,
+      autoOptimizeAfter: incoming.autoOptimizeAfter ?? base.autoOptimizeAfter,
     };
   }
 

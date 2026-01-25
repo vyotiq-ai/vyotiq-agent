@@ -473,6 +473,7 @@ const CORE_TOOLS = [
   'grep',
   'glob',
   'run',
+  'codebase_search', // Semantic search for understanding codebase structure and finding relevant code
 ];
 
 /**
@@ -803,12 +804,12 @@ function getToolsForIntent(intent: TaskIntent): string[] {
       return [...CORE_TOOLS, ...DIAGNOSTICS_TOOLS, 'check_terminal'];
 
     case 'research':
-      // Research: minimal core + essential browser tools only
-      return ['read', 'ls', 'grep', 'glob', ...ESSENTIAL_BROWSER_TOOLS, 'browser_extract'];
+      // Research: minimal core + semantic search + essential browser tools
+      return ['read', 'ls', 'grep', 'glob', 'codebase_search', ...ESSENTIAL_BROWSER_TOOLS, 'browser_extract'];
 
     case 'file-exploration':
-      // File exploration: minimal set
-      return ['read', 'ls', 'glob', 'grep'];
+      // File exploration: minimal set + semantic search for understanding codebase
+      return ['read', 'ls', 'glob', 'grep', 'codebase_search'];
 
     case 'terminal-operations':
       // Terminal: minimal core + terminal tools

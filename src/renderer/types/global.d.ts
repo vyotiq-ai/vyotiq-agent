@@ -1796,6 +1796,159 @@ declare global {
          */
         onExit: (handler: (event: { id: string; exitCode: number }) => void) => () => void;
       };
+
+      /**
+       * Semantic Indexing API
+       * Local vector embeddings and semantic search for the codebase
+       */
+      semantic: {
+        /**
+         * Index the current workspace
+         */
+        indexWorkspace: (options?: {
+          forceReindex?: boolean;
+          fileTypes?: string[];
+          excludePatterns?: string[];
+        }) => Promise<{ success: boolean; error?: string }>;
+
+        /**
+         * Perform semantic search
+         */
+        search: (
+          query: string,
+          options?: {
+            limit?: number;
+            minScore?: number;
+            filePathPattern?: string;
+            fileTypes?: string[];
+            languages?: string[];
+            symbolTypes?: string[];
+            includeContent?: boolean;
+          }
+        ) => Promise<{
+          results: Array<{
+            document: {
+              id: string;
+              filePath: string;
+              chunkIndex: number;
+              content: string;
+              metadata: {
+                fileType: string;
+                language?: string;
+                symbolType?: string;
+                symbolName?: string;
+                startLine?: number;
+                endLine?: number;
+              };
+            };
+            score: number;
+            distance: number;
+          }>;
+          queryTimeMs: number;
+          totalDocumentsSearched: number;
+        } | { success: false; error: string }>;
+
+        /**
+         * Get indexing progress
+         */
+        getProgress: () => Promise<{
+          totalFiles: number;
+          indexedFiles: number;
+          currentFile: string | null;
+          isIndexing: boolean;
+          status: 'idle' | 'scanning' | 'indexing' | 'complete' | 'error';
+          error?: string;
+          startTime?: number;
+          estimatedTimeRemaining?: number;
+        }>;
+
+        /**
+         * Get index statistics
+         */
+        getStats: () => Promise<{
+          indexedFiles: number;
+          totalChunks: number;
+          lastIndexTime: number | null;
+          indexSizeBytes: number;
+          indexHealth: 'healthy' | 'degraded' | 'needs-rebuild' | 'empty';
+          avgQueryTimeMs?: number;
+          workspaceInfo?: {
+            projectType: string;
+            framework?: string;
+            totalFiles: number;
+            estimatedLinesOfCode: number;
+          };
+          embeddingInfo?: {
+            isUsingOnnx: boolean;
+            cacheSize: number;
+            dimension: number;
+            modelId?: string;
+            quality?: string;
+          };
+        }>;
+
+        /**
+         * Clear the index
+         */
+        clearIndex: () => Promise<{ success: boolean; error?: string }>;
+
+        /**
+         * Abort current indexing
+         */
+        abortIndexing: () => Promise<{ success: boolean }>;
+
+        /**
+         * Get indexed files
+         */
+        getIndexedFiles: () => Promise<string[]>;
+
+        /**
+         * Check if indexer is ready
+         */
+        isReady: () => Promise<boolean>;
+
+        /**
+         * Subscribe to indexing progress events
+         */
+        onProgress: (handler: (progress: {
+          type: 'semantic:indexProgress';
+          totalFiles: number;
+          indexedFiles: number;
+          currentFile: string | null;
+          isIndexing: boolean;
+          status: string;
+          phase?: string;
+          filesPerSecond?: number;
+          totalChunks?: number;
+          estimatedTimeRemaining?: number;
+          modelDownloadProgress?: number;
+          modelDownloadFile?: string;
+        }) => void) => () => void;
+
+        /**
+         * Subscribe to model status events (emitted when model loading state changes)
+         */
+        onModelStatus: (handler: (status: {
+          type: 'semantic:modelStatus';
+          modelId: string;
+          isCached: boolean;
+          isLoaded: boolean;
+          status: 'cached' | 'needs-download' | 'loading' | 'ready' | 'error';
+        }) => void) => () => void;
+
+        /**
+         * Subscribe to model download progress events
+         */
+        onModelProgress: (handler: (progress: {
+          type: 'semantic:modelProgress';
+          status: 'downloading' | 'loading' | 'ready' | 'error';
+          file?: string;
+          progress?: number;
+          loaded?: number;
+          total?: number;
+          error?: string;
+        }) => void) => () => void;
+      };
     };
   }
 }

@@ -83,6 +83,7 @@ export type {
   TaskAnalysisContext,
   WorkspaceStructureContext,
   InternalTerminalSettings,
+  SemanticContextInfo,
 } from './types';
 
 // Dynamic section builders
@@ -101,6 +102,7 @@ export {
   buildAdditionalInstructions,
   buildCommunicationStyle,
   buildToolCategories,
+  buildSemanticContext,
   DYNAMIC_TOOL_CATEGORIES,
 } from './dynamicSections';
 

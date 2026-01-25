@@ -12,7 +12,10 @@
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "download-models": "node scripts/download-models.mjs",
+    "patch-onnx": "node scripts/patch-onnx.mjs",
+    "postinstall": "node scripts/patch-onnx.mjs && node scripts/download-models.mjs"
   },
   "keywords": [
     "vyotiq ai",
@@ -84,6 +87,7 @@
     "vitest": "^4.0.14"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.4.2",
     "@monaco-editor/react": "^4.7.0",
     "@tailwindcss/vite": "^4.1.17",
     "@vitejs/plugin-react": "^5.1.1",
@@ -105,7 +109,6 @@
     "minimatch": "^10.1.1",
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0-beta39",
-    "onnxruntime-node": "^1.23.2",
     "pdf-parse": "^2.4.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

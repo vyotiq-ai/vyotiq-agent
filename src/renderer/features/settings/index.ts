@@ -17,6 +17,7 @@ export { SettingsBrowser } from './components/SettingsBrowser';
 export { SettingsCompliance } from './components/SettingsCompliance';
 export { SettingsDebugging } from './components/SettingsDebugging';
 export { SettingsEditorAI } from './components/SettingsEditorAI';
+export { SettingsIndexing } from './components/SettingsIndexing';
 export { SettingsModels } from './components/SettingsModels';
 export { SettingsPerformance } from './components/SettingsPerformance';
 export { SettingsPrompts } from './components/SettingsPrompts';

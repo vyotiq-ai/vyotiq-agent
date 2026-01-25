@@ -45,6 +45,18 @@ function mapTaskTypeToRoutingType(taskType: TaskType): RoutingTaskType[] {
 }
 
 /**
+ * Get human-readable task info for logging purposes
+ */
+function getTaskInfoDescription(taskTypes: RoutingTaskType[]): string {
+  return taskTypes
+    .map(taskType => {
+      const info = ROUTING_TASK_INFO[taskType];
+      return info ? `${info.name} (${taskType})` : taskType;
+    })
+    .join(', ');
+}
+
+/**
  * Apply user's task routing settings to override automatic routing
  */
 function applyTaskRoutingSettings(
@@ -61,6 +73,13 @@ function applyTaskRoutingSettings(
   // Map the detected task type from routing to potential user task types
   const detectedType = taskAnalysis.taskType;
   const potentialUserTypes = mapTaskTypeToRoutingType(detectedType);
+  
+  // Log the task type mapping with human-readable descriptions
+  logger.debug('Task routing analysis', {
+    detectedType,
+    potentialUserTypes,
+    taskDescriptions: getTaskInfoDescription(potentialUserTypes),
+  });
   
   // Find enabled mapping for any of the potential task types (in priority order)
   const mapping = routingSettings.taskMappings.find(

@@ -110,3 +110,17 @@ export { useFirstRun } from './useFirstRun';
 // =============================================================================
 
 export { useTodos } from './useTodos';
+
+// =============================================================================
+// Semantic Indexing Hooks
+// =============================================================================
+
+export {
+  useSemanticIndex,
+  type IndexingProgress,
+  type IndexerStats,
+  type SearchOptions,
+  type SearchResult,
+  type SemanticSearchResult,
+  type UseSemanticIndexReturn,
+} from './useSemanticIndex';
