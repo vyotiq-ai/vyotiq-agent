@@ -310,5 +310,5 @@ The documentation is ready for developers, contributors, and users to get starte
 ---
 
 **Documentation Updated**: January 25, 2026
-**Vyotiq AI Version**: 1.1.0
+**Vyotiq AI Version**: 1.2.0
 **Status**: Complete and Ready for Use

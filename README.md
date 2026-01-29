@@ -59,6 +59,17 @@
 
 ## 📢 Recent Updates
 
+### MCP Server Integration (v1.2.0 - January 2026)
+Added comprehensive Model Context Protocol (MCP) server integration for dynamic tool discovery and external server connections.
+
+**Features:**
+- 🔌 **Server Discovery**: Automatic detection of local MCP servers from known locations
+- 📡 **Multiple Transports**: Support for stdio and HTTP-based MCP servers
+- 🔧 **Dynamic Tool Integration**: MCP tools seamlessly available in the agent
+- 💚 **Health Monitoring**: Real-time server health with auto-reconnection
+- 🎛️ **UI Components**: Dedicated MCP panels in Settings for server management
+- 📊 **Server Metrics**: Connection statistics, latency tracking, and status indicators
+
 ### Semantic Codebase Search (January 2026)
 Added local AI-powered semantic search capabilities using vector embeddings. Search your codebase by meaning, not just text patterns.
 

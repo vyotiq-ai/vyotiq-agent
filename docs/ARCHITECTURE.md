@@ -82,6 +82,16 @@ src/main/
 │   ├── context/              # Context management & summarization
 │   ├── cache/                # Caching systems (prompt, tool result, context)
 │   ├── semantic/             # Vector embeddings & semantic search
+│   ├── mcp/                  # MCP (Model Context Protocol) integration
+│   │   ├── index.ts          # Module exports
+│   │   ├── MCPManager.ts     # Server lifecycle management
+│   │   ├── MCPServerConnection.ts  # Individual server connections
+│   │   ├── MCPStdioTransport.ts    # Stdio transport layer
+│   │   ├── MCPHttpTransport.ts     # HTTP transport layer
+│   │   ├── MCPToolAdapter.ts       # Tool schema adaptation
+│   │   ├── MCPServerDiscovery.ts   # Automatic server discovery
+│   │   ├── MCPHealthMonitor.ts     # Health & reconnection
+│   │   └── MCPContextIntegration.ts # Context integration
 │   ├── compliance/           # Safety & compliance checks
 │   ├── recovery/             # Error recovery & self-healing
 │   ├── debugging/            # Execution tracing & debugging
@@ -208,6 +218,61 @@ Tools are the interface between the agent and the system. Each tool:
 
 **Dynamic (1 tool)**
 - `createTool` - Create custom tools at runtime
+
+### MCP Integration (Model Context Protocol)
+
+The MCP system enables dynamic integration with external tool servers using the Model Context Protocol (2025-06-18 specification).
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     MCPManager                               │
+│  (Central coordinator for all MCP server connections)        │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌───────────────────┐  ┌───────────────────┐              │
+│  │  MCPServerDiscovery│  │  MCPHealthMonitor │              │
+│  │  - Find local     │  │  - Health checks   │              │
+│  │    servers        │  │  - Auto-reconnect  │              │
+│  │  - Config parsing │  │  - Latency tracking│              │
+│  └───────────────────┘  └───────────────────┘              │
+│                                                               │
+│  ┌───────────────────────────────────────────┐             │
+│  │         MCPServerConnection                │             │
+│  │  ┌─────────────┐  ┌──────────────┐        │             │
+│  │  │StdioTransport│  │ HttpTransport│        │             │
+│  │  └─────────────┘  └──────────────┘        │             │
+│  └───────────────────────────────────────────┘             │
+│                                                               │
+│  ┌───────────────────┐  ┌───────────────────┐              │
+│  │  MCPToolAdapter   │  │MCPContextIntegration│             │
+│  │  - Schema convert │  │  - Context injection│             │
+│  │  - Result parsing │  │  - Resource mgmt   │             │
+│  └───────────────────┘  └───────────────────┘              │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Components
+
+- **MCPManager**: Central hub managing server lifecycle, tool registration
+- **MCPServerConnection**: Individual server connection with reconnection logic
+- **MCPStdioTransport**: Stdio-based transport for local process servers
+- **MCPHttpTransport**: HTTP/SSE transport for remote servers
+- **MCPToolAdapter**: Converts MCP tool schemas to internal format
+- **MCPServerDiscovery**: Finds servers from known config locations
+- **MCPHealthMonitor**: Periodic health checks with auto-reconnection
+- **MCPContextIntegration**: Injects MCP resources into agent context
+
+#### Supported Features
+
+- Automatic server discovery from `~/.mcp/`, `~/.config/mcp/`
+- Multiple transport protocols (stdio, HTTP)
+- Dynamic tool registration from connected servers
+- Health monitoring with configurable intervals
+- Auto-reconnection with exponential backoff
+- Server metrics (latency, call count, error rate)
 
 ### Session Management
 
