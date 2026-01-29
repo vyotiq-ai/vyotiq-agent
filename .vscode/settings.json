@@ -1,0 +1,10 @@
+{
+    "inlineChat.enableV2": true,
+    "inlineChat.lineEmptyHint": true,
+    "css.lint.unknownAtRules": "ignore",
+    "typescript.autoClosingTags": false,
+    "editor.fontFamily": "'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace",
+    "editor.fontLigatures": true,
+    "files.encoding": "utf8",
+    "files.autoGuessEncoding": true
+}

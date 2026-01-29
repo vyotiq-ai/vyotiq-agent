@@ -1,0 +1,218 @@
+/**
+ * LSP Diagnostics Tool
+ * 
+ * Get diagnostics (errors, warnings) for files using language servers.
+ */
+
+import { relative } from 'node:path';
+import { resolvePath } from '../../../utils/fileSystem';
+import { getLSPManager } from '../../../lsp';
+import type { ToolDefinition, ToolExecutionContext } from '../../types';
+import type { ToolExecutionResult } from '../../../../shared/types';
+
+interface DiagnosticsArgs extends Record<string, unknown> {
+  /** File path(s) to check (relative to workspace) */
+  files?: string[];
+  /** Get all cached diagnostics from workspace */
+  all?: boolean;
+  /** Filter by severity: 'error', 'warning', 'info', 'hint' */
+  severity?: 'error' | 'warning' | 'info' | 'hint';
+}
+
+export const lspDiagnosticsTool: ToolDefinition<DiagnosticsArgs> = {
+  name: 'lsp_diagnostics',
+  description: `Get diagnostics (errors, warnings) for files using language servers. Alternative to read_lints for LSP-based checking.
+
+## When to Use
+- **Check specific files**: Get errors/warnings for files you're working on
+- **Workspace overview**: See all problems across the codebase
+- **Filter by severity**: Focus on errors only, or include warnings
+- **Real-time feedback**: Get diagnostics from language server cache
+
+## Workflow Integration
+Use as verification step:
+\`\`\`
+edit(file, old, new) → make change
+lsp_diagnostics(files: [file]) → check for errors
+[if errors] → fix immediately
+[if clean] → continue
+\`\`\`
+
+## Comparison with read_lints
+- **lsp_diagnostics**: Uses language server (TypeScript, etc.) - faster, cached
+- **read_lints**: Runs ESLint - more comprehensive, includes style rules
+
+Use lsp_diagnostics for quick type checking, read_lints for full linting.
+
+## Parameters
+- **files** (optional): Array of file paths to check
+- **all** (optional): Get all cached diagnostics from workspace
+- **severity** (optional): Filter by 'error', 'warning', 'info', or 'hint'
+
+## Output
+- Diagnostics grouped by file
+- Line and column for each issue
+- Severity indicator ([ERR] error, [WARN] warning, [i] info, [TIP] hint)
+- Summary counts
+
+## Best Practices
+- Use after editing files to catch type errors quickly
+- Filter by 'error' to focus on critical issues
+- Use 'all: true' to get workspace-wide overview
+- Combine with read_lints for comprehensive checking`,
+  requiresApproval: false,
+  category: 'code-intelligence',
+  riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
+  searchKeywords: ['diagnostics', 'errors', 'warnings', 'problems', 'issues', 'lint', 'lsp'],
+  ui: {
+    icon: 'alert-circle',
+    label: 'Diagnostics',
+    color: 'red',
+    runningLabel: 'Getting diagnostics...',
+    completedLabel: 'Diagnostics retrieved',
+  },
+
+  inputExamples: [
+    { files: ['src/main.ts'] },
+    { all: true, severity: 'error' },
+  ],
+
+  schema: {
+    type: 'object',
+    properties: {
+      files: {
+        type: 'array',
+        description: 'File paths to check (relative to workspace)',
+        items: { type: 'string' },
+      },
+      all: {
+        type: 'boolean',
+        description: 'Get all cached diagnostics from workspace',
+      },
+      severity: {
+        type: 'string',
+        description: "Filter by severity: 'error', 'warning', 'info', 'hint'",
+        enum: ['error', 'warning', 'info', 'hint'],
+      },
+    },
+    required: [],
+  },
+
+  async execute(args: DiagnosticsArgs, context: ToolExecutionContext): Promise<ToolExecutionResult> {
+    if (!context.workspacePath) {
+      return {
+        toolName: 'lsp_diagnostics',
+        success: false,
+        output: 'Error: No workspace selected.',
+      };
+    }
+
+    const lspManager = getLSPManager();
+    if (!lspManager) {
+      return {
+        toolName: 'lsp_diagnostics',
+        success: false,
+        output: 'Error: LSP manager not initialized.',
+      };
+    }
+
+    try {
+      let diagnostics;
+
+      if (args.all) {
+        // Get all cached diagnostics
+        diagnostics = lspManager.getAllDiagnostics();
+      } else if (args.files && args.files.length > 0) {
+        // Get diagnostics for specific files
+        diagnostics = [];
+        for (const file of args.files) {
+          const filePath = resolvePath(context.workspacePath, file, {
+            allowOutsideWorkspace: context.allowOutsideWorkspace,
+          });
+          await lspManager.openDocument(filePath);
+          const fileDiags = await lspManager.getDiagnostics(filePath);
+          diagnostics.push(...fileDiags);
+        }
+      } else {
+        return {
+          toolName: 'lsp_diagnostics',
+          success: false,
+          output: "Error: Provide 'files' array or set 'all: true'.",
+        };
+      }
+
+      // Filter by severity if specified
+      if (args.severity) {
+        diagnostics = diagnostics.filter(d => d.severity === args.severity);
+      }
+
+      if (diagnostics.length === 0) {
+        const filterNote = args.severity ? ` (filtered by ${args.severity})` : '';
+        return {
+          toolName: 'lsp_diagnostics',
+          success: true,
+          output: `[OK] No diagnostics found${filterNote}.`,
+          metadata: { errorCount: 0, warningCount: 0 },
+        };
+      }
+
+      // Group by file
+      const byFile = new Map<string, typeof diagnostics>();
+      for (const diag of diagnostics) {
+        const relPath = relative(context.workspacePath, diag.filePath);
+        if (!byFile.has(relPath)) {
+          byFile.set(relPath, []);
+        }
+        byFile.get(relPath)!.push(diag);
+      }
+
+      // Count by severity
+      const errorCount = diagnostics.filter(d => d.severity === 'error').length;
+      const warningCount = diagnostics.filter(d => d.severity === 'warning').length;
+      const infoCount = diagnostics.filter(d => d.severity === 'info').length;
+      const hintCount = diagnostics.filter(d => d.severity === 'hint').length;
+
+      const lines: string[] = [];
+
+      for (const [file, fileDiags] of byFile) {
+        lines.push(`\n${file}:`);
+        for (const diag of fileDiags) {
+          const icon = diag.severity === 'error' ? '[ERR]' : 
+                       diag.severity === 'warning' ? '[WARN]' : 
+                       diag.severity === 'info' ? '[i]' : '[TIP]';
+          const code = diag.code ? ` [${diag.code}]` : '';
+          lines.push(`  ${diag.line}:${diag.column}  ${icon} ${diag.message}${code}`);
+        }
+      }
+
+      const summary = [];
+      if (errorCount > 0) summary.push(`${errorCount} error(s)`);
+      if (warningCount > 0) summary.push(`${warningCount} warning(s)`);
+      if (infoCount > 0) summary.push(`${infoCount} info`);
+      if (hintCount > 0) summary.push(`${hintCount} hint(s)`);
+
+      lines.push(`\n${summary.join(', ')} in ${byFile.size} file(s)`);
+
+      return {
+        toolName: 'lsp_diagnostics',
+        success: true,
+        output: lines.join('\n'),
+        metadata: {
+          errorCount,
+          warningCount,
+          infoCount,
+          hintCount,
+          fileCount: byFile.size,
+          diagnostics,
+        },
+      };
+    } catch (error) {
+      return {
+        toolName: 'lsp_diagnostics',
+        success: false,
+        output: `Error getting diagnostics: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  },
+};

@@ -1,0 +1,1935 @@
+/* ========== Terminal/CLI Theme Fonts ========== */
+/* NOTE: External @import must be first (before @import "tailwindcss") */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* xterm.js base styles (required for correct terminal rendering) */
+@import "@xterm/xterm/css/xterm.css";
+
+@import "tailwindcss";
+
+/* ========== Dark Mode (Default) ========== */
+:root,
+html.dark {
+  /* Base Colors */
+  --color-sidebar-bg: #18181b; /* zinc-900 */
+  --color-sidebar-fg: #a1a1aa; /* zinc-400 */
+  --color-main-bg: #09090b; /* zinc-950 */
+  --color-main-fg: #e4e4e7; /* zinc-200 */
+  --color-border: #27272a; /* zinc-800 */
+  
+  /* Unified Surface Colors */
+  --color-surface-base: #050506;      /* Deepest background (page bg) */
+  --color-surface-1: #0b0b0f;         /* Cards, inputs, panels */
+  --color-surface-2: #0f0f12;         /* Elevated surfaces, focus states */
+  --color-surface-3: #111115;         /* Hover states */
+  --color-surface-header: #0f0f11;    /* Header/nav bars */
+  --color-surface-sidebar: #0b0b0d;   /* Sidebar background */
+  --color-surface-editor: #0b0b0f;    /* Editor/input backgrounds */
+  
+  /* Unified Border Colors */
+  --color-border-subtle: #1a1a1d;     /* Sidebar/header borders */
+  --color-border-default: #1f1f24;    /* Default borders */
+  --color-border-strong: #27272a;     /* Emphasized borders (zinc-800) */
+  --color-border-focus: rgba(52, 211, 153, 0.4);
+  
+  /* Accent Colors */
+  --color-accent-primary: #34d399;    /* emerald-400 - primary action */
+  --color-accent-secondary: #a78bfa;  /* violet-400 - secondary accent */
+  --color-accent-tertiary: #f472b6;   /* pink-400 - tertiary accent (inline code) */
+  --color-accent-hover: #6ee7b7;      /* emerald-300 - hover state */
+  --color-accent-active: #a7f3d0;     /* emerald-200 - active state */
+  
+  /* Text Colors */
+  --color-text-primary: #e4e4e7;      /* zinc-200 - main content */
+  --color-text-secondary: #a1a1aa;    /* zinc-400 - secondary content */
+  --color-text-muted: #71717a;        /* zinc-500 - muted labels */
+  --color-text-placeholder: #6b7280;  /* gray-500 - input placeholders */
+  --color-text-dim: #9ca3af;          /* gray-400 - dim but readable */
+  --color-text-on-accent: #052e16;    /* emerald-950 - text on accent bg */
+  --color-text-reasoning: #8b9dc3;    /* slate-blue - reasoning/thinking content */
+  
+  /* Semantic Colors */
+  --color-success: #34d399;           /* emerald-400 */
+  --color-warning: #fbbf24;           /* amber-400 */
+  --color-error: #f87171;             /* red-400 */
+  --color-info: #60a5fa;              /* blue-400 */
+  
+  /* Terminal Colors */
+  --color-terminal-prompt: #34d399;
+  --color-terminal-command: #e4e4e7;
+  --color-terminal-output: #a1a1aa;
+  
+  /* Diff Colors - Added lines (green) */
+  --color-diff-added-bg: #1a2e1a;
+  --color-diff-added-bg-hover: #223a22;
+  --color-diff-added-gutter: rgba(152, 195, 121, 0.6);
+  --color-diff-added-gutter-bg: #1f3a1f;
+  --color-diff-added-text: #98c379;
+  --color-diff-added-text-content: #b5d6a0;
+  --color-diff-added-indicator: #98c379;
+  --color-diff-added-word-bg: rgba(152, 195, 121, 0.35);
+  --color-diff-added-word-ring: rgba(152, 195, 121, 0.2);
+  --color-diff-added-word-text: #d4f0c7;
+  
+  /* Diff Colors - Removed lines (red) */
+  --color-diff-removed-bg: #2e1a1a;
+  --color-diff-removed-bg-hover: #3a2222;
+  --color-diff-removed-gutter: rgba(224, 108, 117, 0.6);
+  --color-diff-removed-gutter-bg: #3a1f1f;
+  --color-diff-removed-text: #e06c75;
+  --color-diff-removed-text-content: #d6a0a5;
+  --color-diff-removed-indicator: #e06c75;
+  --color-diff-removed-word-bg: rgba(224, 108, 117, 0.35);
+  --color-diff-removed-word-ring: rgba(224, 108, 117, 0.2);
+  --color-diff-removed-word-text: #f0c7ca;
+  
+  /* Diff Colors - Modified (amber/yellow) */
+  --color-diff-modified-text: #e5c07b;
+  --color-diff-modified-bg: rgba(229, 192, 123, 0.15);
+  --color-diff-modified-ring: rgba(229, 192, 123, 0.2);
+  
+  /* Diff Colors - Expand/context */
+  --color-diff-expand-text: #61afef;
+  --color-diff-expand-bg: rgba(97, 175, 239, 0.04);
+  --color-diff-expand-bg-hover: rgba(97, 175, 239, 0.08);
+  --color-diff-expand-border: rgba(97, 175, 239, 0.12);
+  
+  /* Shadow */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+  
+  /* Scrollbar */
+  --scrollbar-thumb: #3f3f46;
+  --scrollbar-thumb-hover: #52525b;
+  --scrollbar-track: transparent;
+  
+  color-scheme: dark;
+}
+
+/* ========== Light Mode ========== */
+html.light {
+  /* Base Colors */
+  --color-sidebar-bg: #f4f4f5; /* zinc-100 */
+  --color-sidebar-fg: #52525b; /* zinc-600 */
+  --color-main-bg: #ffffff; /* white */
+  --color-main-fg: #18181b; /* zinc-900 */
+  --color-border: #e4e4e7; /* zinc-200 */
+  
+  /* Unified Surface Colors */
+  --color-surface-base: #ffffff;      /* Deepest background (page bg) */
+  --color-surface-1: #fafafa;         /* Cards, inputs, panels */
+  --color-surface-2: #f5f5f5;         /* Elevated surfaces, focus states */
+  --color-surface-3: #f0f0f0;         /* Hover states */
+  --color-surface-header: #f8f8f8;    /* Header/nav bars */
+  --color-surface-sidebar: #fafafa;   /* Sidebar background */
+  --color-surface-editor: #fafafa;    /* Editor/input backgrounds */
+  
+  /* Unified Border Colors */
+  --color-border-subtle: #e5e5e5;     /* Sidebar/header borders */
+  --color-border-default: #d4d4d4;    /* Default borders */
+  --color-border-strong: #a3a3a3;     /* Emphasized borders */
+  --color-border-focus: rgba(16, 185, 129, 0.4);
+  
+  /* Accent Colors */
+  --color-accent-primary: #059669;    /* emerald-600 - primary action */
+  --color-accent-secondary: #7c3aed;  /* violet-600 - secondary accent */
+  --color-accent-tertiary: #db2777;   /* pink-600 - tertiary accent (inline code) */
+  --color-accent-hover: #047857;      /* emerald-700 - hover state */
+  --color-accent-active: #065f46;     /* emerald-800 - active state */
+  
+  /* Text Colors */
+  --color-text-primary: #18181b;      /* zinc-900 */
+  --color-text-secondary: #3f3f46;    /* zinc-700 */
+  --color-text-muted: #71717a;        /* zinc-500 */
+  --color-text-dim: #a1a1aa;          /* zinc-400 - dim text in light mode */
+  --color-text-placeholder: #a1a1aa;  /* zinc-400 */
+  --color-text-on-accent: #ffffff;    /* white - text on accent bg in light mode */
+  --color-text-reasoning: #64748b;    /* slate-500 - reasoning/thinking content */
+  
+  /* Semantic Colors */
+  --color-success: #059669;           /* emerald-600 */
+  --color-warning: #d97706;           /* amber-600 */
+  --color-error: #dc2626;             /* red-600 */
+  --color-info: #2563eb;              /* blue-600 */
+  
+  /* Terminal Colors */
+  --color-terminal-prompt: #059669;
+  --color-terminal-command: #18181b;
+  --color-terminal-output: #52525b;
+  
+  /* Diff Colors - Added lines (green) */
+  --color-diff-added-bg: #e6ffec;
+  --color-diff-added-bg-hover: #d4f8dd;
+  --color-diff-added-gutter: rgba(26, 127, 55, 0.6);
+  --color-diff-added-gutter-bg: #ccffd8;
+  --color-diff-added-text: #1a7f37;
+  --color-diff-added-text-content: #24632c;
+  --color-diff-added-indicator: #1a7f37;
+  --color-diff-added-word-bg: rgba(26, 127, 55, 0.2);
+  --color-diff-added-word-ring: rgba(26, 127, 55, 0.2);
+  --color-diff-added-word-text: #116329;
+  
+  /* Diff Colors - Removed lines (red) */
+  --color-diff-removed-bg: #ffebe9;
+  --color-diff-removed-bg-hover: #ffd7d5;
+  --color-diff-removed-gutter: rgba(207, 34, 46, 0.6);
+  --color-diff-removed-gutter-bg: #ffc0be;
+  --color-diff-removed-text: #cf222e;
+  --color-diff-removed-text-content: #82071e;
+  --color-diff-removed-indicator: #cf222e;
+  --color-diff-removed-word-bg: rgba(207, 34, 46, 0.2);
+  --color-diff-removed-word-ring: rgba(207, 34, 46, 0.2);
+  --color-diff-removed-word-text: #82071e;
+  
+  /* Diff Colors - Modified (amber/yellow) */
+  --color-diff-modified-text: #9a6700;
+  --color-diff-modified-bg: rgba(154, 103, 0, 0.15);
+  --color-diff-modified-ring: rgba(154, 103, 0, 0.2);
+  
+  /* Diff Colors - Expand/context */
+  --color-diff-expand-text: #0969da;
+  --color-diff-expand-bg: rgba(9, 105, 218, 0.04);
+  --color-diff-expand-bg-hover: rgba(9, 105, 218, 0.08);
+  --color-diff-expand-border: rgba(9, 105, 218, 0.12);
+  
+  /* Shadow */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  
+  /* Scrollbar */
+  --scrollbar-thumb: #d4d4d4;
+  --scrollbar-thumb-hover: #a3a3a3;
+  --scrollbar-track: transparent;
+  
+  color-scheme: light;
+}
+
+@theme {
+  /* ========== Responsive Breakpoints ========== */
+  /* xs breakpoint for extra small screens */
+  --breakpoint-xs: 400px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+  
+  /* ========== Terminal Typography Scale ========== */
+  /* Standardized font sizes for terminal/CLI theme */
+  --font-size-2xs: 9px;    /* Labels, badges, hints */
+  --font-size-xs: 10px;    /* Metadata, timestamps, flags */
+  --font-size-sm: 11px;    /* Secondary text, sidebar items */
+  --font-size-base: 12px;  /* Primary terminal text */
+  --font-size-md: 13px;    /* Emphasized text */
+  --font-size-lg: 14px;    /* Headings, titles */
+  
+  /* ========== Color Palette ========== */
+  /* Base colors */
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+  
+  /* Gray scale for UI text */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-gray-950: #030712;
+  
+  /* Zinc scale for UI */
+  --color-zinc-50: #fafafa;
+  --color-zinc-100: #f4f4f5;
+  --color-zinc-200: #e4e4e7;
+  --color-zinc-300: #d4d4d8;
+  --color-zinc-400: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-600: #52525b;
+  --color-zinc-700: #3f3f46;
+  --color-zinc-800: #27272a;
+  --color-zinc-900: #18181b;
+  --color-zinc-950: #09090b;
+  
+  /* Emerald scale for accents */
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+  --color-emerald-800: #065f46;
+  --color-emerald-950: #052e16;
+  
+  /* Blue scale for info */
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  
+  /* Red scale for errors */
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  
+  /* Amber scale for warnings */
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  
+  /* Violet scale for secondary accent */
+  --color-violet-400: #a78bfa;
+  --color-violet-500: #8b5cf6;
+  --color-violet-600: #7c3aed;
+  
+  /* Pink scale for tertiary accent */
+  --color-pink-400: #f472b6;
+  --color-pink-500: #ec4899;
+  --color-pink-600: #db2777;
+  
+  /* Slate scale for neutral tones */
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  
+  /* Cyan scale for info/links */
+  --color-cyan-300: #67e8f9;
+  --color-cyan-400: #22d3ee;
+  --color-cyan-500: #06b6d4;
+  
+  /* Green scale for success */
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  
+  /* Orange scale */
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  
+  /* Yellow scale */
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
+  --color-yellow-600: #ca8a04;
+  
+  /* Purple scale */
+  --color-purple-400: #c084fc;
+  --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
+  
+  /* Indigo scale */
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--color-main-bg);
+  color: var(--color-main-fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  transition: background-color 0.2s ease-out, color 0.2s ease-out;
+}
+
+/* Terminal/CLI monospace font */
+.font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+}
+
+/* ========== Syntax Highlighting Token Colors ========== */
+/* Dark mode (default) */
+:root,
+html.dark {
+  --token-keyword: #c678dd;      /* Purple */
+  --token-string: #98c379;       /* Green */
+  --token-number: #d19a66;       /* Orange */
+  --token-comment: #5c6370;      /* Gray */
+  --token-operator: #56b6c2;     /* Cyan */
+  --token-punctuation: #abb2bf;  /* Light gray */
+  --token-identifier: #e5c07b;   /* Yellow */
+  --token-function: #61afef;     /* Blue */
+  --token-type: #e5c07b;         /* Yellow */
+  --token-variable: #e06c75;     /* Red */
+  --token-property: #56b6c2;     /* Cyan */
+  --token-constant: #d19a66;     /* Orange */
+  --token-regexp: #98c379;       /* Green */
+  --token-tag: #e06c75;          /* Red */
+  --token-attribute: #d19a66;    /* Orange */
+  --token-text: #abb2bf;         /* Light gray */
+  --token-invalid: #f44747;      /* Bright red */
+}
+
+/* Light mode */
+html.light {
+  --token-keyword: #a626a4;      /* Purple */
+  --token-string: #50a14f;       /* Green */
+  --token-number: #986801;       /* Brown */
+  --token-comment: #a0a1a7;      /* Gray */
+  --token-operator: #0184bc;     /* Cyan */
+  --token-punctuation: #383a42;  /* Dark gray */
+  --token-identifier: #c18401;   /* Yellow/brown */
+  --token-function: #4078f2;     /* Blue */
+  --token-type: #c18401;         /* Yellow/brown */
+  --token-variable: #e45649;     /* Red */
+  --token-property: #0184bc;     /* Cyan */
+  --token-constant: #986801;     /* Brown */
+  --token-regexp: #50a14f;       /* Green */
+  --token-tag: #e45649;          /* Red */
+  --token-attribute: #986801;    /* Brown */
+  --token-text: #383a42;         /* Dark gray */
+  --token-invalid: #ca1243;      /* Red */
+}
+
+/* Token classes */
+.token-keyword { color: var(--token-keyword); }
+.token-string { color: var(--token-string); }
+.token-number { color: var(--token-number); }
+.token-comment { color: var(--token-comment); font-style: italic; }
+.token-operator { color: var(--token-operator); }
+.token-punctuation { color: var(--token-punctuation); }
+.token-identifier { color: var(--token-identifier); }
+.token-function { color: var(--token-function); }
+.token-type { color: var(--token-type); }
+.token-variable { color: var(--token-variable); }
+.token-property { color: var(--token-property); }
+.token-constant { color: var(--token-constant); }
+.token-regexp { color: var(--token-regexp); }
+.token-tag { color: var(--token-tag); }
+.token-attribute { color: var(--token-attribute); }
+.token-text { color: var(--token-text); }
+.token-invalid { color: var(--token-invalid); text-decoration: wavy underline; }
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+  border: 2px solid var(--color-main-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Utility to hide scrollbar but keep functionality */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Thin scrollbar for compact areas */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  border-width: 1px;
+}
+
+/* Animations */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+/* Blinking cursor animation for terminal */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.animate-blink {
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+  }
+  50% {
+    box-shadow: 0 0 8px 2px rgba(52, 211, 153, 0.3);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Terminal typewriter effect */
+@keyframes typewriter {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+.animate-typewriter {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: typewriter 0.5s steps(20) forwards;
+}
+
+/* Shake animation for error feedback */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+  20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* Shimmer effect for loading */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, var(--color-surface-2) 0%, var(--color-surface-3) 50%, var(--color-surface-2) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Float animation for subtle movement */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-3px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Glow effect for active states */
+@keyframes glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* Shrink width animation for toast progress */
+@keyframes shrink-width {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* Focus underline animation */
+@keyframes focus-underline {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Subtle bounce animation */
+@keyframes subtle-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+.animate-subtle-bounce {
+  animation: subtle-bounce 0.5s ease-in-out;
+}
+
+/* Slide-in animations for panels */
+@keyframes slide-in-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-bottom {
+  animation: slide-in-bottom 0.2s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.2s ease-out;
+}
+
+/* Scale-in animation for modals/dialogs */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.15s ease-out;
+}
+
+/* ========== Enhanced Terminal/CLI Styling ========== */
+
+/* Terminal container with polished focus effect */
+.terminal-container {
+  position: relative;
+  transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.terminal-container:focus-within {
+  border-color: var(--color-border-default);
+  box-shadow: none;
+}
+
+html.light .terminal-container:focus-within {
+  border-color: var(--color-accent-primary);
+  box-shadow: 
+    0 4px 24px -4px rgba(0, 0, 0, 0.12),
+    0 0 0 1px var(--color-accent-primary),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* Terminal scanline effect (subtle) */
+.terminal-scanlines::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.5;
+}
+
+/* Terminal header process style */
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+
+.terminal-pid {
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+.terminal-pid::before {
+  content: 'PID:';
+  margin-right: 2px;
+  opacity: 0.5;
+}
+
+/* Status indicator with pulse */
+.terminal-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.terminal-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.terminal-status-dot.active {
+  background-color: var(--color-accent-primary);
+  box-shadow: 0 0 6px var(--color-accent-primary);
+}
+
+.terminal-status-dot.warning {
+  background-color: var(--color-warning);
+  box-shadow: 0 0 6px var(--color-warning);
+}
+
+.terminal-status-dot.error {
+  background-color: var(--color-error);
+  box-shadow: 0 0 6px var(--color-error);
+}
+
+.terminal-status-dot.idle {
+  background-color: var(--color-border-strong);
+}
+
+/* CLI-style flag */
+.cli-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--color-text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+}
+
+.cli-flag-name {
+  color: var(--color-accent-primary);
+  opacity: 0.8;
+}
+
+.cli-flag-value {
+  color: var(--color-text-secondary);
+}
+
+.cli-flag-separator {
+  color: var(--color-text-muted);
+  opacity: 0.4;
+}
+
+/* Elapsed time display */
+.terminal-elapsed {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--color-text-muted);
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.terminal-elapsed.active {
+  color: var(--color-accent-primary);
+}
+
+/* Line count indicator (vim-style) */
+.terminal-line-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+/* Prompt symbol with glow on focus */
+.terminal-prompt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.terminal-prompt.focused {
+  color: var(--color-accent-primary);
+  text-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+}
+
+html.light .terminal-prompt.focused {
+  text-shadow: 0 0 8px rgba(5, 150, 105, 0.4);
+}
+
+.terminal-prompt.idle {
+  color: var(--color-accent-primary);
+  opacity: 0.5;
+}
+
+/* Button hover micro-interactions */
+.terminal-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.terminal-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.terminal-btn:hover::before {
+  opacity: 0.1;
+}
+
+.terminal-btn:active {
+  transform: scale(0.97);
+}
+
+/* Run button special effect */
+.terminal-run-btn {
+  position: relative;
+}
+
+.terminal-run-btn.ready::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(45deg, var(--color-accent-primary), transparent);
+  opacity: 0;
+  z-index: -1;
+  transition: opacity 0.3s ease;
+}
+
+.terminal-run-btn.ready:hover::after {
+  opacity: 0.2;
+}
+
+/* Kill button style - no pulsing animation (intentionally minimal) */
+
+/* ========== Vyotiq Terminal Working Animation ========== */
+
+/* Typewriter container */
+.vyotiq-typewriter {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  overflow: hidden;
+}
+
+/* Typewriter text with smooth reveal */
+@keyframes typewriter-reveal {
+  0% { 
+    max-width: 0;
+    opacity: 0.5;
+  }
+  100% { 
+    max-width: 300px;
+    opacity: 1;
+  }
+}
+
+.vyotiq-typewriter-text {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--color-accent-primary);
+  letter-spacing: 0.3px;
+  animation: typewriter-reveal 0.4s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+/* Blinking dots that cycle */
+@keyframes blink-dot {
+  0%, 25% { opacity: 1; }
+  26%, 100% { opacity: 0.3; }
+}
+
+.typewriter-dots {
+  display: inline-flex;
+  margin-left: 1px;
+  color: var(--color-accent-primary);
+}
+
+.typewriter-dot {
+  animation: blink-dot 1.2s infinite;
+}
+
+.typewriter-dot:nth-child(1) { animation-delay: 0s; }
+.typewriter-dot:nth-child(2) { animation-delay: 0.4s; }
+.typewriter-dot:nth-child(3) { animation-delay: 0.8s; }
+
+/* ========== Blinking Dots Animation (Agent Running) ========== */
+
+/* Sequential blinking for traffic light dots */
+@keyframes dot-blink-1 {
+  0%, 30%, 100% { 
+    background-color: var(--color-border-strong);
+    box-shadow: none;
+  }
+  15% { 
+    background-color: #ff5f57;
+    box-shadow: 0 0 6px rgba(255, 95, 87, 0.6);
+  }
+}
+
+@keyframes dot-blink-2 {
+  0%, 20%, 50%, 100% { 
+    background-color: var(--color-border-strong);
+    box-shadow: none;
+  }
+  35% { 
+    background-color: #febc2e;
+    box-shadow: 0 0 6px rgba(254, 188, 46, 0.6);
+  }
+}
+
+@keyframes dot-blink-3 {
+  0%, 40%, 70%, 100% { 
+    background-color: var(--color-border-strong);
+    box-shadow: none;
+  }
+  55% { 
+    background-color: #28c840;
+    box-shadow: 0 0 6px rgba(40, 200, 64, 0.6);
+  }
+}
+
+/* Unified dots container when animating */
+.terminal-dots-animated .terminal-dot:nth-child(1) {
+  animation: dot-blink-1 1.8s ease-in-out infinite;
+}
+
+.terminal-dots-animated .terminal-dot:nth-child(2) {
+  animation: dot-blink-2 1.8s ease-in-out infinite;
+}
+
+.terminal-dots-animated .terminal-dot:nth-child(3) {
+  animation: dot-blink-3 1.8s ease-in-out infinite;
+}
+
+/* Smooth breathing effect for dots */
+@keyframes dot-breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+.terminal-dot-breathing {
+  animation: dot-breathe 1.5s ease-in-out infinite;
+}
+
+.terminal-dot-breathing:nth-child(1) { animation-delay: 0s; }
+.terminal-dot-breathing:nth-child(2) { animation-delay: 0.2s; }
+.terminal-dot-breathing:nth-child(3) { animation-delay: 0.4s; }
+
+/* Terminal cursor styles */
+.terminal-cursor-block {
+  display: inline-block;
+  width: 0.5em;
+  height: 1.1em;
+  background-color: var(--color-accent-primary);
+  animation: blink 1s steps(1) infinite;
+}
+
+.terminal-cursor-line {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background-color: var(--color-accent-primary);
+  animation: blink 1s steps(1) infinite;
+}
+
+.terminal-cursor-underscore {
+  display: inline-block;
+  width: 0.5em;
+  height: 2px;
+  background-color: var(--color-accent-primary);
+  animation: blink 1s steps(1) infinite;
+}
+
+@layer utilities {
+  .vy-panel {
+    background-color: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    border-radius: 18px;
+    transition: background-color 0.2s ease-out, border-color 0.2s ease-out;
+  }
+
+  html.light .vy-panel {
+    background-color: rgba(250, 250, 250, 0.95);
+  }
+
+  .vy-panel-ghost {
+    background-color: var(--color-surface-base);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 18px;
+    transition: background-color 0.2s ease-out, border-color 0.2s ease-out;
+  }
+
+  html.light .vy-panel-ghost {
+    background-color: rgba(255, 255, 255, 0.9);
+  }
+
+  .vy-divider {
+    height: 1px;
+    width: 100%;
+    background-color: var(--color-border-default);
+    transition: background-color 0.2s ease-out;
+  }
+
+  .vy-muted {
+    color: var(--color-text-secondary);
+  }
+
+  .vy-label {
+    color: var(--color-text-muted);
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .vy-pill {
+    border-radius: 9999px;
+    border: 1px solid var(--color-border-default);
+    background-color: var(--color-surface-1);
+    padding: 0.1rem 0.45rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    transition: background-color 0.2s ease-out, border-color 0.2s ease-out;
+  }
+  
+  /* File status utilities (used in file listings) */
+  .vy-file-modified {
+    color: var(--color-warning);
+  }
+  
+  .vy-file-deleted {
+    color: var(--color-error);
+    text-decoration: line-through;
+  }
+  
+  .vy-file-added {
+    color: var(--color-success);
+  }
+  
+  /* Message bubble utilities */
+  .vy-message-user {
+    background-color: rgba(52, 211, 153, 0.08);
+    border: 1px solid rgba(52, 211, 153, 0.15);
+  }
+  
+  .vy-message-user:hover {
+    background-color: rgba(52, 211, 153, 0.12);
+    border-color: rgba(52, 211, 153, 0.25);
+  }
+  
+  .vy-message-assistant {
+    border-left: 2px solid rgba(96, 165, 250, 0.2);
+  }
+  
+  .vy-message-assistant:hover {
+    border-left-color: rgba(96, 165, 250, 0.4);
+    background-color: rgba(11, 11, 15, 0.3);
+  }
+  
+  /* Smooth fade-in animation for messages */
+  @keyframes message-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .animate-message-in {
+    animation: message-fade-in 0.25s ease-out forwards;
+  }
+}
+
+/* ========== KaTeX Math Styling ========== */
+.katex {
+  font-size: 1.1em;
+  color: var(--color-text-primary);
+}
+
+.katex-display {
+  display: block;
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5em 0;
+}
+
+.katex-display > .katex {
+  display: inline-block;
+  text-align: initial;
+  max-width: 100%;
+}
+
+/* KaTeX error styling */
+.katex-error {
+  color: var(--color-error);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+  background-color: rgba(220, 38, 38, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ========== Syntax Highlighting (GitHub Dark Theme) ========== */
+/* Base code styling */
+pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 1em;
+}
+
+code.hljs {
+  padding: 3px 5px;
+}
+
+/* GitHub Dark theme colors */
+.hljs {
+  color: #c9d1d9;
+  background: #0d1117;
+}
+
+.hljs-doctag,
+.hljs-keyword,
+.hljs-meta .hljs-keyword,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-variable.language_ {
+  color: #ff7b72;
+}
+
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_ {
+  color: #d2a8ff;
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-literal,
+.hljs-meta,
+.hljs-number,
+.hljs-operator,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-variable {
+  color: #79c0ff;
+}
+
+.hljs-meta .hljs-string,
+.hljs-regexp,
+.hljs-string {
+  color: #a5d6ff;
+}
+
+.hljs-built_in,
+.hljs-symbol {
+  color: #ffa657;
+}
+
+.hljs-code,
+.hljs-comment,
+.hljs-formula {
+  color: #8b949e;
+}
+
+.hljs-name,
+.hljs-quote,
+.hljs-selector-pseudo,
+.hljs-selector-tag {
+  color: #7ee787;
+}
+
+.hljs-subst {
+  color: #c9d1d9;
+}
+
+.hljs-section {
+  color: #1f6feb;
+  font-weight: bold;
+}
+
+.hljs-bullet {
+  color: #f2cc60;
+}
+
+.hljs-emphasis {
+  color: #c9d1d9;
+  font-style: italic;
+}
+
+.hljs-strong {
+  color: #c9d1d9;
+  font-weight: bold;
+}
+
+.hljs-addition {
+  color: #aff5b4;
+  background-color: #033a16;
+}
+
+.hljs-deletion {
+  color: #ffdcd7;
+  background-color: #67060c;
+}
+
+/* Light mode syntax highlighting (GitHub Light) */
+html.light .hljs {
+  color: #24292f;
+  background: #f6f8fa;
+}
+
+html.light .hljs-doctag,
+html.light .hljs-keyword,
+html.light .hljs-meta .hljs-keyword,
+html.light .hljs-template-tag,
+html.light .hljs-template-variable,
+html.light .hljs-type,
+html.light .hljs-variable.language_ {
+  color: #cf222e;
+}
+
+html.light .hljs-title,
+html.light .hljs-title.class_,
+html.light .hljs-title.class_.inherited__,
+html.light .hljs-title.function_ {
+  color: #8250df;
+}
+
+html.light .hljs-attr,
+html.light .hljs-attribute,
+html.light .hljs-literal,
+html.light .hljs-meta,
+html.light .hljs-number,
+html.light .hljs-operator,
+html.light .hljs-selector-attr,
+html.light .hljs-selector-class,
+html.light .hljs-selector-id,
+html.light .hljs-variable {
+  color: #0550ae;
+}
+
+html.light .hljs-meta .hljs-string,
+html.light .hljs-regexp,
+html.light .hljs-string {
+  color: #0a3069;
+}
+
+html.light .hljs-built_in,
+html.light .hljs-symbol {
+  color: #953800;
+}
+
+html.light .hljs-code,
+html.light .hljs-comment,
+html.light .hljs-formula {
+  color: #6e7781;
+}
+
+html.light .hljs-name,
+html.light .hljs-quote,
+html.light .hljs-selector-pseudo,
+html.light .hljs-selector-tag {
+  color: #116329;
+}
+
+html.light .hljs-subst {
+  color: #24292f;
+}
+
+html.light .hljs-section {
+  color: #0550ae;
+  font-weight: bold;
+}
+
+html.light .hljs-bullet {
+  color: #953800;
+}
+
+html.light .hljs-addition {
+  color: #116329;
+  background-color: #dafbe1;
+}
+
+html.light .hljs-deletion {
+  color: #82071e;
+  background-color: #ffebe9;
+}
+
+/* ========== Markdown Content Styling ========== */
+.markdown-content {
+  line-height: 1.6;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  text-align: left !important;
+}
+
+.markdown-content * {
+  text-align: left;
+}
+
+.markdown-content > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Lists - custom bullet styling handled by React component */
+.markdown-content ul,
+.markdown-content ol {
+  list-style: none;
+  padding-left: 0;
+  margin-left: 0;
+}
+
+.markdown-content li {
+  list-style: none;
+}
+
+/* Nested lists */
+.markdown-content ul ul,
+.markdown-content ol ul,
+.markdown-content ul ol,
+.markdown-content ol ol {
+  margin-left: 1rem;
+  margin-top: 0.25rem;
+}
+
+/* Inline code */
+.markdown-content code:not(pre code) {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.9em;
+}
+
+/* Code blocks */
+.markdown-content pre {
+  margin: 0.5em 0;
+}
+
+.markdown-content pre code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+/* Task lists */
+.markdown-content .task-list-item {
+  list-style: none;
+}
+
+/* Definition lists */
+.markdown-content dl {
+  margin: 0.5em 0;
+}
+
+.markdown-content dt {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.markdown-content dd {
+  margin-left: 1.5em;
+  margin-bottom: 0.5em;
+  color: var(--color-text-secondary);
+}
+
+/* ========== Screenshot/Image Display Styling ========== */
+.screenshot-container {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-default);
+  transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.screenshot-container:hover {
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.screenshot-container img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.screenshot-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent 40%);
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+}
+
+.screenshot-container:hover .screenshot-overlay {
+  opacity: 1;
+}
+
+.screenshot-zoom-btn {
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #18181b;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease-out;
+}
+
+.screenshot-zoom-btn:hover {
+  background-color: #ffffff;
+}
+
+/* Screenshot modal */
+.screenshot-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  cursor: zoom-out;
+}
+
+.screenshot-modal img {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ========== Research Results Styling ========== */
+.research-results {
+  border: 1px solid var(--color-border-default);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.research-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: var(--color-surface-1);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.research-source {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  transition: background-color 0.2s ease-out;
+}
+
+.research-source:last-child {
+  border-bottom: none;
+}
+
+.research-source:hover {
+  background-color: var(--color-surface-1);
+}
+
+.research-source-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-surface-2);
+  border-radius: 8px;
+  color: var(--color-accent-secondary);
+}
+
+.research-source-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.research-source-title {
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.research-source-url {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.research-source-snippet {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+/* File change indicator pulse */
+@keyframes change-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(52, 211, 153, 0);
+  }
+}
+
+.change-indicator-pulse {
+  animation: change-pulse 2s ease-in-out infinite;
+}
+
+/* Undo button hover effect */
+.undo-btn-hover {
+  transition: all 0.15s ease;
+}
+
+.undo-btn-hover:hover {
+  transform: scale(1.05);
+}
+
+.undo-btn-hover:active {
+  transform: scale(0.95);
+}
+
+/* ========== Enhanced Input Component Styling ========== */
+
+/* Input container focus ring */
+.input-container-focus {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.input-container-focus:focus-within {
+  box-shadow: 
+    0 0 0 1px var(--color-accent-primary),
+    0 4px 20px -4px rgba(52, 211, 153, 0.15);
+}
+
+html.light .input-container-focus:focus-within {
+  box-shadow: 
+    0 0 0 1px var(--color-accent-primary),
+    0 4px 20px -4px rgba(5, 150, 105, 0.1);
+}
+
+/* Action button ripple effect */
+.input-action-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.input-action-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, currentColor 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(0);
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.input-action-btn:active::after {
+  transform: scale(2);
+  opacity: 0.1;
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+/* Toolbar button micro-interaction */
+.toolbar-btn {
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toolbar-btn:hover {
+  transform: translateY(-1px);
+}
+
+.toolbar-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Status bar fade transition */
+.status-bar-info {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.status-bar-info.hidden {
+  opacity: 0;
+  transform: translateX(4px);
+}
+
+/* Keyboard hint pulse on focus */
+@keyframes hint-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.keyboard-hint-pulse {
+  animation: hint-pulse 2s ease-in-out infinite;
+}
+
+/* Attachment item entrance animation */
+@keyframes attachment-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.attachment-item-enter {
+  animation: attachment-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Drop zone shimmer effect */
+@keyframes drop-zone-shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.drop-zone-active {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(52, 211, 153, 0.05) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: drop-zone-shimmer 1.5s ease-in-out infinite;
+}
+
+
+/* ========== Redesigned Chat Input Styling ========== */
+
+/* Main container */
+.chat-input-redesigned {
+  --input-radius: 16px;
+}
+
+.chat-input-redesigned:focus-within {
+  border-color: var(--color-accent-primary);
+  box-shadow: 
+    0 4px 24px -8px rgba(0, 0, 0, 0.2),
+    0 0 0 1px var(--color-accent-primary);
+}
+
+html.light .chat-input-redesigned:focus-within {
+  box-shadow: 
+    0 4px 24px -8px rgba(0, 0, 0, 0.1),
+    0 0 0 1px var(--color-accent-primary);
+}
+
+/* Composer input area */
+.composer-input-area {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.composer-input-area:focus-within {
+  background-color: var(--color-surface-2);
+}
+
+/* Action button animations */
+.composer-action-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.composer-action-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, white 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(0);
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.composer-action-btn:active::before {
+  transform: scale(2);
+  opacity: 0.15;
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+/* Quick action button hover */
+.quick-action-btn {
+  position: relative;
+}
+
+.quick-action-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.quick-action-btn:hover::after {
+  opacity: 0.05;
+}
+
+/* Context pill hover effect */
+.context-pill {
+  transition: all 0.15s ease;
+}
+
+.context-pill:hover {
+  transform: translateY(-1px);
+}
+
+/* Entrance animation for input container */
+@keyframes input-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-input-redesigned {
+  animation: input-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Smooth height transition for textarea */
+.chat-input-redesigned textarea {
+  transition: height 0.15s ease;
+}
+
+/* Focus ring for interactive elements */
+.chat-input-redesigned button:focus-visible,
+.chat-input-redesigned [role="button"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-accent-primary);
+}
+
+/* Attachment list animation */
+@keyframes attachment-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.chat-input-redesigned .attachment-item {
+  animation: attachment-slide-in 0.2s ease forwards;
+}
+
+/* Status indicator pulse */
+@keyframes status-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+}
+
+.chat-input-redesigned .status-pulse {
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+/* ========== Animations ========== */
+@keyframes grid-pulse {
+  0% { transform: perspective(500px) rotateX(20deg) translateY(0); opacity: 0.03; }
+  100% { transform: perspective(500px) rotateX(25deg) translateY(-20px); opacity: 0.06; }
+}
+
+@keyframes wave-slide {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100px); }
+}
+
+@keyframes dots-float {
+  0% { background-position: 0 0; }
+  100% { background-position: 10px 10px; }
+}
+
+@keyframes scanline {
+  0% { top: -20%; }
+  100% { top: 120%; }
+}
+
+.animate-scanline {
+  animation: scanline 8s linear infinite;
+}
+
+
+/* ========== Monaco Diff Editor Styling ========== */
+/* Diff viewer container */
+.diff-viewer-container {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Monaco diff editor overrides for consistent theming */
+.monaco-diff-editor {
+  background-color: var(--color-surface-editor) !important;
+}
+
+.monaco-diff-editor .editor.original,
+.monaco-diff-editor .editor.modified {
+  background-color: var(--color-surface-editor) !important;
+}
+
+/* Diff gutter styling */
+.monaco-diff-editor .insert-sign,
+.monaco-diff-editor .char-insert {
+  background-color: rgba(52, 211, 153, 0.2) !important;
+}
+
+.monaco-diff-editor .delete-sign,
+.monaco-diff-editor .char-delete {
+  background-color: rgba(248, 113, 113, 0.2) !important;
+}
+
+/* Line highlighting for changes */
+.monaco-diff-editor .line-insert {
+  background-color: rgba(52, 211, 153, 0.08) !important;
+}
+
+.monaco-diff-editor .line-delete {
+  background-color: rgba(248, 113, 113, 0.08) !important;
+}
+
+/* Inline diff (unified view) styling */
+.monaco-diff-editor .inline-added-margin-view-zone {
+  background-color: rgba(52, 211, 153, 0.1) !important;
+}
+
+.monaco-diff-editor .inline-deleted-margin-view-zone {
+  background-color: rgba(248, 113, 113, 0.1) !important;
+}
+
+/* Word-level diff highlighting */
+.monaco-diff-editor .word-insert {
+  background-color: rgba(52, 211, 153, 0.3) !important;
+  border-radius: 2px;
+}
+
+.monaco-diff-editor .word-delete {
+  background-color: rgba(248, 113, 113, 0.3) !important;
+  border-radius: 2px;
+}
+
+/* Diff overview ruler (minimap) */
+.monaco-diff-editor .diffOverviewRuler {
+  background-color: var(--color-surface-1) !important;
+}
+
+/* Light mode overrides */
+html.light .monaco-diff-editor .insert-sign,
+html.light .monaco-diff-editor .char-insert {
+  background-color: rgba(5, 150, 105, 0.2) !important;
+}
+
+html.light .monaco-diff-editor .delete-sign,
+html.light .monaco-diff-editor .char-delete {
+  background-color: rgba(220, 38, 38, 0.2) !important;
+}
+
+html.light .monaco-diff-editor .line-insert {
+  background-color: rgba(5, 150, 105, 0.08) !important;
+}
+
+html.light .monaco-diff-editor .line-delete {
+  background-color: rgba(220, 38, 38, 0.08) !important;
+}
+
+html.light .monaco-diff-editor .word-insert {
+  background-color: rgba(5, 150, 105, 0.25) !important;
+}
+
+html.light .monaco-diff-editor .word-delete {
+  background-color: rgba(220, 38, 38, 0.25) !important;
+}
