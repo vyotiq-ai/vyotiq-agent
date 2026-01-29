@@ -99,6 +99,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 ```
 
 **Types:**
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation changes
@@ -109,7 +110,8 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 - `perf`: Performance improvements
 
 **Examples:**
-```
+
+```text
 feat(editor): add syntax highlighting for Python
 
 fix(terminal): resolve crash when running npm commands on Windows
@@ -233,7 +235,7 @@ export const Button: React.FC<ButtonProps> = ({
 
 ### File Organization
 
-```
+```text
 src/
 ├── main/           # Electron main process
 ├── renderer/       # React frontend

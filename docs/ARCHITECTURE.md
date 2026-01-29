@@ -33,7 +33,7 @@ Vyotiq AI is a desktop application built with **Electron** and **React** that pr
 
 ## Core Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Electron Application                      │
 ├─────────────────────────────────────────────────────────────┤
@@ -72,7 +72,7 @@ Vyotiq AI is a desktop application built with **Electron** and **React** that pr
 
 ### Directory Structure
 
-```
+```text
 src/main/
 ├── agent/                    # AI agent system (core)
 │   ├── orchestrator.ts       # Main agent coordinator
@@ -164,6 +164,7 @@ Tools are the interface between the agent and the system. Each tool:
 #### Built-in Tools (40+)
 
 **File Operations (7 tools)**
+
 - `read` - Read file contents
 - `write` - Write/create files
 - `edit` - Edit specific lines in files
@@ -173,14 +174,17 @@ Tools are the interface between the agent and the system. Each tool:
 - `bulkOperations` - Batch file operations
 
 **Semantic Search (1 tool)**
+
 - `codebase_search` - AI-powered semantic code search using vector embeddings
 
 **Terminal (3 tools)**
+
 - `run` - Execute shell commands
 - `checkTerminal` - Check terminal status
 - `killTerminal` - Kill terminal process
 
 **Browser Automation (21 tools)**
+
 - `browser_fetch` - Fetch web content
 - `browser_navigate` - Navigate to URL
 - `browser_extract` - Extract page content
@@ -204,6 +208,7 @@ Tools are the interface between the agent and the system. Each tool:
 - `browser_check_url` - URL safety check
 
 **LSP Code Intelligence (8 tools)**
+
 - `lsp_hover` - Get hover information
 - `lsp_definition` - Go to definition
 - `lsp_references` - Find references
@@ -214,9 +219,11 @@ Tools are the interface between the agent and the system. Each tool:
 - `lsp_rename` - Rename symbol
 
 **Linting (1 tool)**
+
 - `readLints` - Get linting errors
 
 **Dynamic (1 tool)**
+
 - `createTool` - Create custom tools at runtime
 
 ### MCP Integration (Model Context Protocol)
@@ -225,7 +232,7 @@ The MCP system enables dynamic integration with external tool servers using the 
 
 #### Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                     MCPManager                               │
 │  (Central coordinator for all MCP server connections)        │
@@ -307,7 +314,7 @@ The context system handles:
 
 The `systemPrompt/` module provides a modular, cached system for building system prompts:
 
-```
+```text
 src/main/agent/systemPrompt/
 ├── index.ts              # Re-exports (backward compatible)
 ├── builder.ts            # Main prompt assembly
@@ -337,6 +344,7 @@ const staticPrompt = cache.getStaticPrompt();
 ```
 
 Key features:
+
 - **Modular Architecture**: Separated static sections (cached) from dynamic sections (per-request)
 - **Dynamic Context Injection**: Workspace, terminal, editor, and diagnostics context
 - **Provider-Level Caching**: Static content cached with hash-based invalidation
@@ -348,7 +356,7 @@ Key features:
 
 ### Directory Structure
 
-```
+```text
 src/renderer/
 ├── features/                 # Feature modules
 │   ├── chat/                 # Chat interface
@@ -394,6 +402,7 @@ Vyotiq uses three context providers for state management:
 #### 1. AgentProvider (Global Agent State)
 
 Manages:
+
 - Active session and messages
 - Agent status (running, paused, idle)
 - Sessions list
@@ -411,6 +420,7 @@ const {
 #### 2. EditorProvider (Editor State)
 
 Manages:
+
 - Open tabs and active tab
 - File content and dirty state
 - Undo/redo history
@@ -426,6 +436,7 @@ const {
 #### 3. UIProvider (UI-Only State)
 
 Manages:
+
 - Panel visibility (browser, settings)
 - Panel sizes (resizable panels)
 - Modal states (shortcuts, command palette)
@@ -443,7 +454,7 @@ const {
 
 Components follow a strict separation of concerns:
 
-```
+```text
 components/
 ├── ui/                       # Reusable UI primitives
 │   ├── Button.tsx
@@ -496,7 +507,7 @@ features/
 
 The agent operates in a loop:
 
-```
+```text
 1. Get LLM Response
    ├─ Build context (messages, workspace, diagnostics)
    ├─ Call LLM provider
@@ -559,7 +570,7 @@ The recovery system provides:
 
 ### Tool Execution Flow
 
-```
+```text
 Tool Request
     ↓
 Validate Schema
@@ -602,7 +613,7 @@ interface ToolConfirmation {
 
 ### Data Flow
 
-```
+```text
 User Input
     ↓
 Renderer (React)
@@ -678,7 +689,7 @@ type RendererEvent =
 
 ### Message Sending Flow
 
-```
+```text
 User types message
     ↓
 ChatInput component
@@ -710,7 +721,7 @@ UI updates
 
 ### File Operation Flow
 
-```
+```text
 User edits file in editor
     ↓
 EditorProvider updates state
@@ -828,7 +839,7 @@ UI shows updated diagnostics
 
 The `semantic/` module provides local vector embeddings and AI-powered code search:
 
-```
+```text
 src/main/agent/semantic/
 ├── index.ts                  # Module exports
 ├── EmbeddingService.ts       # Transformers.js embedding generation
@@ -842,23 +853,27 @@ src/main/agent/semantic/
 ### Components
 
 #### EmbeddingService
+
 - Uses Transformers.js with ONNX runtime for local inference
 - Supports GPU acceleration (optional)
 - Caches embeddings for repeated queries
 - Quality presets: fast, balanced, quality
 
 #### VectorStore
+
 - SQLite-backed persistent storage
 - HNSW algorithm for similarity search
 - Configurable M and efSearch parameters
 - Automatic index optimization
 
 #### CodeChunker
+
 - Language-aware code splitting (15+ languages)
 - Preserves semantic boundaries (functions, classes)
 - Configurable chunk sizes
 
 #### SemanticIndexer
+
 - Orchestrates workspace indexing
 - Progress tracking with time estimates
 - File change watching for incremental updates
@@ -892,6 +907,7 @@ const context = await getSemanticContextForQuery(
 ### Settings
 
 Configurable via Settings → Indexing:
+
 - Enable/disable indexing
 - Auto-index on startup
 - Watch for file changes

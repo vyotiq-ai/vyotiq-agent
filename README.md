@@ -60,9 +60,11 @@
 ## 📢 Recent Updates
 
 ### MCP System Stability & Type Safety (v1.3.0 - January 2026)
+
 Major improvements to MCP integration with enhanced stability, better error handling, and complete TypeScript type coverage.
 
 **Improvements:**
+
 - 🛡️ **Type Safety**: Fixed risk level type mismatches, added MCP metadata to tool definitions
 - 🔧 **API Fixes**: Corrected property access patterns in tool sync and handlers
 - 💚 **Health Events**: Extended event system with health-related events (degraded, unhealthy, recovered)
@@ -73,9 +75,11 @@ Major improvements to MCP integration with enhanced stability, better error hand
 - 📘 **Complete Type Declarations**: Full MCP API types in global.d.ts
 
 ### MCP Server Integration (v1.2.0 - January 2026)
+
 Added comprehensive Model Context Protocol (MCP) server integration for dynamic tool discovery and external server connections.
 
 **Features:**
+
 - 🔌 **Server Discovery**: Automatic detection of local MCP servers from known locations
 - 📡 **Multiple Transports**: Support for stdio and HTTP-based MCP servers
 - 🔧 **Dynamic Tool Integration**: MCP tools seamlessly available in the agent
@@ -84,9 +88,11 @@ Added comprehensive Model Context Protocol (MCP) server integration for dynamic 
 - 📊 **Server Metrics**: Connection statistics, latency tracking, and status indicators
 
 ### Semantic Codebase Search (January 2026)
+
 Added local AI-powered semantic search capabilities using vector embeddings. Search your codebase by meaning, not just text patterns.
 
 **Features:**
+
 - 🧠 **Semantic Search**: Find code by meaning with `codebase_search` tool
 - ⚡ **Local Embeddings**: Transformers.js with ONNX runtime - no external API calls
 - 🔧 **Language-Aware Chunking**: Smart code splitting for 15+ languages
@@ -94,9 +100,11 @@ Added local AI-powered semantic search capabilities using vector embeddings. Sea
 - 🎯 **GPU Support**: Optional GPU acceleration for faster indexing
 
 ### Diff Display Fix (January 2026)
+
 Fixed a critical issue in the diff viewer where identical lines were incorrectly shown as changed. This was particularly visible in import statements where file paths were being highlighted as different even though they were the same.
 
 **Improvements:**
+
 - ✅ Identical lines are never shown as changed
 - ✅ Import statements with the same paths are correctly identified as unchanged  
 - ✅ Only actual modifications are highlighted in the diff view
@@ -333,15 +341,15 @@ npm run make        # Creates .exe (Windows), .dmg (macOS), .deb/.rpm (Linux)
 
 Type your request in the chat input:
 
-```
+```text
 "Create a React component for a user profile with local storage persistence"
 ```
 
-```
+```text
 "Fix the TypeScript errors in src/utils/parser.ts"
 ```
 
-```
+```text
 "Explain how the authentication flow works in this codebase"
 ```
 
@@ -372,7 +380,7 @@ Type your request in the chat input:
 
 ## 🏗️ Architecture
 
-```
+```text
 vyotiq/
 ├── src/
 │   ├── main/                     # Electron main process
@@ -476,6 +484,7 @@ npm install
 ```
 
 If issues persist with native modules:
+
 ```bash
 npm rebuild
 # or specifically for node-pty:
@@ -551,6 +560,7 @@ Vyotiq is an AI-assisted coding tool that integrates with third-party AI service
 ### Third-Party AI Services
 
 When using Vyotiq-ai, your prompts and code context are sent to your chosen AI provider(s). Comply with each provider's terms of service:
+
 - [Anthropic Terms](https://www.anthropic.com/legal/terms) (Claude)
 - [OpenAI Terms](https://openai.com/policies/terms-of-use) (GPT)
 - [Google AI Terms](https://ai.google.dev/terms) (Gemini)
