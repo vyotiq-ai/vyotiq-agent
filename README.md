@@ -59,6 +59,19 @@
 
 ## 📢 Recent Updates
 
+### MCP System Stability & Type Safety (v1.3.0 - January 2026)
+Major improvements to MCP integration with enhanced stability, better error handling, and complete TypeScript type coverage.
+
+**Improvements:**
+- 🛡️ **Type Safety**: Fixed risk level type mismatches, added MCP metadata to tool definitions
+- 🔧 **API Fixes**: Corrected property access patterns in tool sync and handlers
+- 💚 **Health Events**: Extended event system with health-related events (degraded, unhealthy, recovered)
+- 🛠️ **Recovery Controls**: Added `updateConfig()` and `triggerRecovery()` to health monitor
+- 📋 **Discovery Enhancements**: Added `getCachedCandidates()` and `candidateToConfig()` methods
+- 🔄 **Null Safety**: Improved initialization flow with default settings
+- 📝 **BOM Handling**: Fixed JSON parse errors from files with Byte Order Mark
+- 📘 **Complete Type Declarations**: Full MCP API types in global.d.ts
+
 ### MCP Server Integration (v1.2.0 - January 2026)
 Added comprehensive Model Context Protocol (MCP) server integration for dynamic tool discovery and external server connections.
 

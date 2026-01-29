@@ -118,6 +118,27 @@ export interface ToolDefinition<TArgs extends Record<string, unknown> = Record<s
    * Used in conjunction with mustReadBeforeWrite for safety validation.
    */
   trackedReadsInSession?: Map<string, number>;
+
+  /**
+   * Optional metadata for tool extensions (e.g., MCP tools).
+   * Stores additional information about the tool source and configuration.
+   */
+  metadata?: {
+    /** MCP server ID if this is an MCP tool */
+    mcpServerId?: string;
+    /** MCP server name */
+    mcpServerName?: string;
+    /** Original MCP tool name */
+    mcpToolName?: string;
+    /** MCP server group for UI grouping */
+    mcpServerGroup?: string;
+    /** Tool risk level */
+    riskLevel?: 'safe' | 'moderate' | 'dangerous';
+    /** Tool annotations from MCP */
+    annotations?: Record<string, unknown>;
+    /** Additional custom metadata */
+    [key: string]: unknown;
+  };
 }
 
 // =============================================================================

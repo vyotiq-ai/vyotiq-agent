@@ -553,6 +553,48 @@ export class MCPHealthMonitor extends EventEmitter {
       }
     }, delay);
   }
+
+  /**
+   * Update the health monitor configuration
+   */
+  updateConfig(config: Partial<HealthMonitorConfig>): void {
+    this.config = { ...this.config, ...config };
+    
+    // If ping interval changed, restart the interval
+    if (config.pingInterval !== undefined && this.isRunning) {
+      if (this.pingIntervalId) {
+        clearInterval(this.pingIntervalId);
+      }
+      this.startPingInterval();
+    }
+  }
+
+  /**
+   * Trigger recovery for a specific server
+   */
+  async triggerRecovery(serverId: string): Promise<boolean> {
+    const data = this.serverHealth.get(serverId);
+    if (!data) {
+      return false;
+    }
+
+    // Reset recovery state
+    data.recoveryAttempts = 0;
+    data.recoveryBackoff = this.config.recoveryBackoffBase;
+
+    // Attempt to reconnect
+    try {
+      const manager = getMCPManager();
+      if (manager) {
+        await manager.connectServer(serverId);
+        return true;
+      }
+    } catch (error) {
+      logger.error('Recovery failed', { serverId, error: error instanceof Error ? error.message : String(error) });
+    }
+
+    return false;
+  }
 }
 
 // Singleton instance

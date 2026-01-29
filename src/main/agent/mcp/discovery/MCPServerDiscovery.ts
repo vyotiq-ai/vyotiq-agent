@@ -609,6 +609,30 @@ export class MCPServerDiscovery {
   }
 
   /**
+   * Get cached candidates without triggering a new discovery
+   */
+  getCachedCandidates(): MCPServerCandidate[] {
+    return [...this.discoveryCache];
+  }
+
+  /**
+   * Convert a discovered candidate to a server configuration
+   */
+  candidateToConfig(candidate: MCPServerCandidate): Omit<import('../../../../shared/types/mcp').MCPServerConfig, 'id' | 'createdAt' | 'updatedAt'> {
+    return {
+      name: candidate.name,
+      description: candidate.description,
+      transport: candidate.transport as import('../../../../shared/types/mcp').MCPTransportConfig,
+      enabled: true,
+      autoConnect: false,
+      timeout: 30000,
+      maxReconnectAttempts: 3,
+      icon: candidate.icon,
+      tags: candidate.tags,
+    };
+  }
+
+  /**
    * Clear the discovery cache
    */
   clearCache(): void {

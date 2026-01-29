@@ -125,7 +125,11 @@ export class SettingsStore {
   async load(): Promise<void> {
     try {
       logger.debug('Loading settings', { filePath: this.filePath });
-      const raw = await fs.readFile(this.filePath, 'utf-8');
+      let raw = await fs.readFile(this.filePath, 'utf-8');
+      // Strip BOM (Byte Order Mark) if present - fixes JSON parse errors
+      if (raw.charCodeAt(0) === 0xFEFF) {
+        raw = raw.slice(1);
+      }
       const parsed = JSON.parse(raw);
       
       // Check safeStorage availability

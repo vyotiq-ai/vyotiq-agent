@@ -185,7 +185,8 @@ const DEFAULT_MCP_SETTINGS: MCPSettings = {
  * Hook for managing MCP state and operations
  */
 export function useMCP(): UseMCPResult {
-  const [settings, setSettings] = useState<MCPSettings | null>(null);
+  // Initialize with default settings instead of null to prevent loading state
+  const [settings, setSettings] = useState<MCPSettings | null>(DEFAULT_MCP_SETTINGS);
   const [serverStates, setServerStates] = useState<MCPServerState[]>([]);
   const [allTools, setAllTools] = useState<Array<MCPTool & { serverId: string; serverName: string }>>([]);
   const [allResources, setAllResources] = useState<Array<MCPResource & { serverId: string; serverName: string }>>([]);
@@ -204,23 +205,33 @@ export function useMCP(): UseMCPResult {
       setIsLoading(true);
       setError(null);
 
+      // Check if MCP API is available
+      if (!window.vyotiq?.mcp) {
+        logger.warn('MCP API not available, using default settings');
+        setSettings(DEFAULT_MCP_SETTINGS);
+        setIsLoading(false);
+        return;
+      }
+
       const [settingsResult, statesResult, toolsResult, resourcesResult, promptsResult, healthResult] = await Promise.all([
-        window.vyotiq?.mcp?.getSettings() as Promise<MCPSettings | null>,
-        window.vyotiq?.mcp?.getServerStates() as Promise<MCPServerState[]>,
-        window.vyotiq?.mcp?.getAllTools() as Promise<Array<MCPTool & { serverId: string; serverName: string }>>,
-        window.vyotiq?.mcp?.getAllResources() as Promise<Array<MCPResource & { serverId: string; serverName: string }>>,
-        window.vyotiq?.mcp?.getAllPrompts() as Promise<Array<MCPPrompt & { serverId: string; serverName: string }>>,
-        window.vyotiq?.mcp?.getHealthMetrics() as Promise<{ success: boolean; metrics?: MCPServerHealthMetrics[] }>,
+        window.vyotiq.mcp.getSettings().catch((): MCPSettings | null => null),
+        window.vyotiq.mcp.getServerStates().catch((): unknown[] => []),
+        window.vyotiq.mcp.getAllTools().catch((): unknown[] => []),
+        window.vyotiq.mcp.getAllResources().catch((): unknown[] => []),
+        window.vyotiq.mcp.getAllPrompts().catch((): unknown[] => []),
+        window.vyotiq.mcp.getHealthMetrics().catch((): { success: boolean; metrics?: unknown[] } => ({ success: false })),
       ]);
 
       if (isMounted.current) {
         setSettings(settingsResult ?? DEFAULT_MCP_SETTINGS);
-        setServerStates(statesResult ?? []);
-        setAllTools(toolsResult ?? []);
-        setAllResources(resourcesResult ?? []);
-        setAllPrompts(promptsResult ?? []);
-        if (healthResult?.success) {
-          setHealthMetrics(healthResult.metrics ?? []);
+        // Cast to expected types - the API may return partial data
+        setServerStates((statesResult ?? []) as MCPServerState[]);
+        setAllTools((toolsResult ?? []) as Array<MCPTool & { serverId: string; serverName: string }>);
+        setAllResources((resourcesResult ?? []) as Array<MCPResource & { serverId: string; serverName: string }>);
+        setAllPrompts((promptsResult ?? []) as Array<MCPPrompt & { serverId: string; serverName: string }>);
+        const healthMetricsResult = healthResult as { success: boolean; metrics?: MCPServerHealthMetrics[] };
+        if (healthMetricsResult?.success && healthMetricsResult.metrics) {
+          setHealthMetrics(healthMetricsResult.metrics);
         }
       }
     } catch (err) {
@@ -250,6 +261,13 @@ export function useMCP(): UseMCPResult {
       if (!isMounted.current) return;
 
       switch (data.type) {
+        case 'mcp-settings-ready':
+          // Manager is ready - update settings and refresh all data
+          if (data.settings) {
+            setSettings(data.settings as MCPSettings);
+          }
+          fetchData();
+          break;
         case 'mcp-state':
           setServerStates(data.servers as MCPServerState[]);
           break;
@@ -412,7 +430,7 @@ export function useMCP(): UseMCPResult {
 
   // Add discovered server
   const addDiscoveredServer = useCallback(async (candidate: MCPServerCandidate) => {
-    const result = await window.vyotiq?.mcp?.addDiscoveredServer(candidate) as { success: boolean; server?: MCPServerConfig; error?: string };
+    const result = await window.vyotiq?.mcp?.addDiscoveredServer(candidate as unknown as Record<string, unknown>) as { success: boolean; server?: MCPServerConfig; error?: string };
     if (!result.success) {
       throw new Error(result.error ?? 'Failed to add discovered server');
     }
@@ -448,7 +466,7 @@ export function useMCP(): UseMCPResult {
 
   // Get tool suggestions
   const getToolSuggestions = useCallback(async (context: AgentContext, limit?: number): Promise<ToolSuggestion[]> => {
-    const result = await window.vyotiq?.mcp?.getToolSuggestions(context, limit) as { success: boolean; suggestions?: ToolSuggestion[]; error?: string };
+    const result = await window.vyotiq?.mcp?.getToolSuggestions(context as unknown as Record<string, unknown>, limit) as { success: boolean; suggestions?: ToolSuggestion[]; error?: string };
     if (!result.success) {
       throw new Error(result.error ?? 'Failed to get tool suggestions');
     }
@@ -457,7 +475,7 @@ export function useMCP(): UseMCPResult {
 
   // Get resource suggestions
   const getResourceSuggestions = useCallback(async (context: AgentContext, limit?: number): Promise<ResourceSuggestion[]> => {
-    const result = await window.vyotiq?.mcp?.getResourceSuggestions(context, limit) as { success: boolean; suggestions?: ResourceSuggestion[]; error?: string };
+    const result = await window.vyotiq?.mcp?.getResourceSuggestions(context as unknown as Record<string, unknown>, limit) as { success: boolean; suggestions?: ResourceSuggestion[]; error?: string };
     if (!result.success) {
       throw new Error(result.error ?? 'Failed to get resource suggestions');
     }
@@ -466,7 +484,7 @@ export function useMCP(): UseMCPResult {
 
   // Get prompt suggestions
   const getPromptSuggestions = useCallback(async (context: AgentContext, limit?: number): Promise<PromptSuggestion[]> => {
-    const result = await window.vyotiq?.mcp?.getPromptSuggestions(context, limit) as { success: boolean; suggestions?: PromptSuggestion[]; error?: string };
+    const result = await window.vyotiq?.mcp?.getPromptSuggestions(context as unknown as Record<string, unknown>, limit) as { success: boolean; suggestions?: PromptSuggestion[]; error?: string };
     if (!result.success) {
       throw new Error(result.error ?? 'Failed to get prompt suggestions');
     }

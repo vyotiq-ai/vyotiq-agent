@@ -1949,6 +1949,100 @@ declare global {
           error?: string;
         }) => void) => () => void;
       };
+
+      /**
+       * MCP (Model Context Protocol) API
+       */
+      mcp: {
+        // Settings
+        getSettings: () => Promise<{
+          enabled: boolean;
+          servers: Array<{
+            id: string;
+            name: string;
+            description?: string;
+            transport: { type: 'stdio'; command: string; args?: string[]; cwd?: string; env?: Record<string, string> } | { type: 'http'; url: string; headers?: Record<string, string> };
+            enabled: boolean;
+            autoConnect: boolean;
+            timeout?: number;
+            maxReconnectAttempts?: number;
+            icon?: string;
+            tags?: string[];
+            createdAt: number;
+            updatedAt: number;
+          }>;
+          defaultTimeout: number;
+          autoReconnect: boolean;
+          requireToolConfirmation: boolean;
+          includeInAgentContext: boolean;
+          maxConcurrentConnections: number;
+        } | null>;
+        updateSettings: (updates: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+
+        // Server Management
+        getServers: () => Promise<Array<{
+          id: string;
+          name: string;
+          description?: string;
+          transport: { type: 'stdio'; command: string; args?: string[] } | { type: 'http'; url: string };
+          enabled: boolean;
+          autoConnect: boolean;
+        }>>;
+        getServerStates: () => Promise<Array<{
+          id: string;
+          config: { id: string; name: string };
+          status: 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting';
+          error?: string;
+          serverInfo?: { name: string; version: string };
+          capabilities?: Record<string, unknown>;
+          tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>;
+          resources: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
+          prompts: Array<{ name: string; description?: string; arguments?: Array<{ name: string; description?: string; required?: boolean }> }>;
+        }>>;
+        addServer: (request: Record<string, unknown>) => Promise<{ success: boolean; server?: { id: string; name: string }; error?: string }>;
+        updateServer: (request: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+        removeServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+
+        // Connection Management
+        connectServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+        disconnectServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+
+        // Tools
+        getAllTools: () => Promise<Array<{ name: string; description?: string; inputSchema?: Record<string, unknown>; serverId: string; serverName: string }>>;
+        callTool: (serverId: string, toolName: string, args: Record<string, unknown>) => Promise<{ success: boolean; result?: unknown; error?: string }>;
+
+        // Resources
+        getAllResources: () => Promise<Array<{ uri: string; name: string; description?: string; mimeType?: string; serverId: string; serverName: string }>>;
+        readResource: (serverId: string, uri: string) => Promise<{ success: boolean; content?: unknown; error?: string }>;
+
+        // Prompts
+        getAllPrompts: () => Promise<Array<{ name: string; description?: string; arguments?: Array<{ name: string; description?: string; required?: boolean }>; serverId: string; serverName: string }>>;
+        getPrompt: (serverId: string, name: string, args?: Record<string, unknown>) => Promise<{ success: boolean; result?: unknown; error?: string }>;
+
+        // Discovery
+        discoverServers: (options?: Record<string, unknown>) => Promise<{ success: boolean; candidates?: Array<{ name: string; description?: string; source: string; transport: Record<string, unknown> }>; error?: string }>;
+        getDiscoveryCache: () => Promise<{ success: boolean; candidates?: Array<{ name: string; description?: string; source: string; transport: Record<string, unknown> }>; error?: string }>;
+        clearDiscoveryCache: () => Promise<{ success: boolean; error?: string }>;
+        addDiscoveredServer: (candidate: Record<string, unknown>) => Promise<{ success: boolean; server?: { id: string; name: string }; error?: string }>;
+
+        // Health Monitoring
+        getHealthMetrics: () => Promise<{ success: boolean; metrics?: Array<{ serverId: string; serverName: string; status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown'; avgLatency: number; errorRate: number }>; error?: string }>;
+        getServerHealth: (serverId: string) => Promise<{ success: boolean; metrics?: { serverId: string; status: string; avgLatency: number }; error?: string }>;
+        updateHealthConfig: (config: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+        triggerRecovery: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+
+        // Context Integration
+        getToolSuggestions: (context: Record<string, unknown>, limit?: number) => Promise<{ success: boolean; suggestions?: Array<{ tool: { name: string; serverId: string }; relevanceScore: number; reason: string }>; error?: string }>;
+        getResourceSuggestions: (context: Record<string, unknown>, limit?: number) => Promise<{ success: boolean; suggestions?: Array<{ resource: { uri: string; serverId: string }; relevanceScore: number; reason: string }>; error?: string }>;
+        getPromptSuggestions: (context: Record<string, unknown>, limit?: number) => Promise<{ success: boolean; suggestions?: Array<{ prompt: { name: string; serverId: string }; relevanceScore: number; reason: string }>; error?: string }>;
+        enrichContext: (context: Record<string, unknown>) => Promise<{ success: boolean; enrichedContext?: Record<string, unknown>; error?: string }>;
+
+        // Events
+        onEvent: (handler: (event: {
+          type: 'mcp-state' | 'mcp-server-connected' | 'mcp-server-disconnected' | 'mcp-server-error' | 'mcp-tools-changed' | 'mcp-settings-ready' | 'mcp-health-changed' | 'mcp-server-degraded' | 'mcp-server-unhealthy' | 'mcp-server-recovered' | 'mcp-recovery-attempt' | 'mcp-recovery-failed';
+          [key: string]: unknown;
+        }) => void) => () => void;
+      };
     };
   }
 }

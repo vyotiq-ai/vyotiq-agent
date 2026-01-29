@@ -78,7 +78,7 @@ function attachListeners(manager: MCPManager): void {
   const states = manager.getServerStates();
   for (const state of states) {
     if (state.status === 'connected') {
-      syncServerTools(state.serverId);
+      syncServerTools(state.config.id);
     }
   }
 
@@ -128,21 +128,21 @@ function removeServerTools(serverId: string): void {
   // Find and remove all tools for this server
   // Tool names are formatted as: mcp_<serverIdPrefix>_<toolName>
   const allTools = registryRef.list();
-  const toRemove = allTools.filter(entry => 
-    entry.definition.name.startsWith(`mcp_${serverIdPrefix}_`)
+  const toRemove = allTools.filter(tool => 
+    tool.name.startsWith(`mcp_${serverIdPrefix}_`)
   );
 
-  for (const entry of toRemove) {
+  for (const tool of toRemove) {
     try {
       // Use unregisterDynamic if it exists, otherwise we need to add a method
       // For now, we'll check if the tool registry has a remove method
-      const removed = registryRef.unregisterDynamic(entry.definition.name);
+      const removed = registryRef.unregisterDynamic(tool.name);
       if (removed) {
-        logger.debug('Unregistered MCP tool', { name: entry.definition.name });
+        logger.debug('Unregistered MCP tool', { name: tool.name });
       }
     } catch {
       // Tool may not be dynamically registered, skip silently
-      logger.debug('Could not unregister tool (may not be dynamic)', { name: entry.definition.name });
+      logger.debug('Could not unregister tool (may not be dynamic)', { name: tool.name });
     }
   }
 
@@ -164,11 +164,11 @@ export function resyncAllMCPTools(): void {
 
   // Remove all MCP tools first
   const allTools = registryRef.list();
-  const mcpTools = allTools.filter(entry => entry.definition.name.startsWith('mcp_'));
+  const mcpTools = allTools.filter(tool => tool.name.startsWith('mcp_'));
   
-  for (const entry of mcpTools) {
+  for (const tool of mcpTools) {
     try {
-      registryRef.unregisterDynamic(entry.definition.name);
+      registryRef.unregisterDynamic(tool.name);
     } catch {
       // Ignore
     }
@@ -181,7 +181,7 @@ export function resyncAllMCPTools(): void {
   const states = manager.getServerStates();
   for (const state of states) {
     if (state.status === 'connected') {
-      syncServerTools(state.serverId);
+      syncServerTools(state.config.id);
     }
   }
 
@@ -199,11 +199,11 @@ export function cleanupMCPToolSync(): void {
   // Remove all MCP tools from registry
   if (registryRef) {
     const allTools = registryRef.list();
-    const mcpTools = allTools.filter(entry => entry.definition.name.startsWith('mcp_'));
+    const mcpTools = allTools.filter(tool => tool.name.startsWith('mcp_'));
     
-    for (const entry of mcpTools) {
+    for (const tool of mcpTools) {
       try {
-        registryRef.unregisterDynamic(entry.definition.name);
+        registryRef.unregisterDynamic(tool.name);
       } catch {
         // Ignore
       }

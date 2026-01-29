@@ -1710,7 +1710,7 @@ const semanticAPI = {
 // ==========================================================================
 
 interface MCPEvent {
-	type: 'mcp-state' | 'mcp-server-connected' | 'mcp-server-disconnected' | 'mcp-server-error' | 'mcp-tools-changed';
+	type: 'mcp-state' | 'mcp-server-connected' | 'mcp-server-disconnected' | 'mcp-server-error' | 'mcp-tools-changed' | 'mcp-settings-ready' | 'mcp-health-changed' | 'mcp-server-degraded' | 'mcp-server-unhealthy' | 'mcp-server-recovered' | 'mcp-recovery-attempt' | 'mcp-recovery-failed';
 	[key: string]: unknown;
 }
 

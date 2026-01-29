@@ -34,14 +34,26 @@ import {
 import type { MCPServerCandidate, DiscoveryOptions } from '../agent/mcp/discovery/MCPServerDiscovery';
 import type { MCPServerHealthMetrics, HealthMonitorConfig } from '../agent/mcp/health/MCPHealthMonitor';
 import type { 
-  ToolSuggestion, 
-  ResourceSuggestion, 
-  PromptSuggestion, 
-  AgentContext 
+  MCPToolSuggestion, 
+  MCPResourceSuggestion, 
+  ContextQuery,
 } from '../agent/mcp/context/MCPContextIntegration';
 import { createLogger } from '../logger';
 
 const logger = createLogger('MCPHandlers');
+
+/**
+ * Default MCP settings to return when manager is not initialized
+ */
+const DEFAULT_MCP_SETTINGS: MCPSettings = {
+  enabled: true,
+  servers: [],
+  defaultTimeout: 30000,
+  autoReconnect: true,
+  requireToolConfirmation: true,
+  includeInAgentContext: true,
+  maxConcurrentConnections: 10,
+};
 
 /**
  * Register MCP IPC handlers
@@ -61,13 +73,15 @@ export function registerMCPHandlers(context: IpcContext): void {
   // Settings
   // =========================================================================
 
-  ipcMain.handle('mcp:get-settings', async (): Promise<MCPSettings | null> => {
+  ipcMain.handle('mcp:get-settings', async (): Promise<MCPSettings> => {
     try {
       const manager = getMCPManager();
-      return manager?.getSettings() ?? null;
+      // Return default settings if manager is not initialized yet
+      return manager?.getSettings() ?? DEFAULT_MCP_SETTINGS;
     } catch (error) {
       logger.error('Failed to get MCP settings', { error: error instanceof Error ? error.message : String(error) });
-      return null;
+      // Return default settings on error instead of null
+      return DEFAULT_MCP_SETTINGS;
     }
   });
 
@@ -309,6 +323,12 @@ export function registerMCPHandlers(context: IpcContext): void {
   // Initialize MCP manager when settings store is available
   const settingsStore = getSettingsStore();
   initMCPManager(settingsStore).then((manager: MCPManager) => {
+    // Emit settings-ready event so renderer can refresh
+    emitMCPEvent({ 
+      type: 'mcp-settings-ready', 
+      settings: manager.getSettings() 
+    });
+
     // Forward manager events to renderer
     manager.on('stateChanged', (states: MCPServerState[]) => {
       emitMCPEvent({ type: 'mcp-state', servers: states });
@@ -405,9 +425,10 @@ export function registerMCPHandlers(context: IpcContext): void {
       const server = await manager.addServer({
         name: config.name,
         transport: config.transport,
-        enabled: config.enabled,
+        description: config.description,
         autoConnect: config.autoConnect,
-        env: config.env,
+        icon: config.icon,
+        tags: config.tags,
       });
       
       emitMCPEvent({ type: 'mcp-state', servers: manager.getServerStates() });
@@ -429,7 +450,7 @@ export function registerMCPHandlers(context: IpcContext): void {
       if (!monitor) {
         return { success: true, metrics: [] };
       }
-      const metrics = monitor.getAllHealthMetrics();
+      const metrics = monitor.getAllMetrics();
       return { success: true, metrics };
     } catch (error) {
       logger.error('Failed to get health metrics', { error: error instanceof Error ? error.message : String(error) });
@@ -443,7 +464,7 @@ export function registerMCPHandlers(context: IpcContext): void {
       if (!monitor) {
         return { success: false, error: 'Health monitor not initialized' };
       }
-      const metrics = monitor.getServerHealth(serverId);
+      const metrics = monitor.getMetrics(serverId);
       if (!metrics) {
         return { success: false, error: 'Server not found' };
       }
@@ -486,13 +507,13 @@ export function registerMCPHandlers(context: IpcContext): void {
   // Context Integration Handlers
   // =========================================================================
 
-  ipcMain.handle('mcp:get-tool-suggestions', async (_event, context: AgentContext, limit?: number): Promise<{ success: boolean; suggestions?: ToolSuggestion[]; error?: string }> => {
+  ipcMain.handle('mcp:get-tool-suggestions', async (_event, context: ContextQuery): Promise<{ success: boolean; suggestions?: MCPToolSuggestion[]; error?: string }> => {
     try {
       const integration = getMCPContextIntegration();
       if (!integration) {
         return { success: true, suggestions: [] };
       }
-      const suggestions = await integration.getToolSuggestions(context, limit);
+      const suggestions = integration.getToolSuggestions(context);
       return { success: true, suggestions };
     } catch (error) {
       logger.error('Failed to get tool suggestions', { error: error instanceof Error ? error.message : String(error) });
@@ -500,13 +521,13 @@ export function registerMCPHandlers(context: IpcContext): void {
     }
   });
 
-  ipcMain.handle('mcp:get-resource-suggestions', async (_event, context: AgentContext, limit?: number): Promise<{ success: boolean; suggestions?: ResourceSuggestion[]; error?: string }> => {
+  ipcMain.handle('mcp:get-resource-suggestions', async (_event, context: ContextQuery): Promise<{ success: boolean; suggestions?: MCPResourceSuggestion[]; error?: string }> => {
     try {
       const integration = getMCPContextIntegration();
       if (!integration) {
         return { success: true, suggestions: [] };
       }
-      const suggestions = await integration.getResourceSuggestions(context, limit);
+      const suggestions = integration.getResourceSuggestions(context);
       return { success: true, suggestions };
     } catch (error) {
       logger.error('Failed to get resource suggestions', { error: error instanceof Error ? error.message : String(error) });
@@ -514,13 +535,13 @@ export function registerMCPHandlers(context: IpcContext): void {
     }
   });
 
-  ipcMain.handle('mcp:get-prompt-suggestions', async (_event, context: AgentContext, limit?: number): Promise<{ success: boolean; suggestions?: PromptSuggestion[]; error?: string }> => {
+  ipcMain.handle('mcp:get-prompt-suggestions', async (_event, context: ContextQuery): Promise<{ success: boolean; suggestions?: unknown[]; error?: string }> => {
     try {
       const integration = getMCPContextIntegration();
       if (!integration) {
         return { success: true, suggestions: [] };
       }
-      const suggestions = await integration.getPromptSuggestions(context, limit);
+      const suggestions = integration.getPromptSuggestions(context);
       return { success: true, suggestions };
     } catch (error) {
       logger.error('Failed to get prompt suggestions', { error: error instanceof Error ? error.message : String(error) });
@@ -528,7 +549,7 @@ export function registerMCPHandlers(context: IpcContext): void {
     }
   });
 
-  ipcMain.handle('mcp:enrich-context', async (_event, context: AgentContext): Promise<{ success: boolean; enrichedContext?: AgentContext; error?: string }> => {
+  ipcMain.handle('mcp:enrich-context', async (_event, context: ContextQuery): Promise<{ success: boolean; enrichedContext?: unknown; error?: string }> => {
     try {
       const integration = getMCPContextIntegration();
       if (!integration) {
@@ -543,7 +564,9 @@ export function registerMCPHandlers(context: IpcContext): void {
   });
 
   // Initialize health monitor after MCP manager
-  initMCPHealthMonitor().then((monitor) => {
+  try {
+    const monitor = initMCPHealthMonitor();
+    
     // Forward health events to renderer
     monitor.on('healthChanged', (serverId: string, metrics: MCPServerHealthMetrics) => {
       emitMCPEvent({
@@ -595,9 +618,9 @@ export function registerMCPHandlers(context: IpcContext): void {
     });
 
     logger.info('MCP health monitor initialized and event forwarding enabled');
-  }).catch((error: unknown) => {
+  } catch (error: unknown) {
     logger.error('Failed to initialize health monitor', { error: error instanceof Error ? error.message : String(error) });
-  });
+  }
 }
 
 /**

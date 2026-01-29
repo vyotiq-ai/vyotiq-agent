@@ -65,7 +65,7 @@ export class MCPHttpTransport implements MCPTransport {
         method: 'HEAD',
         headers: this.getHeaders(),
         signal: AbortSignal.timeout(5000),
-      }).catch(() => null);
+      }).catch((): null => null);
 
       // Log the connectivity check result
       if (connectResponse) {

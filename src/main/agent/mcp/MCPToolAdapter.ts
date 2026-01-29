@@ -53,7 +53,7 @@ function mcpToolToDefinition(tool: MCPToolWithServer): ToolDefinition {
       mcpToolName: tool.name,
       mcpServerGroup: `MCP: ${tool.serverName}`,
       riskLevel: inferRiskLevel(tool),
-      annotations: tool.annotations,
+      annotations: tool.annotations as Record<string, unknown> | undefined,
     },
   };
 }
@@ -80,21 +80,21 @@ function formatDescription(tool: MCPToolWithServer): string {
 /**
  * Infer risk level from tool annotations
  */
-function inferRiskLevel(tool: MCPToolWithServer): 'low' | 'medium' | 'high' | 'critical' {
+function inferRiskLevel(tool: MCPToolWithServer): 'safe' | 'moderate' | 'dangerous' {
   if (tool.annotations?.destructiveHint) {
-    return 'critical';
+    return 'dangerous';
   }
   if (tool.annotations?.openWorldHint) {
-    return 'high';
+    return 'dangerous';
   }
   if (tool.annotations?.readOnlyHint) {
-    return 'low';
+    return 'safe';
   }
   if (tool.annotations?.idempotentHint) {
-    return 'low';
+    return 'safe';
   }
-  // Default to medium for MCP tools since we can't verify their behavior
-  return 'medium';
+  // Default to moderate for MCP tools since we can't verify their behavior
+  return 'moderate';
 }
 
 /**
