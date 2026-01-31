@@ -160,7 +160,27 @@ git push origin vX.X.X
 ```
 
 ## 8. CREATE GITHUB RELEASE
-Prepare GitHub Release notes with this structure:
+**IMPORTANT:** Pushing a tag does NOT create a GitHub Release automatically. You must explicitly create the release using GitHub CLI or the web interface.
+
+### Option A: Using GitHub CLI (Recommended)
+```bash
+# Create release with notes (replace X.X.X with actual version)
+gh release create vX.X.X --title "vX.X.X - <short description>" --notes "<release notes>"
+
+# Or create release from a file
+gh release create vX.X.X --title "vX.X.X - <short description>" --notes-file RELEASE_NOTES.md
+
+# Or open interactive editor
+gh release create vX.X.X --title "vX.X.X - <short description>"
+```
+
+### Option B: Using GitHub Web Interface
+1. Go to https://github.com/vyotiq-ai/vyotiq-agent/releases/new
+2. Select the tag you just pushed (vX.X.X)
+3. Fill in the release title and notes
+4. Click "Publish release"
+
+### Release Notes Template
 
 ```markdown
 # Vyotiq AI vX.X.X
@@ -220,13 +240,40 @@ npm start
 
 ## 9. POST-RELEASE CHECKLIST
 After the release, verify:
-- [ ] Tag appears on GitHub
-- [ ] Release is published with notes
+- [ ] Tag appears on GitHub (check: `git ls-remote --tags origin`)
+- [ ] **GitHub Release is published** (NOT just the tag - verify at /releases page)
+- [ ] Release shows as "Latest" on the repository page
 - [ ] CHANGELOG.md is up to date
 - [ ] package.json version is correct
 - [ ] All documentation is current
 - [ ] No broken links in docs
 - [ ] CI/CD pipelines passed (if applicable)
+
+### Quick Verification Commands
+```bash
+# Verify tag was pushed
+git ls-remote --tags origin | grep vX.X.X
+
+# Verify release exists (requires gh CLI)
+gh release view vX.X.X
+
+# List all releases
+gh release list
+```
+
+---
+
+## ⚠️ COMMON MISTAKES TO AVOID
+
+1. **Pushing tag without creating release**: `git push origin vX.X.X` only pushes the tag. You MUST also run `gh release create vX.X.X` to create the actual GitHub Release.
+
+2. **Forgetting to update RELEASE_PROMPT.md**: After each release, update the version references in this file so the next release compares against the correct version.
+
+3. **Not staging all files**: Use `git add -A` to ensure all changes are staged, then verify with `git status`.
+
+4. **Missing CHANGELOG.md**: Always create/update CHANGELOG.md before releasing.
+
+5. **Wrong comparison base**: Ensure `git diff` and `git log` commands reference the correct previous version tag.
 
 ---
 
