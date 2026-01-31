@@ -5,9 +5,10 @@
 1. [IPC API](#ipc-api)
 2. [Agent API](#agent-api)
 3. [Tool API](#tool-api)
-4. [Provider API](#provider-api)
-5. [Event System](#event-system)
-6. [Type Definitions](#type-definitions)
+4. [MCP API](#mcp-api)
+5. [Provider API](#provider-api)
+6. [Event System](#event-system)
+7. [Type Definitions](#type-definitions)
 
 ---
 
@@ -517,6 +518,177 @@ Extract page content.
 
 ```typescript
 const content = await window.vyotiq.browser.extract();
+```
+
+### MCP Operations
+
+*Added in v1.4.0*
+
+#### `mcp:get-settings`
+
+Get current MCP settings.
+
+```typescript
+const settings = await window.vyotiq.mcp.getSettings();
+```
+
+**Response:**
+
+```typescript
+interface MCPSettings {
+  enabled: boolean;
+  autoConnect: boolean;
+  connectionTimeout: number;
+  customRegistries: string[];
+}
+```
+
+#### `mcp:update-settings`
+
+Update MCP settings.
+
+```typescript
+await window.vyotiq.mcp.updateSettings({
+  enabled: true,
+  autoConnect: true,
+});
+```
+
+#### `mcp:get-servers`
+
+Get all registered MCP servers.
+
+```typescript
+const servers = await window.vyotiq.mcp.getServers();
+```
+
+**Response:**
+
+```typescript
+interface MCPServerConfig {
+  id: string;
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled?: boolean;
+}
+```
+
+#### `mcp:get-server-states`
+
+Get all server states with status information.
+
+```typescript
+const states = await window.vyotiq.mcp.getServerStates();
+```
+
+**Response:**
+
+```typescript
+interface MCPServerState {
+  id: string;
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  error?: string;
+  tools: MCPTool[];
+  lastConnected?: number;
+}
+```
+
+#### `mcp:register-server`
+
+Register a new MCP server.
+
+```typescript
+await window.vyotiq.mcp.registerServer({
+  id: 'filesystem',
+  name: 'Filesystem Server',
+  command: 'npx',
+  args: ['-y', '@modelcontextprotocol/server-filesystem', '/path'],
+});
+```
+
+#### `mcp:connect-server`
+
+Connect to an MCP server.
+
+```typescript
+await window.vyotiq.mcp.connectServer(serverId: string);
+```
+
+#### `mcp:disconnect-server`
+
+Disconnect from an MCP server.
+
+```typescript
+await window.vyotiq.mcp.disconnectServer(serverId: string);
+```
+
+#### `mcp:unregister-server`
+
+Unregister an MCP server.
+
+```typescript
+await window.vyotiq.mcp.unregisterServer(serverId: string);
+```
+
+#### `mcp:get-all-tools`
+
+Get all tools from all connected servers.
+
+```typescript
+const tools = await window.vyotiq.mcp.getAllTools();
+```
+
+#### `mcp:execute-tool`
+
+Execute an MCP tool.
+
+```typescript
+const result = await window.vyotiq.mcp.executeTool({
+  serverId: 'filesystem',
+  toolName: 'read_file',
+  arguments: { path: '/path/to/file.txt' },
+});
+```
+
+#### `mcp:browse-store`
+
+Browse available servers from the registry.
+
+```typescript
+const servers = await window.vyotiq.mcp.browseStore({
+  query?: string;
+  category?: string;
+  limit?: number;
+});
+```
+
+#### `mcp:install-from-store`
+
+Install a server from the registry.
+
+```typescript
+await window.vyotiq.mcp.installFromStore({
+  serverId: 'official/filesystem',
+  customEnv?: Record<string, string>,
+});
+```
+
+#### `mcp:export-config`
+
+Export MCP configuration for backup.
+
+```typescript
+const config = await window.vyotiq.mcp.exportConfig();
+```
+
+#### `mcp:import-config`
+
+Import MCP configuration from backup.
+
+```typescript
+await window.vyotiq.mcp.importConfig(config: string);
 ```
 
 ---
@@ -1214,6 +1386,157 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
     parameters: object;
     implementation: string;
   }
+}
+```
+
+---
+
+## MCP API
+
+*Added in v1.4.0*
+
+The MCP (Model Context Protocol) API provides integration with external MCP servers for dynamic tool discovery.
+
+### MCPServerManager
+
+The central coordinator for all MCP server connections.
+
+```typescript
+import { MCPServerManager } from './mcp';
+
+const manager = new MCPServerManager(store);
+
+// Register a server
+manager.registerServer({
+  id: 'my-server',
+  name: 'My MCP Server',
+  command: 'node',
+  args: ['server.js'],
+  env: { API_KEY: 'xxx' },
+  enabled: true,
+});
+
+// Connect to server
+await manager.connectServer('my-server');
+
+// Get all tools
+const tools = manager.getAllTools();
+
+// Execute a tool
+const result = await manager.executeTool('my-server', 'tool_name', { arg: 'value' });
+
+// Disconnect
+await manager.disconnectServer('my-server');
+
+// Unregister
+manager.unregisterServer('my-server');
+```
+
+### MCPClient
+
+Handles communication with individual MCP servers.
+
+```typescript
+import { MCPClient } from './mcp';
+
+const client = new MCPClient({
+  command: 'npx',
+  args: ['-y', '@modelcontextprotocol/server-filesystem', '/path'],
+});
+
+await client.connect();
+const tools = await client.listTools();
+const result = await client.callTool('read_file', { path: '/file.txt' });
+await client.disconnect();
+```
+
+### MCPStore
+
+Provides server discovery from community registries.
+
+```typescript
+import { getMCPStore } from './mcp';
+
+const store = getMCPStore(manager);
+
+// Browse available servers
+const servers = await store.browse({
+  query: 'filesystem',
+  category: 'utilities',
+  limit: 10,
+});
+
+// Install a server
+await store.install({
+  serverId: 'official/filesystem',
+  customEnv: { PATH: '/custom/path' },
+});
+
+// Set custom registries
+store.setCustomRegistries(['https://my-registry.com/servers.json']);
+```
+
+### MCP Events
+
+The MCPServerManager emits events for server state changes:
+
+```typescript
+manager.on('server:status-changed', (serverId, status, error) => {
+  console.log(`Server ${serverId} is now ${status}`);
+});
+
+manager.on('server:tools-changed', (serverId, tools) => {
+  console.log(`Server ${serverId} now has ${tools.length} tools`);
+});
+
+manager.on('tools:updated', (allTools) => {
+  console.log(`Total tools available: ${allTools.length}`);
+});
+```
+
+### MCP Types
+
+```typescript
+interface MCPServerConfig {
+  id: string;
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled?: boolean;
+  description?: string;
+  autoConnect?: boolean;
+}
+
+interface MCPServerState {
+  id: string;
+  config: MCPServerConfig;
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  error?: string;
+  tools: MCPTool[];
+  lastConnected?: number;
+  metrics?: MCPServerMetrics;
+}
+
+interface MCPTool {
+  name: string;
+  description?: string;
+  inputSchema?: object;
+  serverId: string;
+}
+
+interface MCPServerMetrics {
+  totalCalls: number;
+  successfulCalls: number;
+  failedCalls: number;
+  averageLatency: number;
+}
+
+interface MCPSettings {
+  enabled: boolean;
+  autoConnect: boolean;
+  connectionTimeout: number;
+  customRegistries: string[];
 }
 ```
 

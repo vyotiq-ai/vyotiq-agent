@@ -59,27 +59,52 @@
 
 ## 📢 Recent Updates
 
-### Semantic Codebase Search (January 2026)
+### MCP System Refactoring (v1.4.0 - January 2026)
+
+Complete architectural overhaul of the Model Context Protocol system with new registry, enhanced UI, and improved reliability.
+
+**Features:**
+
+- 📦 **MCP Registry**: Dynamic server discovery and installation from community sources
+- 🖥️ **Enhanced UI**: New modals for adding, configuring, and managing MCP servers
+- 🔧 **Import/Export**: Backup and restore MCP configurations
+- 🛡️ **Crash Recovery**: New journal and dead letter queue for improved reliability
+- ⚡ **Performance**: Optimized state selection hooks and improved error handling
+
+### MCP System Stability & Type Safety (v1.3.0 - January 2026)
+
+Major improvements to MCP integration with enhanced stability, better error handling, and complete TypeScript type coverage.
+
+**Improvements:**
+
+- 🛡️ **Type Safety**: Fixed risk level type mismatches, added MCP metadata to tool definitions
+- 🔧 **API Fixes**: Corrected property access patterns in tool sync and handlers
+- 💚 **Health Events**: Extended event system with health-related events
+- 🔄 **Better Sync**: Improved tool synchronization between MCP servers and agent
+- 📘 **Complete Type Declarations**: Full MCP API types in global.d.ts
+
+### MCP Server Integration (v1.2.0 - January 2026)
+
+Added comprehensive Model Context Protocol (MCP) server integration for dynamic tool discovery and external server connections.
+
+**Features:**
+
+- 🔌 **Server Discovery**: Automatic detection of local MCP servers from known locations
+- 📡 **Multiple Transports**: Support for stdio and HTTP-based MCP servers
+- 🔧 **Dynamic Tool Integration**: MCP tools seamlessly available in the agent
+- 📊 **Real-time Status**: Live server status monitoring and reconnection handling
+
+### Semantic Codebase Search (v1.1.0 - January 2026)
+
 Added local AI-powered semantic search capabilities using vector embeddings. Search your codebase by meaning, not just text patterns.
 
 **Features:**
+
 - 🧠 **Semantic Search**: Find code by meaning with `codebase_search` tool
 - ⚡ **Local Embeddings**: Transformers.js with ONNX runtime - no external API calls
 - 🔧 **Language-Aware Chunking**: Smart code splitting for 15+ languages
 - 📊 **Index Management**: Settings panel for configuration and statistics
 - 🎯 **GPU Support**: Optional GPU acceleration for faster indexing
-
-### Diff Display Fix (January 2026)
-Fixed a critical issue in the diff viewer where identical lines were incorrectly shown as changed. This was particularly visible in import statements where file paths were being highlighted as different even though they were the same.
-
-**Improvements:**
-- ✅ Identical lines are never shown as changed
-- ✅ Import statements with the same paths are correctly identified as unchanged  
-- ✅ Only actual modifications are highlighted in the diff view
-- ✅ Performance improved with O(1) lookups instead of O(n) searches
-- ✅ Comprehensive test coverage added for diff algorithms
-
-See [DIFF_FIX_SUMMARY.md](./DIFF_FIX_SUMMARY.md) for technical details.
 
 ---
 

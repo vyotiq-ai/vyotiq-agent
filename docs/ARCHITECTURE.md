@@ -89,6 +89,14 @@ src/main/
 │   ├── settingsStore.ts      # Settings persistence
 │   └── providerManager.ts    # Provider lifecycle management
 │
+├── mcp/                      # Model Context Protocol (v1.4.0+)
+│   ├── MCPServerManager.ts   # Server lifecycle management
+│   ├── MCPClient.ts          # Client connections
+│   ├── MCPStore.ts           # Configuration persistence
+│   ├── MCPToolAdapter.ts     # Tool conversion
+│   ├── MCPContextProvider.ts # Context injection
+│   └── registry/             # Dynamic server registry
+│
 ├── tools/                    # Tool system
 │   ├── implementations/      # Built-in tools (20+)
 │   ├── factory/              # Dynamic tool creation
@@ -215,6 +223,92 @@ l status
 
 **Dynamic (1 tool)**
 - `createTool` - Create custom tools at runtime
+
+### MCP Integration (Model Context Protocol)
+
+*Last updated: v1.4.0 - January 2026*
+
+The MCP system enables dynamic integration with external tool servers using the Model Context Protocol standard.
+
+#### Architecture
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                     MCPServerManager                         │
+│  (Central coordinator for all MCP server connections)        │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │  MCPClient      │  │  MCPClient      │  │  MCPClient   │ │
+│  │  (stdio)        │  │  (HTTP)         │  │  (custom)    │ │
+│  └────────┬────────┘  └────────┬────────┘  └──────┬───────┘ │
+│           │                    │                   │         │
+│           ▼                    ▼                   ▼         │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │ External Server │  │ External Server │  │ MCP Server   │ │
+│  │ (filesystem)    │  │ (database)      │  │ (custom)     │ │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │  MCPToolAdapter │
+                    │ (Converts MCP   │
+                    │  tools to       │
+                    │  internal       │
+                    │  ToolDefinition)│
+                    └─────────────────┘
+```
+
+#### Directory Structure
+
+```text
+src/main/mcp/
+├── index.ts              # Module exports
+├── MCPClient.ts          # Client connection handling
+├── MCPServerManager.ts   # Server lifecycle management
+├── MCPStore.ts           # Persistent configuration storage
+├── MCPToolAdapter.ts     # Tool conversion to internal format
+├── MCPContextProvider.ts # Context injection for prompts
+└── registry/             # Dynamic server registry
+    ├── MCPDynamicRegistry.ts  # Fetch available servers
+    ├── cache.ts          # Registry caching
+    ├── fetchers.ts       # API fetchers
+    └── types.ts          # Registry types
+```
+
+#### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| `MCPServerManager` | Manages server lifecycle (connect, disconnect, reconnect) |
+| `MCPClient` | Handles communication with individual MCP servers |
+| `MCPStore` | Persists server configurations to SQLite |
+| `MCPToolAdapter` | Converts MCP tools to internal `ToolDefinition` format |
+| `MCPDynamicRegistry` | Discovers available servers from community sources |
+
+#### Usage
+
+```typescript
+import { MCPServerManager } from './mcp';
+
+// Initialize manager
+const mcpManager = new MCPServerManager(store);
+
+// Add a server
+await mcpManager.addServer({
+  name: 'filesystem',
+  command: 'npx',
+  args: ['-y', '@modelcontextprotocol/server-filesystem', '/path'],
+});
+
+// Get available tools
+const tools = mcpManager.getAllTools();
+
+// Execute a tool
+const result = await mcpManager.executeTool('filesystem', 'read_file', { path: '/file.txt' });
+```
 
 ### Session Management
 
