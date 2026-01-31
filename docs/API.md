@@ -339,6 +339,7 @@ const result = await window.vyotiq.terminal.run({
 ```
 
 **Response:**
+
 ```typescript
 interface TerminalResult {
   pid: number;
@@ -892,6 +893,7 @@ interface ToolResult {
 #### File Operations
 
 **read**
+
 ```typescript
 {
   name: 'read',
@@ -903,6 +905,7 @@ interface ToolResult {
 ```
 
 **write**
+
 ```typescript
 {
   name: 'write',
@@ -915,6 +918,7 @@ interface ToolResult {
 ```
 
 **edit**
+
 ```typescript
 {
   name: 'edit',
@@ -927,6 +931,7 @@ interface ToolResult {
 ```
 
 **ls**
+
 ```typescript
 {
   name: 'ls',
@@ -938,6 +943,7 @@ interface ToolResult {
 ```
 
 **bulkOperations**
+
 ```typescript
 {
   name: 'bulkOperations',
@@ -955,6 +961,7 @@ interface ToolResult {
 #### Search
 
 **grep**
+
 ```typescript
 {
   name: 'grep',
@@ -967,6 +974,7 @@ interface ToolResult {
 ```
 
 **glob**
+
 ```typescript
 {
   name: 'glob',
@@ -1002,6 +1010,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **Example usage:**
+
 ```typescript
 // Find authentication logic
 { name: 'codebase_search', parameters: { query: 'user authentication and login' } }
@@ -1022,6 +1031,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **Response:**
+
 ```typescript
 {
   results: Array<{
@@ -1050,6 +1060,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 #### Terminal
 
 **run**
+
 ```typescript
 {
   name: 'run',
@@ -1063,6 +1074,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **checkTerminal**
+
 ```typescript
 {
   name: 'checkTerminal',
@@ -1073,6 +1085,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **killTerminal**
+
 ```typescript
 {
   name: 'killTerminal',
@@ -1085,6 +1098,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 #### Browser (21 tools)
 
 **browser_fetch**
+
 ```typescript
 {
   name: 'browser_fetch',
@@ -1095,6 +1109,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_navigate**
+
 ```typescript
 {
   name: 'browser_navigate',
@@ -1105,6 +1120,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_screenshot**
+
 ```typescript
 {
   name: 'browser_screenshot',
@@ -1115,6 +1131,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_click**
+
 ```typescript
 {
   name: 'browser_click',
@@ -1125,6 +1142,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_type**
+
 ```typescript
 {
   name: 'browser_type',
@@ -1136,6 +1154,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_extract**
+
 ```typescript
 {
   name: 'browser_extract',
@@ -1146,6 +1165,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_snapshot**
+
 ```typescript
 {
   name: 'browser_snapshot',
@@ -1154,6 +1174,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_scroll**
+
 ```typescript
 {
   name: 'browser_scroll',
@@ -1165,6 +1186,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_fill_form**
+
 ```typescript
 {
   name: 'browser_fill_form',
@@ -1175,6 +1197,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_wait**
+
 ```typescript
 {
   name: 'browser_wait',
@@ -1186,6 +1209,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_hover**
+
 ```typescript
 {
   name: 'browser_hover',
@@ -1196,6 +1220,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_evaluate**
+
 ```typescript
 {
   name: 'browser_evaluate',
@@ -1206,6 +1231,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_state**
+
 ```typescript
 {
   name: 'browser_state',
@@ -1214,6 +1240,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_back / browser_forward / browser_reload**
+
 ```typescript
 {
   name: 'browser_back' | 'browser_forward' | 'browser_reload',
@@ -1222,6 +1249,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_console**
+
 ```typescript
 {
   name: 'browser_console',
@@ -1230,6 +1258,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_network**
+
 ```typescript
 {
   name: 'browser_network',
@@ -1238,6 +1267,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_tabs**
+
 ```typescript
 {
   name: 'browser_tabs',
@@ -1249,6 +1279,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_security_status**
+
 ```typescript
 {
   name: 'browser_security_status',
@@ -1257,6 +1288,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **browser_check_url**
+
 ```typescript
 {
   name: 'browser_check_url',
@@ -1269,6 +1301,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 #### LSP Code Intelligence (8 tools)
 
 **lsp_hover**
+
 ```typescript
 {
   name: 'lsp_hover',
@@ -1281,6 +1314,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **lsp_definition**
+
 ```typescript
 {
   name: 'lsp_definition',
@@ -1293,6 +1327,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **lsp_references**
+
 ```typescript
 {
   name: 'lsp_references',
@@ -1305,6 +1340,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **lsp_symbols**
+
 ```typescript
 {
   name: 'lsp_symbols',
@@ -1316,6 +1352,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **lsp_diagnostics**
+
 ```typescript
 {
   name: 'lsp_diagnostics',
@@ -1326,6 +1363,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **lsp_completions**
+
 ```typescript
 {
   name: 'lsp_completions',
@@ -1338,6 +1376,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **lsp_code_actions**
+
 ```typescript
 {
   name: 'lsp_code_actions',
@@ -1350,6 +1389,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 ```
 
 **lsp_rename**
+
 ```typescript
 {
   name: 'lsp_rename',
@@ -1365,6 +1405,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 #### Linting
 
 **readLints**
+
 ```typescript
 {
   name: 'readLints',
@@ -1377,6 +1418,7 @@ AI-powered semantic code search using vector embeddings. Finds code by meaning, 
 #### Dynamic Tool Creation
 
 **createTool**
+
 ```typescript
 {
   name: 'createTool',
@@ -1586,11 +1628,13 @@ interface ProviderStatus {
 ### Supported Models
 
 #### Anthropic
+
 - Claude 4.5 Sonnet
 - Claude Opus
 - Claude Haiku
 
 #### OpenAI
+
 - GPT-5.2
 - GPT-5.1
 - GPT-4.1
@@ -1598,15 +1642,18 @@ interface ProviderStatus {
 - o1-mini
 
 #### Google
+
 - Gemini 3 Pro
 - Gemini 2.5 Pro
 - Gemini 2.5 Flash
 
 #### DeepSeek
+
 - DeepSeek V3.2
 - DeepSeek V3.2 Reasoner
 
 #### OpenRouter
+
 - 200+ models available
 
 ---
@@ -1780,6 +1827,7 @@ interface RateLimitInfo {
 ### Handling Rate Limits
 
 The system automatically:
+
 - Detects rate limit errors
 - Switches to alternative providers
 - Implements exponential backoff
@@ -1808,6 +1856,7 @@ const result = await window.vyotiq.semantic.indexWorkspace({
 ```
 
 **Response:**
+
 ```typescript
 { success: boolean; error?: string }
 ```
@@ -1829,6 +1878,7 @@ const result = await window.vyotiq.semantic.search(query: string, {
 ```
 
 **Response:**
+
 ```typescript
 interface SemanticSearchResult {
   results: Array<{
@@ -1863,6 +1913,7 @@ const progress = await window.vyotiq.semantic.getProgress();
 ```
 
 **Response:**
+
 ```typescript
 interface IndexingProgress {
   totalFiles: number;
@@ -1884,6 +1935,7 @@ const stats = await window.vyotiq.semantic.getStats();
 ```
 
 **Response:**
+
 ```typescript
 interface IndexerStats {
   indexedFiles: number;
@@ -2020,7 +2072,7 @@ The system prompt module provides modular, cached prompt generation with dynamic
 
 #### Module Structure
 
-```
+```text
 src/main/agent/systemPrompt/
 ├── index.ts              # Re-exports (backward compatible)
 ├── builder.ts            # Main prompt assembly

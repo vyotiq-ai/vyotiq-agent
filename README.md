@@ -334,15 +334,15 @@ npm run make        # Creates .exe (Windows), .dmg (macOS), .deb/.rpm (Linux)
 
 Type your request in the chat input:
 
-```
+```text
 "Create a React component for a user profile with local storage persistence"
 ```
 
-```
+```text
 "Fix the TypeScript errors in src/utils/parser.ts"
 ```
 
-```
+```text
 "Explain how the authentication flow works in this codebase"
 ```
 
@@ -373,7 +373,7 @@ Type your request in the chat input:
 
 ## 🏗️ Architecture
 
-```
+```text
 vyotiq/
 ├── src/
 │   ├── main/                     # Electron main process
@@ -477,6 +477,7 @@ npm install
 ```
 
 If issues persist with native modules:
+
 ```bash
 npm rebuild
 # or specifically for node-pty:
@@ -552,6 +553,7 @@ Vyotiq is an AI-assisted coding tool that integrates with third-party AI service
 ### Third-Party AI Services
 
 When using Vyotiq-ai, your prompts and code context are sent to your chosen AI provider(s). Comply with each provider's terms of service:
+
 - [Anthropic Terms](https://www.anthropic.com/legal/terms) (Claude)
 - [OpenAI Terms](https://openai.com/policies/terms-of-use) (GPT)
 - [Google AI Terms](https://ai.google.dev/terms) (Gemini)
