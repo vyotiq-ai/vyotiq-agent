@@ -545,6 +545,33 @@ export class LSPClient extends EventEmitter {
   }
 
   /**
+   * Prepare rename - check if rename is valid at position
+   */
+  async prepareRename(uri: string, position: Position): Promise<Range | { range: Range; placeholder: string } | null> {
+    // Check if the server supports prepare rename
+    const renameProvider = this.capabilities?.renameProvider;
+    if (!renameProvider) return null;
+    
+    // prepareProvider can be a boolean in RenameOptions
+    const supportsPrepare = typeof renameProvider === 'object' && renameProvider.prepareProvider;
+    if (!supportsPrepare) {
+      // Return null to indicate prepare is not supported, but rename might still work
+      return null;
+    }
+
+    try {
+      const result = await this.sendRequest('textDocument/prepareRename', {
+        textDocument: { uri },
+        position,
+      }, 5000);
+
+      return result as Range | { range: Range; placeholder: string } | null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Request diagnostics for a document (pull model)
    */
   async diagnostics(uri: string): Promise<Diagnostic[]> {

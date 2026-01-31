@@ -91,7 +91,7 @@ export class ProviderHealthMonitor {
     this.config = { ...DEFAULT_HEALTH_CONFIG, ...config };
 
     // Initialize for all providers
-    const providers: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'glm'];
+    const providers: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'glm', 'openrouter', 'xai', 'mistral'];
     for (const provider of providers) {
       this.initializeProvider(provider);
     }

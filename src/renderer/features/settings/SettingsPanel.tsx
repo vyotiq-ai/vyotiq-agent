@@ -19,7 +19,6 @@ import { SettingsIndexing } from './components/SettingsIndexing';
 import { SettingsMCP } from './components/SettingsMCP';
 
 import { useSettings } from '../../hooks';
-import { useMCP } from '../../hooks/useMCP';
 import { cn } from '../../utils/cn';
 
 interface SettingsPanelProps {
@@ -27,7 +26,7 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-type SettingsTab = 'providers' | 'models' | 'routing' | 'agent' | 'prompts' | 'editor-ai' | 'browser' | 'mcp' | 'indexing' | 'access' | 'safety' | 'compliance' | 'performance' | 'debugging' | 'appearance' | 'advanced';
+type SettingsTab = 'providers' | 'models' | 'routing' | 'agent' | 'prompts' | 'editor-ai' | 'browser' | 'indexing' | 'mcp' | 'access' | 'safety' | 'compliance' | 'performance' | 'debugging' | 'appearance' | 'advanced';
 
 interface TabConfig {
   id: SettingsTab;
@@ -44,8 +43,8 @@ const tabs: TabConfig[] = [
   { id: 'prompts', label: 'Prompts', command: 'prompts', icon: <MessageSquare size={14} /> },
   { id: 'editor-ai', label: 'Editor AI', command: 'editor-ai', icon: <Sparkles size={14} /> },
   { id: 'browser', label: 'Browser', command: 'browser', icon: <Globe size={14} /> },
-  { id: 'mcp', label: 'MCP', command: 'mcp', icon: <Server size={14} /> },
   { id: 'indexing', label: 'Indexing', command: 'indexing', icon: <Database size={14} /> },
+  { id: 'mcp', label: 'MCP Servers', command: 'mcp', icon: <Server size={14} /> },
   { id: 'access', label: 'Access', command: 'access', icon: <Shield size={14} /> },
   { id: 'safety', label: 'Safety', command: 'safety', icon: <ShieldAlert size={14} /> },
   { id: 'compliance', label: 'Compliance', command: 'compliance', icon: <ShieldCheck size={14} /> },
@@ -80,30 +79,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     updateTaskMapping,
     updateEditorAISetting,
     updateSemanticSetting,
+    updateAppearanceSetting,
     saveSettings,
   } = useSettings(open);
-
-  // MCP state
-  const {
-    settings: mcpSettings,
-    serverStates: mcpServerStates,
-    isLoading: mcpLoading,
-    updateSetting: updateMCPSetting,
-    addServer: addMCPServer,
-    updateServer: updateMCPServer,
-    removeServer: removeMCPServer,
-    connectServer: connectMCPServer,
-    disconnectServer: disconnectMCPServer,
-    refresh: refreshMCP,
-    discoveredServers: mcpDiscoveredServers,
-    isDiscovering: mcpIsDiscovering,
-    discoverServers: discoverMCPServers,
-    addDiscoveredServer: addDiscoveredMCPServer,
-    clearDiscoveryCache: clearMCPDiscoveryCache,
-    healthMetrics: mcpHealthMetrics,
-    refreshHealthMetrics: refreshMCPHealth,
-    triggerRecovery: triggerMCPRecovery,
-  } = useMCP();
 
   if (!open) {
     return null;
@@ -183,33 +161,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
             # loading browser settings...
           </div>
         );
-      case 'mcp':
-        return mcpSettings ? (
-          <SettingsMCP
-            settings={mcpSettings}
-            serverStates={mcpServerStates}
-            onSettingChange={updateMCPSetting}
-            onAddServer={addMCPServer}
-            onUpdateServer={updateMCPServer}
-            onRemoveServer={removeMCPServer}
-            onConnectServer={connectMCPServer}
-            onDisconnectServer={disconnectMCPServer}
-            onRefreshServers={refreshMCP}
-            isLoading={mcpLoading}
-            discoveredServers={mcpDiscoveredServers}
-            isDiscovering={mcpIsDiscovering}
-            onDiscoverServers={discoverMCPServers}
-            onAddDiscoveredServer={addDiscoveredMCPServer}
-            onClearDiscoveryCache={clearMCPDiscoveryCache}
-            healthMetrics={mcpHealthMetrics}
-            onRefreshHealth={refreshMCPHealth}
-            onTriggerRecovery={triggerMCPRecovery}
-          />
-        ) : (
-          <div className="text-[10px] text-[var(--color-text-muted)] font-mono">
-            # loading MCP settings...
-          </div>
-        );
       case 'indexing':
         return localSettings.semanticSettings ? (
           <SettingsIndexing
@@ -221,6 +172,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
             # loading indexing settings...
           </div>
         );
+      case 'mcp':
+        return <SettingsMCP />;
       case 'access':
         return localSettings.accessLevelSettings ? (
           <SettingsAccess
@@ -277,7 +230,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
           </div>
         );
       case 'appearance':
-        return <SettingsAppearance />;
+        return (
+          <SettingsAppearance 
+            settings={localSettings?.appearanceSettings}
+            onChange={updateAppearanceSetting}
+          />
+        );
       case 'advanced':
         return (
           <SettingsAdvanced

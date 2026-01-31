@@ -7,7 +7,7 @@
  * - Resource usage
  * - Message queue
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Database, MessageSquare, Wrench, Cpu, 
   ChevronDown, ChevronRight, RefreshCw
@@ -19,6 +19,37 @@ interface StateInspectorPanelProps {
   runId: string | undefined;
 }
 
+interface StateData {
+  context: {
+    maxTokens: number;
+    usedTokens: number;
+    utilization: string;
+    messageCount: number;
+    systemPromptTokens: number;
+    toolResultTokens: number;
+  };
+  messages: {
+    pending: number;
+    processing: number;
+    completed: number;
+    lastMessageAt: number | null;
+  };
+  tools: {
+    totalCalls: number;
+    successRate: string;
+    avgDuration: string;
+    mostUsed: string;
+    lastTool: string | null;
+  };
+  resources: {
+    memoryMb: number;
+    cpuPercent: number;
+    activeConnections: number;
+    cacheHitRate: string;
+    pendingRequests: number;
+  };
+}
+
 interface StateSection {
   id: string;
   label: string;
@@ -26,37 +57,81 @@ interface StateSection {
   data: Record<string, unknown>;
 }
 
+const defaultStateData: StateData = {
+  context: {
+    maxTokens: 200000,
+    usedTokens: 0,
+    utilization: '0%',
+    messageCount: 0,
+    systemPromptTokens: 0,
+    toolResultTokens: 0,
+  },
+  messages: {
+    pending: 0,
+    processing: 0,
+    completed: 0,
+    lastMessageAt: null,
+  },
+  tools: {
+    totalCalls: 0,
+    successRate: '0%',
+    avgDuration: '0ms',
+    mostUsed: 'none',
+    lastTool: null,
+  },
+  resources: {
+    memoryMb: 0,
+    cpuPercent: 0,
+    activeConnections: 0,
+    cacheHitRate: '0%',
+    pendingRequests: 0,
+  },
+};
+
 export const StateInspectorPanel: React.FC<StateInspectorPanelProps> = ({
   sessionId,
   runId,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['context']));
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [stateData, setStateData] = useState<StateData>(defaultStateData);
 
-  // Mock state data - in production this would come from IPC
-  const stateSections: StateSection[] = useMemo(() => [
+  // Fetch state data from IPC
+  const fetchStateData = useCallback(async () => {
+    if (!sessionId) return;
+    
+    try {
+      const data = await window.vyotiq?.debug?.getSessionState?.(sessionId);
+      if (data) {
+        setStateData(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch session state:', error);
+    }
+  }, [sessionId]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchStateData();
+  }, [fetchStateData]);
+
+  // Build sections from state data
+  const stateSections: StateSection[] = [
     {
       id: 'context',
       label: 'Context Window',
       icon: <Database size={12} className="text-[var(--color-accent-primary)]" />,
-      data: {
-        maxTokens: 200000,
-        usedTokens: 45000,
-        utilization: '22.5%',
-        messageCount: 24,
-        systemPromptTokens: 3500,
-        toolResultTokens: 12000,
-      },
+      data: stateData.context,
     },
     {
       id: 'messages',
       label: 'Message Queue',
       icon: <MessageSquare size={12} className="text-[var(--color-accent-secondary)]" />,
       data: {
-        pending: 0,
-        processing: 1,
-        completed: 23,
-        lastMessageAt: new Date().toISOString(),
+        ...stateData.messages,
+        lastMessageAt: stateData.messages.lastMessageAt 
+          ? new Date(stateData.messages.lastMessageAt).toISOString()
+          : 'N/A',
       },
     },
     {
@@ -64,26 +139,17 @@ export const StateInspectorPanel: React.FC<StateInspectorPanelProps> = ({
       label: 'Tool History',
       icon: <Wrench size={12} className="text-[var(--color-warning)]" />,
       data: {
-        totalCalls: 15,
-        successRate: '93.3%',
-        avgDuration: '245ms',
-        mostUsed: 'read (8 calls)',
-        lastTool: 'grep',
+        ...stateData.tools,
+        lastTool: stateData.tools.lastTool || 'none',
       },
     },
     {
       id: 'resources',
       label: 'Resource Usage',
       icon: <Cpu size={12} className="text-[var(--color-success)]" />,
-      data: {
-        memoryMb: 128,
-        cpuPercent: 12,
-        activeConnections: 2,
-        cacheHitRate: '78%',
-        pendingRequests: 0,
-      },
+      data: stateData.resources,
     },
-  ], []);
+  ];
 
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev => {
@@ -99,8 +165,7 @@ export const StateInspectorPanel: React.FC<StateInspectorPanelProps> = ({
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    // In production: await window.vyotiq?.debug?.refreshState(sessionId)
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await fetchStateData();
     setIsRefreshing(false);
   };
 

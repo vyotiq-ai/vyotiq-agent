@@ -266,6 +266,7 @@ browser_extract(extract: ["text", "links"]) → get docs + navigation
   requiresApproval: false,
   category: 'browser-read',
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   schema: {
     type: 'object',

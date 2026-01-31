@@ -6,8 +6,8 @@
  * - Break on errors
  * - Conditional breakpoints
  */
-import React, { useState, useCallback } from 'react';
-import { Plus, Trash2, Pause, AlertTriangle, Wrench } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Plus, Trash2, Pause, AlertTriangle, Wrench, Loader2 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 
 interface BreakpointConfigProps {
@@ -25,67 +25,96 @@ interface Breakpoint {
 export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
   sessionId,
 }) => {
-  // Breakpoints are stored per session - in production this would sync with IPC
-  const [breakpoints, setBreakpoints] = useState<Breakpoint[]>([
-    { id: 'bp-1', type: 'error', enabled: true },
-    { id: 'bp-2', type: 'tool', enabled: true, toolName: 'bash' },
-  ]);
+  const [breakpoints, setBreakpoints] = useState<Breakpoint[]>([]);
   const [newToolName, setNewToolName] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Sync breakpoints with backend when they change
-  const syncBreakpoints = useCallback((bps: Breakpoint[]) => {
-    // In production: window.vyotiq?.debug?.setBreakpoints(sessionId, bps)
-    console.debug(`[BreakpointConfig] Syncing ${bps.length} breakpoints for session ${sessionId}`);
+  // Fetch breakpoints from IPC on mount
+  useEffect(() => {
+    const fetchBreakpoints = async () => {
+      setIsLoading(true);
+      try {
+        const bps = await window.vyotiq?.debug?.getBreakpoints?.(sessionId);
+        if (bps && Array.isArray(bps)) {
+          setBreakpoints(bps);
+        }
+      } catch (error) {
+        console.error('Failed to fetch breakpoints:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchBreakpoints();
   }, [sessionId]);
 
-  const toggleBreakpoint = useCallback((id: string) => {
-    setBreakpoints(prev => {
-      const updated = prev.map(bp => 
-        bp.id === id ? { ...bp, enabled: !bp.enabled } : bp
-      );
-      syncBreakpoints(updated);
-      return updated;
-    });
-  }, [syncBreakpoints]);
+  const toggleBreakpoint = useCallback(async (id: string) => {
+    try {
+      const result = await window.vyotiq?.debug?.toggleBreakpoint?.(id);
+      if (result?.success) {
+        setBreakpoints(prev => 
+          prev.map(bp => bp.id === id ? { ...bp, enabled: result.enabled ?? !bp.enabled } : bp)
+        );
+      }
+    } catch (error) {
+      console.error('Failed to toggle breakpoint:', error);
+    }
+  }, []);
 
-  const removeBreakpoint = useCallback((id: string) => {
-    setBreakpoints(prev => {
-      const updated = prev.filter(bp => bp.id !== id);
-      syncBreakpoints(updated);
-      return updated;
-    });
-  }, [syncBreakpoints]);
+  const removeBreakpoint = useCallback(async (id: string) => {
+    try {
+      const result = await window.vyotiq?.debug?.removeBreakpoint?.(id);
+      if (result?.success) {
+        setBreakpoints(prev => prev.filter(bp => bp.id !== id));
+      }
+    } catch (error) {
+      console.error('Failed to remove breakpoint:', error);
+    }
+  }, []);
 
-  const addToolBreakpoint = useCallback(() => {
+  const addToolBreakpoint = useCallback(async () => {
     if (!newToolName.trim()) return;
-    setBreakpoints(prev => {
-      const updated = [
-        ...prev,
-        {
-          id: `bp-${Date.now()}`,
-          type: 'tool' as const,
-          enabled: true,
-          toolName: newToolName.trim(),
-        },
-      ];
-      syncBreakpoints(updated);
-      return updated;
-    });
-    setNewToolName('');
-  }, [newToolName, syncBreakpoints]);
+    
+    setIsSaving(true);
+    try {
+      const result = await window.vyotiq?.debug?.setBreakpoint?.(sessionId, {
+        type: 'tool',
+        enabled: true,
+        toolName: newToolName.trim(),
+      });
+      
+      if (result?.success && result.breakpoint) {
+        setBreakpoints(prev => [...prev, result.breakpoint as Breakpoint]);
+        setNewToolName('');
+      }
+    } catch (error) {
+      console.error('Failed to add tool breakpoint:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [sessionId, newToolName]);
 
-  const addErrorBreakpoint = useCallback(() => {
+  const addErrorBreakpoint = useCallback(async () => {
     const hasErrorBp = breakpoints.some(bp => bp.type === 'error');
     if (hasErrorBp) return;
-    setBreakpoints(prev => {
-      const updated = [
-        ...prev,
-        { id: `bp-${Date.now()}`, type: 'error' as const, enabled: true },
-      ];
-      syncBreakpoints(updated);
-      return updated;
-    });
-  }, [breakpoints, syncBreakpoints]);
+    
+    setIsSaving(true);
+    try {
+      const result = await window.vyotiq?.debug?.setBreakpoint?.(sessionId, {
+        type: 'error',
+        enabled: true,
+      });
+      
+      if (result?.success && result.breakpoint) {
+        setBreakpoints(prev => [...prev, result.breakpoint as Breakpoint]);
+      }
+    } catch (error) {
+      console.error('Failed to add error breakpoint:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [sessionId, breakpoints]);
 
   const getBreakpointIcon = (bp: Breakpoint) => {
     switch (bp.type) {
@@ -97,6 +126,14 @@ export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
         return <Pause size={12} className="text-[var(--color-accent-primary)]" />;
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center text-[var(--color-text-dim)]">
+        <Loader2 size={16} className="animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent">
@@ -119,15 +156,15 @@ export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
             />
             <button
               onClick={addToolBreakpoint}
-              disabled={!newToolName.trim()}
+              disabled={!newToolName.trim() || isSaving}
               className={cn(
                 'px-2 py-1 rounded text-[10px] font-mono transition-colors',
-                newToolName.trim()
+                newToolName.trim() && !isSaving
                   ? 'bg-[var(--color-accent-primary)] text-white hover:bg-[var(--color-accent-primary)]/80'
                   : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)] cursor-not-allowed'
               )}
             >
-              <Plus size={12} />
+              {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
             </button>
           </div>
 

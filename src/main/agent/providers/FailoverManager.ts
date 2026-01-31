@@ -53,11 +53,11 @@ export interface ProviderPreference {
  * Default failover chain by capability
  */
 export const DEFAULT_FAILOVER_CHAINS: Record<string, LLMProviderName[]> = {
-  default: ['anthropic', 'openai', 'gemini', 'deepseek', 'glm', 'openrouter'],
-  coding: ['anthropic', 'openai', 'deepseek', 'gemini', 'glm', 'openrouter'],
-  reasoning: ['openai', 'anthropic', 'deepseek', 'gemini', 'glm', 'openrouter'],
-  fast: ['gemini', 'deepseek', 'openai', 'anthropic', 'glm', 'openrouter'],
-  cheap: ['deepseek', 'glm', 'gemini', 'openrouter', 'openai', 'anthropic'],
+  default: ['anthropic', 'openai', 'gemini', 'deepseek', 'xai', 'mistral', 'glm', 'openrouter'],
+  coding: ['anthropic', 'openai', 'deepseek', 'gemini', 'xai', 'mistral', 'glm', 'openrouter'],
+  reasoning: ['openai', 'anthropic', 'deepseek', 'xai', 'gemini', 'mistral', 'glm', 'openrouter'],
+  fast: ['gemini', 'deepseek', 'xai', 'mistral', 'openai', 'anthropic', 'glm', 'openrouter'],
+  cheap: ['deepseek', 'glm', 'mistral', 'gemini', 'xai', 'openrouter', 'openai', 'anthropic'],
 };
 
 // =============================================================================
@@ -114,8 +114,8 @@ export class FailoverManager {
 
     this.failoverChains = { ...DEFAULT_FAILOVER_CHAINS };
 
-    // Initialize circuit breakers
-    const providers: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'glm', 'openrouter'];
+    // Initialize circuit breakers for all providers
+    const providers: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'glm', 'openrouter', 'xai', 'mistral'];
     for (const provider of providers) {
       this.resetCircuitBreaker(provider);
     }

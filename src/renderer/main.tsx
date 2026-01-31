@@ -9,12 +9,18 @@ import { EditorProvider } from './state/EditorProvider';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { ThemeProvider } from './utils/themeMode.tsx';
 import { ensureMonacoEnvironment } from './features/editor/utils/monacoEnvironment';
+import { applyAppearanceSettings } from './hooks/useAppearanceSettings';
+import { DEFAULT_APPEARANCE_SETTINGS } from '../shared/types';
 import '../index.css';
 // KaTeX CSS for math rendering
 import 'katex/dist/katex.min.css';
 
 // Initialize Monaco environment before any editors are created
 ensureMonacoEnvironment();
+
+// Apply default appearance settings immediately (before React renders)
+// This ensures animations are enabled from the start, avoiding flicker
+applyAppearanceSettings(DEFAULT_APPEARANCE_SETTINGS);
 
 // Handle unhandled promise rejections from Monaco editor
 // Monaco throws "Canceled" errors when disposed while async operations are pending

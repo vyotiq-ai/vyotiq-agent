@@ -63,6 +63,12 @@ interface DiagnosticsCache {
   timestamp: number;
 }
 
+interface ReconnectionState {
+  attempts: number;
+  lastAttempt: number;
+  nextDelay: number;
+}
+
 // =============================================================================
 // LSPManager
 // =============================================================================
@@ -81,6 +87,14 @@ export class LSPManager extends EventEmitter {
   
   // Track permanently disabled servers to avoid repeated attempts
   private permanentlyDisabledServers = new Set<SupportedLanguage>();
+
+  // Auto-reconnection state
+  private reconnectionState = new Map<SupportedLanguage, ReconnectionState>();
+  private reconnectionTimers = new Map<SupportedLanguage, NodeJS.Timeout>();
+  private static readonly RECONNECT_INITIAL_DELAY_MS = 1000; // 1 second
+  private static readonly RECONNECT_MAX_DELAY_MS = 60000; // 1 minute max
+  private static readonly RECONNECT_MAX_ATTEMPTS = 5;
+  private static readonly RECONNECT_BACKOFF_MULTIPLIER = 2;
 
   constructor(logger: Logger, config: Partial<LSPManagerConfig> = {}) {
     super();
@@ -111,6 +125,13 @@ export class LSPManager extends EventEmitter {
    * Shutdown all language servers
    */
   async shutdown(): Promise<void> {
+    // Clear all reconnection timers first
+    for (const [language, timer] of this.reconnectionTimers) {
+      clearTimeout(timer);
+    }
+    this.reconnectionTimers.clear();
+    this.reconnectionState.clear();
+
     const stopPromises = Array.from(this.clients.values()).map(client => client.stop());
     await Promise.allSettled(stopPromises);
     
@@ -216,6 +237,11 @@ export class LSPManager extends EventEmitter {
 
       client.on('state-change', (state) => {
         this.emit('server-state-change', { language, state });
+        
+        // Handle unexpected server crash - trigger reconnection
+        if (state === 'stopped' && this.clients.has(language)) {
+          this.handleServerCrash(language);
+        }
       });
 
       client.on('error', (error) => {
@@ -262,12 +288,117 @@ export class LSPManager extends EventEmitter {
    * Stop a language server
    */
   async stopServer(language: SupportedLanguage): Promise<void> {
+    // Cancel any pending reconnection for this language
+    const timer = this.reconnectionTimers.get(language);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectionTimers.delete(language);
+    }
+    this.reconnectionState.delete(language);
+
     const client = this.clients.get(language);
     if (client) {
       await client.stop();
       this.clients.delete(language);
       this.logger.info(`Stopped ${language} language server`);
     }
+  }
+
+  /**
+   * Handle a server crash and attempt auto-reconnection with exponential backoff
+   */
+  private handleServerCrash(language: SupportedLanguage): void {
+    // Don't reconnect if server is permanently disabled or we're shutting down
+    if (this.permanentlyDisabledServers.has(language) || !this.workspacePath) {
+      return;
+    }
+
+    // Remove the crashed client from our map
+    this.clients.delete(language);
+
+    // Get or create reconnection state
+    let state = this.reconnectionState.get(language);
+    if (!state) {
+      state = {
+        attempts: 0,
+        lastAttempt: 0,
+        nextDelay: LSPManager.RECONNECT_INITIAL_DELAY_MS,
+      };
+      this.reconnectionState.set(language, state);
+    }
+
+    // Check if we've exceeded max attempts
+    if (state.attempts >= LSPManager.RECONNECT_MAX_ATTEMPTS) {
+      this.logger.warn(`LSP server ${language} exceeded max reconnection attempts, giving up`, {
+        attempts: state.attempts,
+        maxAttempts: LSPManager.RECONNECT_MAX_ATTEMPTS,
+      });
+      // Mark as failed but not permanently disabled - user can manually restart
+      this.failedClients.set(language, Date.now());
+      this.reconnectionState.delete(language);
+      this.emit('server-reconnection-failed', { language, attempts: state.attempts });
+      return;
+    }
+
+    // Schedule reconnection with exponential backoff
+    const delay = state.nextDelay;
+    state.attempts++;
+    state.nextDelay = Math.min(
+      state.nextDelay * LSPManager.RECONNECT_BACKOFF_MULTIPLIER,
+      LSPManager.RECONNECT_MAX_DELAY_MS
+    );
+
+    this.logger.info(`LSP server ${language} crashed, scheduling reconnection`, {
+      attempt: state.attempts,
+      maxAttempts: LSPManager.RECONNECT_MAX_ATTEMPTS,
+      delayMs: delay,
+    });
+
+    this.emit('server-reconnecting', { language, attempt: state.attempts, delayMs: delay });
+
+    // Clear any existing timer
+    const existingTimer = this.reconnectionTimers.get(language);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    // Schedule reconnection
+    const timer = setTimeout(async () => {
+      this.reconnectionTimers.delete(language);
+      
+      try {
+        const started = await this.startServer(language);
+        if (started) {
+          this.logger.info(`LSP server ${language} reconnected successfully`, {
+            attempts: state!.attempts,
+          });
+          this.reconnectionState.delete(language);
+          this.emit('server-reconnected', { language, attempts: state!.attempts });
+        }
+        // If not started, handleServerCrash will be called again via state-change event
+      } catch (error) {
+        this.logger.error(`LSP server ${language} reconnection failed`, {
+          error: error instanceof Error ? error.message : String(error),
+          attempt: state!.attempts,
+        });
+        // Let the state-change handler retry
+      }
+    }, delay);
+
+    this.reconnectionTimers.set(language, timer);
+  }
+
+  /**
+   * Reset reconnection state for a language (call after successful manual restart)
+   */
+  resetReconnectionState(language: SupportedLanguage): void {
+    this.reconnectionState.delete(language);
+    const timer = this.reconnectionTimers.get(language);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectionTimers.delete(language);
+    }
+    this.failedClients.delete(language);
   }
 
   /**
@@ -590,6 +721,50 @@ export class LSPManager extends EventEmitter {
       },
       newText: edit.newText,
     }));
+  }
+
+  /**
+   * Prepare for rename - validates if rename is possible at position
+   */
+  async prepareRename(
+    filePath: string,
+    line: number,
+    column: number
+  ): Promise<{ range: { startLine: number; startColumn: number; endLine: number; endColumn: number }; placeholder?: string } | null> {
+    const client = await this.ensureServerForFile(filePath);
+    if (!client) return null;
+
+    const uri = pathToFileURL(filePath).href;
+    const position: Position = { line: line - 1, character: column - 1 };
+
+    const result = await client.prepareRename(uri, position);
+    if (!result) return null;
+
+    // Handle different response formats
+    if ('range' in result) {
+      const range = result.range;
+      return {
+        range: {
+          startLine: range.start.line + 1,
+          startColumn: range.start.character + 1,
+          endLine: range.end.line + 1,
+          endColumn: range.end.character + 1,
+        },
+        placeholder: 'placeholder' in result ? result.placeholder : undefined,
+      };
+    } else if ('start' in result && 'end' in result) {
+      // Range directly
+      return {
+        range: {
+          startLine: result.start.line + 1,
+          startColumn: result.start.character + 1,
+          endLine: result.end.line + 1,
+          endColumn: result.end.character + 1,
+        },
+      };
+    }
+
+    return null;
   }
 
   /**

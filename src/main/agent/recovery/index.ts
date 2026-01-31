@@ -22,6 +22,29 @@ export {
   type ErrorPatternCategory,
   type SessionErrorRecord,
 } from './ErrorRecoveryManager';
+export {
+  DeadLetterQueue,
+  getDeadLetterQueue,
+  initDeadLetterQueue,
+  closeDeadLetterQueue,
+  type DeadLetterEntry,
+  type DeadLetterQueueConfig,
+  type DeadLetterQueueStats,
+  type OperationType,
+  type FailureReason,
+} from './DeadLetterQueue';
+export {
+  CrashRecoveryJournal,
+  getCrashRecoveryJournal,
+  initCrashRecoveryJournal,
+  closeCrashRecoveryJournal,
+  type JournalEntry,
+  type JournalOperationType,
+  type JournalStatus,
+  type RecoveryCheckpoint,
+  type CrashRecoveryJournalConfig,
+  type JournalStats,
+} from './CrashRecoveryJournal';
 
 // Export strategies
 export {

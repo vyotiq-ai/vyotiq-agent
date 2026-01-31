@@ -396,22 +396,220 @@ export function parseToolArguments(
     return heuristicResult;
   }
   
+  // Analyze the error for better feedback
+  const errorAnalysis = analyzeJsonParseError(argsJson, toolName);
+  
   logger.error('Failed to parse tool arguments after all recovery attempts', {
     tool: toolName,
     argsLength: argsJson.length,
     error: result.error,
+    analysis: errorAnalysis.issue,
     preview: argsJson.length > 300 
       ? `${argsJson.slice(0, 150)}...${argsJson.slice(-150)}`
       : argsJson,
   });
   
-  // Return a minimal object with error info so the tool can provide feedback
+  // Return a structured object with detailed error info so the tool can provide feedback
   // This helps the LLM understand what went wrong and retry with correct format
   return {
     _parseError: true,
-    _errorMessage: `Failed to parse arguments for tool "${toolName}". The JSON was malformed. Please ensure arguments are valid JSON.`,
-    _rawPreview: argsJson.slice(0, 100),
+    _errorType: errorAnalysis.errorType,
+    _errorMessage: errorAnalysis.message,
+    _suggestion: errorAnalysis.suggestion,
+    _rawPreview: argsJson.slice(0, 150),
+    _position: errorAnalysis.position,
   };
+}
+
+/**
+ * Detailed JSON parse error analysis
+ * Provides actionable feedback to help LLMs correct their output
+ */
+interface JsonErrorAnalysis {
+  errorType: 'malformed' | 'incomplete' | 'concatenated' | 'encoding' | 'empty' | 'invalid_type';
+  issue: string;
+  message: string;
+  suggestion: string;
+  position?: { line: number; column: number; char?: string };
+}
+
+/**
+ * Analyze a JSON parse error to provide detailed, actionable feedback
+ */
+function analyzeJsonParseError(input: string, toolName: string): JsonErrorAnalysis {
+  const trimmed = input.trim();
+  
+  // Empty or whitespace-only
+  if (!trimmed) {
+    return {
+      errorType: 'empty',
+      issue: 'Empty or whitespace-only input',
+      message: `Tool "${toolName}" received empty arguments. Please provide the required parameters.`,
+      suggestion: 'Ensure all required parameters are included in your tool call.',
+    };
+  }
+  
+  // Check for concatenated JSON (multiple objects)
+  const concatenatedMatch = trimmed.match(/}\s*{/);
+  if (concatenatedMatch) {
+    return {
+      errorType: 'concatenated',
+      issue: 'Multiple JSON objects concatenated',
+      message: `Tool "${toolName}" received concatenated JSON objects. Only one JSON object should be provided.`,
+      suggestion: 'Provide a single JSON object with all parameters instead of multiple separate objects.',
+      position: findPosition(input, concatenatedMatch.index ?? 0),
+    };
+  }
+  
+  // Check for unclosed strings
+  const quoteCount = (trimmed.match(/(?<!\\)"/g) || []).length;
+  if (quoteCount % 2 !== 0) {
+    return {
+      errorType: 'incomplete',
+      issue: 'Unclosed string literal',
+      message: `Tool "${toolName}" has an unclosed string. Check for missing closing quotes.`,
+      suggestion: 'Ensure all string values have matching opening and closing double quotes.',
+      position: findLastQuotePosition(input),
+    };
+  }
+  
+  // Check for unclosed brackets/braces
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let inString = false;
+  let escaped = false;
+  let lastBrace = -1;
+  let lastBracket = -1;
+  
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    if (escaped) { escaped = false; continue; }
+    if (char === '\\') { escaped = true; continue; }
+    if (char === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (char === '{') { braceDepth++; lastBrace = i; }
+    if (char === '}') { braceDepth--; }
+    if (char === '[') { bracketDepth++; lastBracket = i; }
+    if (char === ']') { bracketDepth--; }
+  }
+  
+  if (braceDepth > 0) {
+    return {
+      errorType: 'incomplete',
+      issue: `${braceDepth} unclosed brace(s)`,
+      message: `Tool "${toolName}" has ${braceDepth} unclosed brace(s). Ensure all { have matching }.`,
+      suggestion: 'Check that every opening brace { has a corresponding closing brace }.',
+      position: findPosition(input, lastBrace),
+    };
+  }
+  
+  if (braceDepth < 0) {
+    return {
+      errorType: 'malformed',
+      issue: 'Extra closing brace(s)',
+      message: `Tool "${toolName}" has extra closing brace(s). Remove unmatched } characters.`,
+      suggestion: 'Remove extra closing braces that do not have matching opening braces.',
+    };
+  }
+  
+  if (bracketDepth > 0) {
+    return {
+      errorType: 'incomplete',
+      issue: `${bracketDepth} unclosed bracket(s)`,
+      message: `Tool "${toolName}" has ${bracketDepth} unclosed bracket(s). Ensure all [ have matching ].`,
+      suggestion: 'Check that every opening bracket [ has a corresponding closing bracket ].',
+      position: findPosition(input, lastBracket),
+    };
+  }
+  
+  // Check for trailing commas
+  if (/,\s*[}\]]/.test(trimmed)) {
+    return {
+      errorType: 'malformed',
+      issue: 'Trailing comma before closing bracket/brace',
+      message: `Tool "${toolName}" has a trailing comma. Remove the comma before } or ].`,
+      suggestion: 'Remove the comma before the closing } or ] character.',
+    };
+  }
+  
+  // Check for unquoted keys
+  const unquotedKeyMatch = trimmed.match(/{\s*([a-zA-Z_]\w*)\s*:/);
+  if (unquotedKeyMatch && !trimmed.includes(`"${unquotedKeyMatch[1]}"`)) {
+    return {
+      errorType: 'malformed',
+      issue: 'Unquoted object key',
+      message: `Tool "${toolName}" has an unquoted key "${unquotedKeyMatch[1]}". JSON keys must be quoted.`,
+      suggestion: `Wrap the key in double quotes: "${unquotedKeyMatch[1]}"`,
+    };
+  }
+  
+  // Check for single quotes (common mistake)
+  if (/'/.test(trimmed) && !/"/.test(trimmed.slice(0, 10))) {
+    return {
+      errorType: 'malformed',
+      issue: 'Single quotes used instead of double quotes',
+      message: `Tool "${toolName}" uses single quotes. JSON requires double quotes for strings.`,
+      suggestion: 'Use double quotes (") instead of single quotes (\') for all strings and keys.',
+    };
+  }
+  
+  // Check for encoding issues
+  if (/[\uFEFF\u200B\u200C\u200D\u2060]/.test(trimmed)) {
+    return {
+      errorType: 'encoding',
+      issue: 'Invisible/zero-width characters detected',
+      message: `Tool "${toolName}" contains invisible characters that break JSON parsing.`,
+      suggestion: 'Remove any invisible or zero-width characters from the JSON.',
+    };
+  }
+  
+  // Generic fallback
+  return {
+    errorType: 'malformed',
+    issue: 'Invalid JSON syntax',
+    message: `Tool "${toolName}" received malformed JSON that could not be parsed.`,
+    suggestion: 'Ensure the arguments follow valid JSON syntax: {"key": "value", "number": 123, "bool": true}',
+  };
+}
+
+/**
+ * Find line and column position for an index in the input string
+ */
+function findPosition(input: string, index: number): { line: number; column: number; char?: string } {
+  let line = 1;
+  let column = 1;
+  for (let i = 0; i < index && i < input.length; i++) {
+    if (input[i] === '\n') {
+      line++;
+      column = 1;
+    } else {
+      column++;
+    }
+  }
+  return { line, column, char: input[index] };
+}
+
+/**
+ * Find the position of the last unmatched quote
+ */
+function findLastQuotePosition(input: string): { line: number; column: number; char?: string } | undefined {
+  let lastQuotePos = -1;
+  let inString = false;
+  let escaped = false;
+  
+  for (let i = 0; i < input.length; i++) {
+    if (escaped) { escaped = false; continue; }
+    if (input[i] === '\\') { escaped = true; continue; }
+    if (input[i] === '"') {
+      inString = !inString;
+      lastQuotePos = i;
+    }
+  }
+  
+  if (inString && lastQuotePos >= 0) {
+    return findPosition(input, lastQuotePos);
+  }
+  return undefined;
 }
 
 /**

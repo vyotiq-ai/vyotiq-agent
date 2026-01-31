@@ -5,28 +5,10 @@
  * Consolidates functionality previously scattered across multiple files.
  */
 
-import type { ToolCallPayload, ToolExecutionResult } from '../types';
+import type { ToolCallPayload, ToolExecutionResult, ToolCategory } from '../types';
 
-// =============================================================================
-// Tool Categorization
-// =============================================================================
-
-/**
- * Comprehensive tool categories that cover all tool types in the system.
- * This type should be kept in sync with main/tools/types/toolTypes.ts
- */
-export type ToolCategory = 
-  | 'file-read'           // Reading files
-  | 'file-write'          // Creating/modifying files
-  | 'file-search'         // Finding/searching files
-  | 'terminal'            // Running commands
-  | 'media'               // Video, audio, media operations
-  | 'communication'       // Email, messaging
-  | 'system'              // System operations
-  | 'code-intelligence'   // Symbols, definitions, references, diagnostics
-  | 'browser-read'        // Browser read-only operations (fetch, extract, console)
-  | 'browser-write'       // Browser state-changing operations (click, type, navigate)
-  | 'other';              // Uncategorized
+// Re-export ToolCategory for convenience
+export type { ToolCategory } from '../types';
 
 export type ToolAction = 'create' | 'edit' | 'delete' | 'rename' | 'read' | 'run' | 'check' | 'kill' | 'search' | 'media' | 'communicate';
 

@@ -24,15 +24,34 @@ import { registerEditorAiHandlers } from './editorAiHandlers';
 import { registerClaudeHandlers } from './claudeHandlers';
 import { registerTerminalHandlers, cleanupTerminalSessions } from './terminalHandlers';
 import { registerGLMHandlers } from './glmHandlers';
+import { registerProviderHandlers } from './providerHandlers';
 import { registerCacheHandlers } from './cacheHandlers';
 import { registerSemanticHandlers } from './semanticHandlers';
-import { registerMCPHandlers, cleanupMCPHandlers } from './mcpHandlers';
+import { registerMCPHandlers } from './mcpHandlers';
 
 // Re-export types
 export type { IpcContext } from './types';
 
 // Re-export cleanup functions
-export { cleanupTerminalSessions, cleanupMCPHandlers };
+export { cleanupTerminalSessions };
+
+// Re-export guards and utilities
+export {
+  withOrchestratorGuard,
+  withErrorGuard,
+  withSafeHandler,
+  withTimeout,
+  withTimeoutFallback,
+  validateRequired,
+  validateNonEmptyString,
+  validatePositiveNumber,
+  validateSession,
+  Mutex,
+  sessionCreationMutex,
+  IpcErrorCodes,
+  type IpcResult,
+  type IpcErrorCode,
+} from './guards';
 
 /**
  * Register all IPC handlers using the modular handler system
@@ -68,6 +87,7 @@ export function registerAllHandlers(
   registerClaudeHandlers(context);
   registerTerminalHandlers(context);
   registerGLMHandlers(context);
+  registerProviderHandlers(context);
   registerCacheHandlers(context);
   registerSemanticHandlers(context);
   registerMCPHandlers(context);
@@ -87,6 +107,7 @@ export {
   registerClaudeHandlers,
   registerTerminalHandlers,
   registerGLMHandlers,
+  registerProviderHandlers,
   registerCacheHandlers,
   registerSemanticHandlers,
   registerMCPHandlers,

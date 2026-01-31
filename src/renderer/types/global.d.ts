@@ -333,6 +333,61 @@ declare global {
           exportOnError: boolean;
           exportFormat: 'json' | 'markdown';
         } | null>;
+        // Breakpoint management
+        setBreakpoint: (sessionId: string, breakpoint: {
+          type: 'tool' | 'error' | 'condition';
+          enabled: boolean;
+          toolName?: string;
+          condition?: string;
+        }) => Promise<{ success: boolean; breakpoint?: { id: string; type: string; enabled: boolean; toolName?: string; condition?: string }; error?: string }>;
+        getBreakpoints: (sessionId: string) => Promise<Array<{
+          id: string;
+          type: 'tool' | 'error' | 'condition';
+          enabled: boolean;
+          toolName?: string;
+          condition?: string;
+        }>>;
+        removeBreakpoint: (breakpointId: string) => Promise<{ success: boolean; error?: string }>;
+        toggleBreakpoint: (breakpointId: string) => Promise<{ success: boolean; enabled?: boolean; error?: string }>;
+        clearBreakpoints: () => Promise<{ success: boolean; error?: string }>;
+        // State inspection
+        getSessionState: (sessionId: string) => Promise<{
+          context: {
+            maxTokens: number;
+            usedTokens: number;
+            utilization: string;
+            messageCount: number;
+            systemPromptTokens: number;
+            toolResultTokens: number;
+          };
+          messages: {
+            pending: number;
+            processing: number;
+            completed: number;
+            lastMessageAt: number | null;
+          };
+          tools: {
+            totalCalls: number;
+            successRate: string;
+            avgDuration: string;
+            mostUsed: string;
+            lastTool: string | null;
+          };
+          resources: {
+            memoryMb: number;
+            cpuPercent: number;
+            activeConnections: number;
+            cacheHitRate: string;
+            pendingRequests: number;
+          };
+        } | null>;
+        takeStateSnapshot: (sessionId: string) => Promise<{ success: boolean; snapshotId?: string; error?: string }>;
+        getStateSnapshots: (sessionId: string) => Promise<Array<{
+          id: string;
+          agentId: string;
+          timestamp: number;
+          trigger: 'manual' | 'breakpoint' | 'periodic' | 'error';
+        }>>;
       };
       files: {
         select: () => Promise<AttachmentPayload[]>;
@@ -1955,93 +2010,82 @@ declare global {
        */
       mcp: {
         // Settings
-        getSettings: () => Promise<{
-          enabled: boolean;
-          servers: Array<{
-            id: string;
-            name: string;
-            description?: string;
-            transport: { type: 'stdio'; command: string; args?: string[]; cwd?: string; env?: Record<string, string> } | { type: 'http'; url: string; headers?: Record<string, string> };
-            enabled: boolean;
-            autoConnect: boolean;
-            timeout?: number;
-            maxReconnectAttempts?: number;
-            icon?: string;
-            tags?: string[];
-            createdAt: number;
-            updatedAt: number;
-          }>;
-          defaultTimeout: number;
-          autoReconnect: boolean;
-          requireToolConfirmation: boolean;
-          includeInAgentContext: boolean;
-          maxConcurrentConnections: number;
-        } | null>;
-        updateSettings: (updates: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+        getSettings: () => Promise<import('../../shared/types/mcp').MCPSettings>;
+        updateSettings: (settings: Partial<import('../../shared/types/mcp').MCPSettings>) => Promise<import('../../shared/types/mcp').MCPSettings>;
 
-        // Server Management
-        getServers: () => Promise<Array<{
-          id: string;
-          name: string;
-          description?: string;
-          transport: { type: 'stdio'; command: string; args?: string[] } | { type: 'http'; url: string };
-          enabled: boolean;
-          autoConnect: boolean;
-        }>>;
-        getServerStates: () => Promise<Array<{
-          id: string;
-          config: { id: string; name: string };
-          status: 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting';
-          error?: string;
-          serverInfo?: { name: string; version: string };
-          capabilities?: Record<string, unknown>;
-          tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>;
-          resources: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
-          prompts: Array<{ name: string; description?: string; arguments?: Array<{ name: string; description?: string; required?: boolean }> }>;
-        }>>;
-        addServer: (request: Record<string, unknown>) => Promise<{ success: boolean; server?: { id: string; name: string }; error?: string }>;
-        updateServer: (request: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
-        removeServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+        // Server Configuration
+        getServers: () => Promise<import('../../shared/types/mcp').MCPServerConfig[]>;
+        getServerStates: () => Promise<import('../../shared/types/mcp').MCPServerState[]>;
+        getServerSummaries: () => Promise<import('../../shared/types/mcp').MCPServerSummary[]>;
+        getServer: (serverId: string) => Promise<import('../../shared/types/mcp').MCPServerConfig | null>;
+        getServerState: (serverId: string) => Promise<import('../../shared/types/mcp').MCPServerState | null>;
+        registerServer: (config: import('../../shared/types/mcp').MCPServerConfig) => Promise<{ success: boolean; error?: string }>;
+        updateServer: (config: import('../../shared/types/mcp').MCPServerConfig) => Promise<{ success: boolean; error?: string }>;
+        unregisterServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
 
         // Connection Management
         connectServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
         disconnectServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+        restartServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+        enableServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+        disableServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+        connectAll: () => Promise<{ success: boolean; error?: string }>;
+        disconnectAll: () => Promise<{ success: boolean; error?: string }>;
 
         // Tools
-        getAllTools: () => Promise<Array<{ name: string; description?: string; inputSchema?: Record<string, unknown>; serverId: string; serverName: string }>>;
-        callTool: (serverId: string, toolName: string, args: Record<string, unknown>) => Promise<{ success: boolean; result?: unknown; error?: string }>;
+        getAllTools: () => Promise<import('../../shared/types/mcp').MCPToolWithContext[]>;
+        getServerTools: (serverId: string) => Promise<import('../../shared/types/mcp').MCPToolDefinition[]>;
+        findTool: (toolName: string) => Promise<import('../../shared/types/mcp').MCPToolWithContext | null>;
+        callTool: (request: {
+          serverId: string;
+          toolName: string;
+          arguments: Record<string, unknown>;
+          timeoutMs?: number;
+        }) => Promise<import('../../shared/types/mcp').MCPToolCallResult>;
+        clearCache: () => Promise<{ success: boolean; error?: string }>;
 
         // Resources
-        getAllResources: () => Promise<Array<{ uri: string; name: string; description?: string; mimeType?: string; serverId: string; serverName: string }>>;
-        readResource: (serverId: string, uri: string) => Promise<{ success: boolean; content?: unknown; error?: string }>;
+        getAllResources: () => Promise<import('../../shared/types/mcp').MCPResourceDefinition[]>;
+        readResource: (serverId: string, uri: string) => Promise<unknown>;
 
         // Prompts
-        getAllPrompts: () => Promise<Array<{ name: string; description?: string; arguments?: Array<{ name: string; description?: string; required?: boolean }>; serverId: string; serverName: string }>>;
-        getPrompt: (serverId: string, name: string, args?: Record<string, unknown>) => Promise<{ success: boolean; result?: unknown; error?: string }>;
+        getAllPrompts: () => Promise<import('../../shared/types/mcp').MCPPromptDefinition[]>;
+        getPrompt: (serverId: string, promptName: string, args?: Record<string, string>) => Promise<unknown>;
 
-        // Discovery
-        discoverServers: (options?: Record<string, unknown>) => Promise<{ success: boolean; candidates?: Array<{ name: string; description?: string; source: string; transport: Record<string, unknown> }>; error?: string }>;
-        getDiscoveryCache: () => Promise<{ success: boolean; candidates?: Array<{ name: string; description?: string; source: string; transport: Record<string, unknown> }>; error?: string }>;
-        clearDiscoveryCache: () => Promise<{ success: boolean; error?: string }>;
-        addDiscoveredServer: (candidate: Record<string, unknown>) => Promise<{ success: boolean; server?: { id: string; name: string }; error?: string }>;
+        // Store
+        storeSearch: (filters: import('../../shared/types/mcp').MCPStoreFilters) => Promise<import('../../shared/types/mcp').MCPStoreSearchResult>;
+        storeGetFeatured: () => Promise<import('../../shared/types/mcp').MCPStoreListing[]>;
+        storeGetCategories: () => Promise<{ category: string; count: number }[]>;
+        storeGetDetails: (id: string) => Promise<import('../../shared/types/mcp').MCPStoreListing | null>;
+        storeRefresh: () => Promise<{ success: boolean; error?: string }>;
+        storeIsInstalled: (listingId: string) => Promise<boolean>;
 
-        // Health Monitoring
-        getHealthMetrics: () => Promise<{ success: boolean; metrics?: Array<{ serverId: string; serverName: string; status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown'; avgLatency: number; errorRate: number }>; error?: string }>;
-        getServerHealth: (serverId: string) => Promise<{ success: boolean; metrics?: { serverId: string; status: string; avgLatency: number }; error?: string }>;
-        updateHealthConfig: (config: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
-        triggerRecovery: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+        // Registry Management (Dynamic Sources)
+        registryGetStats: () => Promise<{
+          sources: Record<string, { count: number; age: number; fresh: boolean }>;
+          total: number;
+          lastFullRefresh: number;
+        }>;
+        registryGetSources: () => Promise<string[]>;
+        registrySetSourceEnabled: (
+          source: 'smithery' | 'npm' | 'pypi' | 'github' | 'glama',
+          enabled: boolean
+        ) => Promise<{ success: boolean; error?: string }>;
 
-        // Context Integration
-        getToolSuggestions: (context: Record<string, unknown>, limit?: number) => Promise<{ success: boolean; suggestions?: Array<{ tool: { name: string; serverId: string }; relevanceScore: number; reason: string }>; error?: string }>;
-        getResourceSuggestions: (context: Record<string, unknown>, limit?: number) => Promise<{ success: boolean; suggestions?: Array<{ resource: { uri: string; serverId: string }; relevanceScore: number; reason: string }>; error?: string }>;
-        getPromptSuggestions: (context: Record<string, unknown>, limit?: number) => Promise<{ success: boolean; suggestions?: Array<{ prompt: { name: string; serverId: string }; relevanceScore: number; reason: string }>; error?: string }>;
-        enrichContext: (context: Record<string, unknown>) => Promise<{ success: boolean; enrichedContext?: Record<string, unknown>; error?: string }>;
+        // Installation
+        installServer: (request: import('../../shared/types/mcp').MCPInstallRequest) => Promise<import('../../shared/types/mcp').MCPInstallResult>;
+        installFromStore: (
+          listingId: string,
+          options?: { env?: Record<string, string>; autoStart?: boolean }
+        ) => Promise<import('../../shared/types/mcp').MCPInstallResult>;
+        uninstallServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
 
         // Events
-        onEvent: (handler: (event: {
-          type: 'mcp-state' | 'mcp-server-connected' | 'mcp-server-disconnected' | 'mcp-server-error' | 'mcp-tools-changed' | 'mcp-settings-ready' | 'mcp-health-changed' | 'mcp-server-degraded' | 'mcp-server-unhealthy' | 'mcp-server-recovered' | 'mcp-recovery-attempt' | 'mcp-recovery-failed';
-          [key: string]: unknown;
-        }) => void) => () => void;
+        onServerStatusChanged: (
+          handler: (event: { serverId: string; status: string; error?: string }) => void
+        ) => () => void;
+        onToolsUpdated: (handler: (event: { tools: import('../../shared/types/mcp').MCPToolWithContext[] }) => void) => () => void;
+        onEvent: (handler: (event: Record<string, unknown>) => void) => () => void;
       };
     };
   }

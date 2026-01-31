@@ -267,6 +267,7 @@ browser_console(level: "errors") → check for JS errors
   requiresApproval: false,
   category: 'browser-read',
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   schema: {
     type: 'object',

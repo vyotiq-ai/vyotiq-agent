@@ -1,632 +1,698 @@
 /**
  * MCP IPC Handlers
- * 
- * IPC handlers for MCP server management and operations.
- * Provides the bridge between renderer and main process for MCP functionality.
+ *
+ * Handles all MCP-related IPC operations including:
+ * - Server management (list, connect, disconnect, restart)
+ * - Tool discovery and execution
+ * - Store browsing and installation
+ * - Settings management
  */
 
 import { ipcMain } from 'electron';
+import { createLogger } from '../logger';
+import {
+  getMCPStore,
+  initializeMCPServerManager,
+} from '../mcp';
 import type { IpcContext } from './types';
 import type {
   MCPServerConfig,
-  MCPServerState,
   MCPSettings,
-  MCPTool,
-  MCPPrompt,
-  MCPResource,
-  MCPToolResult,
-  MCPResourceContent,
-  MCPPromptResult,
-  MCPAddServerRequest,
-  MCPUpdateServerRequest,
+  MCPStoreFilters,
+  MCPInstallRequest,
+  MCPToolCallRequest,
 } from '../../shared/types/mcp';
-import { 
-  getMCPManager, 
-  initMCPManager, 
-  shutdownMCPManager, 
-  MCPManager,
-  getMCPServerDiscovery,
-  getMCPHealthMonitor,
-  initMCPHealthMonitor,
-  shutdownMCPHealthMonitor,
-  getMCPContextIntegration,
-} from '../agent/mcp';
-import type { MCPServerCandidate, DiscoveryOptions } from '../agent/mcp/discovery/MCPServerDiscovery';
-import type { MCPServerHealthMetrics, HealthMonitorConfig } from '../agent/mcp/health/MCPHealthMonitor';
-import type { 
-  MCPToolSuggestion, 
-  MCPResourceSuggestion, 
-  ContextQuery,
-} from '../agent/mcp/context/MCPContextIntegration';
-import { createLogger } from '../logger';
 
-const logger = createLogger('MCPHandlers');
+const logger = createLogger('IPC:MCP');
 
-/**
- * Default MCP settings to return when manager is not initialized
- */
-const DEFAULT_MCP_SETTINGS: MCPSettings = {
-  enabled: true,
-  servers: [],
-  defaultTimeout: 30000,
-  autoReconnect: true,
-  requireToolConfirmation: true,
-  includeInAgentContext: true,
-  maxConcurrentConnections: 10,
-};
-
-/**
- * Register MCP IPC handlers
- */
 export function registerMCPHandlers(context: IpcContext): void {
-  const { getSettingsStore, getMainWindow } = context;
+  const { getSettingsStore, emitToRenderer } = context;
 
-  // Helper to emit MCP events to renderer
-  const emitMCPEvent = (event: Record<string, unknown>) => {
-    const mainWindow = getMainWindow();
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('mcp:event', event);
+  // ==========================================================================
+  // Initialization
+  // ==========================================================================
+
+  // Get or initialize the MCP manager with settings
+  const getMCPManager = () => {
+    const settings = getSettingsStore()?.get()?.mcpSettings;
+    return initializeMCPServerManager(settings || undefined);
+  };
+
+  const getMCPStoreInstance = () => {
+    return getMCPStore(getMCPManager());
+  };
+
+  // Set up event forwarding to renderer
+  const setupEventForwarding = () => {
+    const manager = getMCPManager();
+
+    manager.on('server:status-changed', (serverId, status, error) => {
+      emitToRenderer?.({ type: 'mcp:server-status-changed', serverId, status, error });
+    });
+
+    manager.on('server:tools-changed', (serverId, tools) => {
+      emitToRenderer?.({ type: 'mcp:server-tools-changed', serverId, tools });
+    });
+
+    manager.on('tools:updated', (allTools) => {
+      emitToRenderer?.({ type: 'mcp:tools-updated', tools: allTools });
+    });
+
+    manager.on('event', (event) => {
+      emitToRenderer?.({ type: 'mcp:event', ...event });
+    });
+  };
+
+  // Initialize event forwarding on first access
+  let eventForwardingSetup = false;
+  const ensureEventForwarding = () => {
+    if (!eventForwardingSetup) {
+      setupEventForwarding();
+      eventForwardingSetup = true;
     }
   };
 
-  // =========================================================================
-  // Settings
-  // =========================================================================
+  // ==========================================================================
+  // Settings Management
+  // ==========================================================================
 
-  ipcMain.handle('mcp:get-settings', async (): Promise<MCPSettings> => {
+  ipcMain.handle('mcp:get-settings', () => {
     try {
-      const manager = getMCPManager();
-      // Return default settings if manager is not initialized yet
-      return manager?.getSettings() ?? DEFAULT_MCP_SETTINGS;
+      const settings = getSettingsStore()?.get()?.mcpSettings;
+      return settings || getMCPManager().getSettings();
     } catch (error) {
-      logger.error('Failed to get MCP settings', { error: error instanceof Error ? error.message : String(error) });
-      // Return default settings on error instead of null
-      return DEFAULT_MCP_SETTINGS;
+      logger.error('Failed to get MCP settings', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   });
 
-  ipcMain.handle('mcp:update-settings', async (_event, updates: Partial<MCPSettings>): Promise<{ success: boolean; error?: string }> => {
+  ipcMain.handle('mcp:update-settings', async (_event, settings: Partial<MCPSettings>) => {
     try {
+      logger.info('Updating MCP settings', { settings });
       const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
+      manager.updateSettings(settings);
+
+      // Persist to settings store
+      const currentSettings = getSettingsStore()?.get()?.mcpSettings || manager.getSettings();
+      const newSettings = { ...currentSettings, ...settings };
+      getSettingsStore()?.set({ mcpSettings: newSettings });
+
+      // Update custom registries in store
+      if (settings.customRegistries) {
+        getMCPStoreInstance().setCustomRegistries(settings.customRegistries);
       }
 
-      await manager.updateSettings(updates);
+      return newSettings;
+    } catch (error) {
+      logger.error('Failed to update MCP settings', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  });
+
+  // ==========================================================================
+  // Server Configuration Management
+  // ==========================================================================
+
+  ipcMain.handle('mcp:get-servers', () => {
+    try {
+      ensureEventForwarding();
+      return getMCPManager().getAllServers();
+    } catch (error) {
+      logger.error('Failed to get servers', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  });
+
+  ipcMain.handle('mcp:get-server-states', () => {
+    try {
+      ensureEventForwarding();
+      return getMCPManager().getAllServerStates();
+    } catch (error) {
+      logger.error('Failed to get server states', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  });
+
+  ipcMain.handle('mcp:get-server-summaries', () => {
+    try {
+      ensureEventForwarding();
+      return getMCPManager().getServerSummaries();
+    } catch (error) {
+      logger.error('Failed to get server summaries', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  });
+
+  ipcMain.handle('mcp:get-server', (_event, serverId: string) => {
+    try {
+      return getMCPManager().getServer(serverId);
+    } catch (error) {
+      logger.error('Failed to get server', {
+        serverId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  });
+
+  ipcMain.handle('mcp:get-server-state', (_event, serverId: string) => {
+    try {
+      return getMCPManager().getServerState(serverId);
+    } catch (error) {
+      logger.error('Failed to get server state', {
+        serverId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  });
+
+  ipcMain.handle('mcp:register-server', async (_event, config: MCPServerConfig) => {
+    try {
+      logger.info('Registering MCP server', { serverId: config.id, name: config.name });
+      const manager = getMCPManager();
+      manager.registerServer(config);
+
+      // Persist server config
+      saveServersToSettings();
+
       return { success: true };
     } catch (error) {
-      logger.error('Failed to update MCP settings', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to register server', {
+        config,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  // =========================================================================
-  // Server Management
-  // =========================================================================
-
-  ipcMain.handle('mcp:get-servers', async (): Promise<MCPServerConfig[]> => {
+  ipcMain.handle('mcp:update-server', async (_event, config: MCPServerConfig) => {
     try {
-      const manager = getMCPManager();
-      return manager?.getServers() ?? [];
-    } catch (error) {
-      logger.error('Failed to get MCP servers', { error: error instanceof Error ? error.message : String(error) });
-      return [];
-    }
-  });
+      logger.info('Updating MCP server', { serverId: config.id });
+      getMCPManager().updateServerConfig(config);
 
-  ipcMain.handle('mcp:get-server-states', async (): Promise<MCPServerState[]> => {
-    try {
-      const manager = getMCPManager();
-      return manager?.getServerStates() ?? [];
-    } catch (error) {
-      logger.error('Failed to get server states', { error: error instanceof Error ? error.message : String(error) });
-      return [];
-    }
-  });
+      // Persist server config
+      saveServersToSettings();
 
-  ipcMain.handle('mcp:add-server', async (_event, request: MCPAddServerRequest): Promise<{ success: boolean; server?: MCPServerConfig; error?: string }> => {
-    try {
-      const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
-      }
-
-      const server = await manager.addServer(request);
-      
-      // Emit state change to renderer
-      emitMCPEvent({ type: 'mcp-state', servers: manager.getServerStates() });
-      
-      return { success: true, server };
+      return { success: true };
     } catch (error) {
-      logger.error('Failed to add MCP server', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to update server', {
+        serverId: config.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  ipcMain.handle('mcp:update-server', async (_event, request: MCPUpdateServerRequest): Promise<{ success: boolean; server?: MCPServerConfig; error?: string }> => {
+  ipcMain.handle('mcp:unregister-server', async (_event, serverId: string) => {
     try {
-      const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
-      }
+      logger.info('Unregistering MCP server', { serverId });
+      getMCPManager().unregisterServer(serverId);
 
-      const server = await manager.updateServer(request);
-      if (!server) {
+      // Persist server config
+      saveServersToSettings();
+
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to unregister server', {
+        serverId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  // ==========================================================================
+  // Server Connection Management
+  // ==========================================================================
+
+  ipcMain.handle('mcp:connect-server', async (_event, serverId: string) => {
+    try {
+      logger.info('Connecting to MCP server', { serverId });
+      await getMCPManager().connectServer(serverId);
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to connect to server', {
+        serverId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('mcp:disconnect-server', async (_event, serverId: string) => {
+    try {
+      logger.info('Disconnecting from MCP server', { serverId });
+      await getMCPManager().disconnectServer(serverId);
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to disconnect from server', {
+        serverId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('mcp:restart-server', async (_event, serverId: string) => {
+    try {
+      logger.info('Restarting MCP server', { serverId });
+      await getMCPManager().restartServer(serverId);
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to restart server', {
+        serverId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('mcp:enable-server', async (_event, serverId: string) => {
+    try {
+      logger.info('Enabling MCP server', { serverId });
+      const config = getMCPManager().getServer(serverId);
+      if (!config) {
         return { success: false, error: 'Server not found' };
       }
-
-      // Emit state change to renderer
-      emitMCPEvent({ type: 'mcp-state', servers: manager.getServerStates() });
-
-      return { success: true, server };
+      getMCPManager().updateServerConfig({ ...config, enabled: true });
+      saveServersToSettings();
+      return { success: true };
     } catch (error) {
-      logger.error('Failed to update MCP server', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to enable server', {
+        serverId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  ipcMain.handle('mcp:remove-server', async (_event, serverId: string): Promise<{ success: boolean; error?: string }> => {
+  ipcMain.handle('mcp:disable-server', async (_event, serverId: string) => {
     try {
-      const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
-      }
-
-      const removed = await manager.removeServer(serverId);
-      if (!removed) {
+      logger.info('Disabling MCP server', { serverId });
+      const config = getMCPManager().getServer(serverId);
+      if (!config) {
         return { success: false, error: 'Server not found' };
       }
-
-      // Emit state change to renderer
-      emitMCPEvent({ type: 'mcp-state', servers: manager.getServerStates() });
-
+      getMCPManager().updateServerConfig({ ...config, enabled: false });
+      saveServersToSettings();
       return { success: true };
     } catch (error) {
-      logger.error('Failed to remove MCP server', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to disable server', {
+        serverId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  // =========================================================================
-  // Connection Management
-  // =========================================================================
-
-  ipcMain.handle('mcp:connect-server', async (_event, serverId: string): Promise<{ success: boolean; error?: string }> => {
+  ipcMain.handle('mcp:connect-all', async () => {
     try {
-      const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
-      }
-
-      await manager.connectServer(serverId);
-
-      // Emit state change to renderer
-      emitMCPEvent({ type: 'mcp-state', servers: manager.getServerStates() });
-
+      logger.info('Connecting to all enabled MCP servers');
+      await getMCPManager().connectAll();
       return { success: true };
     } catch (error) {
-      logger.error('Failed to connect MCP server', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to connect to all servers', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  ipcMain.handle('mcp:disconnect-server', async (_event, serverId: string): Promise<{ success: boolean; error?: string }> => {
+  ipcMain.handle('mcp:disconnect-all', async () => {
     try {
-      const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
-      }
-
-      await manager.disconnectServer(serverId);
-
-      // Emit state change to renderer
-      emitMCPEvent({ type: 'mcp-state', servers: manager.getServerStates() });
-
+      logger.info('Disconnecting from all MCP servers');
+      await getMCPManager().disconnectAll();
       return { success: true };
     } catch (error) {
-      logger.error('Failed to disconnect MCP server', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to disconnect from all servers', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  // =========================================================================
-  // Tools
-  // =========================================================================
+  // ==========================================================================
+  // Tool Management
+  // ==========================================================================
 
-  ipcMain.handle('mcp:get-all-tools', async (): Promise<Array<MCPTool & { serverId: string; serverName: string }>> => {
+  ipcMain.handle('mcp:get-all-tools', () => {
     try {
-      const manager = getMCPManager();
-      return manager?.getAllTools() ?? [];
+      return getMCPManager().getAllTools();
     } catch (error) {
-      logger.error('Failed to get MCP tools', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to get all tools', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return [];
     }
   });
 
-  ipcMain.handle('mcp:call-tool', async (_event, serverId: string, toolName: string, args: Record<string, unknown>): Promise<{ success: boolean; result?: MCPToolResult; error?: string }> => {
+  ipcMain.handle('mcp:get-server-tools', (_event, serverId: string) => {
     try {
-      const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
-      }
-
-      const result = await manager.callTool(serverId, toolName, args);
-      return { success: !result.isError, result };
+      return getMCPManager().getServerTools(serverId);
     } catch (error) {
-      logger.error('Failed to call MCP tool', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
-
-  // =========================================================================
-  // Resources
-  // =========================================================================
-
-  ipcMain.handle('mcp:get-all-resources', async (): Promise<Array<MCPResource & { serverId: string; serverName: string }>> => {
-    try {
-      const manager = getMCPManager();
-      return manager?.getAllResources() ?? [];
-    } catch (error) {
-      logger.error('Failed to get MCP resources', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to get server tools', {
+        serverId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return [];
     }
   });
 
-  ipcMain.handle('mcp:read-resource', async (_event, serverId: string, uri: string): Promise<{ success: boolean; contents?: MCPResourceContent[]; error?: string }> => {
+  ipcMain.handle('mcp:find-tool', (_event, toolName: string) => {
     try {
-      const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
-      }
-
-      const contents = await manager.readResource(serverId, uri);
-      return { success: true, contents };
+      return getMCPManager().findTool(toolName);
     } catch (error) {
-      logger.error('Failed to read MCP resource', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to find tool', {
+        toolName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  });
+
+  ipcMain.handle('mcp:call-tool', async (_event, request: MCPToolCallRequest) => {
+    try {
+      logger.info('Calling MCP tool', {
+        serverId: request.serverId,
+        toolName: request.toolName,
+      });
+      return await getMCPManager().callTool(request);
+    } catch (error) {
+      logger.error('Failed to call tool', {
+        request,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: 0,
+      };
+    }
+  });
+
+  ipcMain.handle('mcp:clear-cache', () => {
+    try {
+      getMCPManager().clearCache();
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to clear cache', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  // =========================================================================
-  // Prompts
-  // =========================================================================
+  // ==========================================================================
+  // Resource Management
+  // ==========================================================================
 
-  ipcMain.handle('mcp:get-all-prompts', async (): Promise<Array<MCPPrompt & { serverId: string; serverName: string }>> => {
+  ipcMain.handle('mcp:get-all-resources', () => {
     try {
-      const manager = getMCPManager();
-      return manager?.getAllPrompts() ?? [];
+      return getMCPManager().getAllResources();
     } catch (error) {
-      logger.error('Failed to get MCP prompts', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to get all resources', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return [];
     }
   });
 
-  ipcMain.handle('mcp:get-prompt', async (_event, serverId: string, name: string, args?: Record<string, unknown>): Promise<{ success: boolean; result?: MCPPromptResult; error?: string }> => {
-    try {
-      const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
-      }
-
-      const result = await manager.getPrompt(serverId, name, args);
-      return { success: true, result };
-    } catch (error) {
-      logger.error('Failed to get MCP prompt', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
-
-  // =========================================================================
-  // Setup Manager Event Forwarding
-  // =========================================================================
-
-  // Initialize MCP manager when settings store is available
-  const settingsStore = getSettingsStore();
-  initMCPManager(settingsStore).then((manager: MCPManager) => {
-    // Emit settings-ready event so renderer can refresh
-    emitMCPEvent({ 
-      type: 'mcp-settings-ready', 
-      settings: manager.getSettings() 
-    });
-
-    // Forward manager events to renderer
-    manager.on('stateChanged', (states: MCPServerState[]) => {
-      emitMCPEvent({ type: 'mcp-state', servers: states });
-    });
-
-    manager.on('serverConnected', (serverId: string) => {
-      const state = manager.getServerState(serverId);
-      if (state?.serverInfo && state?.capabilities) {
-        emitMCPEvent({
-          type: 'mcp-server-connected',
+  ipcMain.handle(
+    'mcp:read-resource',
+    async (_event, serverId: string, uri: string) => {
+      try {
+        return await getMCPManager().readResource(serverId, uri);
+      } catch (error) {
+        logger.error('Failed to read resource', {
           serverId,
-          serverInfo: state.serverInfo,
-          capabilities: state.capabilities,
+          uri,
+          error: error instanceof Error ? error.message : String(error),
         });
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
       }
-    });
+    }
+  );
 
-    manager.on('serverDisconnected', (serverId: string, reason?: string) => {
-      emitMCPEvent({
-        type: 'mcp-server-disconnected',
-        serverId,
-        reason,
-      });
-    });
+  // ==========================================================================
+  // Prompt Management
+  // ==========================================================================
 
-    manager.on('serverError', (serverId: string, error: Error) => {
-      emitMCPEvent({
-        type: 'mcp-server-error',
-        serverId,
-        error: error.message,
-      });
-    });
-
-    manager.on('toolsChanged', (serverId: string, tools: MCPTool[]) => {
-      emitMCPEvent({
-        type: 'mcp-tools-changed',
-        serverId,
-        tools,
-      });
-    });
-
-    logger.info('MCP handlers registered and manager initialized');
-  }).catch((error: unknown) => {
-    logger.error('Failed to initialize MCP manager', { error: error instanceof Error ? error.message : String(error) });
-  });
-
-  // =========================================================================
-  // Discovery Handlers
-  // =========================================================================
-
-  ipcMain.handle('mcp:discover-servers', async (_event, options?: DiscoveryOptions): Promise<{ success: boolean; candidates?: MCPServerCandidate[]; error?: string }> => {
+  ipcMain.handle('mcp:get-all-prompts', () => {
     try {
-      const discovery = getMCPServerDiscovery();
-      const candidates = await discovery.discover(options);
-      return { success: true, candidates };
+      return getMCPManager().getAllPrompts();
     } catch (error) {
-      logger.error('Failed to discover MCP servers', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      logger.error('Failed to get all prompts', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
     }
   });
 
-  ipcMain.handle('mcp:get-discovery-cache', async (): Promise<{ success: boolean; candidates?: MCPServerCandidate[]; error?: string }> => {
+  ipcMain.handle(
+    'mcp:get-prompt',
+    async (_event, serverId: string, promptName: string, args?: Record<string, string>) => {
+      try {
+        return await getMCPManager().getPrompt(serverId, promptName, args);
+      } catch (error) {
+        logger.error('Failed to get prompt', {
+          serverId,
+          promptName,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  );
+
+  // ==========================================================================
+  // Store Management
+  // ==========================================================================
+
+  ipcMain.handle('mcp:store-search', async (_event, filters: MCPStoreFilters) => {
     try {
-      const discovery = getMCPServerDiscovery();
-      const candidates = discovery.getCachedCandidates();
-      return { success: true, candidates };
+      return await getMCPStoreInstance().search(filters);
     } catch (error) {
-      logger.error('Failed to get discovery cache', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      logger.error('Failed to search store', {
+        filters,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { total: 0, items: [], hasMore: false };
     }
   });
 
-  ipcMain.handle('mcp:clear-discovery-cache', async (): Promise<{ success: boolean; error?: string }> => {
+  ipcMain.handle('mcp:store-get-featured', async () => {
     try {
-      const discovery = getMCPServerDiscovery();
-      discovery.clearCache();
+      return await getMCPStoreInstance().getFeatured();
+    } catch (error) {
+      logger.error('Failed to get featured servers', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  });
+
+  ipcMain.handle('mcp:store-get-categories', async () => {
+    try {
+      return await getMCPStoreInstance().getCategories();
+    } catch (error) {
+      logger.error('Failed to get categories', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  });
+
+  ipcMain.handle('mcp:store-get-details', async (_event, id: string) => {
+    try {
+      return await getMCPStoreInstance().getServerDetails(id);
+    } catch (error) {
+      logger.error('Failed to get server details', {
+        id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  });
+
+  ipcMain.handle('mcp:store-refresh', async () => {
+    try {
+      // Clear cache first to ensure fresh data
+      await getMCPStoreInstance().clearRegistryCache();
+      await getMCPStoreInstance().refreshRegistry();
       return { success: true };
     } catch (error) {
-      logger.error('Failed to clear discovery cache', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
-
-  ipcMain.handle('mcp:add-discovered-server', async (_event, candidate: MCPServerCandidate): Promise<{ success: boolean; server?: MCPServerConfig; error?: string }> => {
-    try {
-      const discovery = getMCPServerDiscovery();
-      const config = discovery.candidateToConfig(candidate);
-      
-      const manager = getMCPManager();
-      if (!manager) {
-        return { success: false, error: 'MCP Manager not initialized' };
-      }
-      
-      const server = await manager.addServer({
-        name: config.name,
-        transport: config.transport,
-        description: config.description,
-        autoConnect: config.autoConnect,
-        icon: config.icon,
-        tags: config.tags,
+      logger.error('Failed to refresh registry', {
+        error: error instanceof Error ? error.message : String(error),
       });
-      
-      emitMCPEvent({ type: 'mcp-state', servers: manager.getServerStates() });
-      
-      return { success: true, server };
-    } catch (error) {
-      logger.error('Failed to add discovered server', { error: error instanceof Error ? error.message : String(error) });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  // =========================================================================
-  // Health Monitoring Handlers
-  // =========================================================================
-
-  ipcMain.handle('mcp:get-health-metrics', async (): Promise<{ success: boolean; metrics?: MCPServerHealthMetrics[]; error?: string }> => {
+  ipcMain.handle('mcp:store-is-installed', (_event, listingId: string) => {
     try {
-      const monitor = getMCPHealthMonitor();
-      if (!monitor) {
-        return { success: true, metrics: [] };
-      }
-      const metrics = monitor.getAllMetrics();
-      return { success: true, metrics };
+      return getMCPStoreInstance().isInstalled(listingId);
     } catch (error) {
-      logger.error('Failed to get health metrics', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      logger.error('Failed to check installation status', {
+        listingId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
     }
   });
 
-  ipcMain.handle('mcp:get-server-health', async (_event, serverId: string): Promise<{ success: boolean; metrics?: MCPServerHealthMetrics; error?: string }> => {
+  // ==========================================================================
+  // Installation Management
+  // ==========================================================================
+
+  ipcMain.handle('mcp:install-server', async (_event, request: MCPInstallRequest) => {
     try {
-      const monitor = getMCPHealthMonitor();
-      if (!monitor) {
-        return { success: false, error: 'Health monitor not initialized' };
+      logger.info('Installing MCP server', { request });
+      const result = await getMCPStoreInstance().installServer(request);
+      if (result.success) {
+        saveServersToSettings();
       }
-      const metrics = monitor.getMetrics(serverId);
-      if (!metrics) {
-        return { success: false, error: 'Server not found' };
-      }
-      return { success: true, metrics };
+      return result;
     } catch (error) {
-      logger.error('Failed to get server health', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Failed to install server', {
+        request,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  ipcMain.handle('mcp:update-health-config', async (_event, config: Partial<HealthMonitorConfig>): Promise<{ success: boolean; error?: string }> => {
+  ipcMain.handle(
+    'mcp:install-from-store',
+    async (
+      _event,
+      listingId: string,
+      options?: { env?: Record<string, string>; autoStart?: boolean }
+    ) => {
+      try {
+        logger.info('Installing MCP server from store', { listingId, options });
+        const result = await getMCPStoreInstance().installFromStore(listingId, options);
+        if (result.success) {
+          saveServersToSettings();
+        }
+        return result;
+      } catch (error) {
+        logger.error('Failed to install server from store', {
+          listingId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  );
+
+  ipcMain.handle('mcp:uninstall-server', async (_event, serverId: string) => {
     try {
-      const monitor = getMCPHealthMonitor();
-      if (!monitor) {
-        return { success: false, error: 'Health monitor not initialized' };
+      logger.info('Uninstalling MCP server', { serverId });
+      const result = await getMCPStoreInstance().uninstallServer(serverId);
+      if (result.success) {
+        saveServersToSettings();
       }
-      monitor.updateConfig(config);
-      return { success: true };
+      return result;
     } catch (error) {
-      logger.error('Failed to update health config', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
-
-  ipcMain.handle('mcp:trigger-recovery', async (_event, serverId: string): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const monitor = getMCPHealthMonitor();
-      if (!monitor) {
-        return { success: false, error: 'Health monitor not initialized' };
-      }
-      await monitor.triggerRecovery(serverId);
-      return { success: true };
-    } catch (error) {
-      logger.error('Failed to trigger recovery', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
-
-  // =========================================================================
-  // Context Integration Handlers
-  // =========================================================================
-
-  ipcMain.handle('mcp:get-tool-suggestions', async (_event, context: ContextQuery): Promise<{ success: boolean; suggestions?: MCPToolSuggestion[]; error?: string }> => {
-    try {
-      const integration = getMCPContextIntegration();
-      if (!integration) {
-        return { success: true, suggestions: [] };
-      }
-      const suggestions = integration.getToolSuggestions(context);
-      return { success: true, suggestions };
-    } catch (error) {
-      logger.error('Failed to get tool suggestions', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
-
-  ipcMain.handle('mcp:get-resource-suggestions', async (_event, context: ContextQuery): Promise<{ success: boolean; suggestions?: MCPResourceSuggestion[]; error?: string }> => {
-    try {
-      const integration = getMCPContextIntegration();
-      if (!integration) {
-        return { success: true, suggestions: [] };
-      }
-      const suggestions = integration.getResourceSuggestions(context);
-      return { success: true, suggestions };
-    } catch (error) {
-      logger.error('Failed to get resource suggestions', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
-
-  ipcMain.handle('mcp:get-prompt-suggestions', async (_event, context: ContextQuery): Promise<{ success: boolean; suggestions?: unknown[]; error?: string }> => {
-    try {
-      const integration = getMCPContextIntegration();
-      if (!integration) {
-        return { success: true, suggestions: [] };
-      }
-      const suggestions = integration.getPromptSuggestions(context);
-      return { success: true, suggestions };
-    } catch (error) {
-      logger.error('Failed to get prompt suggestions', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
-
-  ipcMain.handle('mcp:enrich-context', async (_event, context: ContextQuery): Promise<{ success: boolean; enrichedContext?: unknown; error?: string }> => {
-    try {
-      const integration = getMCPContextIntegration();
-      if (!integration) {
-        return { success: true, enrichedContext: context };
-      }
-      const enrichedContext = await integration.enrichContext(context);
-      return { success: true, enrichedContext };
-    } catch (error) {
-      logger.error('Failed to enrich context', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
-
-  // Initialize health monitor after MCP manager
-  try {
-    const monitor = initMCPHealthMonitor();
-    
-    // Forward health events to renderer
-    monitor.on('healthChanged', (serverId: string, metrics: MCPServerHealthMetrics) => {
-      emitMCPEvent({
-        type: 'mcp-health-changed',
+      logger.error('Failed to uninstall server', {
         serverId,
-        metrics,
+        error: error instanceof Error ? error.message : String(error),
       });
-    });
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
 
-    monitor.on('serverDegraded', (serverId: string, metrics: MCPServerHealthMetrics) => {
-      emitMCPEvent({
-        type: 'mcp-server-degraded',
-        serverId,
-        metrics,
+  // ==========================================================================
+  // Registry Management (Dynamic)
+  // ==========================================================================
+
+  ipcMain.handle('mcp:registry-get-stats', () => {
+    try {
+      return getMCPStoreInstance().getRegistryStats();
+    } catch (error) {
+      logger.error('Failed to get registry stats', {
+        error: error instanceof Error ? error.message : String(error),
       });
-    });
+      return { sources: {}, total: 0, lastFullRefresh: 0 };
+    }
+  });
 
-    monitor.on('serverUnhealthy', (serverId: string, metrics: MCPServerHealthMetrics) => {
-      emitMCPEvent({
-        type: 'mcp-server-unhealthy',
-        serverId,
-        metrics,
+  ipcMain.handle('mcp:registry-get-sources', () => {
+    try {
+      return getMCPStoreInstance().getEnabledSources();
+    } catch (error) {
+      logger.error('Failed to get enabled sources', {
+        error: error instanceof Error ? error.message : String(error),
       });
-    });
+      return [];
+    }
+  });
 
-    monitor.on('serverRecovered', (serverId: string, metrics: MCPServerHealthMetrics) => {
-      emitMCPEvent({
-        type: 'mcp-server-recovered',
-        serverId,
-        metrics,
+  ipcMain.handle(
+    'mcp:registry-set-source-enabled',
+    (
+      _event,
+      source: 'smithery' | 'npm' | 'pypi' | 'github' | 'glama',
+      enabled: boolean
+    ) => {
+      try {
+        getMCPStoreInstance().setSourceEnabled(source, enabled);
+        return { success: true };
+      } catch (error) {
+        logger.error('Failed to set source enabled', {
+          source,
+          enabled,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  );
+
+  // ==========================================================================
+  // Persistence Helpers
+  // ==========================================================================
+
+  const saveServersToSettings = () => {
+    try {
+      const servers = getMCPManager().getAllServers();
+      getSettingsStore()?.set({ mcpServers: servers });
+    } catch (error) {
+      logger.error('Failed to save servers to settings', {
+        error: error instanceof Error ? error.message : String(error),
       });
-    });
+    }
+  };
 
-    monitor.on('recoveryAttempt', (serverId: string, attempt: number, maxAttempts: number) => {
-      emitMCPEvent({
-        type: 'mcp-recovery-attempt',
-        serverId,
-        attempt,
-        maxAttempts,
+  // Load saved servers on startup
+  const loadServersFromSettings = () => {
+    try {
+      const servers = getSettingsStore()?.get()?.mcpServers;
+      if (servers && Array.isArray(servers)) {
+        const manager = getMCPManager();
+        for (const server of servers) {
+          manager.registerServer(server);
+        }
+        logger.info('Loaded MCP servers from settings', { count: servers.length });
+      }
+    } catch (error) {
+      logger.error('Failed to load servers from settings', {
+        error: error instanceof Error ? error.message : String(error),
       });
-    });
+    }
+  };
 
-    monitor.on('recoveryFailed', (serverId: string, reason: string) => {
-      emitMCPEvent({
-        type: 'mcp-recovery-failed',
-        serverId,
-        reason,
-      });
-    });
-
-    logger.info('MCP health monitor initialized and event forwarding enabled');
-  } catch (error: unknown) {
-    logger.error('Failed to initialize health monitor', { error: error instanceof Error ? error.message : String(error) });
-  }
-}
-
-/**
- * Cleanup MCP handlers
- */
-export async function cleanupMCPHandlers(): Promise<void> {
-  await shutdownMCPHealthMonitor();
-  await shutdownMCPManager();
+  // Initialize: Load saved servers
+  loadServersFromSettings();
 }

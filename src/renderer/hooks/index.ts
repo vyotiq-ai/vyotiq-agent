@@ -15,6 +15,47 @@ export { useActiveWorkspace } from './useActiveWorkspace';
 export { useAgentStatus } from './useAgentStatus';
 
 // =============================================================================
+// Optimized Agent State Selectors
+// =============================================================================
+
+export {
+  // Session selectors
+  useActiveSessionId,
+  useActiveSession,
+  useSessionIds,
+  useSessionCount,
+  useSession,
+  // Message selectors
+  useActiveSessionMessages,
+  useSessionMessages,
+  useActiveSessionMessageCount,
+  useLastMessage,
+  // Status selectors
+  useActiveSessionStatus,
+  useIsActiveSessionRunning,
+  useIsActiveSessionIdle,
+  // Agent status selectors
+  useActiveSessionAgentStatus,
+  // Context selectors
+  useActiveSessionContextMetrics,
+  useContextUsagePercentage,
+  // Todo selectors
+  useActiveSessionTodos,
+  useActiveSessionTodoItems,
+  useTodoCompletionPercentage,
+  // Workspace selectors
+  useActiveWorkspaceFromState,
+  useActiveWorkspacePath,
+  useActiveWorkspaceName,
+  // Streaming selectors
+  useIsActiveSessionStreaming,
+  // Config selectors
+  useActiveSessionConfig,
+  // Combined hooks
+  useActiveSessionInfo,
+} from './useAgentSelectors';
+
+// =============================================================================
 // Chat Hooks
 // =============================================================================
 
@@ -39,6 +80,7 @@ export {
 // =============================================================================
 
 export { useSettings } from './useSettings';
+export { useAppearanceSettings, applyAppearanceSettings } from './useAppearanceSettings';
 
 // =============================================================================
 // UI Utility Hooks
@@ -126,7 +168,18 @@ export {
 } from './useSemanticIndex';
 
 // =============================================================================
-// MCP Hooks
+// MCP (Model Context Protocol) Hooks
 // =============================================================================
 
-export { useMCP } from './useMCP';
+export {
+  useMCP,
+  useMCPSettings,
+  useMCPServers,
+  useMCPTools,
+  useMCPStore,
+  type UseMCPResult,
+  type UseMCPSettingsResult,
+  type UseMCPServersResult,
+  type UseMCPToolsResult,
+  type UseMCPStoreResult,
+} from './useMCP';

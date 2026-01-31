@@ -3,11 +3,15 @@
  *
  * Resolves symbols for agent queries, providing symbol lookup,
  * definition finding, and reference tracking.
+ * 
+ * Uses LSP (Language Server Protocol) when available for accurate
+ * results, falling back to regex-based parsing when LSP is not ready.
  */
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import type { Logger } from '../../logger';
+import { getLSPManager, type NormalizedSymbol, type NormalizedLocation } from '../../lsp';
 
 // =============================================================================
 // Types
@@ -112,6 +116,7 @@ export class SymbolResolver extends EventEmitter {
 
   /**
    * Get symbols in a file
+   * Uses LSP when available, falls back to regex parsing
    */
   async getFileSymbols(filePath: string): Promise<Symbol[]> {
     // Check cache
@@ -122,8 +127,28 @@ export class SymbolResolver extends EventEmitter {
       }
     }
 
-    // Parse file for symbols
-    const symbols = await this.parseFileSymbols(filePath);
+    // Try LSP first for accurate results
+    let symbols: Symbol[] = [];
+    try {
+      const lspManager = getLSPManager();
+      if (lspManager) {
+        const lspSymbols = await lspManager.getDocumentSymbols(filePath);
+        if (lspSymbols.length > 0) {
+          symbols = this.convertLSPSymbols(lspSymbols);
+          this.logger.debug('Got symbols from LSP', { filePath, count: symbols.length });
+        }
+      }
+    } catch (error) {
+      this.logger.debug('LSP symbol fetch failed, falling back to regex', {
+        filePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Fall back to regex-based parsing if LSP didn't return results
+    if (symbols.length === 0) {
+      symbols = await this.parseFileSymbols(filePath);
+    }
 
     // Cache result
     if (this.config.cacheEnabled) {
@@ -138,6 +163,7 @@ export class SymbolResolver extends EventEmitter {
 
   /**
    * Find symbol definition
+   * Uses LSP when available for accurate cross-file navigation
    */
   async findDefinition(
     filePath: string,
@@ -154,7 +180,34 @@ export class SymbolResolver extends EventEmitter {
       }
     }
 
-    // Find symbol at position
+    // Try LSP first for accurate cross-file definition lookup
+    try {
+      const lspManager = getLSPManager();
+      if (lspManager) {
+        const locations = await lspManager.getDefinition(filePath, line, column);
+        if (locations.length > 0) {
+          const location = this.convertLSPLocation(locations[0]);
+          
+          // Cache result
+          if (this.config.cacheEnabled) {
+            this.definitionCache.set(cacheKey, {
+              location,
+              timestamp: Date.now(),
+            });
+          }
+          
+          this.logger.debug('Got definition from LSP', { filePath, line, column, targetFile: location.filePath });
+          return location;
+        }
+      }
+    } catch (error) {
+      this.logger.debug('LSP definition lookup failed, falling back to local symbols', {
+        filePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Fall back to local symbol lookup
     const symbols = await this.getFileSymbols(filePath);
     const symbol = this.findSymbolAtPosition(symbols, line, column);
 
@@ -162,8 +215,6 @@ export class SymbolResolver extends EventEmitter {
       return null;
     }
 
-    // For now, return the symbol's own location as definition
-    // In a real implementation, this would use language server
     const location: SymbolLocation = {
       filePath: symbol.filePath,
       range: symbol.selectionRange || symbol.range,
@@ -182,6 +233,7 @@ export class SymbolResolver extends EventEmitter {
 
   /**
    * Find symbol references
+   * Uses LSP when available for cross-file reference finding
    */
   async findReferences(
     filePath: string,
@@ -189,9 +241,31 @@ export class SymbolResolver extends EventEmitter {
     column: number,
     includeDeclaration: boolean = true
   ): Promise<SymbolReference[]> {
-    const references: SymbolReference[] = [];
+    // Try LSP first for accurate cross-file reference finding
+    try {
+      const lspManager = getLSPManager();
+      if (lspManager) {
+        const lspRefs = await lspManager.getReferences(filePath, line, column, includeDeclaration);
+        if (lspRefs.length > 0) {
+          const references = lspRefs.map(loc => this.convertLSPToReference(loc));
+          this.logger.debug('Got references from LSP', { 
+            filePath, 
+            line, 
+            column, 
+            count: references.length 
+          });
+          return references;
+        }
+      }
+    } catch (error) {
+      this.logger.debug('LSP reference lookup failed, falling back to local symbols', {
+        filePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
-    // Find symbol at position
+    // Fall back to local symbol lookup
+    const references: SymbolReference[] = [];
     const symbols = await this.getFileSymbols(filePath);
     const symbol = this.findSymbolAtPosition(symbols, line, column);
 
@@ -211,9 +285,6 @@ export class SymbolResolver extends EventEmitter {
         isWrite: false,
       });
     }
-
-    // In a real implementation, this would search across files
-    // For now, just return the definition
 
     return references;
   }
@@ -476,6 +547,124 @@ export class SymbolResolver extends EventEmitter {
     }
 
     return roots;
+  }
+
+  // ===========================================================================
+  // LSP Conversion Helpers
+  // ===========================================================================
+
+  /**
+   * Convert LSP normalized symbols to internal Symbol format
+   */
+  private convertLSPSymbols(lspSymbols: NormalizedSymbol[]): Symbol[] {
+    return lspSymbols.map(lsp => this.convertLSPSymbol(lsp));
+  }
+
+  private convertLSPSymbol(lsp: NormalizedSymbol): Symbol {
+    // NormalizedSymbol uses line/column/endLine/endColumn instead of range object
+    const symbol: Symbol = {
+      id: randomUUID(),
+      name: lsp.name,
+      kind: this.lspKindToSymbolKind(lsp.kind),
+      filePath: lsp.filePath,
+      range: {
+        startLine: lsp.line,
+        startColumn: lsp.column,
+        endLine: lsp.endLine ?? lsp.line,
+        endColumn: lsp.endColumn ?? lsp.column,
+      },
+      // NormalizedSymbol doesn't have selectionRange, so we use the same range
+      selectionRange: undefined,
+      containerName: lsp.containerName,
+      // NormalizedSymbol doesn't have detail property
+      detail: undefined,
+    };
+
+    if (lsp.children && lsp.children.length > 0) {
+      symbol.children = lsp.children.map(child => this.convertLSPSymbol(child));
+    }
+
+    return symbol;
+  }
+
+  /**
+   * Convert LSP symbol kind to internal SymbolKind
+   * NormalizedSymbol.kind is a string (e.g., 'class', 'function') not a number
+   */
+  private lspKindToSymbolKind(kind: string | number): SymbolKind {
+    // If it's already a string, validate and return
+    if (typeof kind === 'string') {
+      const validKinds: SymbolKind[] = [
+        'file', 'module', 'namespace', 'package', 'class', 'method', 'property',
+        'field', 'constructor', 'enum', 'interface', 'function', 'variable',
+        'constant', 'string', 'number', 'boolean', 'array', 'object', 'key',
+        'null', 'enumMember', 'struct', 'event', 'operator', 'typeParameter',
+      ];
+      const lowerKind = kind.toLowerCase();
+      if (validKinds.includes(lowerKind as SymbolKind)) {
+        return lowerKind as SymbolKind;
+      }
+      return 'variable';
+    }
+    
+    // LSP SymbolKind number mapping (from LSP spec)
+    const kindMap: Record<number, SymbolKind> = {
+      1: 'file',
+      2: 'module',
+      3: 'namespace',
+      4: 'package',
+      5: 'class',
+      6: 'method',
+      7: 'property',
+      8: 'field',
+      9: 'constructor',
+      10: 'enum',
+      11: 'interface',
+      12: 'function',
+      13: 'variable',
+      14: 'constant',
+      15: 'string',
+      16: 'number',
+      17: 'boolean',
+      18: 'array',
+      19: 'object',
+      20: 'key',
+      21: 'null',
+      22: 'enumMember',
+      23: 'struct',
+      24: 'event',
+      25: 'operator',
+      26: 'typeParameter',
+    };
+    return kindMap[kind] ?? 'variable';
+  }
+
+  /**
+   * Convert LSP location to internal SymbolLocation format
+   */
+  private convertLSPLocation(loc: NormalizedLocation): SymbolLocation {
+    // NormalizedLocation uses line/column/endLine/endColumn instead of range object
+    return {
+      filePath: loc.filePath,
+      range: {
+        startLine: loc.line,
+        startColumn: loc.column,
+        endLine: loc.endLine ?? loc.line,
+        endColumn: loc.endColumn ?? loc.column,
+      },
+    };
+  }
+
+  /**
+   * Convert LSP location to internal SymbolReference format
+   */
+  private convertLSPToReference(loc: NormalizedLocation): SymbolReference {
+    return {
+      location: this.convertLSPLocation(loc),
+      isDefinition: false, // LSP doesn't tell us this directly
+      isDeclaration: false,
+      isWrite: false,
+    };
   }
 }
 

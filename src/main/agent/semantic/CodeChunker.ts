@@ -213,12 +213,128 @@ const GO_PATTERNS: LanguagePatterns = {
   blockEnd: '}',
 };
 
+const JAVA_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:public|private|protected|static|\s)*(?:<[\w\s,<>]+>\s+)?[\w<>,\[\]\s]+\s+(\w+)\s*\(/,
+  classPattern: /^(?:public|private|protected|abstract|static|final|\s)*class\s+(\w+)/,
+  interfacePattern: /^(?:public|private|protected|\s)*interface\s+(\w+)/,
+  enumPattern: /^(?:public|private|protected|\s)*enum\s+(\w+)/,
+  importPattern: /^import\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const CSHARP_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:public|private|protected|internal|static|virtual|override|async|partial|\s)*[\w<>,\[\]\?]+\s+(\w+)\s*\(/,
+  classPattern: /^(?:public|private|protected|internal|abstract|sealed|static|partial|\s)*class\s+(\w+)/,
+  interfacePattern: /^(?:public|private|protected|internal|\s)*interface\s+(\w+)/,
+  typePattern: /^(?:public|private|protected|internal|\s)*(?:struct|record)\s+(\w+)/,
+  enumPattern: /^(?:public|private|protected|internal|\s)*enum\s+(\w+)/,
+  importPattern: /^using\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const CPP_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:virtual|static|inline|explicit|const|constexpr|\s)*[\w:<>*&\s]+\s+(\w+)\s*\(/,
+  classPattern: /^(?:template\s*<[^>]+>\s*)?(?:class|struct)\s+(\w+)/,
+  interfacePattern: /^class\s+(\w+)\s*{[^}]*virtual\s+\w+/,
+  enumPattern: /^enum(?:\s+class)?\s+(\w+)/,
+  importPattern: /^#include\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const RUBY_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:def|define_method)\s+(\w+[!?]?)/,
+  classPattern: /^class\s+(\w+)/,
+  interfacePattern: /^module\s+(\w+)/,
+  importPattern: /^require(?:_relative)?\s+/,
+  singleLineComment: '#',
+  multiLineCommentStart: '=begin',
+  multiLineCommentEnd: '=end',
+  blockStart: '',  // Ruby uses keywords like 'do', 'class', 'def' as block start
+  blockEnd: 'end',
+};
+
+const PHP_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:public|private|protected|static|final|\s)*function\s+(\w+)/,
+  classPattern: /^(?:abstract|final|\s)*class\s+(\w+)/,
+  interfacePattern: /^interface\s+(\w+)/,
+  enumPattern: /^enum\s+(\w+)/,
+  typePattern: /^trait\s+(\w+)/,
+  importPattern: /^(?:use|require(?:_once)?|include(?:_once)?)\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const KOTLIN_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:suspend|inline|private|protected|internal|public|override|\s)*fun\s+(?:<[\w\s,<>]+>\s+)?(\w+)/,
+  classPattern: /^(?:data|sealed|abstract|open|private|protected|internal|public|\s)*class\s+(\w+)/,
+  interfacePattern: /^(?:private|protected|internal|public|\s)*interface\s+(\w+)/,
+  enumPattern: /^(?:private|protected|internal|public|\s)*enum\s+class\s+(\w+)/,
+  typePattern: /^(?:private|protected|internal|public|\s)*object\s+(\w+)/,
+  importPattern: /^import\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const SWIFT_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:@\w+\s*)*(?:public|private|fileprivate|internal|open|static|class|\s)*func\s+(\w+)/,
+  classPattern: /^(?:public|private|fileprivate|internal|open|final|\s)*class\s+(\w+)/,
+  interfacePattern: /^(?:public|private|fileprivate|internal|\s)*protocol\s+(\w+)/,
+  typePattern: /^(?:public|private|fileprivate|internal|\s)*struct\s+(\w+)/,
+  enumPattern: /^(?:public|private|fileprivate|internal|\s)*enum\s+(\w+)/,
+  importPattern: /^import\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const SCALA_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:override|private|protected|final|\s)*def\s+(\w+)/,
+  classPattern: /^(?:abstract|sealed|final|case|\s)*class\s+(\w+)/,
+  interfacePattern: /^trait\s+(\w+)/,
+  typePattern: /^(?:case\s+)?object\s+(\w+)/,
+  importPattern: /^import\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
 const LANGUAGE_PATTERNS: Record<string, LanguagePatterns> = {
   typescript: TYPESCRIPT_PATTERNS,
   javascript: TYPESCRIPT_PATTERNS,
   python: PYTHON_PATTERNS,
   rust: RUST_PATTERNS,
   go: GO_PATTERNS,
+  java: JAVA_PATTERNS,
+  csharp: CSHARP_PATTERNS,
+  cpp: CPP_PATTERNS,
+  c: CPP_PATTERNS,
+  ruby: RUBY_PATTERNS,
+  php: PHP_PATTERNS,
+  kotlin: KOTLIN_PATTERNS,
+  swift: SWIFT_PATTERNS,
+  scala: SCALA_PATTERNS,
 };
 
 // =============================================================================

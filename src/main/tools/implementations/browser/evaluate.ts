@@ -170,6 +170,7 @@ Scripts run in page context with full DOM access. Use responsibly.
   requiresApproval: false, // Read-only by default
   category: 'browser-write',
   riskLevel: 'moderate', // Can modify page
+  allowedCallers: ['direct'], // Restricted due to arbitrary JS execution
 
   schema: {
     type: 'object',

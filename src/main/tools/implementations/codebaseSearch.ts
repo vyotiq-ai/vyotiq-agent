@@ -45,42 +45,28 @@ export const codebaseSearchTool: ToolDefinition<CodebaseSearchArgs> = {
   name: 'codebase_search',
   description: `Semantic codebase search using AI embeddings. Finds code by meaning, not exact text.
 
-## When to Use
-- **Conceptual search**: "authentication logic", "error handling", "API endpoints"
-- **Find implementations**: "function that validates email", "class for database connection"
-- **Discover patterns**: "how is logging done", "where are configs loaded"
-- **Similar code**: Find code with similar purpose/functionality
+When to use:
+Use this tool when you need to find code snippets, functions, classes, or other symbols in user codebase based on their meaning or functionality rather than exact text matches. Ideal for understanding unfamiliar code, refactoring, or exploring large codebases. Makes use of AI-powered vector embeddings to identify relevant code segments that are semantically similar to your query.
 
-## vs grep
-| Use codebase_search for | Use grep for |
-|-------------------------|--------------|
-| Conceptual/semantic queries | Exact text patterns |
-| Finding code by purpose | Finding specific strings |
-| "How is X done?" | "Where is X used?" |
-| Similar implementations | Symbol references |
+How it works:
+This tool leverages a semantic index built from user codebase using vector embeddings. When the user provides a natural language query, it converts the query into an embedding and searches the index for code segments with similar embeddings. Results are ranked by relevance score, allowing you to find code that matches the intent of user query.
 
-## Key Parameters
-- **query** (required): Natural language description of what you're looking for
-- **limit**: Max results (default: 10)
-- **min_score**: Similarity threshold 0-1 (default: 0.3, higher = stricter)
-- **file_types**: Filter by extension [".ts", ".py"]
-- **languages**: Filter by language ["typescript", "python"]
-- **symbol_types**: Filter by ["function", "class", "interface", "type"]
+Input parameters:
+- query (string, required): A natural language description of what you're looking for in the codebase.
+- limit (number, optional): Maximum number of results to return (default: 10).
+- min_score (number, optional): Minimum similarity score threshold between 0 and 1 (default: 0.3).
+- path_pattern (string, optional): Filter results by file path pattern (substring match).
+- file_types (string[], optional): Filter results by specific file types (e.g., [".ts", ".tsx"]).
+- languages (string[], optional): Filter results by programming languages (e.g., ["typescript", "python"]).
+- symbol_types (string[], optional): Filter results by symbol types (e.g., ["function", "class", "interface"]).
+- include_content (boolean, optional): Whether to include full code content in the results (default: true).
 
-## Example Queries
-- "function that handles user authentication"
-- "database connection setup and configuration"
-- "error handling and logging utilities"
-- "React component for file upload"
-- "API route handlers"
+Output:
+The tool returns a formatted list of relevant code snippets along with their file paths, similarity scores, and metadata. If no relevant code is found, it provides suggestions for refining the query.
 
-## Workflow Integration
-\`\`\`
-codebase_search("concept") → discover relevant files
-read(top results) → understand context
-grep("specific_symbol") → find exact usages
-edit → make changes
-\`\`\``,
+Limitations:
+This tool relies on a pre-built semantic index of user codebase. Ensure that indexing is enabled and complete for optimal results.
+Avoid using this tool for exact text searches, simple keyword lookups, or when you need to find code that matches a specific pattern exactly—use grep or similar tools instead.`,
 
   requiresApproval: false,
   category: 'file-search',
@@ -88,9 +74,9 @@ edit → make changes
   allowedCallers: ['direct', 'code_execution'],
   deferLoading: false, // Always available - essential for context gathering
   searchKeywords: [
-    'semantic', 'search', 'find', 'codebase', 'code', 'similar',
+    'analyze', 'analysis', 'check', 'review', 'semantic', 'search', 'find', 'codebase', 'code', 'similar',
     'meaning', 'concept', 'implementation', 'discover', 'relevant',
-    'vector', 'embedding', 'AI search', 'smart search',
+    'vector', 'embedding', 'AI search', 'smart search', 'examine', 'inspect', 'investigate', 'explore', 'assess', 'evaluate', 'audit', 'scan', 'validate', 'verify', 'test', 'check', 'confirm', 'prove', 'certify', 'find', 'locate', 'discover', 'identify', 'detect', 'uncover', 'reveal', 'refactor', 'optimize', 'debug', 'trace', 'navigate', 'extract', 'parse', 'interpret', 'quality', 'lint', 'format', 'style', 'standard', 'compliance', 'comprehend', 'understand', 'explain', 'document', 'measure', 'metric', 'benchmark', 'profile', 'monitor', 'transform', 'generate', 'synthesize', 'correlate', 'pattern',
   ],
   
   ui: {
@@ -98,7 +84,7 @@ edit → make changes
     label: 'Semantic Search',
     color: 'text-indigo-400',
     runningLabel: 'Searching...',
-    completedLabel: 'Found',
+    completedLabel: 'Search complete',
   },
 
   inputExamples: [
@@ -385,6 +371,7 @@ Semantic search requires an active workspace context.
 
 ═══ POSSIBLE CAUSES ═══
 • The session's workspace was deleted or removed
+• The agent is running without a workspace bound to the session
 • The session was created without a workspace binding
 
 ═══ SOLUTION ═══

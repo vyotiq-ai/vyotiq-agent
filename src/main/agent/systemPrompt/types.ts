@@ -139,26 +139,46 @@ export interface WorkspaceStructureContext {
 export type SemanticContextInfo = SemanticContext;
 
 /**
- * MCP server context for external tools/resources
+ * MCP server context for agent awareness
  */
 export interface MCPContextInfo {
-  /** Connected servers count */
+  /** Whether MCP is enabled */
+  enabled: boolean;
+  /** Connected server count */
   connectedServers: number;
-  /** Total tools available from MCP servers */
+  /** Total tool count across all servers */
   totalTools: number;
-  /** Total resources available from MCP servers */
-  totalResources: number;
-  /** Summary of connected servers */
+  /** Server summaries for context */
   servers: Array<{
+    id: string;
     name: string;
     toolCount: number;
-    resourceCount: number;
-    promptCount: number;
+    status: string;
   }>;
-  /** Tool names grouped by server */
-  toolsByServer: Record<string, string[]>;
-  /** Resource URIs grouped by server */
-  resourcesByServer: Record<string, string[]>;
+  /** Sample tools for context (limited to avoid token bloat) */
+  sampleTools: Array<{
+    serverName: string;
+    toolName: string;
+    description: string;
+  }>;
+}
+
+/**
+ * Git context for agent awareness of repository state
+ */
+export interface GitContextInfo {
+  /** Whether the workspace is a git repository */
+  isRepo: boolean;
+  /** Current branch name */
+  branch?: string;
+  /** Number of uncommitted changes */
+  uncommittedCount?: number;
+  /** Number of staged changes */
+  stagedCount?: number;
+  /** Whether there are unpushed commits */
+  hasUnpushed?: boolean;
+  /** Short summary of recent commit */
+  lastCommit?: string;
 }
 
 /**
@@ -180,8 +200,10 @@ export interface SystemPromptContext {
   workspaceStructure?: WorkspaceStructureContext;
   /** Semantic context with relevant code snippets */
   semanticContext?: SemanticContextInfo;
-  /** MCP servers context */
+  /** MCP context with available servers and tools */
   mcpContext?: MCPContextInfo;
+  /** Git context with repository state */
+  gitContext?: GitContextInfo;
   logger?: Logger;
 }
 

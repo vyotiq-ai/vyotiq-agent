@@ -7,7 +7,7 @@
  * - State inspection
  * - Recording playback controls
  */
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   Bug, Play, Pause, StepForward, Square, 
   ChevronDown, ChevronRight, Clock, Zap,
@@ -37,10 +37,97 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   const [activeTab, setActiveTab] = useState<DebugTab>('trace');
   const [isExpanded, setIsExpanded] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
   // Selected step for detailed inspection
   const [selectedStep, setSelectedStep] = useState<TraceStepDetail | null>(null);
   // Debug settings state
   const [_showDebugSettings, setShowDebugSettings] = useState(false);
+
+  // Fetch active trace data from IPC
+  useEffect(() => {
+    if (!sessionId || !runId) {
+      setTraceSummary(null);
+      return;
+    }
+
+    const fetchTrace = async () => {
+      try {
+        const trace = await window.vyotiq?.debug?.getActiveTrace?.();
+        if (trace) {
+          setTraceSummary({
+            traceId: trace.traceId,
+            sessionId: trace.sessionId,
+            runId: trace.runId,
+            status: trace.status,
+            startedAt: trace.startedAt,
+            completedAt: trace.completedAt,
+            durationMs: trace.durationMs,
+            totalSteps: trace.metrics?.totalSteps ?? 0,
+            llmCalls: trace.metrics?.llmCalls ?? 0,
+            toolCalls: trace.metrics?.toolCalls ?? 0,
+            successfulToolCalls: trace.metrics?.successfulToolCalls ?? 0,
+            failedToolCalls: trace.metrics?.failedToolCalls ?? 0,
+            totalInputTokens: trace.metrics?.totalInputTokens ?? 0,
+            totalOutputTokens: trace.metrics?.totalOutputTokens ?? 0,
+            hasError: !!trace.error,
+          });
+        } else {
+          // Fallback: try to get traces for the session
+          const traces = await window.vyotiq?.debug?.getTraces?.(sessionId);
+          const currentTrace = traces?.find((t: { runId: string }) => t.runId === runId);
+          if (currentTrace) {
+            setTraceSummary({
+              traceId: currentTrace.traceId,
+              sessionId: currentTrace.sessionId,
+              runId: currentTrace.runId,
+              status: currentTrace.status,
+              startedAt: currentTrace.startedAt,
+              completedAt: currentTrace.completedAt,
+              durationMs: currentTrace.durationMs,
+              totalSteps: currentTrace.metrics?.totalSteps ?? 0,
+              llmCalls: currentTrace.metrics?.llmCalls ?? 0,
+              toolCalls: currentTrace.metrics?.toolCalls ?? 0,
+              successfulToolCalls: currentTrace.metrics?.successfulToolCalls ?? 0,
+              failedToolCalls: currentTrace.metrics?.failedToolCalls ?? 0,
+              totalInputTokens: currentTrace.metrics?.totalInputTokens ?? 0,
+              totalOutputTokens: currentTrace.metrics?.totalOutputTokens ?? 0,
+              hasError: !!currentTrace.error,
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch trace data:', error);
+      }
+    };
+
+    fetchTrace();
+    
+    // Poll for updates while running
+    const interval = isRunning ? setInterval(fetchTrace, 1000) : undefined;
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [sessionId, runId, isRunning]);
+
+  // Check pause state from IPC
+  useEffect(() => {
+    if (!sessionId) return;
+    
+    const checkPauseState = async () => {
+      try {
+        const paused = await window.vyotiq?.agent?.isRunPaused?.(sessionId);
+        setIsPaused(!!paused);
+      } catch {
+        // Ignore errors
+      }
+    };
+    
+    checkPauseState();
+    const interval = isRunning ? setInterval(checkPauseState, 500) : undefined;
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [sessionId, isRunning]);
 
   // Toggle debug settings panel
   const handleDebugSettingsClick = useCallback(() => {
@@ -49,40 +136,44 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     setActiveTab('breakpoints');
   }, []);
 
-  // Mock trace data - in production this would come from IPC
-  const traceSummary: TraceSummary | null = useMemo(() => {
-    if (!sessionId || !runId) return null;
-    return {
-      traceId: `trace-${runId}`,
-      sessionId,
-      runId,
-      status: isRunning ? 'running' : 'completed',
-      startedAt: Date.now() - 5000,
-      completedAt: isRunning ? undefined : Date.now(),
-      durationMs: isRunning ? undefined : 5000,
-      totalSteps: 12,
-      llmCalls: 3,
-      toolCalls: 8,
-      successfulToolCalls: 7,
-      failedToolCalls: 1,
-      totalInputTokens: 15000,
-      totalOutputTokens: 3500,
-      hasError: false,
-    };
-  }, [sessionId, runId, isRunning]);
+  const handlePauseResume = useCallback(async () => {
+    if (!sessionId) return;
+    
+    try {
+      if (isPaused) {
+        await window.vyotiq?.agent?.resumeRun?.(sessionId);
+        setIsPaused(false);
+      } else {
+        await window.vyotiq?.agent?.pauseRun?.(sessionId);
+        setIsPaused(true);
+      }
+    } catch (error) {
+      console.error('Failed to pause/resume run:', error);
+    }
+  }, [sessionId, isPaused]);
 
-  const handlePauseResume = useCallback(() => {
-    setIsPaused(prev => !prev);
-    // In production: window.vyotiq?.debug?.pauseResume(sessionId, runId)
-  }, []);
+  const handleStepForward = useCallback(async () => {
+    if (!sessionId || !isPaused) return;
+    
+    try {
+      // Resume for one step then pause again
+      // This is achieved by enabling step mode in debug config
+      await window.vyotiq?.debug?.updateConfig?.({ stepMode: true });
+      await window.vyotiq?.agent?.resumeRun?.(sessionId);
+    } catch (error) {
+      console.error('Failed to step forward:', error);
+    }
+  }, [sessionId, isPaused]);
 
-  const handleStepForward = useCallback(() => {
-    // In production: window.vyotiq?.debug?.stepForward(sessionId, runId)
-  }, []);
-
-  const handleStop = useCallback(() => {
-    // In production: window.vyotiq?.debug?.stop(sessionId, runId)
-  }, []);
+  const handleStop = useCallback(async () => {
+    if (!sessionId) return;
+    
+    try {
+      await window.vyotiq?.agent?.cancelRun?.(sessionId);
+    } catch (error) {
+      console.error('Failed to stop run:', error);
+    }
+  }, [sessionId]);
 
   if (!sessionId) {
     return (

@@ -3,8 +3,11 @@
  * 
  * Centralized type definitions for the tool execution system.
  */
-import type { ToolExecutionResult, RendererEvent } from '../../../shared/types';
+import type { ToolExecutionResult, RendererEvent, ToolCategory } from '../../../shared/types';
 import type { SafetyManager } from '../../agent/safety';
+
+// Re-export ToolCategory for convenience
+export type { ToolCategory } from '../../../shared/types';
 
 // =============================================================================
 // Core Tool Types
@@ -120,21 +123,13 @@ export interface ToolDefinition<TArgs extends Record<string, unknown> = Record<s
   trackedReadsInSession?: Map<string, number>;
 
   /**
-   * Optional metadata for tool extensions (e.g., MCP tools).
+   * Optional metadata for tool extensions.
    * Stores additional information about the tool source and configuration.
    */
   metadata?: {
-    /** MCP server ID if this is an MCP tool */
-    mcpServerId?: string;
-    /** MCP server name */
-    mcpServerName?: string;
-    /** Original MCP tool name */
-    mcpToolName?: string;
-    /** MCP server group for UI grouping */
-    mcpServerGroup?: string;
     /** Tool risk level */
     riskLevel?: 'safe' | 'moderate' | 'dangerous';
-    /** Tool annotations from MCP */
+    /** Tool annotations */
     annotations?: Record<string, unknown>;
     /** Additional custom metadata */
     [key: string]: unknown;
@@ -167,19 +162,7 @@ export interface SchemaProperty {
 // Tool Categories & UI
 // =============================================================================
 
-export type ToolCategory =
-  | 'file-read'      // Reading files
-  | 'file-write'     // Creating/modifying files
-  | 'file-search'    // Finding/searching files
-  | 'terminal'       // Running commands
-  | 'media'          // Video, audio, media operations
-  | 'communication'  // Email, messaging
-  | 'system'         // System operations
-  | 'code-intelligence' // Symbols, definitions, references, diagnostics
-  | 'browser-read'   // Browser read-only operations (fetch, extract, console)
-  | 'browser-write'  // Browser state-changing operations (click, type, navigate)
-  | 'agent-internal' // Agent internal tools (planning, etc.)
-  | 'other';         // Uncategorized
+// ToolCategory is imported from shared/types.ts and re-exported at the top of this file
 
 export interface ToolUIMetadata {
   /** Icon name from lucide-react */
@@ -249,6 +232,9 @@ export interface TerminalManager {
   on(event: 'stderr', listener: (payload: TerminalOutputPayload) => void): this;
   on(event: 'exit', listener: (payload: TerminalExitPayload) => void): this;
   on(event: 'error', listener: (payload: TerminalErrorPayload) => void): this;
+  
+  // Event listener removal methods for cleanup
+  removeAllListeners(event: 'stdout' | 'stderr' | 'exit' | 'error'): this;
 }
 
 export interface TerminalRunOptions {

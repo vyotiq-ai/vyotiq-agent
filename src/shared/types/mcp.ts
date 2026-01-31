@@ -1,500 +1,414 @@
 /**
- * MCP (Model Context Protocol) Type Definitions
- * 
- * Shared types for MCP server integration following the 2025-06-18 protocol revision.
- * @see https://modelcontextprotocol.io/specification/2025-06-18
+ * MCP (Model Context Protocol) Types
+ *
+ * Type definitions for the dynamic MCP server management system.
+ * Based on MCP specification 2025-06-18.
+ *
+ * @module types/mcp
  */
 
 // =============================================================================
-// Transport Types
+// MCP Server Configuration Types
 // =============================================================================
 
 /**
- * MCP transport type
- * - stdio: Server runs as subprocess communicating via stdin/stdout
- * - http: Server communicates via HTTP/SSE (Streamable HTTP transport)
+ * Transport type for MCP server communication
  */
-export type MCPTransportType = 'stdio' | 'http';
+export type MCPTransportType = 'stdio' | 'sse' | 'streamable-http';
 
 /**
- * MCP server connection status
+ * MCP server status
  */
-export type MCPConnectionStatus = 
+export type MCPServerStatus =
   | 'disconnected'
   | 'connecting'
-  | 'initializing'
   | 'connected'
   | 'error'
-  | 'reconnecting';
-
-// =============================================================================
-// Server Configuration
-// =============================================================================
+  | 'disabled';
 
 /**
- * Environment variables for MCP server
+ * MCP server source type
  */
-export interface MCPServerEnv {
-  [key: string]: string;
-}
+export type MCPServerSource =
+  | 'npm'
+  | 'pypi'
+  | 'local'
+  | 'git'
+  | 'remote'
+  | 'builtin'
+  | 'mcpb'; // MCP Bundle format
 
 /**
- * stdio transport configuration
+ * MCP server category for organization
  */
-export interface MCPStdioConfig {
-  type: 'stdio';
-  /** Command to run the server */
-  command: string;
-  /** Arguments to pass to the command */
-  args?: string[];
-  /** Working directory for the server process */
-  cwd?: string;
-  /** Environment variables */
-  env?: MCPServerEnv;
-}
+export type MCPServerCategory =
+  | 'database'
+  | 'api'
+  | 'file-system'
+  | 'browser'
+  | 'developer-tools'
+  | 'productivity'
+  | 'cloud'
+  | 'communication'
+  | 'ai'
+  | 'analytics'
+  | 'security'
+  | 'other';
 
 /**
- * HTTP transport configuration
+ * MCP Tool definition from server
  */
-export interface MCPHttpConfig {
-  type: 'http';
-  /** Server URL endpoint */
-  url: string;
-  /** Optional headers for authentication */
-  headers?: Record<string, string>;
-  /** Session ID (assigned by server) */
-  sessionId?: string;
-}
-
-/**
- * Transport configuration union
- */
-export type MCPTransportConfig = MCPStdioConfig | MCPHttpConfig;
-
-/**
- * MCP server configuration
- */
-export interface MCPServerConfig {
-  /** Unique identifier for this server */
-  id: string;
-  /** Human-readable name */
-  name: string;
-  /** Description of the server's capabilities */
-  description?: string;
-  /** Transport configuration */
-  transport: MCPTransportConfig;
-  /** Whether the server is enabled */
-  enabled: boolean;
-  /** Auto-connect on startup */
-  autoConnect: boolean;
-  /** Connection timeout in milliseconds */
-  timeout?: number;
-  /** Maximum reconnection attempts */
-  maxReconnectAttempts?: number;
-  /** Custom icon (emoji or icon name) */
-  icon?: string;
-  /** Server tags for categorization */
-  tags?: string[];
-  /** Created timestamp */
-  createdAt: number;
-  /** Last modified timestamp */
-  updatedAt: number;
-}
-
-// =============================================================================
-// Protocol Capabilities
-// =============================================================================
-
-/**
- * Server-declared capabilities
- */
-export interface MCPServerCapabilities {
-  /** Prompt templates support */
-  prompts?: {
-    listChanged?: boolean;
-  };
-  /** Resource access support */
-  resources?: {
-    subscribe?: boolean;
-    listChanged?: boolean;
-  };
-  /** Tool execution support */
-  tools?: {
-    listChanged?: boolean;
-  };
-  /** Logging support */
-  logging?: Record<string, unknown>;
-  /** Completions support */
-  completions?: Record<string, unknown>;
-  /** Experimental features */
-  experimental?: Record<string, unknown>;
-}
-
-/**
- * Client-declared capabilities
- */
-export interface MCPClientCapabilities {
-  /** Filesystem roots support */
-  roots?: {
-    listChanged?: boolean;
-  };
-  /** LLM sampling support */
-  sampling?: Record<string, unknown>;
-  /** Elicitation support */
-  elicitation?: Record<string, unknown>;
-  /** Experimental features */
-  experimental?: Record<string, unknown>;
-}
-
-// =============================================================================
-// Protocol Messages
-// =============================================================================
-
-/**
- * Server information from initialization
- */
-export interface MCPServerInfo {
-  name: string;
-  title?: string;
-  version: string;
-  instructions?: string;
-}
-
-/**
- * Client information for initialization
- */
-export interface MCPClientInfo {
-  name: string;
-  title?: string;
-  version: string;
-}
-
-// =============================================================================
-// Resources
-// =============================================================================
-
-/**
- * Resource annotations
- */
-export interface MCPResourceAnnotations {
-  /** Intended audience */
-  audience?: Array<'user' | 'assistant'>;
-  /** Importance (0.0 to 1.0) */
-  priority?: number;
-  /** Last modification timestamp (ISO 8601) */
-  lastModified?: string;
-}
-
-/**
- * Resource definition
- */
-export interface MCPResource {
-  /** Unique URI for the resource */
-  uri: string;
-  /** Resource name */
+export interface MCPToolDefinition {
+  /** Unique tool name */
   name: string;
   /** Human-readable title */
   title?: string;
-  /** Description */
-  description?: string;
-  /** MIME type */
-  mimeType?: string;
-  /** Size in bytes */
-  size?: number;
-  /** Annotations */
-  annotations?: MCPResourceAnnotations;
-}
-
-/**
- * Resource template for parameterized resources
- */
-export interface MCPResourceTemplate {
-  /** URI template (RFC 6570) */
-  uriTemplate: string;
-  /** Template name */
-  name: string;
-  /** Human-readable title */
-  title?: string;
-  /** Description */
-  description?: string;
-  /** Default MIME type */
-  mimeType?: string;
-  /** Annotations */
-  annotations?: MCPResourceAnnotations;
-}
-
-/**
- * Resource content (text or binary)
- */
-export interface MCPResourceContent {
-  uri: string;
-  mimeType?: string;
-  /** Text content */
-  text?: string;
-  /** Binary content (base64 encoded) */
-  blob?: string;
-  /** Annotations */
-  annotations?: MCPResourceAnnotations;
-}
-
-// =============================================================================
-// Prompts
-// =============================================================================
-
-/**
- * Prompt argument definition
- */
-export interface MCPPromptArgument {
-  name: string;
-  description?: string;
-  required?: boolean;
-}
-
-/**
- * Prompt definition
- */
-export interface MCPPrompt {
-  /** Unique identifier */
-  name: string;
-  /** Human-readable title */
-  title?: string;
-  /** Description */
-  description?: string;
-  /** Arguments */
-  arguments?: MCPPromptArgument[];
-}
-
-/**
- * Prompt message content types
- */
-export type MCPPromptContentType = 'text' | 'image' | 'audio' | 'resource';
-
-/**
- * Text content in prompt message
- */
-export interface MCPTextContent {
-  type: 'text';
-  text: string;
-  annotations?: MCPResourceAnnotations;
-}
-
-/**
- * Image content in prompt message
- */
-export interface MCPImageContent {
-  type: 'image';
-  data: string; // base64
-  mimeType: string;
-  annotations?: MCPResourceAnnotations;
-}
-
-/**
- * Audio content in prompt message
- */
-export interface MCPAudioContent {
-  type: 'audio';
-  data: string; // base64
-  mimeType: string;
-  annotations?: MCPResourceAnnotations;
-}
-
-/**
- * Embedded resource content in prompt message
- */
-export interface MCPEmbeddedResourceContent {
-  type: 'resource';
-  resource: MCPResourceContent;
-  annotations?: MCPResourceAnnotations;
-}
-
-/**
- * Prompt message content union
- */
-export type MCPPromptContent = 
-  | MCPTextContent 
-  | MCPImageContent 
-  | MCPAudioContent 
-  | MCPEmbeddedResourceContent;
-
-/**
- * Prompt message
- */
-export interface MCPPromptMessage {
-  role: 'user' | 'assistant';
-  content: MCPPromptContent;
-}
-
-/**
- * Resolved prompt result
- */
-export interface MCPPromptResult {
-  description?: string;
-  messages: MCPPromptMessage[];
-}
-
-// =============================================================================
-// Tools
-// =============================================================================
-
-/**
- * Tool annotations (trust/safety hints)
- */
-export interface MCPToolAnnotations {
-  /** Human-readable title */
-  title?: string;
-  /** Whether the tool modifies data */
-  readOnlyHint?: boolean;
-  /** Whether the tool is destructive */
-  destructiveHint?: boolean;
-  /** Whether the tool requires confirmation */
-  idempotentHint?: boolean;
-  /** Whether the tool can make network requests */
-  openWorldHint?: boolean;
-}
-
-/**
- * Tool definition from MCP server
- */
-export interface MCPTool {
-  /** Unique identifier */
-  name: string;
-  /** Human-readable title */
-  title?: string;
-  /** Description */
-  description?: string;
+  /** Tool description for LLM understanding */
+  description: string;
   /** JSON Schema for input parameters */
   inputSchema: {
     type: 'object';
-    properties?: Record<string, unknown>;
+    properties: Record<string, unknown>;
     required?: string[];
-    [key: string]: unknown;
   };
-  /** Optional output schema */
-  outputSchema?: Record<string, unknown>;
-  /** Annotations */
-  annotations?: MCPToolAnnotations;
+  /** Additional annotations */
+  annotations?: Record<string, unknown>;
 }
 
 /**
- * Tool call result content types
+ * MCP Resource definition from server
  */
-export interface MCPToolResultText {
-  type: 'text';
-  text: string;
-  annotations?: MCPResourceAnnotations;
-}
-
-export interface MCPToolResultImage {
-  type: 'image';
-  data: string;
-  mimeType: string;
-  annotations?: MCPResourceAnnotations;
-}
-
-export interface MCPToolResultAudio {
-  type: 'audio';
-  data: string;
-  mimeType: string;
-  annotations?: MCPResourceAnnotations;
-}
-
-export interface MCPToolResultResourceLink {
-  type: 'resource_link';
+export interface MCPResourceDefinition {
+  /** Resource URI */
   uri: string;
-  name?: string;
+  /** Resource name */
+  name: string;
+  /** Resource description */
   description?: string;
+  /** MIME type */
   mimeType?: string;
-  annotations?: MCPResourceAnnotations;
-}
-
-export interface MCPToolResultEmbeddedResource {
-  type: 'resource';
-  resource: MCPResourceContent;
 }
 
 /**
- * Tool result content union
+ * MCP Prompt definition from server
  */
-export type MCPToolResultContent = 
-  | MCPToolResultText 
-  | MCPToolResultImage 
-  | MCPToolResultAudio
-  | MCPToolResultResourceLink
-  | MCPToolResultEmbeddedResource;
-
-/**
- * Tool call result
- */
-export interface MCPToolResult {
-  content: MCPToolResultContent[];
-  /** Structured content (for output schema validation) */
-  structuredContent?: Record<string, unknown>;
-  /** Whether the tool execution failed */
-  isError?: boolean;
+export interface MCPPromptDefinition {
+  /** Prompt name */
+  name: string;
+  /** Prompt description */
+  description?: string;
+  /** Required arguments */
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
 }
 
-// =============================================================================
-// Server State
-// =============================================================================
+/**
+ * MCP Server capabilities negotiated during initialization
+ */
+export interface MCPServerCapabilities {
+  /** Whether server supports tools */
+  tools?: {
+    /** Server sends notifications when tool list changes */
+    listChanged?: boolean;
+  };
+  /** Whether server supports resources */
+  resources?: {
+    /** Server sends notifications when resource list changes */
+    listChanged?: boolean;
+    /** Server supports subscribing to resource updates */
+    subscribe?: boolean;
+  };
+  /** Whether server supports prompts */
+  prompts?: {
+    /** Server sends notifications when prompt list changes */
+    listChanged?: boolean;
+  };
+  /** Whether server supports logging */
+  logging?: Record<string, never>;
+  /** Experimental capabilities */
+  experimental?: Record<string, unknown>;
+}
 
 /**
- * Connected server state including discovered capabilities
+ * STDIO transport configuration
+ */
+export interface MCPStdioConfig {
+  type: 'stdio';
+  /** Command to execute */
+  command: string;
+  /** Command arguments */
+  args?: string[];
+  /** Environment variables */
+  env?: Record<string, string>;
+  /** Working directory */
+  cwd?: string;
+}
+
+/**
+ * SSE transport configuration
+ */
+export interface MCPSSEConfig {
+  type: 'sse';
+  /** Server URL */
+  url: string;
+  /** Authentication headers */
+  headers?: Record<string, string>;
+}
+
+/**
+ * Streamable HTTP transport configuration
+ */
+export interface MCPStreamableHTTPConfig {
+  type: 'streamable-http';
+  /** Server URL */
+  url: string;
+  /** Authentication headers */
+  headers?: Record<string, string>;
+  /** OAuth configuration */
+  oauth?: {
+    clientId: string;
+    tokenEndpoint: string;
+    authorizationEndpoint?: string;
+  };
+}
+
+/**
+ * Union type for transport configurations
+ */
+export type MCPTransportConfig =
+  | MCPStdioConfig
+  | MCPSSEConfig
+  | MCPStreamableHTTPConfig;
+
+/**
+ * MCP Server configuration for storage
+ */
+export interface MCPServerConfig {
+  /** Unique server ID */
+  id: string;
+  /** Human-readable name */
+  name: string;
+  /** Description */
+  description?: string;
+  /** Server version */
+  version?: string;
+  /** Author/maintainer */
+  author?: string;
+  /** Homepage URL */
+  homepage?: string;
+  /** Repository URL */
+  repository?: string;
+  /** Server icon URL or data URI */
+  icon?: string;
+  /** Server category */
+  category: MCPServerCategory;
+  /** Installation source */
+  source: MCPServerSource;
+  /** Source identifier (npm package, git URL, etc.) */
+  sourceId?: string;
+  /** Transport configuration */
+  transport: MCPTransportConfig;
+  /** Whether server is enabled */
+  enabled: boolean;
+  /** Installation timestamp */
+  installedAt: number;
+  /** Last updated timestamp */
+  updatedAt?: number;
+  /** Tags for search/filtering */
+  tags?: string[];
+  /** User notes */
+  notes?: string;
+  /** Auto-start with agent */
+  autoStart: boolean;
+  /** Priority order (lower = higher priority) */
+  priority: number;
+}
+
+/**
+ * MCP Server runtime state
  */
 export interface MCPServerState {
-  /** Server configuration */
-  config: MCPServerConfig;
-  /** Connection status */
-  status: MCPConnectionStatus;
+  /** Server configuration ID */
+  configId: string;
+  /** Current status */
+  status: MCPServerStatus;
   /** Error message if status is 'error' */
   error?: string;
+  /** Connected protocol version */
+  protocolVersion?: string;
   /** Server info from initialization */
-  serverInfo?: MCPServerInfo;
-  /** Server capabilities */
+  serverInfo?: {
+    name: string;
+    version: string;
+  };
+  /** Negotiated capabilities */
   capabilities?: MCPServerCapabilities;
-  /** Discovered prompts */
-  prompts: MCPPrompt[];
-  /** Discovered resources */
-  resources: MCPResource[];
-  /** Discovered resource templates */
-  resourceTemplates: MCPResourceTemplate[];
-  /** Discovered tools */
-  tools: MCPTool[];
-  /** Current connection established timestamp */
+  /** Available tools */
+  tools: MCPToolDefinition[];
+  /** Available resources */
+  resources: MCPResourceDefinition[];
+  /** Available prompts */
+  prompts: MCPPromptDefinition[];
+  /** Connection timestamp */
   connectedAt?: number;
-  /** Last successful connection timestamp */
-  lastConnectedAt?: number;
-  /** Connection metrics */
-  metrics?: {
-    connectTime?: number;
-    toolCallCount: number;
-    resourceReadCount: number;
-    promptGetCount: number;
-    errorCount: number;
+  /** Last activity timestamp */
+  lastActivityAt?: number;
+  /** Tool call statistics */
+  stats: {
+    totalCalls: number;
+    successfulCalls: number;
+    failedCalls: number;
+    averageLatencyMs: number;
   };
 }
 
 // =============================================================================
-// Settings
+// MCP Store Types
 // =============================================================================
 
 /**
- * MCP settings stored in AgentSettings
+ * MCP server listing from store/registry
+ */
+export interface MCPStoreListing {
+  /** Package identifier */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Short description */
+  description: string;
+  /** Detailed description (markdown) */
+  longDescription?: string;
+  /** Version */
+  version: string;
+  /** Author name */
+  author: string;
+  /** Author homepage */
+  authorUrl?: string;
+  /** Server homepage */
+  homepage?: string;
+  /** Repository URL */
+  repository?: string;
+  /** License */
+  license?: string;
+  /** Icon URL */
+  icon?: string;
+  /** Banner image URL */
+  banner?: string;
+  /** Category */
+  category: MCPServerCategory;
+  /** Tags for filtering */
+  tags: string[];
+  /** Installation source */
+  source: MCPServerSource;
+  /** Install command/package name */
+  installCommand: string;
+  /** Default transport configuration template */
+  transportTemplate: Partial<MCPTransportConfig>;
+  /** Required environment variables */
+  requiredEnv?: Array<{
+    name: string;
+    description: string;
+    required: boolean;
+  }>;
+  /** Download count */
+  downloads?: number;
+  /** Star/rating count */
+  stars?: number;
+  /** Last updated */
+  updatedAt: string;
+  /** Whether verified/official */
+  verified: boolean;
+  /** Screenshots */
+  screenshots?: string[];
+  /** Example tools provided */
+  exampleTools?: string[];
+  /** Readme content (markdown) */
+  readme?: string;
+  /** Changelog content (markdown) */
+  changelog?: string;
+}
+
+/**
+ * MCP Store search filters
+ */
+export interface MCPStoreFilters {
+  /** Search query */
+  query?: string;
+  /** Filter by category */
+  category?: MCPServerCategory;
+  /** Filter by source type */
+  source?: MCPServerSource;
+  /** Filter by tags */
+  tags?: string[];
+  /** Only show verified servers */
+  verifiedOnly?: boolean;
+  /** Sort by */
+  sortBy?: 'relevance' | 'downloads' | 'stars' | 'updated' | 'name';
+  /** Sort direction */
+  sortOrder?: 'asc' | 'desc';
+  /** Pagination offset */
+  offset?: number;
+  /** Results per page */
+  limit?: number;
+}
+
+/**
+ * MCP Store search results
+ */
+export interface MCPStoreSearchResult {
+  /** Total matching results */
+  total: number;
+  /** Current page results */
+  items: MCPStoreListing[];
+  /** Whether more results available */
+  hasMore: boolean;
+}
+
+// =============================================================================
+// MCP Settings Types
+// =============================================================================
+
+/**
+ * MCP system settings
  */
 export interface MCPSettings {
-  /** Whether MCP is enabled globally */
+  /** Enable MCP integration */
   enabled: boolean;
-  /** Registered MCP servers */
-  servers: MCPServerConfig[];
-  /** Default timeout for all servers (ms) */
-  defaultTimeout: number;
-  /** Auto-reconnect on connection loss */
-  autoReconnect: boolean;
-  /** Show tool confirmation for MCP tools */
-  requireToolConfirmation: boolean;
-  /** Include MCP tools in agent context */
-  includeInAgentContext: boolean;
+  /** Auto-start enabled servers with agent */
+  autoStartServers: boolean;
+  /** Connection timeout (ms) */
+  connectionTimeoutMs: number;
+  /** Tool execution timeout (ms) */
+  toolTimeoutMs: number;
   /** Maximum concurrent server connections */
   maxConcurrentConnections: number;
+  /** Cache tool results for repeated calls */
+  cacheToolResults: boolean;
+  /** Cache TTL (ms) */
+  cacheTtlMs: number;
+  /** Show MCP tools in tool selection */
+  showInToolSelection: boolean;
+  /** Log MCP communications for debugging */
+  debugLogging: boolean;
+  /** Retry failed connections */
+  retryFailedConnections: boolean;
+  /** Retry count */
+  retryCount: number;
+  /** Retry delay (ms) */
+  retryDelayMs: number;
+  /** Custom registry URLs */
+  customRegistries: string[];
+  /** Enabled registry sources */
+  enabledRegistrySources?: {
+    smithery: boolean;
+    npm: boolean;
+    pypi: boolean;
+    github: boolean;
+    glama: boolean;
+  };
 }
 
 /**
@@ -502,213 +416,237 @@ export interface MCPSettings {
  */
 export const DEFAULT_MCP_SETTINGS: MCPSettings = {
   enabled: true,
-  servers: [],
-  defaultTimeout: 30000,
-  autoReconnect: true,
-  requireToolConfirmation: true,
-  includeInAgentContext: true,
+  autoStartServers: true,
+  connectionTimeoutMs: 30000,
+  toolTimeoutMs: 60000,
   maxConcurrentConnections: 10,
+  cacheToolResults: true,
+  cacheTtlMs: 300000, // 5 minutes
+  showInToolSelection: true,
+  debugLogging: false,
+  retryFailedConnections: true,
+  retryCount: 3,
+  retryDelayMs: 2000,
+  customRegistries: [],
+  enabledRegistrySources: {
+    smithery: true,
+    npm: true,
+    pypi: true,
+    github: true,
+    glama: false, // Disabled by default
+  },
 };
 
 // =============================================================================
-// Events
+// MCP Event Types
 // =============================================================================
 
 /**
- * MCP-related events for renderer
+ * MCP event types for IPC communication
  */
-export interface MCPStateEvent {
-  type: 'mcp-state';
-  servers: MCPServerState[];
-}
+export type MCPEventType =
+  | 'mcp:server-status-changed'
+  | 'mcp:server-installed'
+  | 'mcp:server-uninstalled'
+  | 'mcp:server-updated'
+  | 'mcp:tools-changed'
+  | 'mcp:resources-changed'
+  | 'mcp:prompts-changed'
+  | 'mcp:tool-executed'
+  | 'mcp:error';
 
-export interface MCPServerConnectedEvent {
-  type: 'mcp-server-connected';
+/**
+ * MCP server status changed event
+ */
+export interface MCPServerStatusChangedEvent {
+  type: 'mcp:server-status-changed';
   serverId: string;
-  serverInfo: MCPServerInfo;
-  capabilities: MCPServerCapabilities;
+  status: MCPServerStatus;
+  error?: string;
 }
 
-export interface MCPServerDisconnectedEvent {
-  type: 'mcp-server-disconnected';
+/**
+ * MCP server installed event
+ */
+export interface MCPServerInstalledEvent {
+  type: 'mcp:server-installed';
+  server: MCPServerConfig;
+}
+
+/**
+ * MCP server uninstalled event
+ */
+export interface MCPServerUninstalledEvent {
+  type: 'mcp:server-uninstalled';
   serverId: string;
-  reason?: string;
 }
 
-export interface MCPServerErrorEvent {
-  type: 'mcp-server-error';
-  serverId: string;
-  error: string;
-}
-
+/**
+ * MCP tools changed event
+ */
 export interface MCPToolsChangedEvent {
-  type: 'mcp-tools-changed';
+  type: 'mcp:tools-changed';
   serverId: string;
-  tools: MCPTool[];
+  tools: MCPToolDefinition[];
 }
 
-export interface MCPResourcesChangedEvent {
-  type: 'mcp-resources-changed';
+/**
+ * MCP tool executed event
+ */
+export interface MCPToolExecutedEvent {
+  type: 'mcp:tool-executed';
   serverId: string;
-  resources: MCPResource[];
+  toolName: string;
+  success: boolean;
+  durationMs: number;
+  error?: string;
 }
 
-export interface MCPPromptsChangedEvent {
-  type: 'mcp-prompts-changed';
-  serverId: string;
-  prompts: MCPPrompt[];
+/**
+ * MCP error event
+ */
+export interface MCPErrorEvent {
+  type: 'mcp:error';
+  serverId?: string;
+  message: string;
+  details?: unknown;
 }
 
-export type MCPEvent = 
-  | MCPStateEvent
-  | MCPServerConnectedEvent
-  | MCPServerDisconnectedEvent
-  | MCPServerErrorEvent
+/**
+ * Union of all MCP events
+ */
+export type MCPEvent =
+  | MCPServerStatusChangedEvent
+  | MCPServerInstalledEvent
+  | MCPServerUninstalledEvent
   | MCPToolsChangedEvent
-  | MCPResourcesChangedEvent
-  | MCPPromptsChangedEvent;
+  | MCPToolExecutedEvent
+  | MCPErrorEvent;
 
 // =============================================================================
-// IPC Types
+// MCP Tool Execution Types
 // =============================================================================
 
-export interface MCPAddServerRequest {
-  name: string;
-  transport: MCPTransportConfig;
-  description?: string;
-  autoConnect?: boolean;
-  icon?: string;
+/**
+ * MCP tool call request
+ */
+export interface MCPToolCallRequest {
+  /** Server ID to call tool on */
+  serverId: string;
+  /** Tool name */
+  toolName: string;
+  /** Tool arguments */
+  arguments: Record<string, unknown>;
+  /** Request timeout override */
+  timeoutMs?: number;
+}
+
+/**
+ * MCP tool call result
+ */
+export interface MCPToolCallResult {
+  /** Whether call was successful */
+  success: boolean;
+  /** Result content */
+  content?: Array<{
+    type: 'text' | 'image' | 'resource';
+    text?: string;
+    data?: string;
+    mimeType?: string;
+    uri?: string;
+  }>;
+  /** Error message if failed */
+  error?: string;
+  /** Execution duration (ms) */
+  durationMs: number;
+  /** Whether result is from cache */
+  cached?: boolean;
+}
+
+// =============================================================================
+// MCP Installation Types
+// =============================================================================
+
+/**
+ * MCP server installation request
+ */
+export interface MCPInstallRequest {
+  /** Source type */
+  source: MCPServerSource;
+  /** Package identifier (npm package, git URL, local path) */
+  packageId: string;
+  /** Custom server name */
+  name?: string;
+  /** Environment variables */
+  env?: Record<string, string>;
+  /** Transport configuration override */
+  transportConfig?: Partial<MCPTransportConfig>;
+  /** Auto-start after installation */
+  autoStart?: boolean;
+  /** Category */
+  category?: MCPServerCategory;
+  /** Tags */
   tags?: string[];
 }
 
-export interface MCPUpdateServerRequest {
-  id: string;
-  updates: Partial<Omit<MCPServerConfig, 'id' | 'createdAt'>>;
-}
-
-export interface MCPToolCallRequest {
-  serverId: string;
-  toolName: string;
-  arguments: Record<string, unknown>;
-}
-
-export interface MCPResourceReadRequest {
-  serverId: string;
-  uri: string;
-}
-
-export interface MCPPromptGetRequest {
-  serverId: string;
-  name: string;
-  arguments?: Record<string, unknown>;
+/**
+ * MCP server installation result
+ */
+export interface MCPInstallResult {
+  /** Whether installation was successful */
+  success: boolean;
+  /** Installed server config (if successful) */
+  server?: MCPServerConfig;
+  /** Error message (if failed) */
+  error?: string;
+  /** Installation logs */
+  logs?: string[];
 }
 
 // =============================================================================
-// Server Presets
+// Helper Types
 // =============================================================================
 
 /**
- * MCP server preset for quick setup
+ * MCP server summary for UI display
  */
-export interface MCPServerPreset {
+export interface MCPServerSummary {
   id: string;
   name: string;
-  description: string;
-  transport: MCPStdioConfig;
-  icon: string;
-  tags: string[];
-  /** Environment variables required (user must provide) */
-  requiredEnv?: string[];
+  description?: string;
+  icon?: string;
+  category: MCPServerCategory;
+  status: MCPServerStatus;
+  enabled: boolean;
+  toolCount: number;
+  resourceCount: number;
+  promptCount: number;
+  source: MCPServerSource;
+  /** Source identifier (npm package, git URL, etc.) for matching with store listings */
+  sourceId?: string;
+  lastActivity?: number;
 }
 
 /**
- * Common MCP server presets for quick setup
+ * MCP tool with server context
  */
-export const MCP_SERVER_PRESETS: MCPServerPreset[] = [
-  {
-    id: 'filesystem',
-    name: 'Filesystem',
-    description: 'Access local filesystem with read/write capabilities',
-    transport: {
-      type: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-filesystem', './'],
-    },
-    icon: '📁',
-    tags: ['official', 'filesystem'],
-  },
-  {
-    id: 'fetch',
-    name: 'Fetch',
-    description: 'Fetch and convert web pages to markdown',
-    transport: {
-      type: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-fetch'],
-    },
-    icon: '🌐',
-    tags: ['official', 'web'],
-  },
-  {
-    id: 'github',
-    name: 'GitHub',
-    description: 'Access GitHub repositories and issues',
-    transport: {
-      type: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-github'],
-    },
-    icon: '🐙',
-    tags: ['official', 'git'],
-    requiredEnv: ['GITHUB_TOKEN'],
-  },
-  {
-    id: 'sqlite',
-    name: 'SQLite',
-    description: 'Read and query SQLite databases',
-    transport: {
-      type: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-sqlite', '--db-path', './database.db'],
-    },
-    icon: '🗃️',
-    tags: ['official', 'database'],
-  },
-  {
-    id: 'memory',
-    name: 'Memory',
-    description: 'Persistent knowledge graph memory',
-    transport: {
-      type: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-memory'],
-    },
-    icon: '🧠',
-    tags: ['official', 'memory'],
-  },
-  {
-    id: 'brave-search',
-    name: 'Brave Search',
-    description: 'Web search using Brave Search API',
-    transport: {
-      type: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-brave-search'],
-    },
-    icon: '🔍',
-    tags: ['official', 'search'],
-    requiredEnv: ['BRAVE_API_KEY'],
-  },
-  {
-    id: 'puppeteer',
-    name: 'Puppeteer',
-    description: 'Browser automation and web scraping',
-    transport: {
-      type: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-puppeteer'],
-    },
-    icon: '🎭',
-    tags: ['official', 'browser'],
-  },
-];
+export interface MCPToolWithContext {
+  /** Server ID */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Tool definition */
+  tool: MCPToolDefinition;
+}
+
+/**
+ * Get all MCP tools across all connected servers
+ */
+export interface MCPToolsMap {
+  /** Map of serverId -> tools */
+  byServer: Map<string, MCPToolDefinition[]>;
+  /** Flat list of all tools with context */
+  all: MCPToolWithContext[];
+  /** Total tool count */
+  count: number;
+}

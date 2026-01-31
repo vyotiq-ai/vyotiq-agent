@@ -16,6 +16,20 @@ export { normalizeStrictJsonSchema } from './jsonSchemaStrict';
 // JSON parsing utilities (robust parsing with recovery for streaming)
 export { parseJsonRobust, parseToolArguments, type JsonParseResult } from './jsonParser';
 
+// Schema validation utilities
+export {
+  validateToolArguments,
+  formatValidationErrors,
+  isValidString,
+  isValidNumber,
+  isValidFilePath,
+  isValidArray,
+  type ValidationResult,
+  type ValidationError,
+  type ValidationErrorCode,
+  type ValidationOptions,
+} from './schemaValidator';
+
 // Encoding detection and repair utilities
 export { 
   hasMojibake, 

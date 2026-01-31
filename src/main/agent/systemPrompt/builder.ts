@@ -30,6 +30,7 @@ import {
   buildToolCategories,
   buildSemanticContext,
   buildMCPContext,
+  buildGitContext,
 } from './dynamicSections';
 import { buildInjectedContext } from './contextInjection';
 
@@ -68,8 +69,11 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
     // Semantic context - relevant code snippets
     buildSemanticContext(context.semanticContext),
 
-    // MCP context - external tools and resources
+    // MCP context - external tool servers
     buildMCPContext(context.mcpContext),
+
+    // Git context - repository state
+    buildGitContext(context.gitContext),
 
     // Terminal and editor context
     buildTerminalContext(context.terminalContext),

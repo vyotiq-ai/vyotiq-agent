@@ -266,6 +266,7 @@ browser_network(status: "error") → check for failed requests
   requiresApproval: false,
   category: 'browser-read',
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   schema: {
     type: 'object',

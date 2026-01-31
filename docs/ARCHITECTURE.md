@@ -82,16 +82,6 @@ src/main/
 │   ├── context/              # Context management & summarization
 │   ├── cache/                # Caching systems (prompt, tool result, context)
 │   ├── semantic/             # Vector embeddings & semantic search
-│   ├── mcp/                  # MCP (Model Context Protocol) integration
-│   │   ├── index.ts          # Module exports
-│   │   ├── MCPManager.ts     # Server lifecycle management
-│   │   ├── MCPServerConnection.ts  # Individual server connections
-│   │   ├── MCPStdioTransport.ts    # Stdio transport layer
-│   │   ├── MCPHttpTransport.ts     # HTTP transport layer
-│   │   ├── MCPToolAdapter.ts       # Tool schema adaptation
-│   │   ├── MCPServerDiscovery.ts   # Automatic server discovery
-│   │   ├── MCPHealthMonitor.ts     # Health & reconnection
-│   │   └── MCPContextIntegration.ts # Context integration
 │   ├── compliance/           # Safety & compliance checks
 │   ├── recovery/             # Error recovery & self-healing
 │   ├── debugging/            # Execution tracing & debugging
@@ -163,7 +153,7 @@ Tools are the interface between the agent and the system. Each tool:
 
 #### Built-in Tools (40+)
 
-**File Operations (7 tools)**
+##### File Operations (7 tools)
 
 - `read` - Read file contents
 - `write` - Write/create files
@@ -172,19 +162,19 @@ Tools are the interface between the agent and the system. Each tool:
 - `grep` - Search file contents
 - `glob` - Find files by pattern
 - `bulkOperations` - Batch file operations
-
-**Semantic Search (1 tool)**
+##### Semantic Search (1 tool)
 
 - `codebase_search` - AI-powered semantic code search using vector embeddings
 
-**Terminal (3 tools)**
+##### Terminal (3 tools)
 
+**Terminal (3 tools)**
 - `run` - Execute shell commands
-- `checkTerminal` - Check terminal status
+##### Browser Automation (21 tools)
+l status
 - `killTerminal` - Kill terminal process
 
 **Browser Automation (21 tools)**
-
 - `browser_fetch` - Fetch web content
 - `browser_navigate` - Navigate to URL
 - `browser_extract` - Extract page content
@@ -204,7 +194,7 @@ Tools are the interface between the agent and the system. Each tool:
 - `browser_console` - Get console logs
 - `browser_network` - Monitor network requests
 - `browser_tabs` - Tab management
-- `browser_security_status` - Security monitoring
+##### LSP Code Intelligence (8 tools)ity monitoring
 - `browser_check_url` - URL safety check
 
 **LSP Code Intelligence (8 tools)**
@@ -217,69 +207,14 @@ Tools are the interface between the agent and the system. Each tool:
 - `lsp_completions` - Get completions
 - `lsp_code_actions` - Get code actions
 - `lsp_rename` - Rename symbol
-
-**Linting (1 tool)**
+##### Linting (1 tool)
 
 - `readLints` - Get linting errors
 
+##### Dynamic (1 tool)
+
 **Dynamic (1 tool)**
-
 - `createTool` - Create custom tools at runtime
-
-### MCP Integration (Model Context Protocol)
-
-The MCP system enables dynamic integration with external tool servers using the Model Context Protocol (2025-06-18 specification).
-
-#### Architecture
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                     MCPManager                               │
-│  (Central coordinator for all MCP server connections)        │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌───────────────────┐  ┌───────────────────┐              │
-│  │  MCPServerDiscovery│  │  MCPHealthMonitor │              │
-│  │  - Find local     │  │  - Health checks   │              │
-│  │    servers        │  │  - Auto-reconnect  │              │
-│  │  - Config parsing │  │  - Latency tracking│              │
-│  └───────────────────┘  └───────────────────┘              │
-│                                                               │
-│  ┌───────────────────────────────────────────┐             │
-│  │         MCPServerConnection                │             │
-│  │  ┌─────────────┐  ┌──────────────┐        │             │
-│  │  │StdioTransport│  │ HttpTransport│        │             │
-│  │  └─────────────┘  └──────────────┘        │             │
-│  └───────────────────────────────────────────┘             │
-│                                                               │
-│  ┌───────────────────┐  ┌───────────────────┐              │
-│  │  MCPToolAdapter   │  │MCPContextIntegration│             │
-│  │  - Schema convert │  │  - Context injection│             │
-│  │  - Result parsing │  │  - Resource mgmt   │             │
-│  └───────────────────┘  └───────────────────┘              │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### Components
-
-- **MCPManager**: Central hub managing server lifecycle, tool registration
-- **MCPServerConnection**: Individual server connection with reconnection logic
-- **MCPStdioTransport**: Stdio-based transport for local process servers
-- **MCPHttpTransport**: HTTP/SSE transport for remote servers
-- **MCPToolAdapter**: Converts MCP tool schemas to internal format
-- **MCPServerDiscovery**: Finds servers from known config locations
-- **MCPHealthMonitor**: Periodic health checks with auto-reconnection
-- **MCPContextIntegration**: Injects MCP resources into agent context
-
-#### Supported Features
-
-- Automatic server discovery from `~/.mcp/`, `~/.config/mcp/`
-- Multiple transport protocols (stdio, HTTP)
-- Dynamic tool registration from connected servers
-- Health monitoring with configurable intervals
-- Auto-reconnection with exponential backoff
-- Server metrics (latency, call count, error rate)
 
 ### Session Management
 
@@ -313,8 +248,8 @@ The context system handles:
 *Last updated: January 2026*
 
 The `systemPrompt/` module provides a modular, cached system for building system prompts:
-
-```text
+text
+```
 src/main/agent/systemPrompt/
 ├── index.ts              # Re-exports (backward compatible)
 ├── builder.ts            # Main prompt assembly
@@ -344,7 +279,6 @@ const staticPrompt = cache.getStaticPrompt();
 ```
 
 Key features:
-
 - **Modular Architecture**: Separated static sections (cached) from dynamic sections (per-request)
 - **Dynamic Context Injection**: Workspace, terminal, editor, and diagnostics context
 - **Provider-Level Caching**: Static content cached with hash-based invalidation
@@ -353,10 +287,10 @@ Key features:
 ---
 
 ## Renderer Process (React)
-
-### Directory Structure
+Renderer Directory Structure
 
 ```text
+```
 src/renderer/
 ├── features/                 # Feature modules
 │   ├── chat/                 # Chat interface
@@ -402,7 +336,6 @@ Vyotiq uses three context providers for state management:
 #### 1. AgentProvider (Global Agent State)
 
 Manages:
-
 - Active session and messages
 - Agent status (running, paused, idle)
 - Sessions list
@@ -420,7 +353,6 @@ const {
 #### 2. EditorProvider (Editor State)
 
 Manages:
-
 - Open tabs and active tab
 - File content and dirty state
 - Undo/redo history
@@ -436,7 +368,6 @@ const {
 #### 3. UIProvider (UI-Only State)
 
 Manages:
-
 - Panel visibility (browser, settings)
 - Panel sizes (resizable panels)
 - Modal states (shortcuts, command palette)
@@ -568,7 +499,7 @@ The recovery system provides:
 
 ## Tool System
 
-### Tool Execution Flow
+### Tool Execution Flow Diagram
 
 ```text
 Tool Request
@@ -611,7 +542,7 @@ interface ToolConfirmation {
 
 ## State Management
 
-### Data Flow
+### State Data Flow
 
 ```text
 User Input
@@ -687,7 +618,7 @@ type RendererEvent =
 
 ## Data Flow
 
-### Message Sending Flow
+### Message Sending Flow Diagram
 
 ```text
 User types message
@@ -719,7 +650,7 @@ Components re-render
 UI updates
 ```
 
-### File Operation Flow
+### File Operation Flow Diagram
 
 ```text
 User edits file in editor
@@ -859,21 +790,21 @@ src/main/agent/semantic/
 - Caches embeddings for repeated queries
 - Quality presets: fast, balanced, quality
 
-#### VectorStore
 
+#### VectorStore
 - SQLite-backed persistent storage
 - HNSW algorithm for similarity search
 - Configurable M and efSearch parameters
 - Automatic index optimization
 
-#### CodeChunker
 
+#### CodeChunker
 - Language-aware code splitting (15+ languages)
 - Preserves semantic boundaries (functions, classes)
+
 - Configurable chunk sizes
 
 #### SemanticIndexer
-
 - Orchestrates workspace indexing
 - Progress tracking with time estimates
 - File change watching for incremental updates
@@ -904,10 +835,10 @@ const context = await getSemanticContextForQuery(
 );
 ```
 
+
 ### Settings
 
 Configurable via Settings → Indexing:
-
 - Enable/disable indexing
 - Auto-index on startup
 - Watch for file changes

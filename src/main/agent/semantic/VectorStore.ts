@@ -141,6 +141,11 @@ export interface VectorStoreStats {
 /**
  * Simple in-memory HNSW-like index for fast approximate nearest neighbor search.
  * Uses a hierarchical graph structure for O(log n) query time.
+ * 
+ * Features:
+ * - Memory monitoring to prevent unbounded growth
+ * - Configurable memory limit with eviction
+ * - LRU-style eviction when limit reached
  */
 class HNSWIndex {
   private dimension: number;
@@ -150,12 +155,61 @@ class HNSWIndex {
   private vectors: Map<string, Float32Array> = new Map();
   private graph: Map<string, Set<string>> = new Map();
   private entryPoint: string | null = null;
+  private accessOrder: Map<string, number> = new Map(); // For LRU tracking
+  private accessCounter: number = 0;
+  
+  // Memory management
+  private readonly maxVectors: number;
+  private readonly bytesPerVector: number;
 
-  constructor(dimension: number, M = 16, efConstruction = 200, efSearch = 50) {
+  constructor(dimension: number, M = 16, efConstruction = 200, efSearch = 50, maxVectors = 100000) {
     this.dimension = dimension;
     this.M = M;
     this.efConstruction = efConstruction;
     this.efSearch = efSearch;
+    this.maxVectors = maxVectors;
+    this.bytesPerVector = dimension * 4; // Float32 = 4 bytes
+  }
+
+  /**
+   * Get current memory usage in bytes (approximate)
+   */
+  getMemoryUsage(): number {
+    // Vector memory + graph overhead (estimated)
+    const vectorMemory = this.vectors.size * this.bytesPerVector;
+    const graphMemory = this.vectors.size * this.M * 16; // Rough estimate for graph edges
+    return vectorMemory + graphMemory;
+  }
+
+  /**
+   * Get memory stats
+   */
+  getMemoryStats(): { vectorCount: number; memoryMB: number; maxVectors: number } {
+    return {
+      vectorCount: this.vectors.size,
+      memoryMB: Math.round(this.getMemoryUsage() / (1024 * 1024) * 100) / 100,
+      maxVectors: this.maxVectors,
+    };
+  }
+
+  /**
+   * Evict least recently used vectors when over limit
+   */
+  private evictIfNeeded(): void {
+    if (this.vectors.size <= this.maxVectors) return;
+    
+    const toEvict = this.vectors.size - this.maxVectors + Math.floor(this.maxVectors * 0.1); // Evict 10% extra
+    
+    // Sort by access time (LRU)
+    const sorted = Array.from(this.accessOrder.entries())
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, toEvict);
+    
+    for (const [id] of sorted) {
+      this.remove(id);
+    }
+    
+    logger.debug('HNSW eviction completed', { evicted: sorted.length, remaining: this.vectors.size });
   }
 
   /**
@@ -166,7 +220,11 @@ class HNSWIndex {
       throw new Error(`Vector dimension mismatch: expected ${this.dimension}, got ${vector.length}`);
     }
 
+    // Check memory limit before adding
+    this.evictIfNeeded();
+
     this.vectors.set(id, vector);
+    this.accessOrder.set(id, ++this.accessCounter);
 
     // Initialize graph entry for this vector
     if (!this.graph.has(id)) {
@@ -209,6 +267,7 @@ class HNSWIndex {
     }
     this.graph.delete(id);
     this.vectors.delete(id);
+    this.accessOrder.delete(id);
 
     // Update entry point if needed
     if (this.entryPoint === id) {
@@ -223,7 +282,14 @@ class HNSWIndex {
    */
   search(queryVector: Float32Array, k: number): Array<{ id: string; distance: number }> {
     if (this.vectors.size === 0) return [];
-    return this.searchKnn(queryVector, k, this.efSearch);
+    const results = this.searchKnn(queryVector, k, this.efSearch);
+    
+    // Update access times for LRU tracking
+    for (const result of results) {
+      this.accessOrder.set(result.id, ++this.accessCounter);
+    }
+    
+    return results;
   }
 
   /**
@@ -334,14 +400,17 @@ class HNSWIndex {
   clear(): void {
     this.vectors.clear();
     this.graph.clear();
+    this.accessOrder.clear();
+    this.accessCounter = 0;
     this.entryPoint = null;
   }
 
   /**
    * Export index state for persistence
    */
-  export(): { vectors: Array<[string, number[]]>; graph: Array<[string, string[]]>; entryPoint: string | null } {
+  export(): { dimension: number; vectors: Array<[string, number[]]>; graph: Array<[string, string[]]>; entryPoint: string | null } {
     return {
+      dimension: this.dimension,
       vectors: Array.from(this.vectors.entries()).map(([id, vec]) => [id, Array.from(vec)]),
       graph: Array.from(this.graph.entries()).map(([id, conns]) => [id, Array.from(conns)]),
       entryPoint: this.entryPoint,
@@ -351,7 +420,12 @@ class HNSWIndex {
   /**
    * Import index state from persistence
    */
-  import(data: { vectors: Array<[string, number[]]>; graph: Array<[string, string[]]>; entryPoint: string | null }): void {
+  import(data: { dimension?: number; vectors: Array<[string, number[]]>; graph: Array<[string, string[]]>; entryPoint: string | null }): void {
+    // Validate dimension if present in data
+    if (data.dimension !== undefined && data.dimension !== this.dimension) {
+      throw new Error(`Dimension mismatch: index has ${data.dimension}, expected ${this.dimension}`);
+    }
+    
     this.clear();
     for (const [id, vec] of data.vectors) {
       this.vectors.set(id, new Float32Array(vec));
@@ -451,16 +525,72 @@ export class VectorStore {
     try {
       const data = await fs.readFile(hnswPath, 'utf-8');
       const parsed = JSON.parse(data);
+      
+      // Validate dimension before importing - if dimension changed (e.g., model quality changed),
+      // we need to rebuild the index to avoid silent failures
+      const storedDimension = parsed.dimension;
+      if (storedDimension !== undefined && storedDimension !== this.config.dimension) {
+        logger.warn('HNSW index dimension mismatch (from metadata), rebuilding index', {
+          storedDimension,
+          expectedDimension: this.config.dimension,
+          reason: 'Model quality setting may have changed',
+        });
+        await this.clearHnswIndexFile();
+        throw new Error('Dimension mismatch - rebuilding');
+      }
+      
+      // Fallback: check first vector if dimension not stored in metadata
+      if (storedDimension === undefined && parsed.vectors && parsed.vectors.length > 0) {
+        const firstVector = parsed.vectors[0];
+        if (firstVector && Array.isArray(firstVector[1])) {
+          const vectorDimension = firstVector[1].length;
+          if (vectorDimension !== this.config.dimension) {
+            logger.warn('HNSW index dimension mismatch (from vector check), rebuilding index', {
+              storedDimension: vectorDimension,
+              expectedDimension: this.config.dimension,
+              reason: 'Model quality setting may have changed',
+            });
+            await this.clearHnswIndexFile();
+            throw new Error('Dimension mismatch - rebuilding');
+          }
+        }
+      }
+      
       this.hnswIndex.import(parsed);
       logger.debug('Loaded HNSW index from disk', { size: this.hnswIndex.size });
       return;
-    } catch {
-      // No persisted index, rebuild from database
+    } catch (error) {
+      // No persisted index or dimension mismatch, rebuild from database
+      if (error instanceof Error && error.message !== 'Dimension mismatch - rebuilding') {
+        logger.debug('No persisted HNSW index found, will rebuild from database');
+      }
     }
 
     // Rebuild index from database
     const stmt = this.db.prepare('SELECT id, vector FROM documents');
     const rows = stmt.all() as Array<{ id: string; vector: Buffer }>;
+    
+    // Check if existing vectors have wrong dimension
+    let dimensionMismatchCount = 0;
+    for (const row of rows) {
+      const vectorDimension = row.vector.byteLength / 4;
+      if (vectorDimension !== this.config.dimension) {
+        dimensionMismatchCount++;
+      }
+    }
+    
+    // If there's a dimension mismatch, we need to clear and re-index
+    if (dimensionMismatchCount > 0) {
+      logger.warn('Database vectors have wrong dimension, clearing index for reindexing', {
+        mismatchedVectors: dimensionMismatchCount,
+        totalVectors: rows.length,
+        expectedDimension: this.config.dimension,
+        reason: 'Model quality setting may have changed, requiring full reindex',
+      });
+      // Clear all documents - they need to be re-embedded with new dimension
+      await this.clear();
+      return;
+    }
     
     for (const row of rows) {
       const vector = new Float32Array(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength / 4);
@@ -468,6 +598,19 @@ export class VectorStore {
     }
 
     logger.debug('Rebuilt HNSW index from database', { size: this.hnswIndex.size });
+  }
+
+  /**
+   * Clear the persisted HNSW index file
+   */
+  private async clearHnswIndexFile(): Promise<void> {
+    const hnswPath = this.dbPath.replace('.db', '.hnsw.json');
+    try {
+      await fs.unlink(hnswPath);
+      logger.debug('Cleared persisted HNSW index file');
+    } catch {
+      // File may not exist, ignore
+    }
   }
 
   /**

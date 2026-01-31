@@ -22,6 +22,7 @@ import { getToolUIConfig, getToolCategory, DEFAULT_TOOL_UI } from '../types/tool
 import { createLogger } from '../../logger';
 import { getToolResultCache } from '../../agent/cache/ToolResultCache';
 import { getToolExecutionLogger } from '../../agent/logging/ToolExecutionLogger';
+import { validateToolArguments, formatValidationErrors } from '../../utils/schemaValidator';
 
 const logger = createLogger('ToolRegistry');
 
@@ -367,9 +368,38 @@ export class ToolRegistry {
     const toolExecutionLogger = getToolExecutionLogger();
     toolExecutionLogger.logNormalization(name, args, normalizedArgs);
 
+    // Perform schema validation on normalized arguments
+    const validationResult = validateToolArguments(normalizedArgs, tool.schema, name);
+    if (!validationResult.valid) {
+      const completedAt = Date.now();
+      const errorOutput = formatValidationErrors(validationResult.errors, name);
+      
+      logger.warn('Tool argument validation failed', {
+        tool: name,
+        errors: validationResult.errors,
+      });
+
+      return {
+        toolName: name,
+        success: false,
+        output: errorOutput,
+        timing: {
+          startedAt,
+          completedAt,
+          durationMs: completedAt - startedAt,
+        },
+        metadata: {
+          validationErrors: validationResult.errors,
+        },
+      };
+    }
+
+    // Use coerced args if available (from validation)
+    const finalArgs = validationResult.coercedArgs ?? normalizedArgs;
+
     // Check cache for idempotent tools
     const cache = getToolResultCache();
-    const cachedResult = cache.get(name, normalizedArgs);
+    const cachedResult = cache.get(name, finalArgs);
     
     if (cachedResult) {
       const completedAt = Date.now();
@@ -403,12 +433,12 @@ export class ToolRegistry {
     }
 
     try {
-      const result = await tool.execute(normalizedArgs, context);
+      const result = await tool.execute(finalArgs, context);
       const completedAt = Date.now();
 
       // Cache successful results for idempotent tools
       if (result.success && cache.isCacheable(name)) {
-        cache.set(name, normalizedArgs, result, context.sessionId);
+        cache.set(name, finalArgs, result, context.sessionId);
         logger.debug('Cached tool result', {
           tool: name,
           outputLength: result.output.length,
@@ -417,7 +447,7 @@ export class ToolRegistry {
       }
 
       // Invalidate cache for write operations
-      this.invalidateCacheForWriteOperation(name, normalizedArgs, result);
+      this.invalidateCacheForWriteOperation(name, finalArgs, result);
 
       // Enhance result with timing and additional metadata
       const enhanced: EnhancedToolResult = {
@@ -430,7 +460,7 @@ export class ToolRegistry {
       };
 
       // Add file change info for file operations
-      const fileChanges = this.extractFileChanges(name, normalizedArgs, result);
+      const fileChanges = this.extractFileChanges(name, finalArgs, result);
       if (fileChanges.length > 0) {
         enhanced.fileChanges = fileChanges;
       }

@@ -7,6 +7,9 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID, createHash } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { app } from 'electron';
 import type { Logger } from '../../logger';
 
 // =============================================================================
@@ -60,6 +63,8 @@ export interface ExecutionRecorderConfig {
   autoSave: boolean;
   captureFullResponses: boolean;
   hashSensitiveData: boolean;
+  /** Storage directory for persisted recordings */
+  storagePath?: string;
 }
 
 export const DEFAULT_EXECUTION_RECORDER_CONFIG: ExecutionRecorderConfig = {
@@ -79,11 +84,36 @@ export class ExecutionRecorder extends EventEmitter {
   private readonly config: ExecutionRecorderConfig;
   private readonly recordings = new Map<string, Recording>();
   private activeRecordingId: string | null = null;
+  private storagePath: string | null = null;
+  private storageInitialized = false;
 
   constructor(logger: Logger, config: Partial<ExecutionRecorderConfig> = {}) {
     super();
     this.logger = logger;
     this.config = { ...DEFAULT_EXECUTION_RECORDER_CONFIG, ...config };
+  }
+
+  /**
+   * Get the storage directory path, initializing if needed
+   */
+  private async getStoragePath(): Promise<string> {
+    if (this.storagePath && this.storageInitialized) {
+      return this.storagePath;
+    }
+
+    // Use config path or default to userData/recordings
+    this.storagePath = this.config.storagePath || path.join(app.getPath('userData'), 'recordings');
+    
+    // Ensure directory exists
+    try {
+      await fs.mkdir(this.storagePath, { recursive: true });
+      this.storageInitialized = true;
+    } catch (error) {
+      this.logger.error('Failed to create recordings directory', { error });
+      throw error;
+    }
+
+    return this.storagePath;
   }
 
   /**
@@ -294,7 +324,7 @@ export class ExecutionRecorder extends EventEmitter {
   }
 
   /**
-   * Save recording to storage
+   * Save recording to disk
    */
   async saveRecording(recordingId: string): Promise<string> {
     const recording = this.recordings.get(recordingId);
@@ -303,20 +333,103 @@ export class ExecutionRecorder extends EventEmitter {
     }
 
     const data = JSON.stringify(recording, null, 2);
+    
+    try {
+      const storagePath = await this.getStoragePath();
+      const filePath = path.join(storagePath, `${recordingId}.json`);
+      
+      // Write to temp file first for atomic write
+      const tempPath = `${filePath}.tmp`;
+      await fs.writeFile(tempPath, data, 'utf-8');
+      await fs.rename(tempPath, filePath);
+      
+      this.logger.info('Recording saved to disk', { 
+        recordingId, 
+        filePath,
+        sizeBytes: data.length 
+      });
+    } catch (error) {
+      this.logger.error('Failed to save recording to disk', { recordingId, error });
+      throw error;
+    }
 
-    // In a real implementation, this would save to disk or database
     this.emit('recording-saved', { recordingId, size: data.length });
-
     return data;
   }
 
   /**
-   * Load recording from data
+   * Load recording from JSON data string
    */
   loadRecording(data: string): Recording {
     const recording = JSON.parse(data) as Recording;
     this.recordings.set(recording.id, recording);
     return recording;
+  }
+
+  /**
+   * Load recording from disk by ID
+   */
+  async loadRecordingFromDisk(recordingId: string): Promise<Recording> {
+    const storagePath = await this.getStoragePath();
+    const filePath = path.join(storagePath, `${recordingId}.json`);
+    
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      const recording = JSON.parse(data) as Recording;
+      this.recordings.set(recording.id, recording);
+      this.logger.info('Recording loaded from disk', { recordingId, filePath });
+      return recording;
+    } catch (error) {
+      this.logger.error('Failed to load recording from disk', { recordingId, error });
+      throw new Error(`Failed to load recording ${recordingId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * List all saved recordings from disk
+   */
+  async listSavedRecordings(): Promise<Array<{ id: string; filename: string; sizeBytes: number }>> {
+    try {
+      const storagePath = await this.getStoragePath();
+      const files = await fs.readdir(storagePath);
+      const recordings: Array<{ id: string; filename: string; sizeBytes: number }> = [];
+      
+      for (const file of files) {
+        if (file.endsWith('.json') && !file.endsWith('.tmp')) {
+          const filePath = path.join(storagePath, file);
+          const stats = await fs.stat(filePath);
+          recordings.push({
+            id: file.replace('.json', ''),
+            filename: file,
+            sizeBytes: stats.size,
+          });
+        }
+      }
+      
+      return recordings;
+    } catch (error) {
+      this.logger.error('Failed to list saved recordings', { error });
+      return [];
+    }
+  }
+
+  /**
+   * Delete recording from disk
+   */
+  async deleteRecordingFromDisk(recordingId: string): Promise<boolean> {
+    try {
+      const storagePath = await this.getStoragePath();
+      const filePath = path.join(storagePath, `${recordingId}.json`);
+      await fs.unlink(filePath);
+      this.logger.info('Recording deleted from disk', { recordingId, filePath });
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return false; // File didn't exist
+      }
+      this.logger.error('Failed to delete recording from disk', { recordingId, error });
+      throw error;
+    }
   }
 
   /**

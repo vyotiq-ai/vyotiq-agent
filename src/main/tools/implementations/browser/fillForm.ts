@@ -254,6 +254,7 @@ browser_fill_form(fields: [
   requiresApproval: false,
   category: 'browser-write',
   riskLevel: 'safe',
+  allowedCallers: ['direct'],
 
   schema: {
     type: 'object',

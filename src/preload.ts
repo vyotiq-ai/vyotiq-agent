@@ -294,6 +294,39 @@ const glmAPI = {
 };
 
 // ==========================================================================
+// xAI (Grok) API
+// ==========================================================================
+
+interface XAIModel {
+	id: string;
+	object: string;
+	owned_by?: string;
+}
+
+const xaiAPI = {
+	fetchModels: (): Promise<{ success: boolean; models: XAIModel[]; error?: string }> =>
+		ipcRenderer.invoke('xai:fetch-models'),
+};
+
+// ==========================================================================
+// Mistral API
+// ==========================================================================
+
+interface MistralModel {
+	id: string;
+	object: string;
+	created?: number;
+	owned_by?: string;
+	name?: string;
+	description?: string;
+}
+
+const mistralAPI = {
+	fetchModels: (): Promise<{ success: boolean; models: MistralModel[]; error?: string }> =>
+		ipcRenderer.invoke('mistral:fetch-models'),
+};
+
+// ==========================================================================
 // Files API
 // ==========================================================================
 
@@ -507,6 +540,91 @@ const debugAPI = {
 		exportFormat: 'json' | 'markdown';
 	} | null> =>
 		ipcRenderer.invoke('debug:get-config'),
+
+	// ==========================================================================
+	// Breakpoint Management
+	// ==========================================================================
+
+	// Set a breakpoint
+	setBreakpoint: (sessionId: string, breakpoint: {
+		type: 'tool' | 'error' | 'condition';
+		enabled: boolean;
+		toolName?: string;
+		condition?: string;
+	}): Promise<{ success: boolean; breakpoint?: { id: string; type: string; enabled: boolean; toolName?: string; condition?: string }; error?: string }> =>
+		ipcRenderer.invoke('debug:set-breakpoint', sessionId, breakpoint),
+
+	// Get all breakpoints for a session
+	getBreakpoints: (sessionId: string): Promise<Array<{
+		id: string;
+		type: 'tool' | 'error' | 'condition';
+		enabled: boolean;
+		toolName?: string;
+		condition?: string;
+	}>> =>
+		ipcRenderer.invoke('debug:get-breakpoints', sessionId),
+
+	// Remove a breakpoint
+	removeBreakpoint: (breakpointId: string): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('debug:remove-breakpoint', breakpointId),
+
+	// Toggle a breakpoint
+	toggleBreakpoint: (breakpointId: string): Promise<{ success: boolean; enabled?: boolean; error?: string }> =>
+		ipcRenderer.invoke('debug:toggle-breakpoint', breakpointId),
+
+	// Clear all breakpoints
+	clearBreakpoints: (): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('debug:clear-breakpoints'),
+
+	// ==========================================================================
+	// State Inspection
+	// ==========================================================================
+
+	// Get current session state for inspection
+	getSessionState: (sessionId: string): Promise<{
+		context: {
+			maxTokens: number;
+			usedTokens: number;
+			utilization: string;
+			messageCount: number;
+			systemPromptTokens: number;
+			toolResultTokens: number;
+		};
+		messages: {
+			pending: number;
+			processing: number;
+			completed: number;
+			lastMessageAt: number | null;
+		};
+		tools: {
+			totalCalls: number;
+			successRate: string;
+			avgDuration: string;
+			mostUsed: string;
+			lastTool: string | null;
+		};
+		resources: {
+			memoryMb: number;
+			cpuPercent: number;
+			activeConnections: number;
+			cacheHitRate: string;
+			pendingRequests: number;
+		};
+	} | null> =>
+		ipcRenderer.invoke('debug:get-session-state', sessionId),
+
+	// Take a state snapshot
+	takeStateSnapshot: (sessionId: string): Promise<{ success: boolean; snapshotId?: string; error?: string }> =>
+		ipcRenderer.invoke('debug:take-state-snapshot', sessionId),
+
+	// Get state snapshots for a session
+	getStateSnapshots: (sessionId: string): Promise<Array<{
+		id: string;
+		agentId: string;
+		timestamp: number;
+		trigger: 'manual' | 'breakpoint' | 'periodic' | 'error';
+	}>> =>
+		ipcRenderer.invoke('debug:get-state-snapshots', sessionId),
 };
 
 /// ==========================================================================
@@ -1706,68 +1824,120 @@ const semanticAPI = {
 };
 
 // ==========================================================================
-// MCP API
+// MCP (Model Context Protocol) API
 // ==========================================================================
 
-interface MCPEvent {
-	type: 'mcp-state' | 'mcp-server-connected' | 'mcp-server-disconnected' | 'mcp-server-error' | 'mcp-tools-changed' | 'mcp-settings-ready' | 'mcp-health-changed' | 'mcp-server-degraded' | 'mcp-server-unhealthy' | 'mcp-server-recovered' | 'mcp-recovery-attempt' | 'mcp-recovery-failed';
-	[key: string]: unknown;
+interface MCPServerStatusEvent {
+	serverId: string;
+	status: string;
+	error?: string;
+}
+
+interface MCPToolsUpdatedEvent {
+	tools: Array<{
+		serverId: string;
+		serverName: string;
+		tool: {
+			name: string;
+			description: string;
+			inputSchema: Record<string, unknown>;
+		};
+	}>;
 }
 
 const mcpAPI = {
 	// Settings
 	getSettings: () => ipcRenderer.invoke('mcp:get-settings'),
-	updateSettings: (updates: Record<string, unknown>) => ipcRenderer.invoke('mcp:update-settings', updates),
+	updateSettings: (settings: Record<string, unknown>) => ipcRenderer.invoke('mcp:update-settings', settings),
 
-	// Server Management
+	// Server Configuration
 	getServers: () => ipcRenderer.invoke('mcp:get-servers'),
 	getServerStates: () => ipcRenderer.invoke('mcp:get-server-states'),
-	addServer: (request: Record<string, unknown>) => ipcRenderer.invoke('mcp:add-server', request),
-	updateServer: (request: Record<string, unknown>) => ipcRenderer.invoke('mcp:update-server', request),
-	removeServer: (serverId: string) => ipcRenderer.invoke('mcp:remove-server', serverId),
+	getServerSummaries: () => ipcRenderer.invoke('mcp:get-server-summaries'),
+	getServer: (serverId: string) => ipcRenderer.invoke('mcp:get-server', serverId),
+	getServerState: (serverId: string) => ipcRenderer.invoke('mcp:get-server-state', serverId),
+	registerServer: (config: Record<string, unknown>) => ipcRenderer.invoke('mcp:register-server', config),
+	updateServer: (config: Record<string, unknown>) => ipcRenderer.invoke('mcp:update-server', config),
+	unregisterServer: (serverId: string) => ipcRenderer.invoke('mcp:unregister-server', serverId),
 
 	// Connection Management
 	connectServer: (serverId: string) => ipcRenderer.invoke('mcp:connect-server', serverId),
 	disconnectServer: (serverId: string) => ipcRenderer.invoke('mcp:disconnect-server', serverId),
+	restartServer: (serverId: string) => ipcRenderer.invoke('mcp:restart-server', serverId),
+	enableServer: (serverId: string) => ipcRenderer.invoke('mcp:enable-server', serverId),
+	disableServer: (serverId: string) => ipcRenderer.invoke('mcp:disable-server', serverId),
+	connectAll: () => ipcRenderer.invoke('mcp:connect-all'),
+	disconnectAll: () => ipcRenderer.invoke('mcp:disconnect-all'),
 
-	// Tools
+	// Tool Management
 	getAllTools: () => ipcRenderer.invoke('mcp:get-all-tools'),
-	callTool: (serverId: string, toolName: string, args: Record<string, unknown>) =>
-		ipcRenderer.invoke('mcp:call-tool', serverId, toolName, args),
+	getServerTools: (serverId: string) => ipcRenderer.invoke('mcp:get-server-tools', serverId),
+	findTool: (toolName: string) => ipcRenderer.invoke('mcp:find-tool', toolName),
+	callTool: (request: { serverId: string; toolName: string; arguments: Record<string, unknown>; timeoutMs?: number }) =>
+		ipcRenderer.invoke('mcp:call-tool', request),
+	clearCache: () => ipcRenderer.invoke('mcp:clear-cache'),
 
-	// Resources
+	// Resource Management
 	getAllResources: () => ipcRenderer.invoke('mcp:get-all-resources'),
 	readResource: (serverId: string, uri: string) => ipcRenderer.invoke('mcp:read-resource', serverId, uri),
 
-	// Prompts
+	// Prompt Management
 	getAllPrompts: () => ipcRenderer.invoke('mcp:get-all-prompts'),
-	getPrompt: (serverId: string, name: string, args?: Record<string, unknown>) =>
-		ipcRenderer.invoke('mcp:get-prompt', serverId, name, args),
+	getPrompt: (serverId: string, promptName: string, args?: Record<string, string>) =>
+		ipcRenderer.invoke('mcp:get-prompt', serverId, promptName, args),
 
-	// Discovery
-	discoverServers: (options?: Record<string, unknown>) => ipcRenderer.invoke('mcp:discover-servers', options),
-	getDiscoveryCache: () => ipcRenderer.invoke('mcp:get-discovery-cache'),
-	clearDiscoveryCache: () => ipcRenderer.invoke('mcp:clear-discovery-cache'),
-	addDiscoveredServer: (candidate: Record<string, unknown>) => ipcRenderer.invoke('mcp:add-discovered-server', candidate),
+	// Store
+	storeSearch: (filters: {
+		query?: string;
+		category?: string;
+		source?: string;
+		tags?: string[];
+		verifiedOnly?: boolean;
+		sortBy?: string;
+		sortOrder?: string;
+		offset?: number;
+		limit?: number;
+	}) => ipcRenderer.invoke('mcp:store-search', filters),
+	storeGetFeatured: () => ipcRenderer.invoke('mcp:store-get-featured'),
+	storeGetCategories: () => ipcRenderer.invoke('mcp:store-get-categories'),
+	storeGetDetails: (id: string) => ipcRenderer.invoke('mcp:store-get-details', id),
+	storeRefresh: () => ipcRenderer.invoke('mcp:store-refresh'),
+	storeIsInstalled: (listingId: string) => ipcRenderer.invoke('mcp:store-is-installed', listingId),
 
-	// Health Monitoring
-	getHealthMetrics: () => ipcRenderer.invoke('mcp:get-health-metrics'),
-	getServerHealth: (serverId: string) => ipcRenderer.invoke('mcp:get-server-health', serverId),
-	updateHealthConfig: (config: Record<string, unknown>) => ipcRenderer.invoke('mcp:update-health-config', config),
-	triggerRecovery: (serverId: string) => ipcRenderer.invoke('mcp:trigger-recovery', serverId),
+	// Registry Management (Dynamic Sources)
+	registryGetStats: () => ipcRenderer.invoke('mcp:registry-get-stats'),
+	registryGetSources: () => ipcRenderer.invoke('mcp:registry-get-sources'),
+	registrySetSourceEnabled: (source: 'smithery' | 'npm' | 'pypi' | 'github' | 'glama', enabled: boolean) =>
+		ipcRenderer.invoke('mcp:registry-set-source-enabled', source, enabled),
 
-	// Context Integration
-	getToolSuggestions: (context: Record<string, unknown>, limit?: number) =>
-		ipcRenderer.invoke('mcp:get-tool-suggestions', context, limit),
-	getResourceSuggestions: (context: Record<string, unknown>, limit?: number) =>
-		ipcRenderer.invoke('mcp:get-resource-suggestions', context, limit),
-	getPromptSuggestions: (context: Record<string, unknown>, limit?: number) =>
-		ipcRenderer.invoke('mcp:get-prompt-suggestions', context, limit),
-	enrichContext: (context: Record<string, unknown>) => ipcRenderer.invoke('mcp:enrich-context', context),
+	// Installation
+	installServer: (request: {
+		source: string;
+		packageId: string;
+		name?: string;
+		env?: Record<string, string>;
+		transportConfig?: Record<string, unknown>;
+		autoStart?: boolean;
+		category?: string;
+		tags?: string[];
+	}) => ipcRenderer.invoke('mcp:install-server', request),
+	installFromStore: (listingId: string, options?: { env?: Record<string, string>; autoStart?: boolean }) =>
+		ipcRenderer.invoke('mcp:install-from-store', listingId, options),
+	uninstallServer: (serverId: string) => ipcRenderer.invoke('mcp:uninstall-server', serverId),
 
 	// Events
-	onEvent: (handler: (event: MCPEvent) => void) => {
-		const listener = (_event: IpcRendererEvent, data: MCPEvent) => handler(data);
+	onServerStatusChanged: (handler: (event: MCPServerStatusEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: MCPServerStatusEvent) => handler(data);
+		ipcRenderer.on('mcp:server-status-changed', listener);
+		return () => ipcRenderer.removeListener('mcp:server-status-changed', listener);
+	},
+	onToolsUpdated: (handler: (event: MCPToolsUpdatedEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: MCPToolsUpdatedEvent) => handler(data);
+		ipcRenderer.on('mcp:tools-updated', listener);
+		return () => ipcRenderer.removeListener('mcp:tools-updated', listener);
+	},
+	onEvent: (handler: (event: Record<string, unknown>) => void) => {
+		const listener = (_event: IpcRendererEvent, data: Record<string, unknown>) => handler(data);
 		ipcRenderer.on('mcp:event', listener);
 		return () => ipcRenderer.removeListener('mcp:event', listener);
 	},
@@ -1784,6 +1954,8 @@ contextBridge.exposeInMainWorld('vyotiq', {
 	deepseek: deepseekAPI,
 	gemini: geminiAPI,
 	glm: glmAPI,
+	xai: xaiAPI,
+	mistral: mistralAPI,
 	debug: debugAPI,
 	files: fileAPI,
 	cache: cacheAPI,
@@ -1813,6 +1985,6 @@ contextBridge.exposeInMainWorld('vyotiq', {
 	// Semantic Indexing API
 	semantic: semanticAPI,
 
-	// Model Context Protocol API
+	// MCP (Model Context Protocol) API
 	mcp: mcpAPI,
 });

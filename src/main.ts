@@ -10,6 +10,7 @@ import { initBrowserManager, getBrowserManager } from './main/browser';
 import { initFileWatcher, watchWorkspace, stopWatching } from './main/workspaces/fileWatcher';
 import type { RendererEvent, BrowserState } from './shared/types';
 import { registerIpcHandlers } from './main/ipc';
+import { getSessionHealthMonitor } from './main/agent/sessionHealth';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -57,6 +58,13 @@ const emitToRenderer = (event: RendererEvent): void => {
   } else if (event.type === 'semantic:modelProgress') {
     // Model download progress events
     mainWindow.webContents.send('semantic:modelProgress', event);
+  } else if (event.type === 'session-health-update') {
+    // Session health update events for real-time monitoring
+    const healthEvent = event as unknown as { sessionId: string; data: unknown };
+    mainWindow.webContents.send('session-health:update', {
+      sessionId: healthEvent.sessionId,
+      status: healthEvent.data,
+    });
   }
 };
 
@@ -244,6 +252,13 @@ const bootstrapInfrastructure = async () => {
 
     // Setup event forwarding AFTER initialization is complete
     orchestrator.on('event', (event) => emitToRenderer(event));
+
+    // Wire up session health monitor to emit IPC events
+    const healthMonitor = getSessionHealthMonitor();
+    healthMonitor.setEventEmitter((event) => {
+      emitToRenderer(event as unknown as RendererEvent);
+    });
+    logger.info('Session health monitor connected to IPC');
 
     infraInitialized = true;
     logger.info('Infrastructure fully initialized', {

@@ -154,6 +154,9 @@ export const updateAssistantMessageContent = (
     messageId: string | undefined,
     delta: string
 ): AgentSessionState[] => {
+    // PERFORMANCE OPTIMIZATION: Skip if delta is empty
+    if (!delta) return sessions;
+    
     // Fast path: find session index once
     const sessionIndex = sessions.findIndex(s => s.id === sessionId);
     if (sessionIndex === -1) return sessions;
@@ -262,6 +265,9 @@ export const updateLastAssistantThinking = (
     sessionId: string,
     delta: string
 ): AgentSessionState[] => {
+    // PERFORMANCE OPTIMIZATION: Skip if delta is empty
+    if (!delta) return sessions;
+    
     const sessionIndex = sessions.findIndex(s => s.id === sessionId);
     if (sessionIndex === -1) {
         return sessions;
@@ -302,6 +308,9 @@ export const updateAssistantMessageThinking = (
     messageId: string | undefined,
     delta: string
 ): AgentSessionState[] => {
+    // PERFORMANCE OPTIMIZATION: Skip if delta is empty
+    if (!delta) return sessions;
+    
     if (messageId) {
         const updated = updateAssistantMessageById(sessions, sessionId, messageId, (message) => ({
             ...message,

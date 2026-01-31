@@ -7,6 +7,8 @@ import { useEditor } from './state/EditorProvider';
 import { KeyboardShortcutsModal } from './components/ui/KeyboardShortcutsModal';
 import { CommandPalette, CommandIcons, type CommandItem } from './components/ui/CommandPalette';
 import { useFirstRun } from './hooks/useFirstRun';
+import { useAppearanceSettings } from './hooks/useAppearanceSettings';
+import { FeatureErrorBoundary } from './components/layout/ErrorBoundary';
 import { Loader2, Code, Save, X } from 'lucide-react';
 
 // Lazy load the Settings panel for better initial load performance
@@ -127,6 +129,9 @@ const App: React.FC = () => {
   // First run detection
   const { isFirstRun, completeFirstRun } = useFirstRun();
   const [showWizard, setShowWizard] = useState(false);
+
+  // Apply appearance settings from state
+  useAppearanceSettings();
 
   // Show wizard on first run after settings are loaded
   useEffect(() => {
@@ -468,10 +473,12 @@ const App: React.FC = () => {
                   aria-orientation="vertical"
                 />
                 <Suspense fallback={<BrowserLoader />}>
-                  <BrowserPanel
-                    isOpen={browserPanelOpen}
-                    onClose={closeBrowserPanel}
-                  />
+                  <FeatureErrorBoundary featureName="Browser">
+                    <BrowserPanel
+                      isOpen={browserPanelOpen}
+                      onClose={closeBrowserPanel}
+                    />
+                  </FeatureErrorBoundary>
                 </Suspense>
               </div>
             )}
@@ -479,16 +486,20 @@ const App: React.FC = () => {
         </div>
         {settingsOpen && (
           <Suspense fallback={<SettingsLoader />}>
-            <SettingsPanel open={settingsOpen} onClose={closeSettings} />
+            <FeatureErrorBoundary featureName="Settings">
+              <SettingsPanel open={settingsOpen} onClose={closeSettings} />
+            </FeatureErrorBoundary>
           </Suspense>
         )}
         {undoHistoryOpen && (
           <Suspense fallback={<UndoHistoryLoader />}>
-            <UndoHistoryPanel
-              isOpen={undoHistoryOpen}
-              onClose={closeUndoHistory}
-              sessionId={agentSnapshot.activeSessionId}
-            />
+            <FeatureErrorBoundary featureName="UndoHistory">
+              <UndoHistoryPanel
+                isOpen={undoHistoryOpen}
+                onClose={closeUndoHistory}
+                sessionId={agentSnapshot.activeSessionId}
+              />
+            </FeatureErrorBoundary>
           </Suspense>
         )}
         <KeyboardShortcutsModal open={shortcutsOpen} onClose={closeShortcuts} />

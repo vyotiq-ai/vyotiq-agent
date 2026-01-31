@@ -28,7 +28,7 @@ import { TerminalEventHandler } from './terminalEventHandler';
 import { ProviderManager } from './providerManager';
 import { initRecovery, getSelfHealingAgent } from './recovery';
 import { initGitIntegration } from './git';
-import { initMCPManager, shutdownMCPManager, initMCPToolSync, cleanupMCPToolSync } from './mcp';
+import { ModelQualityTracker } from './modelQuality';
 
 interface OrchestratorDeps {
   settingsStore: SettingsStore;
@@ -43,6 +43,7 @@ export class AgentOrchestrator extends EventEmitter {
   private readonly logger: Logger;
   private readonly toolRegistry: ToolRegistry;
   private readonly terminalManager: TerminalManager;
+  private readonly modelQualityTracker: ModelQualityTracker;
 
   private sessionManager: SessionManager;
   private runExecutor: RunExecutor;
@@ -77,6 +78,9 @@ export class AgentOrchestrator extends EventEmitter {
     this.settingsStore = deps.settingsStore;
     this.workspaceManager = deps.workspaceManager;
     this.logger = deps.logger;
+
+    // Initialize model quality tracking
+    this.modelQualityTracker = new ModelQualityTracker();
 
     const toolLogger: ToolLogger = {
       info: (message: string, meta?: Record<string, unknown>) => this.logger.info(`[tool] ${message}`, meta),
@@ -173,6 +177,9 @@ export class AgentOrchestrator extends EventEmitter {
     // Load custom tools from settings
     await this.loadCustomTools();
 
+    // Initialize MCP (Model Context Protocol) integration
+    await this.initializeMCPIntegration();
+
     // Initialize editor AI service for code editor features
     const { initEditorAIService } = await import('./editor');
     initEditorAIService({
@@ -229,17 +236,6 @@ export class AgentOrchestrator extends EventEmitter {
       this.logger.info('Recovery/self-healing system initialized and started');
     } catch (err) {
       this.logger.warn('Failed to initialize recovery system', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-
-    // Initialize MCP (Model Context Protocol) server integration
-    try {
-      await initMCPManager(this.settingsStore);
-      initMCPToolSync(this.toolRegistry);
-      this.logger.info('MCP server integration initialized');
-    } catch (err) {
-      this.logger.warn('Failed to initialize MCP integration', {
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -583,6 +579,9 @@ export class AgentOrchestrator extends EventEmitter {
   }
 
   deleteSession(sessionId: string): void {
+    // Clean up run executor resources for this session (abort controllers, queues, etc.)
+    this.runExecutor.cleanupDeletedSession(sessionId);
+    // Delete the session from storage and memory
     this.sessionManagementHandler.deleteSession(sessionId);
   }
 
@@ -851,13 +850,58 @@ export class AgentOrchestrator extends EventEmitter {
         });
       }
 
-      // Shutdown MCP integration
+      // Shutdown LSP Manager
       try {
-        cleanupMCPToolSync();
-        await shutdownMCPManager();
-        this.logger.debug('MCP integration shutdown complete');
+        const { getLSPManager } = await import('../lsp');
+        const lspManager = getLSPManager();
+        if (lspManager) {
+          await lspManager.shutdown();
+          this.logger.debug('LSP manager shutdown complete');
+        }
       } catch (error) {
-        this.logger.warn('Error shutting down MCP integration', {
+        this.logger.warn('Error shutting down LSP manager', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      // Shutdown MCP Server Manager
+      try {
+        const { getMCPServerManager } = await import('../mcp');
+        const mcpManager = getMCPServerManager();
+        if (mcpManager) {
+          await mcpManager.shutdown();
+          this.logger.debug('MCP server manager shutdown complete');
+        }
+      } catch (error) {
+        this.logger.warn('Error shutting down MCP server manager', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      // Shutdown Browser Manager
+      try {
+        const { getBrowserManager } = await import('../browser');
+        const browserManager = getBrowserManager();
+        if (browserManager) {
+          browserManager.destroy();
+          this.logger.debug('Browser manager cleanup complete');
+        }
+      } catch (error) {
+        this.logger.warn('Error cleaning up browser manager', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      // Shutdown Semantic Indexer
+      try {
+        const { getSemanticIndexer } = await import('./semantic');
+        const indexer = getSemanticIndexer();
+        if (indexer) {
+          await indexer.shutdown();
+          this.logger.debug('Semantic indexer shutdown complete');
+        }
+      } catch (error) {
+        this.logger.warn('Error shutting down semantic indexer', {
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -872,6 +916,15 @@ export class AgentOrchestrator extends EventEmitter {
       const cleanedCount = this.terminalManager.cleanup(0); // Clean all completed processes
       if (cleanedCount > 0) {
         this.logger.debug('Cleaned up completed terminal processes', { count: cleanedCount });
+      }
+
+      // Remove terminal event listeners to prevent memory leaks
+      this.terminalEventHandler.removeEventListeners();
+
+      // Clear editor state log timer if pending
+      if (this.editorStateLogTimer) {
+        clearTimeout(this.editorStateLogTimer);
+        this.editorStateLogTimer = null;
       }
     } catch (error) {
       this.logger.error('Error during orchestrator cleanup', {
@@ -948,7 +1001,123 @@ export class AgentOrchestrator extends EventEmitter {
     }
   }
 
+  /**
+   * Initialize MCP (Model Context Protocol) integration
+   * Connects MCP server tools to the main tool registry
+   */
+  private async initializeMCPIntegration(): Promise<void> {
+    try {
+      const { initializeMCPServerManager, initializeMCPToolRegistryAdapter, getMCPServerManager } = await import('../mcp');
+      
+      // Initialize MCP server manager
+      initializeMCPServerManager();
+      
+      // Initialize the tool registry adapter to sync MCP tools with main registry
+      initializeMCPToolRegistryAdapter(this.toolRegistry);
+      
+      // Load saved MCP servers from settings and connect them
+      const settings = this.settingsStore.get();
+      const mcpServers = settings.mcpServers ?? [];
+      const mcpSettings = settings.mcpSettings;
+      
+      if (mcpSettings?.enabled && mcpSettings?.autoStartServers) {
+        const manager = getMCPServerManager();
+        
+        // Register saved servers
+        for (const serverConfig of mcpServers) {
+          try {
+            manager.registerServer(serverConfig);
+            
+            // Auto-connect if server is marked as enabled
+            if (serverConfig.enabled) {
+              await manager.connectServer(serverConfig.id);
+              this.logger.debug('MCP server connected', { name: serverConfig.name });
+            }
+          } catch (err) {
+            this.logger.warn('Failed to initialize MCP server', {
+              serverName: serverConfig.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+        
+        this.logger.info('MCP integration initialized', {
+          serversLoaded: mcpServers.length,
+          autoConnected: mcpServers.filter(s => s.enabled).length,
+        });
+      } else {
+        this.logger.info('MCP integration initialized (auto-connect disabled)');
+      }
+    } catch (err) {
+      this.logger.warn('Failed to initialize MCP integration', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   private emitEvent(event: RendererEvent | AgentEvent): void {
     this.emit('event', event);
+  }
+
+  // ==========================================================================
+  // Model Quality API
+  // ==========================================================================
+
+  /**
+   * Record a model performance event
+   */
+  recordModelPerformance(
+    modelId: string,
+    provider: LLMProviderName,
+    success: boolean,
+    responseTimeMs: number,
+    tokensUsed: number,
+    loopDetected = false,
+    complianceViolation = false
+  ): void {
+    this.modelQualityTracker.recordPerformance({
+      modelId,
+      provider,
+      success,
+      responseTimeMs,
+      tokensUsed,
+      loopDetected,
+      complianceViolation,
+    });
+  }
+
+  /**
+   * Record user reaction to a model response (thumbs up/down)
+   */
+  recordUserReaction(modelId: string, provider: LLMProviderName, reaction: 'up' | 'down'): void {
+    this.modelQualityTracker.recordUserReaction(modelId, provider, reaction);
+  }
+
+  /**
+   * Get quality metrics for a specific model
+   */
+  getModelQualityMetrics(modelId: string, provider: LLMProviderName) {
+    return this.modelQualityTracker.getMetrics(modelId, provider);
+  }
+
+  /**
+   * Get all models ranked by quality score
+   */
+  getRankedModels() {
+    return this.modelQualityTracker.getRankedModels();
+  }
+
+  /**
+   * Get global model quality statistics
+   */
+  getModelQualityStats() {
+    return this.modelQualityTracker.getGlobalStats();
+  }
+
+  /**
+   * Get the model quality tracker instance
+   */
+  getModelQualityTracker(): ModelQualityTracker {
+    return this.modelQualityTracker;
   }
 }

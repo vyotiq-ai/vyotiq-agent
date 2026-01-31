@@ -8,6 +8,7 @@ export {
   analyzeToolDependencies,
   buildExecutionGroups,
   Semaphore,
+  withTimeout,
   DEFAULT_PARALLEL_CONFIG,
   type ParallelExecutionResult,
   type ParallelExecutionConfig,

@@ -3,13 +3,13 @@
  * 
  * Displays a placeholder when no session is active. Uses pure terminal/CLI styling.
  */
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { memo, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { cn } from '../../../utils/cn';
 import { useWorkspaceList } from '../../../hooks/useWorkspaceList';
 import { useAgentStatus } from '../../../hooks/useAgentStatus';
 import { getContextualHint, SESSION_HINTS } from '../utils/welcomeHints';
 
-export const EmptyState: React.FC = () => {
+const EmptyStateComponent: React.FC = () => {
   const [showCursor, setShowCursor] = useState(true);
   const [displayedText, setDisplayedText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -177,3 +177,5 @@ export const EmptyState: React.FC = () => {
     </div>
   );
 };
+
+export const EmptyState = memo(EmptyStateComponent);

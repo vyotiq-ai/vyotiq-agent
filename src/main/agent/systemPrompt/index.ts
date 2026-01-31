@@ -85,6 +85,7 @@ export type {
   InternalTerminalSettings,
   SemanticContextInfo,
   MCPContextInfo,
+  GitContextInfo,
 } from './types';
 
 // Dynamic section builders
@@ -94,6 +95,7 @@ export {
   buildToolsReference,
   buildTerminalContext,
   buildEditorContext,
+  buildGitContext,
   buildWorkspaceDiagnostics as buildWorkspaceDiagnosticsContext,
   buildTaskAnalysis as buildTaskAnalysisContext,
   buildWorkspaceStructure as buildWorkspaceStructureContext,

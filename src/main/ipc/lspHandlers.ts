@@ -153,6 +153,57 @@ export function registerLspHandlers(context: IpcContext): void {
     }
   });
 
+  ipcMain.handle('lsp:type-definition', async (_event, filePath: string, line: number, column: number) => {
+    try {
+      const { getLSPManager } = await import('../lsp');
+      const manager = getLSPManager();
+      
+      if (!manager) {
+        return { success: false, error: 'LSP manager not initialized' };
+      }
+      
+      const locations = await manager.getTypeDefinition(filePath, line, column);
+      return { success: true, locations };
+    } catch (error) {
+      logger.error('Failed to get type definition', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle('lsp:implementations', async (_event, filePath: string, line: number, column: number) => {
+    try {
+      const { getLSPManager } = await import('../lsp');
+      const manager = getLSPManager();
+      
+      if (!manager) {
+        return { success: false, error: 'LSP manager not initialized' };
+      }
+      
+      const locations = await manager.getImplementation(filePath, line, column);
+      return { success: true, locations };
+    } catch (error) {
+      logger.error('Failed to get implementations', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle('lsp:prepare-rename', async (_event, filePath: string, line: number, column: number) => {
+    try {
+      const { getLSPManager } = await import('../lsp');
+      const manager = getLSPManager();
+      
+      if (!manager) {
+        return { success: false, error: 'LSP manager not initialized' };
+      }
+      
+      const result = await manager.prepareRename(filePath, line, column);
+      return { success: true, result };
+    } catch (error) {
+      logger.error('Failed to prepare rename', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
   ipcMain.handle('lsp:references', async (_event, filePath: string, line: number, column: number, includeDeclaration?: boolean) => {
     try {
       const { getLSPManager } = await import('../lsp');

@@ -213,8 +213,9 @@ browser_extract()
 - Combine with screenshot to verify state`,
 
   requiresApproval: false,
-  category: 'browser-write',
+  category: 'browser-read', // Actually read-only - just waits
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   schema: {
     type: 'object',

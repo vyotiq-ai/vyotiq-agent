@@ -59,6 +59,7 @@ export const browserBackTool: ToolDefinition<Record<string, unknown>> = {
   requiresApproval: false,
   category: 'browser-write',
   riskLevel: 'safe',
+  allowedCallers: ['direct'],
 
   schema: {
     type: 'object',
@@ -131,6 +132,7 @@ export const browserForwardTool: ToolDefinition<Record<string, unknown>> = {
   requiresApproval: false,
   category: 'browser-write',
   riskLevel: 'safe',
+  allowedCallers: ['direct'],
 
   schema: {
     type: 'object',
@@ -195,6 +197,7 @@ export const browserReloadTool: ToolDefinition<Record<string, unknown>> = {
   requiresApproval: false,
   category: 'browser-write',
   riskLevel: 'safe',
+  allowedCallers: ['direct'],
 
   schema: {
     type: 'object',

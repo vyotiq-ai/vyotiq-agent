@@ -27,13 +27,13 @@ import {
 import { ComplianceValidator, PromptOptimizer } from '../compliance';
 import { buildSystemPrompt, DEFAULT_PROMPT_SETTINGS, type SystemPromptContext } from '../systemPrompt';
 import { buildImageGenerationSystemPrompt } from '../imageGenerationPrompt';
+import { buildMCPContextInfo } from '../../mcp';
 import { AGGRESSIVE_CACHE_CONFIG, CONSERVATIVE_CACHE_CONFIG, DEFAULT_CACHE_CONFIG } from '../cache';
 import { normalizeStrictJsonSchema } from '../../utils';
 import { getSharedModelById, getProviderConfig } from '../providers/registry';
 import { modelBelongsToProvider } from '../utils/modelUtils';
 import { convertMessagesToProvider } from '../utils/messageUtils';
 import { agentMetrics } from '../metrics';
-import { getMCPContextProvider } from '../mcp';
 import type { RendererEvent, AgentEvent, CacheSettings, AccessLevelSettings, ProviderSettings } from '../../../shared/types';
 
 export class RequestBuilder {
@@ -482,8 +482,8 @@ export class RequestBuilder {
     // Retrieve semantic context from the latest user message
     const semanticContext = await this.getSemanticContextForLatestMessage(session);
 
-    // Retrieve MCP context from connected servers
-    const mcpContext = getMCPContextProvider().getContextInfo();
+    // Build MCP context for available external tools
+    const mcpContext = buildMCPContextInfo({ enabled: true });
 
     const context: SystemPromptContext = {
       session,

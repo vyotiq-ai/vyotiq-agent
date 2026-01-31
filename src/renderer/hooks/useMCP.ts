@@ -1,526 +1,564 @@
 /**
- * useMCP Hook
- * 
- * React hook for managing MCP (Model Context Protocol) state and operations.
- * Provides access to MCP settings, server states, and action handlers.
- * Enhanced with discovery, health monitoring, and context-aware suggestions.
+ * MCP Hooks
+ *
+ * React hooks for MCP (Model Context Protocol) server management.
+ * Provides state management, event subscriptions, and API integration.
+ *
+ * @module renderer/hooks/useMCP
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type {
-  MCPSettings,
-  MCPServerConfig,
-  MCPServerState,
-  MCPTool,
-  MCPPrompt,
-  MCPResource,
-} from '../../shared/types/mcp';
+import { useState, useEffect, useCallback } from 'react';
 import { createLogger } from '../utils/logger';
+import type {
+  MCPServerSummary,
+  MCPSettings,
+  MCPStoreListing,
+  MCPStoreFilters,
+  MCPToolWithContext,
+  MCPInstallResult,
+  MCPToolCallResult,
+} from '../../shared/types/mcp';
+
+// Re-export types that may be needed by consumers
+export type { MCPServerSummary, MCPSettings, MCPStoreListing, MCPStoreFilters, MCPToolWithContext };
 
 const logger = createLogger('useMCP');
 
 // =============================================================================
-// Types
+// useMCPSettings Hook
 // =============================================================================
 
-/**
- * Discovered MCP server candidate
- */
-export interface MCPServerCandidate {
-  name: string;
-  description?: string;
-  source: 'registry' | 'npm' | 'workspace' | 'config' | 'environment' | 'path' | 'manual';
-  transport: Record<string, unknown>;
-  icon?: string;
-  tags?: string[];
-  verified?: boolean;
-  requiredEnv?: string[];
-  confidence: number;
-}
-
-/**
- * Server health status
- */
-export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
-
-/**
- * Health metrics for a single server
- */
-export interface MCPServerHealthMetrics {
-  serverId: string;
-  serverName: string;
-  status: HealthStatus;
-  connectionStatus: string;
-  uptime: number;
-  lastPing?: number;
-  avgLatency: number;
-  p95Latency: number;
-  totalRequests: number;
-  totalErrors: number;
-  errorRate: number;
-  toolCallCount: number;
-  resourceReadCount: number;
-  consecutiveFailures: number;
-  lastError?: string;
-  lastErrorAt?: number;
-  memoryUsage?: number;
-}
-
-/**
- * Tool suggestion from context integration
- */
-export interface ToolSuggestion {
-  tool: MCPTool & { serverId: string; serverName: string };
-  relevanceScore: number;
-  reason: string;
-}
-
-/**
- * Resource suggestion from context integration
- */
-export interface ResourceSuggestion {
-  resource: MCPResource & { serverId: string; serverName: string };
-  relevanceScore: number;
-  reason: string;
-}
-
-/**
- * Prompt suggestion from context integration
- */
-export interface PromptSuggestion {
-  prompt: MCPPrompt & { serverId: string; serverName: string };
-  relevanceScore: number;
-  reason: string;
-}
-
-/**
- * Agent context for suggestions
- */
-export interface AgentContext {
-  currentMessage?: string;
-  workspacePath?: string;
-  activeFile?: string;
-  recentFiles?: string[];
-  recentTools?: string[];
-  sessionHistory?: string[];
-  projectType?: string;
-  keywords?: string[];
-}
-
-interface UseMCPResult {
-  /** Current MCP settings */
+export interface UseMCPSettingsResult {
   settings: MCPSettings | null;
-  /** Current server states */
-  serverStates: MCPServerState[];
-  /** Loading state */
-  isLoading: boolean;
-  /** Error message if any */
+  loading: boolean;
   error: string | null;
-  /** All tools from all connected servers */
-  allTools: Array<MCPTool & { serverId: string; serverName: string }>;
-  /** All resources from all connected servers */
-  allResources: Array<MCPResource & { serverId: string; serverName: string }>;
-  /** All prompts from all connected servers */
-  allPrompts: Array<MCPPrompt & { serverId: string; serverName: string }>;
-  /** Discovered server candidates */
-  discoveredServers: MCPServerCandidate[];
-  /** Discovery loading state */
-  isDiscovering: boolean;
-  /** Health metrics for all servers */
-  healthMetrics: MCPServerHealthMetrics[];
-  /** Refresh settings and server states */
+  updateSettings: (updates: Partial<MCPSettings>) => Promise<void>;
   refresh: () => Promise<void>;
-  /** Update a settings field */
-  updateSetting: <K extends keyof MCPSettings>(field: K, value: MCPSettings[K]) => void;
-  /** Add a new MCP server */
-  addServer: (server: Omit<MCPServerConfig, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
-  /** Update an existing server */
-  updateServer: (id: string, updates: Partial<MCPServerConfig>) => Promise<void>;
-  /** Remove a server */
-  removeServer: (id: string) => Promise<void>;
-  /** Connect to a server */
-  connectServer: (id: string) => Promise<void>;
-  /** Disconnect from a server */
-  disconnectServer: (id: string) => Promise<void>;
-  /** Call a tool on a server */
-  callTool: (serverId: string, toolName: string, args: Record<string, unknown>) => Promise<unknown>;
-  /** Read a resource from a server */
-  readResource: (serverId: string, uri: string) => Promise<unknown>;
-  /** Get a prompt from a server */
-  getPrompt: (serverId: string, name: string, args?: Record<string, unknown>) => Promise<unknown>;
-  /** Discover available MCP servers */
-  discoverServers: (options?: { workspacePaths?: string[]; includeUnverified?: boolean }) => Promise<void>;
-  /** Add a discovered server to the configuration */
-  addDiscoveredServer: (candidate: MCPServerCandidate) => Promise<void>;
-  /** Clear discovery cache */
-  clearDiscoveryCache: () => Promise<void>;
-  /** Refresh health metrics */
-  refreshHealthMetrics: () => Promise<void>;
-  /** Trigger manual recovery for a server */
-  triggerRecovery: (serverId: string) => Promise<void>;
-  /** Get tool suggestions based on context */
-  getToolSuggestions: (context: AgentContext, limit?: number) => Promise<ToolSuggestion[]>;
-  /** Get resource suggestions based on context */
-  getResourceSuggestions: (context: AgentContext, limit?: number) => Promise<ResourceSuggestion[]>;
-  /** Get prompt suggestions based on context */
-  getPromptSuggestions: (context: AgentContext, limit?: number) => Promise<PromptSuggestion[]>;
 }
 
-// Default MCP settings
-const DEFAULT_MCP_SETTINGS: MCPSettings = {
-  enabled: true,
-  servers: [],
-  defaultTimeout: 30000,
-  autoReconnect: true,
-  requireToolConfirmation: true,
-  includeInAgentContext: true,
-  maxConcurrentConnections: 10,
-};
-
-// =============================================================================
-// Hook Implementation
-// =============================================================================
-
 /**
- * Hook for managing MCP state and operations
+ * Hook for managing MCP settings
  */
-export function useMCP(): UseMCPResult {
-  // Initialize with default settings instead of null to prevent loading state
-  const [settings, setSettings] = useState<MCPSettings | null>(DEFAULT_MCP_SETTINGS);
-  const [serverStates, setServerStates] = useState<MCPServerState[]>([]);
-  const [allTools, setAllTools] = useState<Array<MCPTool & { serverId: string; serverName: string }>>([]);
-  const [allResources, setAllResources] = useState<Array<MCPResource & { serverId: string; serverName: string }>>([]);
-  const [allPrompts, setAllPrompts] = useState<Array<MCPPrompt & { serverId: string; serverName: string }>>([]);
-  const [discoveredServers, setDiscoveredServers] = useState<MCPServerCandidate[]>([]);
-  const [healthMetrics, setHealthMetrics] = useState<MCPServerHealthMetrics[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isDiscovering, setIsDiscovering] = useState(false);
+export function useMCPSettings(): UseMCPSettingsResult {
+  const [settings, setSettings] = useState<MCPSettings | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isMounted = useRef(true);
-
-  // Fetch initial data
-  const fetchData = useCallback(async () => {
+  const refresh = useCallback(async () => {
     try {
-      setIsLoading(true);
+      setLoading(true);
       setError(null);
+      const result = await window.vyotiq.mcp.getSettings();
+      setSettings(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      logger.error('Failed to load MCP settings', { error: message });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-      // Check if MCP API is available
-      if (!window.vyotiq?.mcp) {
-        logger.warn('MCP API not available, using default settings');
-        setSettings(DEFAULT_MCP_SETTINGS);
-        setIsLoading(false);
-        return;
+  const updateSettings = useCallback(async (updates: Partial<MCPSettings>) => {
+    try {
+      setError(null);
+      const result = await window.vyotiq.mcp.updateSettings(updates);
+      setSettings(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      logger.error('Failed to update MCP settings', { error: message });
+      throw err;
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { settings, loading, error, updateSettings, refresh };
+}
+
+// =============================================================================
+// useMCPServers Hook
+// =============================================================================
+
+export interface UseMCPServersResult {
+  servers: MCPServerSummary[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+  connectServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+  disconnectServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+  restartServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+  enableServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+  disableServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+  uninstallServer: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+  connectAll: () => Promise<{ success: boolean; error?: string }>;
+  disconnectAll: () => Promise<{ success: boolean; error?: string }>;
+}
+
+/**
+ * Hook for managing MCP servers
+ */
+export function useMCPServers(): UseMCPServersResult {
+  const [servers, setServers] = useState<MCPServerSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await window.vyotiq.mcp.getServerSummaries();
+      setServers(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      logger.error('Failed to load MCP servers', { error: message });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Subscribe to status changes
+  useEffect(() => {
+    const unsubscribe = window.vyotiq.mcp.onServerStatusChanged(() => {
+      // Refresh servers when status changes
+      refresh();
+    });
+    return unsubscribe;
+  }, [refresh]);
+
+  // Initial load
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const connectServer = useCallback(async (serverId: string) => {
+    const result = await window.vyotiq.mcp.connectServer(serverId);
+    if (result.success) await refresh();
+    return result;
+  }, [refresh]);
+
+  const disconnectServer = useCallback(async (serverId: string) => {
+    const result = await window.vyotiq.mcp.disconnectServer(serverId);
+    if (result.success) await refresh();
+    return result;
+  }, [refresh]);
+
+  const restartServer = useCallback(async (serverId: string) => {
+    const result = await window.vyotiq.mcp.restartServer(serverId);
+    if (result.success) await refresh();
+    return result;
+  }, [refresh]);
+
+  const enableServer = useCallback(async (serverId: string) => {
+    const result = await window.vyotiq.mcp.enableServer(serverId);
+    if (result.success) await refresh();
+    return result;
+  }, [refresh]);
+
+  const disableServer = useCallback(async (serverId: string) => {
+    const result = await window.vyotiq.mcp.disableServer(serverId);
+    if (result.success) await refresh();
+    return result;
+  }, [refresh]);
+
+  const uninstallServer = useCallback(async (serverId: string) => {
+    const result = await window.vyotiq.mcp.uninstallServer(serverId);
+    if (result.success) await refresh();
+    return result;
+  }, [refresh]);
+
+  const connectAll = useCallback(async () => {
+    const result = await window.vyotiq.mcp.connectAll();
+    if (result.success) await refresh();
+    return result;
+  }, [refresh]);
+
+  const disconnectAll = useCallback(async () => {
+    const result = await window.vyotiq.mcp.disconnectAll();
+    if (result.success) await refresh();
+    return result;
+  }, [refresh]);
+
+  return {
+    servers,
+    loading,
+    error,
+    refresh,
+    connectServer,
+    disconnectServer,
+    restartServer,
+    enableServer,
+    disableServer,
+    uninstallServer,
+    connectAll,
+    disconnectAll,
+  };
+}
+
+// =============================================================================
+// useMCPTools Hook
+// =============================================================================
+
+export interface UseMCPToolsResult {
+  tools: MCPToolWithContext[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+  callTool: (
+    serverId: string,
+    toolName: string,
+    args: Record<string, unknown>
+  ) => Promise<MCPToolCallResult>;
+}
+
+/**
+ * Hook for accessing MCP tools
+ */
+export function useMCPTools(): UseMCPToolsResult {
+  const [tools, setTools] = useState<MCPToolWithContext[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await window.vyotiq.mcp.getAllTools();
+      setTools(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      logger.error('Failed to load MCP tools', { error: message });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Subscribe to tools changes
+  useEffect(() => {
+    const unsubscribe = window.vyotiq.mcp.onToolsUpdated((event) => {
+      setTools(event.tools);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const callTool = useCallback(
+    async (serverId: string, toolName: string, args: Record<string, unknown>) => {
+      return window.vyotiq.mcp.callTool({
+        serverId,
+        toolName,
+        arguments: args,
+      });
+    },
+    []
+  );
+
+  return { tools, loading, error, refresh, callTool };
+}
+
+// =============================================================================
+// useMCPStore Hook
+// =============================================================================
+
+export interface UseMCPStoreResult {
+  listings: MCPStoreListing[];
+  featured: MCPStoreListing[];
+  categories: { category: string; count: number }[];
+  total: number;
+  hasMore: boolean;
+  loading: boolean;
+  error: string | null;
+  filters: MCPStoreFilters;
+  setFilters: (filters: MCPStoreFilters) => void;
+  search: () => Promise<void>;
+  loadAll: () => Promise<void>;
+  loadMore: () => Promise<void>;
+  refreshFeatured: () => Promise<void>;
+  refreshCategories: () => Promise<void>;
+  refreshRegistry: () => Promise<void>;
+  getDetails: (id: string) => Promise<MCPStoreListing | null>;
+  isInstalled: (listingId: string) => Promise<boolean>;
+  installFromStore: (
+    listingId: string,
+    options?: { env?: Record<string, string>; autoStart?: boolean }
+  ) => Promise<MCPInstallResult>;
+  registryStats: {
+    sources: Record<string, { count: number; age: number; fresh: boolean }>;
+    total: number;
+    lastFullRefresh: number;
+  } | null;
+  enabledSources: string[];
+  setSourceEnabled: (source: string, enabled: boolean) => Promise<void>;
+}
+
+/** Default limit for loading all servers */
+const ALL_SERVERS_LIMIT = 200;
+
+/**
+ * Hook for browsing the MCP store
+ */
+export function useMCPStore(): UseMCPStoreResult {
+  const [listings, setListings] = useState<MCPStoreListing[]>([]);
+  const [featured, setFeatured] = useState<MCPStoreListing[]>([]);
+  const [categories, setCategories] = useState<{ category: string; count: number }[]>([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<MCPStoreFilters>({ limit: 50, offset: 0 });
+  const [registryStats, setRegistryStats] = useState<{
+    sources: Record<string, { count: number; age: number; fresh: boolean }>;
+    total: number;
+    lastFullRefresh: number;
+  } | null>(null);
+  const [enabledSources, setEnabledSources] = useState<string[]>([]);
+
+  const search = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await window.vyotiq.mcp.storeSearch({ ...filters, offset: 0 });
+      setListings(result.items);
+      setTotal(result.total);
+      setHasMore(result.hasMore);
+      setFilters((prev) => ({ ...prev, offset: 0 }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      logger.error('Failed to search MCP store', { error: message });
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
+
+  const loadAll = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      // Load all servers with high limit and no query filter
+      const result = await window.vyotiq.mcp.storeSearch({
+        limit: ALL_SERVERS_LIMIT,
+        offset: 0,
+        query: undefined,
+        category: undefined,
+      });
+      setListings(result.items);
+      setTotal(result.total);
+      setHasMore(result.hasMore);
+      setFilters({ limit: ALL_SERVERS_LIMIT, offset: 0 });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      logger.error('Failed to load all MCP servers', { error: message });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || loading) return;
+
+    try {
+      setLoading(true);
+      const newOffset = (filters.offset || 0) + (filters.limit || 50);
+      const result = await window.vyotiq.mcp.storeSearch({ ...filters, offset: newOffset });
+      setListings((prev) => [...prev, ...result.items]);
+      setHasMore(result.hasMore);
+      setFilters((prev) => ({ ...prev, offset: newOffset }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, hasMore, loading]);
+
+  const refreshFeatured = useCallback(async () => {
+    try {
+      const result = await window.vyotiq.mcp.storeGetFeatured();
+      setFeatured(result);
+    } catch (err) {
+      logger.error('Failed to load featured servers', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, []);
+
+  const refreshCategories = useCallback(async () => {
+    try {
+      const result = await window.vyotiq.mcp.storeGetCategories();
+      setCategories(result);
+    } catch (err) {
+      logger.error('Failed to load categories', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, []);
+
+  const refreshRegistry = useCallback(async () => {
+    try {
+      setLoading(true);
+      await window.vyotiq.mcp.storeRefresh();
+      // Refresh everything after registry refresh
+      await Promise.all([refreshFeatured(), refreshCategories()]);
+      // Get updated stats
+      const stats = await window.vyotiq.mcp.registryGetStats();
+      setRegistryStats(stats);
+      // Update total from registry stats
+      if (stats?.total) {
+        setTotal(stats.total);
       }
+      const sources = await window.vyotiq.mcp.registryGetSources();
+      setEnabledSources(sources);
+    } catch (err) {
+      logger.error('Failed to refresh registry', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshFeatured, refreshCategories]);
 
-      const [settingsResult, statesResult, toolsResult, resourcesResult, promptsResult, healthResult] = await Promise.all([
-        window.vyotiq.mcp.getSettings().catch((): MCPSettings | null => null),
-        window.vyotiq.mcp.getServerStates().catch((): unknown[] => []),
-        window.vyotiq.mcp.getAllTools().catch((): unknown[] => []),
-        window.vyotiq.mcp.getAllResources().catch((): unknown[] => []),
-        window.vyotiq.mcp.getAllPrompts().catch((): unknown[] => []),
-        window.vyotiq.mcp.getHealthMetrics().catch((): { success: boolean; metrics?: unknown[] } => ({ success: false })),
-      ]);
+  const getDetails = useCallback(async (id: string) => {
+    return window.vyotiq.mcp.storeGetDetails(id);
+  }, []);
 
-      if (isMounted.current) {
-        setSettings(settingsResult ?? DEFAULT_MCP_SETTINGS);
-        // Cast to expected types - the API may return partial data
-        setServerStates((statesResult ?? []) as MCPServerState[]);
-        setAllTools((toolsResult ?? []) as Array<MCPTool & { serverId: string; serverName: string }>);
-        setAllResources((resourcesResult ?? []) as Array<MCPResource & { serverId: string; serverName: string }>);
-        setAllPrompts((promptsResult ?? []) as Array<MCPPrompt & { serverId: string; serverName: string }>);
-        const healthMetricsResult = healthResult as { success: boolean; metrics?: MCPServerHealthMetrics[] };
-        if (healthMetricsResult?.success && healthMetricsResult.metrics) {
-          setHealthMetrics(healthMetricsResult.metrics);
+  const isInstalled = useCallback(async (listingId: string) => {
+    return window.vyotiq.mcp.storeIsInstalled(listingId);
+  }, []);
+
+  const installFromStore = useCallback(
+    async (
+      listingId: string,
+      options?: { env?: Record<string, string>; autoStart?: boolean }
+    ) => {
+      return window.vyotiq.mcp.installFromStore(listingId, options);
+    },
+    []
+  );
+
+  const setSourceEnabled = useCallback(async (source: string, enabled: boolean) => {
+    try {
+      await window.vyotiq.mcp.registrySetSourceEnabled(
+        source as 'smithery' | 'npm' | 'pypi' | 'github' | 'glama',
+        enabled
+      );
+      const sources = await window.vyotiq.mcp.registryGetSources();
+      setEnabledSources(sources);
+    } catch (err) {
+      logger.error('Failed to set source enabled', {
+        source,
+        enabled,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, []);
+
+  // Load featured, categories, and registry stats on mount
+  useEffect(() => {
+    const loadData = async () => {
+      // Load featured
+      const featuredResult = await window.vyotiq.mcp.storeGetFeatured();
+      setFeatured(featuredResult);
+
+      // If featured is empty, trigger a refresh
+      if (featuredResult.length === 0) {
+        logger.info('Featured empty, triggering registry refresh');
+        try {
+          await window.vyotiq.mcp.storeRefresh();
+          const refreshedFeatured = await window.vyotiq.mcp.storeGetFeatured();
+          setFeatured(refreshedFeatured);
+        } catch (err) {
+          logger.warn('Failed to refresh registry on mount', {
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
-    } catch (err) {
-      logger.error('Failed to fetch MCP data', err);
-      if (isMounted.current) {
-        setError(err instanceof Error ? err.message : 'Failed to load MCP data');
-        setSettings(DEFAULT_MCP_SETTINGS);
-      }
-    } finally {
-      if (isMounted.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
 
-  // Initial fetch
-  useEffect(() => {
-    fetchData();
-    return () => {
-      isMounted.current = false;
-    };
-  }, [fetchData]);
-
-  // Listen for MCP events from main process
-  useEffect(() => {
-    const handleMCPEvent = (data: { type: string; [key: string]: unknown }) => {
-      if (!isMounted.current) return;
-
-      switch (data.type) {
-        case 'mcp-settings-ready':
-          // Manager is ready - update settings and refresh all data
-          if (data.settings) {
-            setSettings(data.settings as MCPSettings);
-          }
-          fetchData();
-          break;
-        case 'mcp-state':
-          setServerStates(data.servers as MCPServerState[]);
-          break;
-        case 'mcp-server-connected':
-          logger.debug('Server connected', { serverId: data.serverId });
-          // Refresh tools/resources/prompts when server connects
-          fetchData();
-          break;
-        case 'mcp-server-disconnected':
-          logger.debug('Server disconnected', { serverId: data.serverId });
-          fetchData();
-          break;
-        case 'mcp-server-error':
-          logger.error('Server error', { serverId: data.serverId, error: data.error });
-          break;
-        case 'mcp-tools-changed':
-          // Refresh tools list
-          window.vyotiq?.mcp?.getAllTools().then((tools: unknown) => {
-            if (isMounted.current) {
-              setAllTools((tools ?? []) as Array<MCPTool & { serverId: string; serverName: string }>);
-            }
-          });
-          break;
-        case 'mcp-health-changed':
-        case 'mcp-server-degraded':
-        case 'mcp-server-unhealthy':
-        case 'mcp-server-recovered':
-          // Update health metrics for the affected server
-          if (data.metrics) {
-            setHealthMetrics(prev => {
-              const metrics = data.metrics as MCPServerHealthMetrics;
-              const existing = prev.findIndex(m => m.serverId === metrics.serverId);
-              if (existing >= 0) {
-                const updated = [...prev];
-                updated[existing] = metrics;
-                return updated;
-              }
-              return [...prev, metrics];
-            });
-          }
-          break;
-        case 'mcp-recovery-attempt':
-          logger.info('Recovery attempt', { serverId: data.serverId, attempt: data.attempt, maxAttempts: data.maxAttempts });
-          break;
-        case 'mcp-recovery-failed':
-          logger.error('Recovery failed', { serverId: data.serverId, reason: data.reason });
-          break;
+      // Load categories
+      try {
+        const categoriesResult = await window.vyotiq.mcp.storeGetCategories();
+        setCategories(categoriesResult);
+      } catch {
+        // ignore
       }
+
+      // Load registry stats and set total
+      try {
+        const stats = await window.vyotiq.mcp.registryGetStats();
+        setRegistryStats(stats);
+        if (stats?.total) {
+          setTotal(stats.total);
+        }
+      } catch {
+        // ignore
+      }
+
+      window.vyotiq.mcp.registryGetSources().then(setEnabledSources).catch(() => { });
     };
 
-    const unsubscribe = window.vyotiq?.mcp?.onEvent(handleMCPEvent);
-    return () => {
-      unsubscribe?.();
-    };
-  }, [fetchData]);
-
-  // Update setting
-  const updateSetting = useCallback(<K extends keyof MCPSettings>(field: K, value: MCPSettings[K]) => {
-    setSettings(prev => {
-      if (!prev) return prev;
-      return { ...prev, [field]: value };
-    });
-
-    // Persist to main process
-    window.vyotiq?.mcp?.updateSettings({ [field]: value }).catch((err: unknown) => {
-      logger.error('Failed to update MCP setting', { field, error: err });
-    });
-  }, []);
-
-  // Add server
-  const addServer = useCallback(async (server: Omit<MCPServerConfig, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const result = await window.vyotiq?.mcp?.addServer(server) as { success: boolean; server?: MCPServerConfig; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to add server');
-    }
-    await fetchData();
-  }, [fetchData]);
-
-  // Update server
-  const updateServer = useCallback(async (id: string, updates: Partial<MCPServerConfig>) => {
-    const result = await window.vyotiq?.mcp?.updateServer({ id, updates }) as { success: boolean; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to update server');
-    }
-    await fetchData();
-  }, [fetchData]);
-
-  // Remove server
-  const removeServer = useCallback(async (id: string) => {
-    const result = await window.vyotiq?.mcp?.removeServer(id) as { success: boolean; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to remove server');
-    }
-    await fetchData();
-  }, [fetchData]);
-
-  // Connect server
-  const connectServer = useCallback(async (id: string) => {
-    const result = await window.vyotiq?.mcp?.connectServer(id) as { success: boolean; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to connect to server');
-    }
-  }, []);
-
-  // Disconnect server
-  const disconnectServer = useCallback(async (id: string) => {
-    const result = await window.vyotiq?.mcp?.disconnectServer(id) as { success: boolean; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to disconnect from server');
-    }
-  }, []);
-
-  // Call tool
-  const callTool = useCallback(async (serverId: string, toolName: string, args: Record<string, unknown>) => {
-    const result = await window.vyotiq?.mcp?.callTool(serverId, toolName, args) as { success: boolean; result?: unknown; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to call tool');
-    }
-    return result.result;
-  }, []);
-
-  // Read resource
-  const readResource = useCallback(async (serverId: string, uri: string) => {
-    const result = await window.vyotiq?.mcp?.readResource(serverId, uri) as { success: boolean; contents?: unknown; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to read resource');
-    }
-    return result.contents;
-  }, []);
-
-  // Get prompt
-  const getPrompt = useCallback(async (serverId: string, name: string, args?: Record<string, unknown>) => {
-    const result = await window.vyotiq?.mcp?.getPrompt(serverId, name, args) as { success: boolean; result?: unknown; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to get prompt');
-    }
-    return result.result;
-  }, []);
-
-  // Discover servers
-  const discoverServers = useCallback(async (options?: { workspacePaths?: string[]; includeUnverified?: boolean }) => {
-    try {
-      setIsDiscovering(true);
-      const result = await window.vyotiq?.mcp?.discoverServers(options) as { success: boolean; candidates?: MCPServerCandidate[]; error?: string };
-      if (!result.success) {
-        throw new Error(result.error ?? 'Failed to discover servers');
-      }
-      if (isMounted.current) {
-        setDiscoveredServers(result.candidates ?? []);
-      }
-    } catch (err) {
-      logger.error('Failed to discover servers', err);
-      throw err;
-    } finally {
-      if (isMounted.current) {
-        setIsDiscovering(false);
-      }
-    }
-  }, []);
-
-  // Add discovered server
-  const addDiscoveredServer = useCallback(async (candidate: MCPServerCandidate) => {
-    const result = await window.vyotiq?.mcp?.addDiscoveredServer(candidate as unknown as Record<string, unknown>) as { success: boolean; server?: MCPServerConfig; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to add discovered server');
-    }
-    // Remove from discovered list
-    setDiscoveredServers(prev => prev.filter(c => c.name !== candidate.name));
-    await fetchData();
-  }, [fetchData]);
-
-  // Clear discovery cache
-  const clearDiscoveryCache = useCallback(async () => {
-    const result = await window.vyotiq?.mcp?.clearDiscoveryCache() as { success: boolean; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to clear discovery cache');
-    }
-    setDiscoveredServers([]);
-  }, []);
-
-  // Refresh health metrics
-  const refreshHealthMetrics = useCallback(async () => {
-    const result = await window.vyotiq?.mcp?.getHealthMetrics() as { success: boolean; metrics?: MCPServerHealthMetrics[]; error?: string };
-    if (result?.success && isMounted.current) {
-      setHealthMetrics(result.metrics ?? []);
-    }
-  }, []);
-
-  // Trigger recovery
-  const triggerRecovery = useCallback(async (serverId: string) => {
-    const result = await window.vyotiq?.mcp?.triggerRecovery(serverId) as { success: boolean; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to trigger recovery');
-    }
-  }, []);
-
-  // Get tool suggestions
-  const getToolSuggestions = useCallback(async (context: AgentContext, limit?: number): Promise<ToolSuggestion[]> => {
-    const result = await window.vyotiq?.mcp?.getToolSuggestions(context as unknown as Record<string, unknown>, limit) as { success: boolean; suggestions?: ToolSuggestion[]; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to get tool suggestions');
-    }
-    return result.suggestions ?? [];
-  }, []);
-
-  // Get resource suggestions
-  const getResourceSuggestions = useCallback(async (context: AgentContext, limit?: number): Promise<ResourceSuggestion[]> => {
-    const result = await window.vyotiq?.mcp?.getResourceSuggestions(context as unknown as Record<string, unknown>, limit) as { success: boolean; suggestions?: ResourceSuggestion[]; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to get resource suggestions');
-    }
-    return result.suggestions ?? [];
-  }, []);
-
-  // Get prompt suggestions
-  const getPromptSuggestions = useCallback(async (context: AgentContext, limit?: number): Promise<PromptSuggestion[]> => {
-    const result = await window.vyotiq?.mcp?.getPromptSuggestions(context as unknown as Record<string, unknown>, limit) as { success: boolean; suggestions?: PromptSuggestion[]; error?: string };
-    if (!result.success) {
-      throw new Error(result.error ?? 'Failed to get prompt suggestions');
-    }
-    return result.suggestions ?? [];
+    loadData();
   }, []);
 
   return {
-    settings,
-    serverStates,
-    isLoading,
+    listings,
+    featured,
+    categories,
+    total,
+    hasMore,
+    loading,
     error,
-    allTools,
-    allResources,
-    allPrompts,
-    discoveredServers,
-    isDiscovering,
-    healthMetrics,
-    refresh: fetchData,
-    updateSetting,
-    addServer,
-    updateServer,
-    removeServer,
-    connectServer,
-    disconnectServer,
-    callTool,
-    readResource,
-    getPrompt,
-    discoverServers,
-    addDiscoveredServer,
-    clearDiscoveryCache,
-    refreshHealthMetrics,
-    triggerRecovery,
-    getToolSuggestions,
-    getResourceSuggestions,
-    getPromptSuggestions,
+    filters,
+    setFilters,
+    search,
+    loadAll,
+    loadMore,
+    refreshFeatured,
+    refreshCategories,
+    refreshRegistry,
+    getDetails,
+    isInstalled,
+    installFromStore,
+    registryStats,
+    enabledSources,
+    setSourceEnabled,
   };
 }
+
+// =============================================================================
+// Combined useMCP Hook
+// =============================================================================
+
+export interface UseMCPResult {
+  settings: UseMCPSettingsResult;
+  servers: UseMCPServersResult;
+  tools: UseMCPToolsResult;
+  store: UseMCPStoreResult;
+}
+
+/**
+ * Combined hook for all MCP functionality
+ */
+export function useMCP(): UseMCPResult {
+  const settings = useMCPSettings();
+  const servers = useMCPServers();
+  const tools = useMCPTools();
+  const store = useMCPStore();
+
+  return { settings, servers, tools, store };
+}
+
+// =============================================================================
+// Export Default
+// =============================================================================
 
 export default useMCP;

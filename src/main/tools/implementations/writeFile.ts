@@ -33,10 +33,11 @@ export const writeFileTool: ToolDefinition<WriteFileArgs> = {
 - **Complete rewrites**: When most of the file content changes
 - **Edit tool failing**: When edit can't match the string, write the whole file
 - **Generated content**: When creating files from templates or specifications
+- **Scaffolding features**: Creating multiple related files for a new feature
 
 ## When NOT to Use
-- **Small changes**: Use edit tool for targeted modifications
-- **Existing files**: Prefer edit to preserve unchanged content
+- **Small changes**: Use edit tool for targeted modifications to existing files
+- **Existing files**: Prefer edit to preserve unchanged content and minimize disruption
 - **Documentation**: Don't create docs unless explicitly requested
 
 ## Workflow Integration
@@ -95,9 +96,10 @@ CreatePlan → Break down feature into tasks
 ## Best Practices
 - **Read before overwrite**: Always read existing files first
 - **Complete content**: Provide the entire file content, not fragments
-- **Match conventions**: Follow existing code style and patterns
-- **Verify after**: Run read_lints() to catch any issues
-- **No placeholders**: Write production-ready code, no TODOs
+- **Match conventions**: Follow existing code style and patterns in the project
+- **Test after**: Run unit/integration tests to verify functionality
+- **Verify after**: Run read_lints() to catch any issues immediately
+- **No placeholders**: Write production-ready code only, no TODOs or FIXME comments allowed
 
 ## Important Notes
 - Parent directories are created automatically

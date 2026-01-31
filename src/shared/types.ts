@@ -1299,6 +1299,110 @@ export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
 };
 
 // =============================================================================
+// Appearance Settings
+// =============================================================================
+
+/**
+ * Available accent color presets
+ */
+export type AccentColorPreset = 
+  | 'emerald'   // Default green
+  | 'violet'    // Purple
+  | 'blue'      // Blue
+  | 'amber'     // Orange/yellow
+  | 'rose'      // Pink/red
+  | 'cyan'      // Teal/cyan
+  | 'custom';   // Custom hex color
+
+/**
+ * Font size scale options
+ */
+export type FontSizeScale = 'compact' | 'default' | 'comfortable' | 'large';
+
+/**
+ * Available terminal font families
+ */
+export type TerminalFont = 
+  | 'JetBrains Mono'
+  | 'Fira Code'
+  | 'Source Code Pro'
+  | 'Cascadia Code'
+  | 'Consolas'
+  | 'Monaco'
+  | 'Menlo'
+  | 'system';
+
+/**
+ * Appearance and UI customization settings
+ */
+export interface AppearanceSettings {
+  /** Font size scale for the entire UI */
+  fontSizeScale: FontSizeScale;
+  /** Accent color preset */
+  accentColor: AccentColorPreset;
+  /** Custom accent color (hex) when accentColor is 'custom' */
+  customAccentColor?: string;
+  /** Enable compact mode (reduced padding/margins) */
+  compactMode: boolean;
+  /** Terminal font family */
+  terminalFont: TerminalFont;
+  /** Terminal font size in pixels */
+  terminalFontSize: number;
+  /** Enable smooth animations */
+  enableAnimations: boolean;
+  /** Show line numbers in code blocks */
+  showLineNumbers: boolean;
+  /** Enable syntax highlighting in code blocks */
+  enableSyntaxHighlighting: boolean;
+}
+
+/**
+ * Default appearance settings
+ */
+export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
+  fontSizeScale: 'default',
+  accentColor: 'emerald',
+  compactMode: false,
+  terminalFont: 'JetBrains Mono',
+  terminalFontSize: 12,
+  enableAnimations: true,
+  showLineNumbers: true,
+  enableSyntaxHighlighting: true,
+};
+
+/**
+ * Font size scale CSS variables mapping
+ */
+export const FONT_SIZE_SCALES: Record<FontSizeScale, {
+  base: number;
+  sm: number;
+  xs: number;
+  lg: number;
+}> = {
+  compact: { base: 11, sm: 10, xs: 9, lg: 12 },
+  default: { base: 12, sm: 11, xs: 10, lg: 14 },
+  comfortable: { base: 14, sm: 12, xs: 11, lg: 16 },
+  large: { base: 16, sm: 14, xs: 12, lg: 18 },
+};
+
+/**
+ * Accent color CSS variable mappings
+ */
+export const ACCENT_COLOR_PRESETS: Record<Exclude<AccentColorPreset, 'custom'>, {
+  primary: string;
+  hover: string;
+  active: string;
+  muted: string;
+}> = {
+  emerald: { primary: '#34d399', hover: '#6ee7b7', active: '#a7f3d0', muted: '#047857' },
+  violet: { primary: '#a78bfa', hover: '#c4b5fd', active: '#ddd6fe', muted: '#6d28d9' },
+  blue: { primary: '#60a5fa', hover: '#93c5fd', active: '#bfdbfe', muted: '#1d4ed8' },
+  amber: { primary: '#fbbf24', hover: '#fcd34d', active: '#fde68a', muted: '#b45309' },
+  rose: { primary: '#fb7185', hover: '#fda4af', active: '#fecdd3', muted: '#be123c' },
+  cyan: { primary: '#22d3ee', hover: '#67e8f9', active: '#a5f3fc', muted: '#0e7490' },
+};
+
+// =============================================================================
 // Access Level Types
 // =============================================================================
 
@@ -1312,7 +1416,8 @@ export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
 export type AccessLevel = 'read-only' | 'standard' | 'elevated' | 'admin';
 
 /**
- * Tool category for permission grouping
+ * Tool category for permission grouping and UI classification
+ * This is the canonical definition - import from here in other files
  */
 export type ToolCategory =
   | 'read'           // File reading, searching, listing
@@ -1320,7 +1425,17 @@ export type ToolCategory =
   | 'terminal'       // Terminal command execution
   | 'git'            // Git operations
   | 'system'         // System-level operations
-  | 'destructive';   // Potentially dangerous operations
+  | 'destructive'    // Potentially dangerous operations
+  | 'file-read'      // Reading files (alias for read)
+  | 'file-write'     // Creating/modifying files (alias for write)
+  | 'file-search'    // Finding/searching files
+  | 'media'          // Video, audio, media operations
+  | 'communication'  // Email, messaging
+  | 'code-intelligence' // Symbols, definitions, references, diagnostics
+  | 'browser-read'   // Browser read-only operations (fetch, extract, console)
+  | 'browser-write'  // Browser state-changing operations (click, type, navigate)
+  | 'agent-internal' // Agent internal tools (planning, etc.)
+  | 'other';         // Uncategorized
 
 /**
  * Permission setting for a tool category
@@ -1382,6 +1497,16 @@ export const ACCESS_LEVEL_DEFAULTS: Record<AccessLevel, Record<ToolCategory, Cat
     git: { allowed: false, requiresConfirmation: true },
     system: { allowed: false, requiresConfirmation: true },
     destructive: { allowed: false, requiresConfirmation: true },
+    'file-read': { allowed: true, requiresConfirmation: false },
+    'file-write': { allowed: false, requiresConfirmation: true },
+    'file-search': { allowed: true, requiresConfirmation: false },
+    media: { allowed: false, requiresConfirmation: true },
+    communication: { allowed: false, requiresConfirmation: true },
+    'code-intelligence': { allowed: true, requiresConfirmation: false },
+    'browser-read': { allowed: false, requiresConfirmation: true },
+    'browser-write': { allowed: false, requiresConfirmation: true },
+    'agent-internal': { allowed: true, requiresConfirmation: false },
+    other: { allowed: false, requiresConfirmation: true },
   },
   'standard': {
     read: { allowed: true, requiresConfirmation: false },
@@ -1390,6 +1515,16 @@ export const ACCESS_LEVEL_DEFAULTS: Record<AccessLevel, Record<ToolCategory, Cat
     git: { allowed: true, requiresConfirmation: true },
     system: { allowed: false, requiresConfirmation: true },
     destructive: { allowed: false, requiresConfirmation: true },
+    'file-read': { allowed: true, requiresConfirmation: false },
+    'file-write': { allowed: true, requiresConfirmation: true },
+    'file-search': { allowed: true, requiresConfirmation: false },
+    media: { allowed: true, requiresConfirmation: true },
+    communication: { allowed: false, requiresConfirmation: true },
+    'code-intelligence': { allowed: true, requiresConfirmation: false },
+    'browser-read': { allowed: true, requiresConfirmation: false },
+    'browser-write': { allowed: true, requiresConfirmation: true },
+    'agent-internal': { allowed: true, requiresConfirmation: false },
+    other: { allowed: true, requiresConfirmation: true },
   },
   'elevated': {
     read: { allowed: true, requiresConfirmation: false },
@@ -1398,6 +1533,16 @@ export const ACCESS_LEVEL_DEFAULTS: Record<AccessLevel, Record<ToolCategory, Cat
     git: { allowed: true, requiresConfirmation: false },
     system: { allowed: true, requiresConfirmation: true },
     destructive: { allowed: false, requiresConfirmation: true },
+    'file-read': { allowed: true, requiresConfirmation: false },
+    'file-write': { allowed: true, requiresConfirmation: false },
+    'file-search': { allowed: true, requiresConfirmation: false },
+    media: { allowed: true, requiresConfirmation: false },
+    communication: { allowed: true, requiresConfirmation: true },
+    'code-intelligence': { allowed: true, requiresConfirmation: false },
+    'browser-read': { allowed: true, requiresConfirmation: false },
+    'browser-write': { allowed: true, requiresConfirmation: false },
+    'agent-internal': { allowed: true, requiresConfirmation: false },
+    other: { allowed: true, requiresConfirmation: false },
   },
   'admin': {
     read: { allowed: true, requiresConfirmation: false },
@@ -1406,6 +1551,16 @@ export const ACCESS_LEVEL_DEFAULTS: Record<AccessLevel, Record<ToolCategory, Cat
     git: { allowed: true, requiresConfirmation: false },
     system: { allowed: true, requiresConfirmation: false },
     destructive: { allowed: true, requiresConfirmation: true },
+    'file-read': { allowed: true, requiresConfirmation: false },
+    'file-write': { allowed: true, requiresConfirmation: false },
+    'file-search': { allowed: true, requiresConfirmation: false },
+    media: { allowed: true, requiresConfirmation: false },
+    communication: { allowed: true, requiresConfirmation: false },
+    'code-intelligence': { allowed: true, requiresConfirmation: false },
+    'browser-read': { allowed: true, requiresConfirmation: false },
+    'browser-write': { allowed: true, requiresConfirmation: false },
+    'agent-internal': { allowed: true, requiresConfirmation: false },
+    other: { allowed: true, requiresConfirmation: false },
   },
 };
 
@@ -1769,6 +1924,8 @@ export interface AgentSettings {
   accessLevelSettings?: AccessLevelSettings;
   /** Browser security settings */
   browserSettings?: BrowserSettings;
+  /** Appearance and UI customization settings */
+  appearanceSettings?: AppearanceSettings;
   /** Task-based model routing configuration */
   taskRoutingSettings?: TaskRoutingSettings;
   /** Editor AI settings (inline completions, code actions) */
@@ -1781,8 +1938,10 @@ export interface AgentSettings {
   glmSubscription?: GLMSubscription;
   /** Semantic indexing settings */
   semanticSettings?: SemanticSettings;
-  /** MCP (Model Context Protocol) server settings */
+  /** MCP (Model Context Protocol) settings */
   mcpSettings?: import('./types/mcp').MCPSettings;
+  /** Configured MCP servers */
+  mcpServers?: import('./types/mcp').MCPServerConfig[];
 }
 
 /**
@@ -2827,7 +2986,16 @@ export interface SemanticModelProgressEvent {
   error?: string;
 }
 
-export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent | SemanticIndexProgressEvent | SemanticModelStatusEvent | SemanticModelProgressEvent;
+/**
+ * Session health update event - emitted when session health status changes
+ */
+export interface SessionHealthUpdateEvent {
+  type: 'session-health-update';
+  sessionId: string;
+  data: unknown;
+}
+
+export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent | SemanticIndexProgressEvent | SemanticModelStatusEvent | SemanticModelProgressEvent | SessionHealthUpdateEvent;
 
 
 export interface StartSessionPayload {

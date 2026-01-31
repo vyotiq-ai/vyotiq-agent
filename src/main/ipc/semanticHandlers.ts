@@ -227,5 +227,121 @@ export function registerSemanticHandlers(context: IpcContext): void {
     }
   });
 
+  /**
+   * Reindex a specific file
+   */
+  ipcMain.handle(
+    'semantic:reindexFile',
+    async (
+      _event,
+      filePath: string
+    ): Promise<{ success: boolean; error?: string; chunksCreated?: number }> => {
+      if (!isSemanticEnabled()) {
+        return { success: false, error: 'Semantic indexing is disabled in settings' };
+      }
+
+      if (!filePath) {
+        return { success: false, error: 'File path is required' };
+      }
+
+      try {
+        const indexer = getSemanticIndexer();
+        const chunksCreated = await indexer.reindexFile(filePath);
+        logger.debug('File reindexed', { filePath, chunksCreated });
+        return { success: true, chunksCreated };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('Failed to reindex file', { filePath, error: errorMessage });
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  /**
+   * Reindex multiple files
+   */
+  ipcMain.handle(
+    'semantic:reindexFiles',
+    async (
+      _event,
+      filePaths: string[]
+    ): Promise<{ success: boolean; error?: string; totalChunks?: number }> => {
+      if (!isSemanticEnabled()) {
+        return { success: false, error: 'Semantic indexing is disabled in settings' };
+      }
+
+      if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
+        return { success: false, error: 'File paths array is required' };
+      }
+
+      try {
+        const indexer = getSemanticIndexer();
+        let totalChunks = 0;
+        
+        for (const filePath of filePaths) {
+          const chunks = await indexer.reindexFile(filePath);
+          totalChunks += chunks;
+        }
+        
+        logger.info('Files reindexed', { count: filePaths.length, totalChunks });
+        return { success: true, totalChunks };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('Failed to reindex files', { error: errorMessage });
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  /**
+   * Get workspace summary from the analyzer
+   */
+  ipcMain.handle(
+    'semantic:getWorkspaceSummary',
+    async (): Promise<{ success: boolean; data?: unknown; error?: string }> => {
+      try {
+        const indexer = getSemanticIndexer();
+        const stats = await indexer.getStats();
+        
+        return {
+          success: true,
+          data: {
+            ...stats,
+            workspaceInfo: stats.workspaceInfo,
+          },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('Failed to get workspace summary', { error: errorMessage });
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
+  /**
+   * Get model status for the embedding service
+   */
+  ipcMain.handle(
+    'semantic:getModelStatus',
+    async (): Promise<{ success: boolean; data?: unknown; error?: string }> => {
+      try {
+        const indexer = getSemanticIndexer();
+        const stats = await indexer.getStats();
+        
+        return {
+          success: true,
+          data: {
+            isReady: indexer.isReady(),
+            embeddingInfo: stats.embeddingInfo,
+          },
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('Failed to get model status', { error: errorMessage });
+        return { success: false, error: errorMessage };
+      }
+    }
+  );
+
   logger.info('Semantic IPC handlers registered');
 }

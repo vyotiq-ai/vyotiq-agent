@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, ComplianceSettings, AccessLevelSettings, BrowserSettings, TaskRoutingSettings, RoutingTaskType, TaskModelMapping, EditorAISettings, AutonomousFeatureFlags, SemanticSettings } from '../../shared/types';
+import type { AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, ComplianceSettings, AccessLevelSettings, BrowserSettings, TaskRoutingSettings, RoutingTaskType, TaskModelMapping, EditorAISettings, AutonomousFeatureFlags, SemanticSettings, AppearanceSettings } from '../../shared/types';
 import { useAgentSelector } from '../state/AgentProvider';
 import { getDefaultModel } from '../../shared/providers';
 import { createLogger } from '../utils/logger';
@@ -382,6 +382,23 @@ export const useSettings = (open: boolean) => {
     [],
   );
 
+  // Update appearance settings
+  const updateAppearanceSetting = useCallback(
+    (field: keyof AppearanceSettings, value: AppearanceSettings[keyof AppearanceSettings]) => {
+      setLocalSettings((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          appearanceSettings: {
+            ...prev.appearanceSettings,
+            [field]: value,
+          } as AppearanceSettings,
+        };
+      });
+    },
+    [],
+  );
+
   // Save settings to the store
   const saveSettings = useCallback(async () => {
     if (!localSettings) {
@@ -466,6 +483,7 @@ export const useSettings = (open: boolean) => {
     updateEditorAISetting,
     updateAutonomousSetting,
     updateSemanticSetting,
+    updateAppearanceSetting,
     saveSettings,
   };
 };

@@ -376,6 +376,7 @@ Use refs in selectors: \`[data-vyotiq-ref="e5"]\`
   requiresApproval: false,
   category: 'browser-read',
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   schema: {
     type: 'object',

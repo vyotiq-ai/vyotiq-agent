@@ -54,3 +54,17 @@ export type {
   VirtualScrollOptions,
   VirtualScrollResult,
 } from './VirtualizedList';
+
+// Skeleton loading components
+export {
+  Skeleton,
+  SkeletonText,
+  SkeletonAvatar,
+  SkeletonButton,
+  SkeletonCard,
+  SkeletonMessage,
+  SkeletonToolExecution,
+  SkeletonListItem,
+  SkeletonSession,
+} from './Skeleton';
+export type { SkeletonProps, SkeletonVariant, SkeletonAnimation } from './Skeleton';

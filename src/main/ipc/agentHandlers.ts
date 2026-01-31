@@ -12,6 +12,7 @@
 import { ipcMain } from 'electron';
 import { createLogger } from '../logger';
 import type { IpcContext } from './types';
+import { withSafeHandler, sessionCreationMutex, validateNonEmptyString } from './guards';
 
 const logger = createLogger('IPC:Agent');
 
@@ -23,36 +24,46 @@ export function registerAgentHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('agent:start-session', async (_event, payload) => {
-    try {
-      logger.info('Starting session', { workspaceId: payload.workspaceId });
-      const session = await getOrchestrator()?.startSession(payload);
-      logger.info('Session started successfully', { sessionId: session?.id });
-      return session;
-    } catch (error) {
-      logger.error('Failed to start session', { error: error instanceof Error ? error.message : String(error) });
-      throw error;
-    }
+    // Use mutex to prevent race conditions in concurrent session creation
+    return sessionCreationMutex.withLock(async () => {
+      return withSafeHandler(context, 'agent:start-session', async (orchestrator) => {
+        logger.info('Starting session', { workspaceId: payload.workspaceId });
+        const session = await orchestrator.startSession(payload);
+        logger.info('Session started successfully', { sessionId: session?.id });
+        return session;
+      }, { additionalContext: { workspaceId: payload?.workspaceId } });
+    });
   });
 
   ipcMain.handle('agent:send-message', async (_event, payload) => {
-    try {
+    return withSafeHandler(context, 'agent:send-message', async (orchestrator) => {
       logger.info('Sending message for session', {
         sessionId: payload.sessionId,
-        contentLength: payload.content.length,
+        contentLength: payload.content?.length ?? 0,
         attachmentCount: payload.attachments?.length ?? 0,
       });
-      return await getOrchestrator()?.sendMessage(payload);
-    } catch (error) {
-      logger.error('Failed to send message', { error: error instanceof Error ? error.message : String(error) });
-      throw error;
-    }
+      return await orchestrator.sendMessage(payload);
+    }, { additionalContext: { sessionId: payload?.sessionId } });
   });
 
-  ipcMain.handle('agent:confirm-tool', async (_event, payload) => getOrchestrator()?.confirmTool(payload));
+  ipcMain.handle('agent:confirm-tool', async (_event, payload) => {
+    return withSafeHandler(context, 'agent:confirm-tool', async (orchestrator) => {
+      await orchestrator.confirmTool(payload);
+      return { success: true };
+    });
+  });
   
-  ipcMain.handle('agent:update-config', async (_event, payload) => getOrchestrator()?.updateConfig(payload));
+  ipcMain.handle('agent:update-config', async (_event, payload) => {
+    return withSafeHandler(context, 'agent:update-config', async (orchestrator) => {
+      await orchestrator.updateConfig(payload);
+      return { success: true };
+    });
+  });
 
-  ipcMain.handle('agent:get-sessions', () => getOrchestrator()?.getSessions());
+  ipcMain.handle('agent:get-sessions', () => {
+    const orchestrator = getOrchestrator();
+    return orchestrator?.getSessions() ?? [];
+  });
 
   ipcMain.handle('agent:has-available-providers', () => {
     return getOrchestrator()?.hasAvailableProviders() ?? false;

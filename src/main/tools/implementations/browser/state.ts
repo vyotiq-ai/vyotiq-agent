@@ -143,6 +143,7 @@ export const browserStateTool: ToolDefinition<StateArgs> = {
   requiresApproval: false,
   category: 'browser-read',
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   schema: {
     type: 'object',

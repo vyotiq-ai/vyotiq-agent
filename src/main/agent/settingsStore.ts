@@ -1,8 +1,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { safeStorage } from 'electron';
-import type { AgentConfig, AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, AutonomousFeatureFlags, SemanticSettings } from '../../shared/types';
-import { DEFAULT_CACHE_SETTINGS, DEFAULT_DEBUG_SETTINGS, DEFAULT_PROMPT_SETTINGS, DEFAULT_COMPLIANCE_SETTINGS, DEFAULT_ACCESS_LEVEL_SETTINGS, DEFAULT_BROWSER_SETTINGS, DEFAULT_TASK_ROUTING_SETTINGS, DEFAULT_EDITOR_AI_SETTINGS, DEFAULT_AUTONOMOUS_FEATURE_FLAGS, DEFAULT_TOOL_CONFIG_SETTINGS, DEFAULT_SEMANTIC_SETTINGS } from '../../shared/types';
+import type { AgentConfig, AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, AutonomousFeatureFlags, SemanticSettings, AppearanceSettings } from '../../shared/types';
+import { DEFAULT_CACHE_SETTINGS, DEFAULT_DEBUG_SETTINGS, DEFAULT_PROMPT_SETTINGS, DEFAULT_COMPLIANCE_SETTINGS, DEFAULT_ACCESS_LEVEL_SETTINGS, DEFAULT_BROWSER_SETTINGS, DEFAULT_TASK_ROUTING_SETTINGS, DEFAULT_EDITOR_AI_SETTINGS, DEFAULT_AUTONOMOUS_FEATURE_FLAGS, DEFAULT_TOOL_CONFIG_SETTINGS, DEFAULT_SEMANTIC_SETTINGS, DEFAULT_APPEARANCE_SETTINGS } from '../../shared/types';
+import type { MCPSettings, MCPServerConfig } from '../../shared/types/mcp';
+import { DEFAULT_MCP_SETTINGS } from '../../shared/types/mcp';
 import { getDefaultModel, PROVIDER_ORDER } from '../../shared/providers';
 import { createLogger } from '../logger';
 
@@ -115,6 +117,7 @@ const defaultSettings: AgentSettings = {
   editorAISettings: DEFAULT_EDITOR_AI_SETTINGS,
   autonomousFeatureFlags: DEFAULT_AUTONOMOUS_FEATURE_FLAGS,
   semanticSettings: DEFAULT_SEMANTIC_SETTINGS,
+  appearanceSettings: DEFAULT_APPEARANCE_SETTINGS,
 };
 
 export class SettingsStore {
@@ -249,6 +252,9 @@ export class SettingsStore {
           parsed.autonomousFeatureFlags
         ),
         semanticSettings: { ...defaultSettings.semanticSettings, ...(parsed.semanticSettings ?? {}) },
+        appearanceSettings: { ...defaultSettings.appearanceSettings, ...(parsed.appearanceSettings ?? {}) },
+        mcpSettings: { ...DEFAULT_MCP_SETTINGS, ...(parsed.mcpSettings ?? {}) },
+        mcpServers: parsed.mcpServers ?? [],
       };
       
       // Log loaded access level settings
@@ -262,6 +268,12 @@ export class SettingsStore {
       logger.debug('Prompt settings loaded', {
         activePersonaId: this.settings.promptSettings?.activePersonaId,
         personasCount: this.settings.promptSettings?.personas?.length,
+      });
+      
+      // Log loaded MCP settings
+      logger.debug('MCP settings loaded', {
+        enabled: this.settings.mcpSettings?.enabled,
+        serversCount: this.settings.mcpServers?.length ?? 0,
       });
       
       // MIGRATION: Fix invalid maxOutputTokens values
@@ -353,6 +365,18 @@ export class SettingsStore {
       settings.autonomousFeatureFlags
     );
     
+    // Deep merge MCP settings
+    const mergedMCPSettings = this.mergeMCPSettings(
+      this.settings.mcpSettings,
+      settings.mcpSettings
+    );
+    
+    // Merge MCP servers (full replacement when provided)
+    const mergedMCPServers = this.mergeMCPServers(
+      this.settings.mcpServers,
+      settings.mcpServers
+    );
+    
     this.settings = {
       ...this.settings,
       ...settings,
@@ -369,6 +393,8 @@ export class SettingsStore {
       editorAISettings: { ...this.settings.editorAISettings, ...(settings.editorAISettings ?? {}) },
       promptSettings: mergedPromptSettings,
       autonomousFeatureFlags: mergedAutonomousFlags,
+      mcpSettings: mergedMCPSettings,
+      mcpServers: mergedMCPServers,
     };
     
     logger.debug('Settings updated via setSync', {
@@ -425,6 +451,18 @@ export class SettingsStore {
       partial.semanticSettings
     );
     
+    // Deep merge MCP settings
+    const mergedMCPSettings = this.mergeMCPSettings(
+      this.settings.mcpSettings,
+      partial.mcpSettings
+    );
+    
+    // Merge MCP servers (full replacement when provided)
+    const mergedMCPServers = this.mergeMCPServers(
+      this.settings.mcpServers,
+      partial.mcpServers
+    );
+    
     this.settings = {
       ...this.settings,
       ...partial,
@@ -442,6 +480,8 @@ export class SettingsStore {
       promptSettings: mergedPromptSettings,
       autonomousFeatureFlags: mergedAutonomousFlags,
       semanticSettings: mergedSemanticSettings,
+      mcpSettings: mergedMCPSettings,
+      mcpServers: mergedMCPServers,
     };
     
     logger.debug('Settings updated via update()', {
@@ -574,6 +614,97 @@ export class SettingsStore {
       minSearchScore: incoming.minSearchScore ?? base.minSearchScore,
       autoOptimizeAfter: incoming.autoOptimizeAfter ?? base.autoOptimizeAfter,
     };
+  }
+
+  /**
+   * Deep merge MCP settings to preserve all properties
+   */
+  private mergeMCPSettings(
+    existing: MCPSettings | undefined,
+    incoming: Partial<MCPSettings> | undefined
+  ): MCPSettings {
+    const base = existing ?? DEFAULT_MCP_SETTINGS;
+    
+    if (!incoming) {
+      return base;
+    }
+    
+    // Log MCP settings changes for debugging
+    if (incoming.enabled !== undefined && incoming.enabled !== base.enabled) {
+      logger.info('MCP enabled state changed', { from: base.enabled, to: incoming.enabled });
+    }
+    
+    return {
+      enabled: incoming.enabled ?? base.enabled,
+      autoStartServers: incoming.autoStartServers ?? base.autoStartServers,
+      connectionTimeoutMs: incoming.connectionTimeoutMs ?? base.connectionTimeoutMs,
+      toolTimeoutMs: incoming.toolTimeoutMs ?? base.toolTimeoutMs,
+      maxConcurrentConnections: incoming.maxConcurrentConnections ?? base.maxConcurrentConnections,
+      cacheToolResults: incoming.cacheToolResults ?? base.cacheToolResults,
+      cacheTtlMs: incoming.cacheTtlMs ?? base.cacheTtlMs,
+      showInToolSelection: incoming.showInToolSelection ?? base.showInToolSelection,
+      debugLogging: incoming.debugLogging ?? base.debugLogging,
+      retryFailedConnections: incoming.retryFailedConnections ?? base.retryFailedConnections,
+      retryCount: incoming.retryCount ?? base.retryCount,
+      retryDelayMs: incoming.retryDelayMs ?? base.retryDelayMs,
+      customRegistries: incoming.customRegistries ?? base.customRegistries,
+    };
+  }
+
+  /**
+   * Merge MCP server configurations (replace entire array if provided)
+   */
+  private mergeMCPServers(
+    existing: MCPServerConfig[] | undefined,
+    incoming: MCPServerConfig[] | undefined
+  ): MCPServerConfig[] | undefined {
+    // If incoming is provided, replace entirely (server management handles merging)
+    if (incoming !== undefined) {
+      logger.debug('MCP servers updated', { count: incoming.length });
+      return incoming;
+    }
+    return existing;
+  }
+
+  /**
+   * Reset all settings to defaults, preserving API keys
+   */
+  async resetToDefaults(): Promise<AgentSettings> {
+    logger.info('Resetting all settings to defaults');
+    
+    // Preserve API keys only
+    const apiKeys = this.settings.apiKeys;
+    
+    this.settings = {
+      ...defaultSettings,
+      apiKeys,
+    };
+    
+    await this.persist();
+    return this.settings;
+  }
+
+  /**
+   * Reset a specific settings section to its default
+   */
+  async resetSection(section: keyof AgentSettings): Promise<AgentSettings> {
+    logger.info('Resetting settings section to default', { section });
+    
+    // Don't allow resetting API keys through this method
+    if (section === 'apiKeys') {
+      logger.warn('Cannot reset API keys through resetSection');
+      return this.settings;
+    }
+    
+    const defaultValue = defaultSettings[section];
+    if (defaultValue !== undefined) {
+      // Type-safe assignment: use the key directly on this.settings
+      // We know section is a valid key of AgentSettings
+      (this.settings[section] as typeof defaultValue) = defaultValue;
+      await this.persist();
+    }
+    
+    return this.settings;
   }
 
   private async persist(): Promise<void> {

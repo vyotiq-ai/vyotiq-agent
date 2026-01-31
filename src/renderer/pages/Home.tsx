@@ -108,9 +108,13 @@ export const Home: React.FC = () => {
         )}
         style={showEditor ? { width: `${100 - editorWidth}%` } : undefined}
       >
-        <ChatArea />
+        <FeatureErrorBoundary featureName="Chat">
+          <ChatArea />
+        </FeatureErrorBoundary>
         <div className="shrink-0 bg-[var(--color-surface-base)]">
-          <ChatInput />
+          <FeatureErrorBoundary featureName="ChatInput">
+            <ChatInput />
+          </FeatureErrorBoundary>
         </div>
       </div>
     </div>

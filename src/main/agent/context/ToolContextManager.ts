@@ -1240,11 +1240,14 @@ function getErrorRecoveryTools(errors: Array<{ toolName: string; error: string }
 // =============================================================================
 
 import * as fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
 import * as path from 'node:path';
 
 /**
  * Detect workspace type from workspace path by checking for common project files
  * Uses caching to avoid redundant filesystem operations
+ * 
+ * SYNC version - kept for backward compatibility with synchronous contexts
  */
 export function detectWorkspaceType(workspacePath: string | null): WorkspaceType {
   if (!workspacePath) {
@@ -1313,6 +1316,126 @@ export function detectWorkspaceType(workspacePath: string | null): WorkspaceType
       detectedType = 'python';
     } else if (exists('index.html')) {
       // Check for web projects
+      detectedType = 'web';
+    }
+
+    // Update cache
+    workspaceTypeCache = {
+      path: workspacePath,
+      type: detectedType,
+      timestamp: now,
+    };
+
+    return detectedType;
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * Async version of workspace type detection
+ * Uses non-blocking file operations to avoid blocking the main process
+ * Preferred for use in async contexts (IPC handlers, agent execution, etc.)
+ */
+export async function detectWorkspaceTypeAsync(workspacePath: string | null): Promise<WorkspaceType> {
+  if (!workspacePath) {
+    return 'unknown';
+  }
+
+  // Check cache first (sync cache read is acceptable - it's just memory)
+  const now = Date.now();
+  if (
+    workspaceTypeCache &&
+    workspaceTypeCache.path === workspacePath &&
+    now - workspaceTypeCache.timestamp < WORKSPACE_CACHE_TTL
+  ) {
+    return workspaceTypeCache.type;
+  }
+
+  try {
+    const exists = async (filename: string): Promise<boolean> => {
+      try {
+        await fsPromises.access(path.join(workspacePath, filename));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    let detectedType: WorkspaceType = 'unknown';
+
+    // Check for TypeScript projects (run checks in parallel where possible)
+    const [
+      hasTsconfig,
+      hasForgeTs,
+      hasForgeJs,
+      hasNextJs,
+      hasNextTs,
+      hasNextMjs,
+      hasViteTs,
+      hasViteJs,
+      hasPackageJson,
+      hasRequirements,
+      hasSetupPy,
+      hasPyproject,
+      hasIndexHtml,
+    ] = await Promise.all([
+      exists('tsconfig.json'),
+      exists('forge.config.ts'),
+      exists('forge.config.js'),
+      exists('next.config.js'),
+      exists('next.config.ts'),
+      exists('next.config.mjs'),
+      exists('vite.config.ts'),
+      exists('vite.config.js'),
+      exists('package.json'),
+      exists('requirements.txt'),
+      exists('setup.py'),
+      exists('pyproject.toml'),
+      exists('index.html'),
+    ]);
+
+    if (hasTsconfig) {
+      if (hasForgeTs || hasForgeJs) {
+        detectedType = 'electron';
+      } else if (hasNextJs || hasNextTs || hasNextMjs) {
+        detectedType = 'react';
+      } else if (hasViteTs || hasViteJs) {
+        // Check if it's a React project
+        try {
+          const pkgPath = path.join(workspacePath, 'package.json');
+          const pkgContent = await fsPromises.readFile(pkgPath, 'utf-8');
+          const pkg = JSON.parse(pkgContent);
+          if (pkg.dependencies?.react || pkg.devDependencies?.react) {
+            detectedType = 'react';
+          } else {
+            detectedType = 'typescript';
+          }
+        } catch {
+          detectedType = 'typescript';
+        }
+      } else {
+        detectedType = 'typescript';
+      }
+    } else if (hasPackageJson) {
+      // Check for Node.js projects
+      try {
+        const pkgPath = path.join(workspacePath, 'package.json');
+        const pkgContent = await fsPromises.readFile(pkgPath, 'utf-8');
+        const pkg = JSON.parse(pkgContent);
+        if (pkg.dependencies?.react || pkg.devDependencies?.react) {
+          detectedType = 'react';
+        } else {
+          detectedType = 'node';
+        }
+      } catch {
+        detectedType = 'node';
+      }
+    } else if (hasRequirements || hasSetupPy || hasPyproject) {
+      // Python project
+      detectedType = 'python';
+    } else if (hasIndexHtml) {
+      // Web project
       detectedType = 'web';
     }
 

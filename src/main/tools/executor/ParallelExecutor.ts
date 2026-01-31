@@ -250,6 +250,53 @@ export function buildExecutionGroups(
 }
 
 // =============================================================================
+// Timeout Utility
+// =============================================================================
+
+/**
+ * Wraps a promise with a timeout.
+ * Returns a timeout error result if the promise doesn't resolve in time.
+ */
+export async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  toolName: string
+): Promise<T | { toolName: string; success: false; output: string; timing: { startedAt: number; completedAt: number; durationMs: number } }> {
+  const startedAt = Date.now();
+  
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Tool ${toolName} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    
+    // Ensure timer doesn't prevent Node from exiting
+    if (typeof timer === 'object' && 'unref' in timer) {
+      timer.unref();
+    }
+  });
+  
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } catch (error) {
+    const completedAt = Date.now();
+    const isTimeout = error instanceof Error && error.message.includes('timed out');
+    
+    return {
+      toolName,
+      success: false,
+      output: isTimeout
+        ? `Tool execution timed out after ${timeoutMs / 1000} seconds. The operation was cancelled.`
+        : error instanceof Error ? error.message : String(error),
+      timing: {
+        startedAt,
+        completedAt,
+        durationMs: completedAt - startedAt,
+      },
+    };
+  }
+}
+
+// =============================================================================
 // Semaphore for Concurrency Control
 // =============================================================================
 
@@ -338,7 +385,12 @@ export async function executeToolsParallel(
       if (signal?.aborted) break;
       
       const toolStart = Date.now();
-      const result = await executeFn(tool);
+      // Apply timeout even for single tool execution
+      const result = await withTimeout(
+        executeFn(tool),
+        config.toolTimeoutMs,
+        tool.name
+      ) as EnhancedToolResult;
       const toolDuration = Date.now() - toolStart;
       sequentialTime += toolDuration;
       
@@ -396,7 +448,13 @@ export async function executeToolsParallel(
               } as EnhancedToolResult;
             }
             try {
-              return await executeFn(t.tool);
+              // Apply timeout to tool execution
+              const result = await withTimeout(
+                executeFn(t.tool),
+                config.toolTimeoutMs,
+                t.tool.name
+              );
+              return result as EnhancedToolResult;
             } catch (error) {
               // Catch any unexpected errors from the execution function
               // This ensures one tool's failure doesn't prevent other tools from completing
@@ -447,12 +505,16 @@ export async function executeToolsParallel(
         }
       }
     } else {
-      // Execute sequentially
+      // Execute sequentially (still with timeout protection)
       for (const t of group.tools) {
         if (signal?.aborted) break;
         
-        const result = await executeFn(t.tool);
-        results[t.index] = result;
+        const result = await withTimeout(
+          executeFn(t.tool),
+          config.toolTimeoutMs,
+          t.tool.name
+        );
+        results[t.index] = result as EnhancedToolResult;
         estimatedSequentialTime += result.timing?.durationMs || 0;
       }
     }

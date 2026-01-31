@@ -19,6 +19,8 @@ import type {
   TaskAnalysisContext,
   WorkspaceStructureContext,
   ToolDefForPrompt,
+  MCPContextInfo,
+  GitContextInfo,
 } from './types';
 import type { PromptSettings, AccessLevelSettings, ResponseFormatPreferences } from '../../../shared/types';
 
@@ -119,6 +121,40 @@ export function buildWorkspaceDiagnostics(diagnostics?: WorkspaceDiagnosticsInfo
   ).join('');
 
   return `<diag errors="${diagnostics.errorCount}" warnings="${diagnostics.warningCount}">${issues}</diag>`;
+}
+
+// =============================================================================
+// GIT CONTEXT - Repository state awareness
+// =============================================================================
+
+export function buildGitContext(gitContext?: GitContextInfo): string {
+  if (!gitContext || !gitContext.isRepo) return '';
+
+  const attrs: string[] = [];
+  
+  if (gitContext.branch) {
+    attrs.push(`branch="${escapeXml(gitContext.branch)}"`);
+  }
+  
+  if (gitContext.uncommittedCount !== undefined && gitContext.uncommittedCount > 0) {
+    attrs.push(`uncommitted="${gitContext.uncommittedCount}"`);
+  }
+  
+  if (gitContext.stagedCount !== undefined && gitContext.stagedCount > 0) {
+    attrs.push(`staged="${gitContext.stagedCount}"`);
+  }
+  
+  if (gitContext.hasUnpushed) {
+    attrs.push(`unpushed="true"`);
+  }
+
+  if (attrs.length === 0) return '';
+
+  const content = gitContext.lastCommit 
+    ? `>${escapeXml(truncate(gitContext.lastCommit, 60))}</git>`
+    : ' />';
+  
+  return `<git ${attrs.join(' ')}${content}`;
 }
 
 // =============================================================================
@@ -249,11 +285,11 @@ export function buildCoreTools(tools?: ToolDefForPrompt[]): string {
  */
 export const DYNAMIC_TOOL_CATEGORIES: Record<string, { tools: string[]; description: string }> = {
   file: {
-    tools: ['read', 'write', 'edit', 'ls', 'grep', 'glob', 'codebase_search', 'bulk', 'read_lints'],
+    tools: ['read', 'write', 'edit', 'ls', 'grep', 'glob', 'codebase_search', 'bulk', 'read_lints', 'rename', 'delete'],
     description: 'File operations, search, semantic search, diagnostics',
   },
   terminal: {
-    tools: ['run', 'check_terminal', 'kill_terminal'],
+    tools: ['run', 'check_terminal', 'kill_terminal', 'list_terminals'],
     description: 'Command execution, process management',
   },
   browser: {
@@ -274,6 +310,10 @@ export const DYNAMIC_TOOL_CATEGORIES: Record<string, { tools: string[]; descript
   task: {
     tools: ['TodoWrite', 'CreatePlan', 'VerifyTasks', 'GetActivePlan', 'ListPlans', 'DeletePlan'],
     description: 'Task tracking, planning, verification',
+  },
+  mcp: {
+    tools: ['mcp_*'],
+    description: 'External MCP server tools (dynamically loaded from connected servers)',
   },
   advanced: {
     tools: ['create_tool', 'request_tools'],
@@ -356,45 +396,40 @@ export function buildSemanticContext(semanticContext?: SemanticContextInfo): str
 }
 
 // =============================================================================
-// MCP CONTEXT - External MCP server tools/resources
+// MCP CONTEXT - External tool servers
 // =============================================================================
 
-import type { MCPContextInfo } from './types';
-
 /**
- * Build MCP context section showing available external tools and resources
- * from connected Model Context Protocol servers.
+ * Build MCP context section with connected servers and available tools
+ * This informs the agent about external MCP servers and their capabilities
  */
 export function buildMCPContext(mcpContext?: MCPContextInfo): string {
-  if (!mcpContext || mcpContext.connectedServers === 0) return '';
+  if (!mcpContext || !mcpContext.enabled) return '';
+  if (mcpContext.connectedServers === 0) return '';
   
-  const parts: string[] = ['<mcp_servers hint="Connected MCP servers providing additional tools and resources">'];
+  const parts: string[] = [];
   
-  // Summary
-  parts.push(`  <summary connected="${mcpContext.connectedServers}" tools="${mcpContext.totalTools}" resources="${mcpContext.totalResources}" />`);
+  // Header with summary
+  parts.push(`<mcp_servers count="${mcpContext.connectedServers}" tools="${mcpContext.totalTools}">`);
+  parts.push('  <hint>MCP tools are prefixed with mcp_[server]_[tool]. Call like regular tools.</hint>');
   
-  // Server details
+  // List connected servers
   for (const server of mcpContext.servers) {
-    const serverTools = mcpContext.toolsByServer[server.name] || [];
-    const serverResources = mcpContext.resourcesByServer[server.name] || [];
-    
-    parts.push(`  <server name="${escapeXml(server.name)}" tools="${server.toolCount}" resources="${server.resourceCount}" prompts="${server.promptCount}">`);
-    
-    // List tools (limited for token efficiency)
-    if (serverTools.length > 0) {
-      const toolList = serverTools.slice(0, 10).map(t => escapeXml(t)).join(', ');
-      const more = serverTools.length > 10 ? ` (+${serverTools.length - 10} more)` : '';
-      parts.push(`    <tools>${toolList}${more}</tools>`);
+    if (server.status === 'connected') {
+      parts.push(`  <server id="${escapeXml(server.id)}" name="${escapeXml(server.name)}" tools="${server.toolCount}" />`);
     }
-    
-    // List resources (limited)
-    if (serverResources.length > 0) {
-      const resourceList = serverResources.slice(0, 5).map(r => escapeXml(r)).join(', ');
-      const more = serverResources.length > 5 ? ` (+${serverResources.length - 5} more)` : '';
-      parts.push(`    <resources>${resourceList}${more}</resources>`);
+  }
+  
+  // Show sample tools (limited to avoid token bloat)
+  if (mcpContext.sampleTools.length > 0) {
+    parts.push('  <sample_tools>');
+    for (const tool of mcpContext.sampleTools.slice(0, 10)) {
+      parts.push(`    <tool server="${escapeXml(tool.serverName)}" name="${escapeXml(tool.toolName)}">${escapeXml(truncate(tool.description, 80))}</tool>`);
     }
-    
-    parts.push('  </server>');
+    if (mcpContext.sampleTools.length > 10) {
+      parts.push(`    <more count="${mcpContext.sampleTools.length - 10}" />`);
+    }
+    parts.push('  </sample_tools>');
   }
   
   parts.push('</mcp_servers>');

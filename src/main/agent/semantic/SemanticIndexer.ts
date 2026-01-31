@@ -296,10 +296,36 @@ export class SemanticIndexer {
       const indexedFilePaths = forceReindex ? [] : vectorStore.getIndexedFilePaths();
       const indexedSet = new Set(indexedFilePaths);
 
-      // Filter to only new/changed files
-      const filesToIndex = forceReindex 
-        ? files 
-        : files.filter(f => !indexedSet.has(f));
+      // Filter to only new/changed files using content hash for change detection
+      let filesToIndex: string[] = [];
+      if (forceReindex) {
+        filesToIndex = files;
+      } else {
+        // Check each file for changes using content hash
+        for (const file of files) {
+          if (!indexedSet.has(file)) {
+            // New file, needs indexing
+            filesToIndex.push(file);
+          } else {
+            // Existing file - check if content changed using hash
+            try {
+              const content = await fs.readFile(file, 'utf-8');
+              const contentHash = computeContentHash(content);
+              if (vectorStore.needsReindex(file, contentHash)) {
+                filesToIndex.push(file);
+                logger.debug('File content changed, will reindex', { file, contentHash });
+              }
+            } catch {
+              // If we can't read the file, skip it
+            }
+          }
+        }
+        logger.info('Incremental indexing check complete', {
+          totalFiles: files.length,
+          alreadyIndexed: indexedSet.size,
+          needsReindex: filesToIndex.length,
+        });
+      }
 
       // Remove deleted files from index
       if (!forceReindex) {
@@ -751,6 +777,29 @@ export class SemanticIndexer {
     this.lastIndexStartTime = null;
     
     logger.info('Semantic index cleared');
+  }
+
+  /**
+   * Reindex a single file
+   * @returns Number of chunks created
+   */
+  async reindexFile(filePath: string): Promise<number> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    const vectorStore = getVectorStore();
+    const embeddingService = getEmbeddingService();
+    const chunker = getCodeChunker();
+
+    // Remove old chunks for this file
+    vectorStore.deleteByFilePath(filePath);
+
+    // Index the file
+    const chunksCreated = await this.indexFile(filePath, chunker, embeddingService, vectorStore);
+    
+    logger.info('File reindexed', { filePath, chunksCreated });
+    return chunksCreated;
   }
 
   /**

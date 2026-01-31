@@ -9,6 +9,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    testTimeout: 10000,
+    hookTimeout: 10000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -19,6 +21,13 @@ export default defineConfig({
         'src/**/*.spec.{ts,tsx}',
         'src/test/**/*',
       ],
+      thresholds: {
+        // Enforce minimum coverage thresholds
+        statements: 60,
+        branches: 50,
+        functions: 55,
+        lines: 60,
+      },
     },
   },
   resolve: {

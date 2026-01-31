@@ -133,7 +133,7 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ onComplete, onSk
             
             <div className="space-y-2 text-[11px] text-[var(--color-text-secondary)] font-mono">
               <p>
-                <span className="text-[var(--color-accent-primary)]">$</span> vyotiq --version
+                <span className="text-[var(--color-accent-primary)]">›</span> vyotiq --version
               </p>
               <p className="text-[var(--color-text-primary)]">v1.0.0</p>
             </div>
@@ -209,7 +209,7 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ onComplete, onSk
                     </div>
                     <div className="px-3 py-2">
                       <div className="relative flex items-center">
-                        <span className="text-[10px] text-[var(--color-text-muted)] mr-2">$</span>
+                        <span className="text-[10px] text-[var(--color-text-muted)] mr-2">›</span>
                         <input
                           type={showKeys[provider] ? 'text' : 'password'}
                           placeholder={`export ${provider.toUpperCase()}_API_KEY=...`}

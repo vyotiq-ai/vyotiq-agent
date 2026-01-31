@@ -127,7 +127,7 @@ function getToolActivityDescription(toolName: string): string {
   // Default: use the tool name with "using" prefix
   // Clean up common prefixes/suffixes
   const cleanName = toolName
-    .replace(/^(tool_|mcp_|internal_)/i, '')
+    .replace(/^(tool_|internal_)/i, '')
     .replace(/_/g, ' ');
   
   return cleanName;

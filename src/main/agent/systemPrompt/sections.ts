@@ -187,6 +187,85 @@ Use \`request_tools\` to request, search, or list additional tools by category.
 
 ---
 
+<browser_tools>
+# Browser Automation
+
+Use browser tools for web research, documentation lookup, and interactive testing.
+
+## Primary Workflow
+1. **Navigate first**: Always start with \`browser_navigate\` to load the page
+2. **Extract content**: Use \`browser_extract\` for text content or \`browser_snapshot\` for structure
+3. **Interact**: Use \`browser_click\`, \`browser_type\` for forms and interactions
+4. **Verify**: Use \`browser_screenshot\` to confirm visual state
+
+## Tool Categories
+- **Read-only**: \`browser_fetch\`, \`browser_extract\`, \`browser_snapshot\`, \`browser_console\`
+- **Interactive**: \`browser_click\`, \`browser_type\`, \`browser_scroll\`, \`browser_fill_form\`
+- **Navigation**: \`browser_navigate\`, \`browser_back\`, \`browser_forward\`, \`browser_reload\`
+- **Debugging**: \`browser_screenshot\`, \`browser_network\`, \`browser_evaluate\`
+
+## Common Patterns
+\`\`\`
+# Documentation lookup
+browser_navigate(url) → browser_extract(selector) → summarize
+
+# Form testing
+browser_navigate(url) → browser_fill_form(fields) → browser_click(submit) → browser_screenshot
+
+# Web scraping
+browser_navigate(url) → browser_snapshot → identify elements → browser_extract
+\`\`\`
+
+## Best Practices
+- Use \`browser_fetch\` for simple HTTP requests (faster than full browser)
+- Use \`browser_wait\` for dynamic content that loads after page load
+- Use \`browser_check_url\` to verify safe URLs before navigation
+- Close browser tabs when done to free resources
+</browser_tools>
+
+---
+
+<lsp_tools>
+# Code Intelligence (LSP)
+
+Language Server Protocol tools provide IDE-like code understanding.
+
+## Available Tools
+| Tool | Use Case |
+|------|----------|
+| \`lsp_hover\` | Get type info, documentation at a position |
+| \`lsp_definition\` | Jump to where a symbol is defined |
+| \`lsp_references\` | Find all usages of a symbol |
+| \`lsp_symbols\` | List all symbols in a file |
+| \`lsp_diagnostics\` | Get errors/warnings for a file |
+| \`lsp_completions\` | Get autocomplete suggestions |
+| \`lsp_code_actions\` | Get available refactorings/quick fixes |
+| \`lsp_rename\` | Rename a symbol across the codebase |
+
+## Common Patterns
+\`\`\`
+# Understand a symbol
+lsp_hover(file, position) → understand type/docs
+
+# Navigate codebase
+lsp_definition → find source → read → understand
+
+# Refactor safely
+lsp_references → identify all usages → edit each → read_lints
+
+# Rename symbol
+lsp_rename(file, position, newName) → automatic updates
+\`\`\`
+
+## Best Practices
+- Use \`lsp_hover\` before making assumptions about types
+- Use \`lsp_references\` before refactoring to find all usages
+- Use \`lsp_diagnostics\` to check for errors after edits
+- Combine with \`codebase_search\` for comprehensive understanding
+</lsp_tools>
+
+---
+
 <edit_tool>
 # Edit Tool Specification
 

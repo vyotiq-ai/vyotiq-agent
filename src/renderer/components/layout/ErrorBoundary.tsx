@@ -138,7 +138,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 {this.state.errorInfo?.componentStack && (
                   <details className="mt-2">
                     <summary className="text-[9px] text-[var(--color-text-placeholder)] cursor-pointer hover:text-[var(--color-text-secondary)]">
-                      $ stack --trace
+                      stack --trace
                     </summary>
                     <pre className="mt-1 text-[9px] text-[var(--color-text-placeholder)] overflow-auto max-h-24 p-2 bg-[var(--color-surface-2)]/30 border border-[var(--color-border-subtle)]">
                       {this.state.errorInfo.componentStack}

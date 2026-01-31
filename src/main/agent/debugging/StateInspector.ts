@@ -58,6 +58,8 @@ export interface QueuedMessage {
 }
 
 export interface ResourceUsage {
+  /** Memory usage in MB (calculated from process.memoryUsage().heapUsed) */
+  memoryMb: number;
   cpuPercent: number;
   activeConnections: number;
   pendingOperations: number;
@@ -199,6 +201,13 @@ export class StateInspector extends EventEmitter {
     state.capturedAt = Date.now();
 
     return { ...state };
+  }
+
+  /**
+   * Alias for inspectAgent - for backwards compatibility with debug handlers
+   */
+  getAgentState(agentId: string): AgentState | undefined {
+    return this.inspectAgent(agentId);
   }
 
   /**
@@ -396,6 +405,16 @@ export class StateInspector extends EventEmitter {
   }
 
   /**
+   * Alias for captureSnapshot - for backwards compatibility with debug handlers
+   */
+  takeSnapshot(
+    agentId: string,
+    trigger: StateSnapshot['trigger'] = 'manual'
+  ): StateSnapshot | undefined {
+    return this.captureSnapshot(agentId, trigger);
+  }
+
+  /**
    * Get snapshots for an agent
    */
   getSnapshots(agentId: string, limit?: number): StateSnapshot[] {
@@ -446,6 +465,7 @@ export class StateInspector extends EventEmitter {
 
   private createEmptyResourceUsage(): ResourceUsage {
     return {
+      memoryMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
       cpuPercent: 0,
       activeConnections: 0,
       pendingOperations: 0,

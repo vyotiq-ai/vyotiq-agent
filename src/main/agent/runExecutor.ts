@@ -1170,4 +1170,35 @@ export class RunExecutor {
   getAllTraces(): AgentTrace[] {
     return this.debugger.getAllTraces();
   }
+
+  /**
+   * Cleanup resources for a deleted session.
+   * This should be called when a session is deleted to prevent memory leaks.
+   */
+  cleanupDeletedSession(sessionId: string): void {
+    // Abort any active controller for this session
+    const controller = this.activeControllers.get(sessionId);
+    if (controller) {
+      controller.abort();
+      this.activeControllers.delete(sessionId);
+      this.logger.debug('Aborted active controller for deleted session', { sessionId });
+    }
+
+    // Clear any queued executions for this session
+    const clearedFromQueue = this.clearSessionQueue(sessionId);
+    if (clearedFromQueue > 0) {
+      this.logger.debug('Cleared queued executions for deleted session', { sessionId, count: clearedFromQueue });
+    }
+
+    // Clear pause state if any
+    this.pauseResumeManager.clearPauseState(sessionId);
+
+    // Clear debug traces for this session
+    const clearedTraces = this.clearTracesForSession(sessionId);
+    if (clearedTraces > 0) {
+      this.logger.debug('Cleared debug traces for deleted session', { sessionId, count: clearedTraces });
+    }
+
+    this.logger.info('Cleaned up resources for deleted session', { sessionId });
+  }
 }

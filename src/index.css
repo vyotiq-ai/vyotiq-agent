@@ -709,9 +709,22 @@ html.light .terminal-container:focus-within {
   transition: all 0.3s ease;
 }
 
+/* Pulsing animation for active status dot */
+@keyframes status-dot-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 6px var(--color-accent-primary);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 10px var(--color-accent-primary), 0 0 20px var(--color-accent-primary);
+  }
+}
+
 .terminal-status-dot.active {
   background-color: var(--color-accent-primary);
   box-shadow: 0 0 6px var(--color-accent-primary);
+  animation: status-dot-pulse 1.5s ease-in-out infinite;
 }
 
 .terminal-status-dot.warning {
@@ -1932,4 +1945,114 @@ html.light .monaco-diff-editor .word-insert {
 
 html.light .monaco-diff-editor .word-delete {
   background-color: rgba(220, 38, 38, 0.25) !important;
+}
+
+/* ========================================================================== */
+/* Compact Mode Styles                                                        */
+/* Reduces padding and margins throughout the UI for power users              */
+/* ========================================================================== */
+
+html.compact-mode {
+  /* Reduce base spacing */
+  --spacing-compact: 0.75;
+}
+
+html.compact-mode .space-y-6 { gap: 1rem; }
+html.compact-mode .space-y-4 { gap: 0.5rem; }
+html.compact-mode .space-y-3 { gap: 0.375rem; }
+html.compact-mode .space-y-2 { gap: 0.25rem; }
+html.compact-mode .space-x-4 { gap: 0.5rem; }
+html.compact-mode .space-x-3 { gap: 0.375rem; }
+html.compact-mode .space-x-2 { gap: 0.25rem; }
+
+html.compact-mode .p-6 { padding: 1rem; }
+html.compact-mode .p-5 { padding: 0.75rem; }
+html.compact-mode .p-4 { padding: 0.625rem; }
+html.compact-mode .p-3 { padding: 0.5rem; }
+html.compact-mode .p-2 { padding: 0.375rem; }
+
+html.compact-mode .px-6 { padding-left: 1rem; padding-right: 1rem; }
+html.compact-mode .px-5 { padding-left: 0.75rem; padding-right: 0.75rem; }
+html.compact-mode .px-4 { padding-left: 0.625rem; padding-right: 0.625rem; }
+html.compact-mode .px-3 { padding-left: 0.5rem; padding-right: 0.5rem; }
+
+html.compact-mode .py-6 { padding-top: 1rem; padding-bottom: 1rem; }
+html.compact-mode .py-5 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+html.compact-mode .py-4 { padding-top: 0.625rem; padding-bottom: 0.625rem; }
+html.compact-mode .py-3 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+
+html.compact-mode .m-6 { margin: 1rem; }
+html.compact-mode .m-5 { margin: 0.75rem; }
+html.compact-mode .m-4 { margin: 0.625rem; }
+html.compact-mode .m-3 { margin: 0.5rem; }
+
+html.compact-mode .gap-6 { gap: 1rem; }
+html.compact-mode .gap-5 { gap: 0.75rem; }
+html.compact-mode .gap-4 { gap: 0.625rem; }
+html.compact-mode .gap-3 { gap: 0.5rem; }
+
+/* Compact mode for specific components */
+html.compact-mode .chat-message {
+  padding: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+html.compact-mode .sidebar-item {
+  padding: 0.375rem 0.5rem;
+}
+
+html.compact-mode .panel-header {
+  padding: 0.375rem 0.5rem;
+}
+
+html.compact-mode .toolbar-button {
+  padding: 0.25rem 0.5rem;
+}
+
+/* ========================================================================== */
+/* Terminal Font Variables                                                    */
+/* Customizable font settings for terminal/code areas                         */
+/* ========================================================================== */
+
+:root {
+  --font-terminal: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-terminal-size: 12px;
+}
+
+/* Apply terminal font to relevant elements */
+.font-mono,
+.terminal-output,
+.code-block,
+pre,
+code {
+  font-family: var(--font-terminal);
+}
+
+.terminal-output {
+  font-size: var(--font-terminal-size);
+  line-height: 1.5;
+}
+
+/* ========================================================================== */
+/* Reduced Motion                                                             */
+/* Respect user preference for reduced motion                                 */
+/* ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Also disable when user turns off animations in settings */
+html:not([data-animations="true"]) *,
+html:not([data-animations="true"]) *::before,
+html:not([data-animations="true"]) *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }

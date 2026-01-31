@@ -7,7 +7,7 @@
  * - Duration highlighting
  * - Error indicators
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   MessageSquare, Wrench, AlertTriangle, CheckCircle, 
   XCircle, Clock, ChevronDown, ChevronRight
@@ -25,50 +25,6 @@ interface DebugTraceViewerProps {
   selectedStepId?: string;
 }
 
-// Mock trace steps - in production this would come from IPC
-const mockTraceSteps: TraceStepDetail[] = [
-  {
-    stepId: 'step-1',
-    stepNumber: 1,
-    type: 'llm-call',
-    startedAt: Date.now() - 5000,
-    completedAt: Date.now() - 4500,
-    durationMs: 500,
-    provider: 'anthropic',
-    model: 'claude-sonnet-4-20250514',
-    promptTokens: 2500,
-    outputTokens: 350,
-    finishReason: 'tool_use',
-    hasToolCalls: true,
-    contentPreview: 'I\'ll help you analyze the codebase...',
-  },
-  {
-    stepId: 'step-2',
-    stepNumber: 2,
-    type: 'tool-call',
-    startedAt: Date.now() - 4500,
-    completedAt: Date.now() - 4400,
-    durationMs: 100,
-    toolName: 'read',
-    toolCallId: 'call-1',
-    argumentsPreview: '{"path": "/src/main.ts"}',
-    requiresApproval: false,
-    wasApproved: true,
-  },
-  {
-    stepId: 'step-3',
-    stepNumber: 3,
-    type: 'tool-result',
-    startedAt: Date.now() - 4400,
-    completedAt: Date.now() - 4300,
-    durationMs: 100,
-    toolName: 'read',
-    success: true,
-    outputPreview: 'File content: import { app } from...',
-    outputSize: 2500,
-  },
-];
-
 export const DebugTraceViewer: React.FC<DebugTraceViewerProps> = ({
   sessionId,
   runId,
@@ -78,15 +34,115 @@ export const DebugTraceViewer: React.FC<DebugTraceViewerProps> = ({
 }) => {
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [highlightThreshold] = useState(1000); // ms
+  const [traceSteps, setTraceSteps] = useState<TraceStepDetail[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // In production: fetch from IPC based on sessionId/runId
-  // The mock data is used for development/testing
-  const traceSteps = useMemo(() => {
-    // Return mock data - in production this would be fetched via IPC
-    // using sessionId and runId to identify the trace
-    if (!sessionId || !runId) return [];
-    return mockTraceSteps;
+  // Fetch trace data from IPC
+  const fetchTraceData = useCallback(async () => {
+    if (!sessionId || !runId) {
+      setTraceSteps([]);
+      return;
+    }
+
+    try {
+      // First try to get the active trace
+      let trace = await window.vyotiq?.debug?.getActiveTrace?.();
+      
+      // If no active trace, try to get specific trace for this run
+      if (!trace || trace.runId !== runId) {
+        const traces = await window.vyotiq?.debug?.getTraces?.(sessionId);
+        trace = traces?.find((t: { runId: string }) => t.runId === runId);
+      }
+
+      if (trace?.steps) {
+        // Transform trace steps to TraceStepDetail format
+        const steps: TraceStepDetail[] = trace.steps.map((step: {
+          stepId: string;
+          stepNumber: number;
+          type: string;
+          startedAt: number;
+          completedAt: number;
+          durationMs: number;
+          llmRequest?: { provider?: string; model?: string; promptTokens?: number };
+          llmResponse?: { outputTokens?: number; finishReason?: string; contentPreview?: string };
+          toolCall?: { toolName?: string; toolCallId?: string; args?: unknown; requiresApproval?: boolean; wasApproved?: boolean };
+          toolResult?: { success?: boolean; outputPreview?: string; outputSize?: number };
+          error?: { message?: string };
+        }, index: number) => {
+          const baseStep = {
+            stepId: step.stepId || `step-${index}`,
+            stepNumber: step.stepNumber || index + 1,
+            startedAt: step.startedAt,
+            completedAt: step.completedAt,
+            durationMs: step.durationMs,
+          };
+
+          if (step.type === 'llm-call') {
+            return {
+              ...baseStep,
+              type: 'llm-call' as const,
+              provider: step.llmRequest?.provider || 'unknown',
+              model: step.llmRequest?.model || 'unknown',
+              promptTokens: step.llmRequest?.promptTokens || 0,
+              outputTokens: step.llmResponse?.outputTokens || 0,
+              finishReason: step.llmResponse?.finishReason || 'unknown',
+              hasToolCalls: step.llmResponse?.finishReason === 'tool_use',
+              contentPreview: step.llmResponse?.contentPreview,
+            };
+          } else if (step.type === 'tool-call' || step.toolCall) {
+            return {
+              ...baseStep,
+              type: 'tool-call' as const,
+              toolName: step.toolCall?.toolName || 'unknown',
+              toolCallId: step.toolCall?.toolCallId || '',
+              argumentsPreview: step.toolCall?.args ? JSON.stringify(step.toolCall.args, null, 2) : undefined,
+              requiresApproval: step.toolCall?.requiresApproval || false,
+              wasApproved: step.toolCall?.wasApproved,
+            };
+          } else if (step.type === 'tool-result' || step.toolResult) {
+            return {
+              ...baseStep,
+              type: 'tool-result' as const,
+              toolName: step.toolCall?.toolName || 'unknown',
+              success: step.toolResult?.success ?? true,
+              outputPreview: step.toolResult?.outputPreview,
+              outputSize: step.toolResult?.outputSize,
+            };
+          } else if (step.error) {
+            return {
+              ...baseStep,
+              type: 'error' as const,
+              errorMessage: step.error?.message,
+            };
+          }
+
+          return {
+            ...baseStep,
+            type: step.type as TraceStepDetail['type'],
+          };
+        });
+
+        setTraceSteps(steps);
+      } else {
+        setTraceSteps([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch trace data:', error);
+      setTraceSteps([]);
+    }
   }, [sessionId, runId]);
+
+  // Initial fetch and polling while running
+  useEffect(() => {
+    setIsLoading(true);
+    fetchTraceData().finally(() => setIsLoading(false));
+
+    // Poll for updates while running
+    const interval = isRunning ? setInterval(fetchTraceData, 1000) : undefined;
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [fetchTraceData, isRunning]);
 
   const toggleStep = (stepId: string) => {
     setExpandedSteps(prev => {
@@ -129,6 +185,14 @@ export const DebugTraceViewer: React.FC<DebugTraceViewerProps> = ({
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
   };
+
+  if (isLoading && traceSteps.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-[var(--color-text-dim)] text-xs">
+        Loading trace data...
+      </div>
+    );
+  }
 
   if (traceSteps.length === 0) {
     return (

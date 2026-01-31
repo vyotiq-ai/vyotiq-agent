@@ -484,6 +484,11 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
     }
     case 'STREAM_DELTA':
     case 'STREAM_DELTA_BATCH': {
+      // PERFORMANCE OPTIMIZATION: Early exit if no actual changes to apply
+      if (!action.payload.delta && !action.payload.toolCall) {
+        return state;
+      }
+      
       // Optimized delta handling - only update what's needed
       let sessions = state.sessions;
 

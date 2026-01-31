@@ -7,13 +7,27 @@
 
 // Shared cache for tracking file reads
 const readFilesCache = new Map<string, number>();
+const MAX_TRACKED_FILES = 2000; // Limit to prevent unbounded memory growth
 
 /**
  * Mark a file as read
  * @param filePath - The absolute path to the file
  */
 export function markFileAsRead(filePath: string): void {
-  readFilesCache.set(normalizeKey(filePath), Date.now());
+  const key = normalizeKey(filePath);
+  
+  // Enforce size limit with LRU-style eviction
+  if (readFilesCache.size >= MAX_TRACKED_FILES && !readFilesCache.has(key)) {
+    // Remove oldest entries (first 10% of cache)
+    const toRemove = Math.ceil(MAX_TRACKED_FILES * 0.1);
+    const keysToRemove = Array.from(readFilesCache.entries())
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, toRemove)
+      .map(([k]) => k);
+    keysToRemove.forEach(k => readFilesCache.delete(k));
+  }
+  
+  readFilesCache.set(key, Date.now());
 }
 
 /**

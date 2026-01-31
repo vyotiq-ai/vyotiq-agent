@@ -30,6 +30,7 @@ const session = await window.vyotiq.agent.startSession({
 ```
 
 **Response:**
+
 ```typescript
 interface AgentSessionState {
   id: string;
@@ -56,6 +57,7 @@ await window.vyotiq.agent.sendMessage({
 ```
 
 **Parameters:**
+
 - `sessionId`: ID of the session
 - `content`: User message content
 - `attachments`: Optional file attachments
@@ -232,15 +234,11 @@ const content = await window.vyotiq.editor.getContent(filePath: string);
 
 ### Editor Commands
 
-*Last updated: January 2026*
-
 The editor provides commands accessible via the Command Palette (Ctrl+Shift+P / Cmd+Shift+P).
 
 ### EditorContext Diff Viewer API
 
-*Last updated: January 2026*
-
-The `EditorContext` provides a built-in diff viewer for comparing file changes. Access via the `useEditor()` hook.
+> Last updated: January 2026
 
 #### Diff State
 
@@ -809,7 +807,7 @@ interface ToolResult {
 
 #### Semantic Search (1 tool)
 
-*Added: January 2026*
+> Added: January 2026
 
 **codebase_search**
 
@@ -1468,7 +1466,7 @@ The system automatically:
 
 ## Semantic Indexing API
 
-*Added: January 2026*
+> Added: January 2026
 
 The Semantic API provides local vector embeddings and AI-powered code search.
 
@@ -1693,7 +1691,7 @@ interface CacheSettings {
 
 ### System Prompt Module
 
-*Last updated: January 2026*
+> Last updated: January 2026
 
 The system prompt module provides modular, cached prompt generation with dynamic context injection.
 
@@ -1710,9 +1708,9 @@ src/main/agent/systemPrompt/
 └── types.ts              # Type definitions
 ```
 
-#### Core Exports
+#### Prompt Module Exports
 
-*Last updated: January 2026*
+> Last updated: January 2026
 
 ```typescript
 // Import from either location (backward compatible)

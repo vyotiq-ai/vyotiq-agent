@@ -4,11 +4,11 @@
  * Displays a welcome message when a session is active but has no messages yet.
  * Shows typewriter effect with helpful hints.
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { memo, useState, useEffect, useRef } from 'react';
 import { cn } from '../../../utils/cn';
 import { SESSION_HINTS } from '../utils/welcomeHints';
 
-export const SessionWelcome: React.FC = () => {
+const SessionWelcomeComponent: React.FC = () => {
   const [showCursor, setShowCursor] = useState(true);
   const [displayedText, setDisplayedText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -88,3 +88,5 @@ export const SessionWelcome: React.FC = () => {
     </div>
   );
 };
+
+export const SessionWelcome = memo(SessionWelcomeComponent);

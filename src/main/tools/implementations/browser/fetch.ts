@@ -431,6 +431,7 @@ browser_fetch("https://react.dev/reference/react/useState")
   requiresApproval: false,
   category: 'browser-read',
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   schema: {
     type: 'object',

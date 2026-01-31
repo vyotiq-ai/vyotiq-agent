@@ -194,6 +194,7 @@ browser_extract(selector: ".results")
   requiresApproval: false,
   category: 'browser-write',
   riskLevel: 'safe',
+  allowedCallers: ['direct'],
 
   schema: {
     type: 'object',

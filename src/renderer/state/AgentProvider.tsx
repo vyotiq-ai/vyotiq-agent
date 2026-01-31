@@ -637,23 +637,46 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 
   // Track if vyotiq API is ready
   const [apiReady, setApiReady] = useState(() => !!window.vyotiq?.agent);
+  const [apiError, setApiError] = useState<string | null>(null);
   
-  // Check for API readiness
+  // Check for API readiness with better error handling
   useEffect(() => {
     if (apiReady) return;
     
+    let attempts = 0;
+    const maxAttempts = 100; // 5 seconds at 50ms intervals
+    
     // Poll for API availability
     const checkInterval = setInterval(() => {
+      attempts++;
       if (window.vyotiq?.agent) {
         setApiReady(true);
+        setApiError(null);
         clearInterval(checkInterval);
+        logger.info('window.vyotiq API became available', { attempts });
       }
     }, 50);
     
-    // Cleanup after 5 seconds (give up)
+    // Cleanup after 5 seconds and set error state
     const timeout = setTimeout(() => {
       clearInterval(checkInterval);
-      logger.error('window.vyotiq API never became available');
+      if (!window.vyotiq?.agent) {
+        const errorMessage = 'Failed to initialize agent API. Please restart the application.';
+        logger.error('window.vyotiq API never became available', { attempts });
+        setApiError(errorMessage);
+        // Dispatch an error status to the first session if any
+        dispatchRef.current({
+          type: 'AGENT_STATUS_UPDATE',
+          payload: {
+            sessionId: '__global__',
+            status: {
+              status: 'error',
+              message: errorMessage,
+              timestamp: Date.now(),
+            },
+          },
+        });
+      }
     }, 5000);
     
     return () => {

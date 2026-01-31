@@ -151,7 +151,7 @@ export const OpenRouterFilters: React.FC<OpenRouterFiltersProps> = ({
           <FilterSection label="context" icon={<Cpu size={10} />}>
             <div className="flex items-center gap-2 flex-wrap">
               <NumInput placeholder="min" value={criteria.minContextLength} onChange={v => updateCriteria({ minContextLength: v })} />
-              <span className="text-[9px] text-[var(--color-text-dim)]">-</span>
+              <span className="text-[9px] text-[var(--color-text-dim)]">to</span>
               <NumInput placeholder="max" value={criteria.maxContextLength} onChange={v => updateCriteria({ maxContextLength: v })} />
             </div>
           </FilterSection>

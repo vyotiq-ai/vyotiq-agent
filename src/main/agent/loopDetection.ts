@@ -77,6 +77,10 @@ export interface LoopDetectionState {
   consecutiveIdenticalEditFailures: number;
   circuitBreakerTriggered: boolean;
   warningIssued: boolean;
+  /** Track file content hashes to detect legitimate retries after changes */
+  fileContentHashes: Map<string, string>;
+  /** Track when files were last modified by this run */
+  fileModificationTimes: Map<string, number>;
 }
 
 // =============================================================================
@@ -143,7 +147,59 @@ export class LoopDetector {
       consecutiveIdenticalEditFailures: 0,
       circuitBreakerTriggered: false,
       warningIssued: false,
+      fileContentHashes: new Map(),
+      fileModificationTimes: new Map(),
     });
+  }
+
+  /**
+   * Record file content hash to track changes
+   * Call this after reading a file to detect legitimate retries
+   */
+  recordFileContentHash(runId: string, filePath: string, contentHash: string): void {
+    const state = this.states.get(runId);
+    if (!state) return;
+    
+    const previousHash = state.fileContentHashes.get(filePath);
+    state.fileContentHashes.set(filePath, contentHash);
+    
+    // If the file content changed, reset the consecutive calls counter
+    // as this could be a legitimate retry after a change
+    if (previousHash && previousHash !== contentHash) {
+      logger.debug('File content changed, resetting consecutive call counter', {
+        runId,
+        filePath,
+        previousHash: previousHash.slice(0, 8),
+        newHash: contentHash.slice(0, 8),
+      });
+      state.consecutiveIdenticalCalls = Math.max(0, state.consecutiveIdenticalCalls - 1);
+    }
+  }
+
+  /**
+   * Record file modification to track write operations
+   */
+  recordFileModification(runId: string, filePath: string): void {
+    const state = this.states.get(runId);
+    if (!state) return;
+    
+    state.fileModificationTimes.set(filePath, Date.now());
+    // Clear the content hash as the file has been modified
+    state.fileContentHashes.delete(filePath);
+  }
+
+  /**
+   * Check if a file was recently modified by this run
+   * Used to determine if a retry is legitimate (file changed since last read)
+   */
+  wasFileRecentlyModified(runId: string, filePath: string, thresholdMs: number = 5000): boolean {
+    const state = this.states.get(runId);
+    if (!state) return false;
+    
+    const lastModified = state.fileModificationTimes.get(filePath);
+    if (!lastModified) return false;
+    
+    return Date.now() - lastModified < thresholdMs;
   }
 
   /**
@@ -167,6 +223,12 @@ export class LoopDetector {
 
     // Extract key argument (file path, directory, etc.) for semantic comparison
     const keyArgument = this.extractKeyArgument(toolCall);
+    
+    // Check if this is a retry on a recently modified file
+    // If so, don't count it as a consecutive identical call
+    const isRetryAfterModification = keyArgument && 
+      this.wasFileRecentlyModified(runId, keyArgument) &&
+      (EXPLORATION_TOOLS.has(toolCall.name) || EXPLORATION_TOOLS.has(toolCall.name.toLowerCase()));
     
     // Create pattern from tool call
     const pattern: ToolCallPattern = {
@@ -223,9 +285,20 @@ export class LoopDetector {
     state.patterns.push(pattern);
 
     // Check for identical consecutive calls
+    // But don't count retries after file modifications as consecutive identical calls
     if (state.lastToolCall) {
       if (this.patternsMatch(pattern, state.lastToolCall)) {
-        state.consecutiveIdenticalCalls++;
+        // If this is a retry after a file modification, don't count it
+        if (isRetryAfterModification) {
+          logger.debug('Skipping consecutive call count for retry after file modification', {
+            runId,
+            toolName: toolCall.name,
+            keyArgument,
+          });
+          // Don't increment, just update the last tool call
+        } else {
+          state.consecutiveIdenticalCalls++;
+        }
       } else {
         state.consecutiveIdenticalCalls = 1;
       }

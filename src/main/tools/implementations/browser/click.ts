@@ -189,6 +189,7 @@ browser_screenshot() → verify login result
   requiresApproval: false,
   category: 'browser-write',
   riskLevel: 'safe',
+  allowedCallers: ['direct'],
 
   schema: {
     type: 'object',
