@@ -776,7 +776,7 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
         {/* Loading indicator for file content */}
         {isWriteOp && isLoadingOriginal && (
           <div className="mt-2 px-2 py-1.5 rounded-sm bg-[var(--color-surface-1)]/30 border border-[var(--color-border-subtle)]/30">
-            <span className="text-[9px] text-[var(--color-text-muted)] animate-pulse">Loading file content...</span>
+            <span className="text-[9px] text-[var(--color-text-muted)]">Loading file content...</span>
           </div>
         )}
 

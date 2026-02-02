@@ -4,10 +4,12 @@
  * System prompt customization including:
  * - Custom system prompt
  * - Role/persona selection
+ * - Agent instructions (specialized behavior definitions)
+ * - AGENTS.md file support (project-specific agent instructions)
  * - Context injection rules
  * - Response format preferences
  */
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   MessageSquare,
   User,
@@ -26,6 +28,11 @@ import {
   Search,
   Building2,
   RotateCcw,
+  ListTodo,
+  CheckCircle2,
+  Bug,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Toggle } from '../../../components/ui/Toggle';
@@ -36,6 +43,9 @@ import type {
   ContextInjectionRule,
   ResponseFormatPreferences,
   ContextInjectionCondition,
+  AgentInstruction,
+  AgentInstructionTrigger,
+  AgentInstructionScope,
 } from '../../../../shared/types';
 import { DEFAULT_RESPONSE_FORMAT } from '../../../../shared/types';
 
@@ -44,8 +54,8 @@ interface SettingsPromptsProps {
   onChange: <K extends keyof PromptSettings>(field: K, value: PromptSettings[K]) => void;
 }
 
-// Icon mapping for personas
-const PERSONA_ICONS: Record<string, React.ReactNode> = {
+// Icon mapping for personas and instructions
+const ICON_MAP: Record<string, React.ReactNode> = {
   Bot: <Bot size={14} />,
   Code2: <Code2 size={14} />,
   Zap: <Zap size={14} />,
@@ -53,17 +63,103 @@ const PERSONA_ICONS: Record<string, React.ReactNode> = {
   Search: <Search size={14} />,
   Building2: <Building2 size={14} />,
   User: <User size={14} />,
+  ListTodo: <ListTodo size={14} />,
+  CheckCircle2: <CheckCircle2 size={14} />,
+  Bug: <Bug size={14} />,
+  RefreshCw: <RefreshCw size={14} />,
+  Sparkles: <Sparkles size={14} />,
 };
 
+// Backward compatibility alias
+const PERSONA_ICONS = ICON_MAP;
+
 // Sub-sections for the prompts settings
-type PromptsSubSection = 'system-prompt' | 'personas' | 'context-rules' | 'response-format';
+type PromptsSubSection = 'system-prompt' | 'personas' | 'agent-instructions' | 'context-rules' | 'response-format';
 
 export const SettingsPrompts: React.FC<SettingsPromptsProps> = ({ settings, onChange }) => {
   const [activeSubSection, setActiveSubSection] = useState<PromptsSubSection>('system-prompt');
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editingInstructionId, setEditingInstructionId] = useState<string | null>(null);
   const [newPersonaDraft, setNewPersonaDraft] = useState<Partial<AgentPersona> | null>(null);
   const [newRuleDraft, setNewRuleDraft] = useState<Partial<ContextInjectionRule> | null>(null);
+  const [newInstructionDraft, setNewInstructionDraft] = useState<Partial<AgentInstruction> | null>(null);
+
+  // Instruction files status (AGENTS.md, CLAUDE.md, copilot-instructions.md, etc.)
+  const [instructionFilesStatus, setInstructionFilesStatus] = useState<{
+    found: boolean;
+    fileCount: number;
+    enabledCount: number;
+    files: Array<{
+      path: string;
+      type: string;
+      enabled: boolean;
+      priority: number;
+      sectionsCount: number;
+      hasFrontmatter: boolean;
+    }>;
+    byType: Record<string, number>;
+    error: string | null;
+    loading: boolean;
+    expanded: boolean;
+  }>({ found: false, fileCount: 0, enabledCount: 0, files: [], byType: {}, error: null, loading: true, expanded: false });
+
+  // Load instruction files status on mount and when section changes
+  useEffect(() => {
+    if (activeSubSection === 'agent-instructions') {
+      // Load instruction files status
+      setInstructionFilesStatus(prev => ({ ...prev, loading: true }));
+      window.vyotiq.workspace.getInstructionFilesStatus?.()
+        .then(status => {
+          setInstructionFilesStatus(prev => ({ 
+            ...status, 
+            loading: false, 
+            expanded: prev.expanded,
+            error: status.error ?? null 
+          }));
+        })
+        .catch(err => {
+          setInstructionFilesStatus(prev => ({ 
+            ...prev, 
+            error: String(err), 
+            loading: false 
+          }));
+        });
+    }
+  }, [activeSubSection]);
+
+  const handleRefreshInstructionFiles = useCallback(() => {
+    setInstructionFilesStatus(prev => ({ ...prev, loading: true }));
+    window.vyotiq.workspace.refreshInstructionFiles?.()
+      .then(() => window.vyotiq.workspace.getInstructionFilesStatus?.())
+      .then(status => {
+        if (status) setInstructionFilesStatus(prev => ({ 
+          ...status, 
+          loading: false,
+          expanded: prev.expanded,
+          error: status.error ?? null 
+        }));
+      })
+      .catch(err => {
+        setInstructionFilesStatus(prev => ({ ...prev, error: String(err), loading: false }));
+      });
+  }, []);
+
+  const handleToggleInstructionFile = useCallback((relativePath: string, enabled: boolean) => {
+    window.vyotiq.workspace.toggleInstructionFile?.(relativePath, enabled)
+      .then(() => window.vyotiq.workspace.getInstructionFilesStatus?.())
+      .then(status => {
+        if (status) setInstructionFilesStatus(prev => ({ 
+          ...status, 
+          loading: false,
+          expanded: prev.expanded,
+          error: status.error ?? null 
+        }));
+      })
+      .catch(err => {
+        console.error('Failed to toggle instruction file:', err);
+      });
+  }, []);
 
   // Get the active persona
   const activePersona = useMemo(() => {
@@ -153,6 +249,58 @@ export const SettingsPrompts: React.FC<SettingsPromptsProps> = ({ settings, onCh
     setEditingRuleId(null);
   }, [onChange, settings.contextInjectionRules]);
 
+  // ==========================================================================
+  // Agent Instruction Handlers
+  // ==========================================================================
+
+  // Handle adding a new agent instruction
+  const handleAddInstruction = useCallback((instructionDraft: Partial<AgentInstruction>) => {
+    if (!instructionDraft?.name || !instructionDraft?.instructions) return;
+    
+    const newInstruction: AgentInstruction = {
+      id: `instruction-${Date.now()}`,
+      name: instructionDraft.name,
+      description: instructionDraft.description ?? '',
+      instructions: instructionDraft.instructions,
+      icon: instructionDraft.icon ?? 'Sparkles',
+      isBuiltIn: false,
+      enabled: true,
+      scope: instructionDraft.scope ?? 'global',
+      priority: (settings.agentInstructions?.length ?? 0) + 1,
+      trigger: instructionDraft.trigger ?? { type: 'always' },
+      tags: instructionDraft.tags ?? [],
+    };
+    
+    onChange('agentInstructions', [...(settings.agentInstructions ?? []), newInstruction]);
+    setNewInstructionDraft(null);
+  }, [onChange, settings.agentInstructions]);
+
+  // Handle deleting an agent instruction
+  const handleDeleteInstruction = useCallback((instructionId: string) => {
+    const instruction = settings.agentInstructions?.find(i => i.id === instructionId);
+    if (instruction?.isBuiltIn) return; // Can't delete built-in instructions
+    
+    const newInstructions = (settings.agentInstructions ?? []).filter(i => i.id !== instructionId);
+    onChange('agentInstructions', newInstructions);
+  }, [onChange, settings.agentInstructions]);
+
+  // Handle updating an agent instruction
+  const handleUpdateInstruction = useCallback((instructionId: string, updates: Partial<AgentInstruction>) => {
+    const newInstructions = (settings.agentInstructions ?? []).map(i =>
+      i.id === instructionId ? { ...i, ...updates } : i
+    );
+    onChange('agentInstructions', newInstructions);
+    setEditingInstructionId(null);
+  }, [onChange, settings.agentInstructions]);
+
+  // Handle toggling an agent instruction enabled state
+  const handleToggleInstruction = useCallback((instructionId: string) => {
+    const newInstructions = (settings.agentInstructions ?? []).map(i =>
+      i.id === instructionId ? { ...i, enabled: !i.enabled } : i
+    );
+    onChange('agentInstructions', newInstructions);
+  }, [onChange, settings.agentInstructions]);
+
   // Handle response format change
   const handleResponseFormatChange = useCallback(<K extends keyof ResponseFormatPreferences>(
     field: K,
@@ -168,6 +316,7 @@ export const SettingsPrompts: React.FC<SettingsPromptsProps> = ({ settings, onCh
   const subSections: { id: PromptsSubSection; label: string; icon: React.ReactNode }[] = [
     { id: 'system-prompt', label: 'System Prompt', icon: <MessageSquare size={12} /> },
     { id: 'personas', label: 'Personas', icon: <User size={12} /> },
+    { id: 'agent-instructions', label: 'Agents', icon: <Sparkles size={12} /> },
     { id: 'context-rules', label: 'Context Rules', icon: <FileText size={12} /> },
     { id: 'response-format', label: 'Response Format', icon: <Settings2 size={12} /> },
   ];
@@ -259,21 +408,6 @@ export const SettingsPrompts: React.FC<SettingsPromptsProps> = ({ settings, onCh
               )}
             </div>
           )}
-
-          <div className="space-y-2">
-            <label className="text-[10px] text-[var(--color-text-muted)]">
-              Additional Instructions
-            </label>
-            <textarea
-              className="w-full min-h-[100px] bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-3 py-2 text-[11px] font-mono outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30 resize-y"
-              value={settings.additionalInstructions}
-              onChange={(e) => onChange('additionalInstructions', e.target.value)}
-              placeholder="Add instructions that will be appended to every prompt..."
-            />
-            <p className="text-[9px] text-[var(--color-text-dim)]">
-              # These instructions will be appended to the system prompt
-            </p>
-          </div>
 
           <div className="grid gap-3">
             <Toggle
@@ -427,6 +561,269 @@ export const SettingsPrompts: React.FC<SettingsPromptsProps> = ({ settings, onCh
                         </button>
                       </div>
                     )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Agent Instructions Section */}
+      {activeSubSection === 'agent-instructions' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
+            <span>Agent Instructions</span>
+            <button
+              onClick={() => setNewInstructionDraft({ 
+                name: '', 
+                description: '', 
+                instructions: '', 
+                scope: 'global', 
+                trigger: { type: 'always' } 
+              })}
+              className="flex items-center gap-1 text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)]"
+            >
+              <Plus size={12} />
+              <span>Add Instruction</span>
+            </button>
+          </div>
+
+          {/* Project Instruction Files Panel */}
+          <div className={cn(
+            "border transition-all",
+            instructionFilesStatus.found
+              ? "bg-[var(--color-surface-1)] border-[var(--color-success)]/30"
+              : "bg-[var(--color-surface-2)] border-[var(--color-border-subtle)]"
+          )}>
+            {/* Header */}
+            <div 
+              className="p-3 cursor-pointer"
+              onClick={() => setInstructionFilesStatus(prev => ({ ...prev, expanded: !prev.expanded }))}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <FileText size={14} className={instructionFilesStatus.found ? "text-[var(--color-success)]" : "text-[var(--color-text-dim)]"} />
+                  <span className="text-[11px] text-[var(--color-text-primary)]">Project Instruction Files</span>
+                  {instructionFilesStatus.loading && (
+                    <span className="text-[9px] text-[var(--color-text-dim)]">Loading...</span>
+                  )}
+                  {!instructionFilesStatus.loading && instructionFilesStatus.found && (
+                    <span className="text-[8px] px-1 py-0.5 bg-[var(--color-success)]/20 text-[var(--color-success)]">
+                      {instructionFilesStatus.enabledCount}/{instructionFilesStatus.fileCount} enabled
+                    </span>
+                  )}
+                  {!instructionFilesStatus.loading && !instructionFilesStatus.found && !instructionFilesStatus.error && (
+                    <span className="text-[8px] px-1 py-0.5 bg-[var(--color-surface-3)] text-[var(--color-text-dim)]">
+                      No files found
+                    </span>
+                  )}
+                  {instructionFilesStatus.error && (
+                    <span className="text-[8px] px-1 py-0.5 bg-[var(--color-error)]/20 text-[var(--color-error)]">
+                      Error
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleRefreshInstructionFiles(); }}
+                    disabled={instructionFilesStatus.loading}
+                    className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-50"
+                    title="Refresh instruction files"
+                  >
+                    <RotateCcw size={12} className={instructionFilesStatus.loading ? "animate-spin" : ""} />
+                  </button>
+                  {instructionFilesStatus.expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </div>
+              </div>
+              <p className="text-[9px] text-[var(--color-text-dim)]">
+                Automatically loads instructions from AGENTS.md, CLAUDE.md, copilot-instructions.md, and more.
+                <a 
+                  href="https://agents.md/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="ml-1 text-[var(--color-accent-primary)] hover:underline"
+                >
+                  Learn more →
+                </a>
+              </p>
+            </div>
+
+            {/* Expanded content */}
+            {instructionFilesStatus.expanded && (
+              <div className="px-3 pb-3 border-t border-[var(--color-border-subtle)]">
+                {/* File type summary */}
+                {Object.keys(instructionFilesStatus.byType).length > 0 && (
+                  <div className="flex flex-wrap gap-1 py-2">
+                    {Object.entries(instructionFilesStatus.byType).map(([type, count]) => (
+                      <span 
+                        key={type} 
+                        className="text-[8px] px-1.5 py-0.5 bg-[var(--color-surface-3)] text-[var(--color-text-muted)]"
+                      >
+                        {type.replace('-md', '.md').replace('-', ' ')}: {count}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Files list */}
+                {instructionFilesStatus.files.length > 0 ? (
+                  <div className="space-y-1 pt-2">
+                    {instructionFilesStatus.files.map((file) => (
+                      <div
+                        key={file.path}
+                        className={cn(
+                          "flex items-center justify-between p-2 border",
+                          file.enabled
+                            ? "bg-[var(--color-surface-base)] border-[var(--color-border-subtle)]"
+                            : "bg-[var(--color-surface-2)] border-[var(--color-border-subtle)]/50 opacity-60"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <Toggle
+                            label=""
+                            checked={file.enabled}
+                            onToggle={() => handleToggleInstructionFile(file.path, !file.enabled)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <code className="text-[10px] text-[var(--color-text-primary)] truncate">
+                                {file.path}
+                              </code>
+                              <span className="text-[8px] px-1 py-0.5 bg-[var(--color-surface-3)] text-[var(--color-text-dim)] shrink-0">
+                                {file.type.replace('-md', '.md').replace('copilot-instructions', 'Copilot').replace('github-instructions', 'GitHub').replace('cursor-rules', 'Cursor')}
+                              </span>
+                              {file.hasFrontmatter && (
+                                <span className="text-[8px] px-1 py-0.5 bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)] shrink-0">
+                                  frontmatter
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[8px] text-[var(--color-text-dim)] mt-0.5">
+                              {file.sectionsCount} section{file.sectionsCount !== 1 ? 's' : ''} • priority {file.priority}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-[9px] text-[var(--color-text-dim)]">
+                    No instruction files found in workspace.
+                    <br />
+                    Create an AGENTS.md, CLAUDE.md, or .github/copilot-instructions.md file to get started.
+                  </div>
+                )}
+
+                {instructionFilesStatus.error && (
+                  <p className="text-[9px] text-[var(--color-error)] mt-2">{instructionFilesStatus.error}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="p-2 bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] text-[9px] text-[var(--color-text-dim)]">
+            <p className="mb-1">
+              # Agent instructions define specialized behaviors that are dynamically loaded based on context.
+            </p>
+            <p>
+              # Trigger types: <code className="text-[var(--color-accent-primary)]">always</code>, <code className="text-[var(--color-accent-primary)]">keyword</code>, <code className="text-[var(--color-accent-primary)]">file-type</code>, <code className="text-[var(--color-accent-primary)]">task-type</code>, <code className="text-[var(--color-accent-primary)]">manual</code>
+            </p>
+          </div>
+
+          {/* New instruction form */}
+          {newInstructionDraft && (
+            <AgentInstructionForm
+              instruction={newInstructionDraft}
+              onSave={handleAddInstruction}
+              onCancel={() => setNewInstructionDraft(null)}
+              isNew
+            />
+          )}
+
+          {/* Instructions list */}
+          {(!settings.agentInstructions || settings.agentInstructions.length === 0) && !newInstructionDraft && (
+            <div className="p-4 text-center text-[10px] text-[var(--color-text-dim)] border border-dashed border-[var(--color-border-subtle)]">
+              No agent instructions configured.
+              <br />
+              Click "Add Instruction" to create one.
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {(settings.agentInstructions ?? []).map((instruction) => {
+              const isEditing = editingInstructionId === instruction.id;
+
+              if (isEditing) {
+                return (
+                  <AgentInstructionForm
+                    key={instruction.id}
+                    instruction={instruction}
+                    onSave={(updates) => handleUpdateInstruction(instruction.id, updates)}
+                    onCancel={() => setEditingInstructionId(null)}
+                    isNew={false}
+                  />
+                );
+              }
+
+              return (
+                <div
+                  key={instruction.id}
+                  className={cn(
+                    "p-3 border transition-all",
+                    instruction.enabled
+                      ? "bg-[var(--color-surface-1)] border-[var(--color-border-subtle)]"
+                      : "bg-[var(--color-surface-2)] border-[var(--color-border-subtle)]/50 opacity-60"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Toggle
+                          label=""
+                          checked={instruction.enabled}
+                          onToggle={() => handleToggleInstruction(instruction.id)}
+                        />
+                        <span className="text-[var(--color-text-muted)]">
+                          {ICON_MAP[instruction.icon ?? 'Sparkles']}
+                        </span>
+                        <span className="text-[11px] text-[var(--color-text-primary)]">{instruction.name}</span>
+                        {instruction.isBuiltIn && (
+                          <span className="text-[8px] px-1 py-0.5 bg-[var(--color-surface-3)] text-[var(--color-text-dim)]">
+                            built-in
+                          </span>
+                        )}
+                        <span className="text-[8px] px-1 py-0.5 bg-[var(--color-surface-3)] text-[var(--color-text-dim)]">
+                          {instruction.trigger.type}
+                        </span>
+                        <span className="text-[8px] px-1 py-0.5 bg-[var(--color-surface-3)] text-[var(--color-text-dim)]">
+                          {instruction.scope}
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-[var(--color-text-dim)] mb-1">{instruction.description}</p>
+                      <pre className="text-[9px] text-[var(--color-text-muted)] whitespace-pre-wrap line-clamp-2">
+                        {instruction.instructions}
+                      </pre>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setEditingInstructionId(instruction.id)}
+                        className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                        title="Edit instruction"
+                      >
+                        <Edit3 size={12} />
+                      </button>
+                      {!instruction.isBuiltIn && (
+                        <button
+                          onClick={() => handleDeleteInstruction(instruction.id)}
+                          className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-error)]"
+                          title="Delete instruction"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -816,6 +1213,150 @@ const ContextRuleForm: React.FC<ContextRuleFormProps> = ({ rule, onSave, onCance
   );
 };
 
+// Agent instruction form component
+interface AgentInstructionFormProps {
+  instruction: Partial<AgentInstruction>;
+  onSave: (instruction: Partial<AgentInstruction>) => void;
+  onCancel: () => void;
+  isNew: boolean;
+}
+
+const AgentInstructionForm: React.FC<AgentInstructionFormProps> = ({ instruction, onSave, onCancel, isNew }) => {
+  // Use local state for editing - only save when user clicks Save
+  const [localInstruction, setLocalInstruction] = useState<Partial<AgentInstruction>>(instruction);
+
+  const handleChange = useCallback((updates: Partial<AgentInstruction>) => {
+    setLocalInstruction(updates);
+  }, []);
+
+  const handleSave = useCallback(() => {
+    onSave(localInstruction);
+  }, [onSave, localInstruction]);
+
+  return (
+    <div className="space-y-3 p-3 bg-[var(--color-surface-2)] border border-[var(--color-accent-primary)]/30">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-[var(--color-accent-primary)]">
+          {isNew ? 'New Agent Instruction' : 'Edit Instruction'}
+        </span>
+        <button
+          onClick={onCancel}
+          className={cn(
+            "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]",
+            "p-1 rounded-sm",
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
+          )}
+          aria-label="Cancel instruction editing"
+        >
+          <X size={12} />
+        </button>
+      </div>
+      
+      <div className="grid gap-3 sm:grid-cols-2">
+        <input
+          type="text"
+          placeholder="Instruction Name"
+          className="w-full bg-[var(--color-surface-editor)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none focus-visible:border-[var(--color-accent-primary)]/30"
+          value={localInstruction.name ?? ''}
+          onChange={(e) => handleChange({ ...localInstruction, name: e.target.value })}
+        />
+        
+        <select
+          className="w-full bg-[var(--color-surface-editor)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none focus-visible:border-[var(--color-accent-primary)]/30"
+          value={localInstruction.scope ?? 'global'}
+          onChange={(e) => handleChange({ 
+            ...localInstruction, 
+            scope: e.target.value as AgentInstructionScope
+          })}
+        >
+          <option value="global">Global Scope</option>
+          <option value="workspace">Workspace Scope</option>
+          <option value="session">Session Scope</option>
+        </select>
+      </div>
+
+      <input
+        type="text"
+        placeholder="Short Description"
+        className="w-full bg-[var(--color-surface-editor)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none focus-visible:border-[var(--color-accent-primary)]/30"
+        value={localInstruction.description ?? ''}
+        onChange={(e) => handleChange({ ...localInstruction, description: e.target.value })}
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <select
+          className="w-full bg-[var(--color-surface-editor)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none focus-visible:border-[var(--color-accent-primary)]/30"
+          value={localInstruction.trigger?.type ?? 'always'}
+          onChange={(e) => handleChange({ 
+            ...localInstruction, 
+            trigger: { type: e.target.value as AgentInstructionTrigger['type'] } 
+          })}
+        >
+          <option value="always">Always Active</option>
+          <option value="keyword">Keyword Trigger</option>
+          <option value="file-type">File Type Trigger</option>
+          <option value="task-type">Task Type Trigger</option>
+          <option value="manual">Manual Only</option>
+        </select>
+
+        {localInstruction.trigger?.type && localInstruction.trigger.type !== 'always' && localInstruction.trigger.type !== 'manual' && (
+          <input
+            type="text"
+            placeholder={
+              localInstruction.trigger.type === 'keyword' ? 'research,find,search' :
+              localInstruction.trigger.type === 'file-type' ? '*.ts, *.tsx' :
+              'coding,debugging,planning'
+            }
+            className="w-full bg-[var(--color-surface-editor)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none focus-visible:border-[var(--color-accent-primary)]/30"
+            value={localInstruction.trigger?.value ?? ''}
+            onChange={(e) => handleChange({ 
+              ...localInstruction, 
+              trigger: { ...localInstruction.trigger, value: e.target.value } as AgentInstructionTrigger 
+            })}
+          />
+        )}
+      </div>
+
+      <div className="text-[9px] text-[var(--color-text-dim)] space-y-1">
+        <div># Instructions are injected into the system prompt when trigger conditions are met</div>
+        <div># Use clear, actionable instructions that define agent behavior</div>
+      </div>
+
+      <textarea
+        placeholder="Agent instructions (how the agent should behave)..."
+        className="w-full min-h-[120px] bg-[var(--color-surface-editor)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] font-mono outline-none focus-visible:border-[var(--color-accent-primary)]/30 resize-y"
+        value={localInstruction.instructions ?? ''}
+        onChange={(e) => handleChange({ ...localInstruction, instructions: e.target.value })}
+      />
+
+      <input
+        type="text"
+        placeholder="Tags (comma-separated, e.g., research,documentation)"
+        className="w-full bg-[var(--color-surface-editor)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none focus-visible:border-[var(--color-accent-primary)]/30"
+        value={(localInstruction.tags ?? []).join(', ')}
+        onChange={(e) => handleChange({ 
+          ...localInstruction, 
+          tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)
+        })}
+      />
+
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleSave}
+          disabled={!localInstruction.name || !localInstruction.instructions}
+        >
+          {isNew ? 'Add Instruction' : 'Save'}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 // Prompt Structure Preview Component
 interface PromptStructurePreviewProps {
   settings: PromptSettings;
@@ -872,15 +1413,26 @@ const PromptStructurePreview: React.FC<PromptStructurePreviewProps> = ({ setting
       description: 'File reading, code verification, safety rules (CRITICAL)',
     });
 
+    // Agent instructions
+    const enabledAgentInstructions = (settings.agentInstructions ?? []).filter(i => i.enabled);
     result.push({
-      name: '8. Additional Instructions',
-      status: settings.additionalInstructions ? 'active' : 'inactive',
-      description: settings.additionalInstructions ? `${settings.additionalInstructions.slice(0, 50)}...` : 'Not set',
+      name: '8. Agent Instructions',
+      status: enabledAgentInstructions.length > 0 ? 'active' : 'inactive',
+      description: enabledAgentInstructions.length > 0 
+        ? `${enabledAgentInstructions.length} enabled (${enabledAgentInstructions.map(i => i.name).slice(0, 3).join(', ')}${enabledAgentInstructions.length > 3 ? '...' : ''})`
+        : 'None enabled',
+    });
+
+    // AGENTS.md (project-specific instructions)
+    result.push({
+      name: '9. Project Instructions (AGENTS.md)',
+      status: 'active',
+      description: 'Project-specific instructions from AGENTS.md, CLAUDE.md, copilot-instructions.md, etc. (auto-detected)',
     });
 
     const activeRules = settings.contextInjectionRules.filter(r => r.enabled);
     result.push({
-      name: '9. Injected Context',
+      name: '10. Injected Context',
       status: activeRules.length > 0 ? 'active' : 'inactive',
       description: activeRules.length > 0 ? `${activeRules.length} active rule(s)` : 'No rules',
     });

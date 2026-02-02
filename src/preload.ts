@@ -147,6 +147,89 @@ const workspaceAPI = {
 		ipcRenderer.on('diagnostics:cleared', listener);
 		return () => ipcRenderer.removeListener('diagnostics:cleared', listener);
 	},
+	/**
+	 * Get AGENTS.md status for the active workspace.
+	 * Returns discovered AGENTS.md files and their sections.
+	 */
+	getAgentsMdStatus: () => ipcRenderer.invoke('workspace:agents-md-status') as Promise<{
+		enabled: boolean;
+		files: Array<{
+			path: string;
+			relativePath: string;
+			depth: number;
+			sectionCount: number;
+			size: number;
+		}>;
+		primaryFile: {
+			path: string;
+			sections: string[];
+		} | null;
+		error: string | null;
+	}>,
+	/**
+	 * Refresh AGENTS.md cache for the active workspace.
+	 */
+	refreshAgentsMd: () => ipcRenderer.invoke('workspace:agents-md-refresh') as Promise<{
+		success: boolean;
+		fileCount?: number;
+		error?: string;
+	}>,
+	/**
+	 * Get all instruction files status for the active workspace.
+	 * Returns all discovered instruction files (AGENTS.md, CLAUDE.md, copilot-instructions.md, etc.)
+	 */
+	getInstructionFilesStatus: () => ipcRenderer.invoke('workspace:instruction-files-status') as Promise<{
+		found: boolean;
+		fileCount: number;
+		enabledCount: number;
+		files: Array<{
+			path: string;
+			type: string;
+			enabled: boolean;
+			priority: number;
+			sectionsCount: number;
+			hasFrontmatter: boolean;
+		}>;
+		byType: Record<string, number>;
+		error: string | null;
+	}>,
+	/**
+	 * Refresh instruction files cache for the active workspace.
+	 */
+	refreshInstructionFiles: () => ipcRenderer.invoke('workspace:instruction-files-refresh') as Promise<{
+		success: boolean;
+		fileCount?: number;
+		enabledCount?: number;
+		error?: string;
+	}>,
+	/**
+	 * Toggle an instruction file's enabled status.
+	 */
+	toggleInstructionFile: (relativePath: string, enabled: boolean) => 
+		ipcRenderer.invoke('workspace:instruction-files-toggle', relativePath, enabled) as Promise<{
+			success: boolean;
+			error?: string;
+		}>,
+	/**
+	 * Update instruction files configuration.
+	 */
+	updateInstructionFilesConfig: (config: Record<string, unknown>) =>
+		ipcRenderer.invoke('workspace:instruction-files-config', config) as Promise<{
+			success: boolean;
+			error?: string;
+		}>,
+	/**
+	 * Get instruction files context for the active file.
+	 */
+	getInstructionFilesContext: (activeFilePath?: string) =>
+		ipcRenderer.invoke('workspace:instruction-files-context', activeFilePath) as Promise<{
+			found: boolean;
+			allFiles: unknown[];
+			enabledFiles: unknown[];
+			combinedContent: string;
+			scannedAt: number;
+			errors: Array<{ path: string; error: string }>;
+		}>,
 };
 
 // ==========================================================================

@@ -12,12 +12,11 @@
  * All content is rendered inline without unnecessary cards or modals.
  */
 import React, { useMemo, useRef, useEffect, useCallback, useState, useDeferredValue } from 'react';
-import { ChevronsUpDown } from 'lucide-react';
+import { ChevronsUpDown, ArrowDown } from 'lucide-react';
 import { useAgentActions, useAgentSelector } from '../../state/AgentProvider';
 import { useChatScroll } from '../../hooks/useChatScroll';
 import { useConversationSearch } from '../../hooks/useConversationSearch';
 import { useHotkey } from '../../hooks/useKeyboard';
-import { useTodos } from '../../hooks/useTodos';
 // Virtualization hooks for performance optimization with large chat histories
 import { useVirtualizedList } from '../../hooks/useVirtualizedList';
 import { useRenderProfiler } from '../../utils/profiler';
@@ -28,7 +27,6 @@ import { SessionWelcome } from './components/SessionWelcome';
 import { ToolConfirmationPanel } from './components/ToolConfirmationPanel';
 import { BranchNavigation } from './components/BranchNavigation';
 import { ConversationSearchBar } from './components/ConversationSearchBar';
-import { TodoProgress } from './components/TodoProgress';
 import { MessageGroup } from './components/MessageGroup';
 import type { ChatMessage as ChatMessageType, ToolResultEvent, ConversationBranch } from '../../../shared/types';
 
@@ -78,6 +76,7 @@ export const ChatArea: React.FC = () => {
     (state) => state.activeSessionId
   );
   
+  // PERF: Memoize session selector with shallow equality on essential fields only
   const activeSession = useAgentSelector(
     (state) => {
       if (!state.activeSessionId) return undefined;
@@ -85,24 +84,21 @@ export const ChatArea: React.FC = () => {
     },
     (a, b) => {
       if (a === b) return true;
-      if (!a || !b) return false;
-      // OPTIMIZATION: Compare by value, not reference for arrays
-      // Only re-render when essential fields change
-      if (a.id !== b.id) return false;
-      if (a.status !== b.status) return false;
-      if (a.activeBranchId !== b.activeBranchId) return false;
-      // For messages, compare length and last message id/content length
-      if (a.messages.length !== b.messages.length) return false;
-      const lastA = a.messages[a.messages.length - 1];
-      const lastB = b.messages[b.messages.length - 1];
-      if (lastA && lastB) {
+      if (!a || !b) return a === b;
+      // Fast path: compare identity fields first
+      if (a.id !== b.id || a.status !== b.status || a.activeBranchId !== b.activeBranchId) return false;
+      // Messages: only check length and last message essentials
+      const aLen = a.messages.length, bLen = b.messages.length;
+      if (aLen !== bLen) return false;
+      if (aLen > 0) {
+        const lastA = a.messages[aLen - 1], lastB = b.messages[bLen - 1];
         if (lastA.id !== lastB.id) return false;
-        if ((lastA.content?.length ?? 0) !== (lastB.content?.length ?? 0)) return false;
-        if ((lastA.toolCalls?.length ?? 0) !== (lastB.toolCalls?.length ?? 0)) return false;
+        // Only check content length for streaming updates
+        const aContentLen = lastA.content?.length ?? 0, bContentLen = lastB.content?.length ?? 0;
+        if (aContentLen !== bContentLen) return false;
       }
-      // Branches comparison
-      if (a.branches?.length !== b.branches?.length) return false;
-      return true;
+      // Branches: only check length (detailed comparison not needed for render)
+      return (a.branches?.length ?? 0) === (b.branches?.length ?? 0);
     }
   );
   
@@ -135,23 +131,15 @@ export const ChatArea: React.FC = () => {
     }
   );
   
-  // Agent status and workspace context for UI display
+  // Agent status for UI display - shows iteration progress when agent is running
   const agentStatus = useAgentSelector((state) => (state.activeSessionId ? state.agentStatus[state.activeSessionId] : undefined));
-  const activeWorkspacePath = useAgentSelector((state) => state.workspaces.find((w) => w.isActive)?.path);
 
-  // Log session changes for debugging
+  // Log session changes for debugging (only on session ID change)
   useEffect(() => {
-    if (activeSessionId) {
-      logger.debug('Active session changed', { 
-        sessionId: activeSessionId,
-        workspacePath: activeWorkspacePath,
-        status: agentStatus 
-      });
+    if (activeSessionId && process.env.NODE_ENV === 'development') {
+      logger.debug('Active session changed', { sessionId: activeSessionId });
     }
-  }, [activeSessionId, activeWorkspacePath, agentStatus]);
-
-  // Todo state for the active session
-  const { todos, hasTodos } = useTodos({ sessionId: activeSession?.id ?? null });
+  }, [activeSessionId]);
 
   // Branch state
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
@@ -164,14 +152,19 @@ export const ChatArea: React.FC = () => {
   // By default, older runs are collapsed, latest is expanded
   const [manuallyToggledRuns, setManuallyToggledRuns] = useState<Set<string>>(new Set());
 
-  // Initialize branches from session
+  // Initialize branches from session (only update if actually changed)
   useEffect(() => {
-    if (activeSession?.branches) {
-      setBranches(activeSession.branches);
-    } else {
-      setBranches(activeSession?.branches ?? []);
-    }
-    setActiveBranchId(activeSession?.activeBranchId ?? null);
+    const newBranches = activeSession?.branches ?? [];
+    setBranches(prev => {
+      if (prev.length === newBranches.length && prev.every((b, i) => b.id === newBranches[i]?.id)) {
+        return prev;
+      }
+      return newBranches;
+    });
+    setActiveBranchId(prev => {
+      const newId = activeSession?.activeBranchId ?? null;
+      return prev === newId ? prev : newId;
+    });
   }, [activeSession?.id, activeSession?.branches, activeSession?.activeBranchId]);
 
   // Filter messages by active branch
@@ -254,6 +247,7 @@ export const ChatArea: React.FC = () => {
   }, [activeSession?.messages]);
 
   // Virtualized list for performance with large histories
+  // gap: 12 matches Tailwind's gap-3 (0.75rem = 12px) used in non-virtualized mode
   const {
     virtualItems,
     totalHeight,
@@ -265,24 +259,19 @@ export const ChatArea: React.FC = () => {
     items: renderGroups,
     estimatedItemHeight: 150,
     overscan: 3,
+    gap: 12, // Match gap-3 from non-virtualized mode
     autoScrollToBottom: true,
     getItemKey: (item, index) => item.runId ?? `group-${index}`,
     streamingMode: isStreaming,
     streamingDep: lastAssistantContentLength,
   });
 
-  // Log virtualization state for debugging
+  // Virtualization debug logging (dev only, on threshold change)
   useEffect(() => {
-    if (shouldVirtualize) {
-      logger.debug('Virtualization enabled', { 
-        messageCount: branchFilteredMessages.length,
-        groupCount: renderGroups.length,
-        virtualItemsCount: virtualItems.length,
-        totalHeight,
-        isNearBottom
-      });
+    if (shouldVirtualize && process.env.NODE_ENV === 'development') {
+      logger.debug('Virtualization enabled', { messageCount: branchFilteredMessages.length });
     }
-  }, [shouldVirtualize, branchFilteredMessages.length, renderGroups.length, virtualItems.length, totalHeight, isNearBottom]);
+  }, [shouldVirtualize, branchFilteredMessages.length]);
 
   // Reset manually toggled runs when session changes
   useEffect(() => {
@@ -383,35 +372,45 @@ export const ChatArea: React.FC = () => {
     return isManuallyToggled ? !defaultCollapsed : defaultCollapsed;
   }, [manuallyToggledRuns]);
 
-  // Get routing decision for active session (if task routing is enabled)
+  // Get routing decision for active session (stable memoization)
   const routingInfo = useMemo(() => {
-    const decision = routingDecision;
-    if (!decision?.selectedProvider) return undefined;
+    if (!routingDecision?.selectedProvider) return undefined;
     return {
-      taskType: decision.taskType,
-      provider: decision.selectedProvider,
-      model: decision.selectedModel,
-      confidence: decision.confidence,
-      reason: decision.reason,
-      usedFallback: decision.usedFallback,
-      originalProvider: decision.originalProvider,
+      taskType: routingDecision.taskType,
+      provider: routingDecision.selectedProvider,
+      model: routingDecision.selectedModel,
+      confidence: routingDecision.confidence,
+      reason: routingDecision.reason,
+      usedFallback: routingDecision.usedFallback,
+      originalProvider: routingDecision.originalProvider,
     };
-  }, [routingDecision]);
+  }, [
+    routingDecision?.taskType,
+    routingDecision?.selectedProvider,
+    routingDecision?.selectedModel,
+    routingDecision?.confidence,
+    routingDecision?.reason,
+    routingDecision?.usedFallback,
+    routingDecision?.originalProvider,
+  ]);
 
-  // Helper to get tool results for a specific runId
+  // Helper to get tool results for a specific runId (stable reference)
+  const toolResultsByRunRef = useRef(toolResultsByRun);
+  toolResultsByRunRef.current = toolResultsByRun;
+  const activeSessionIdRef = useRef(activeSession?.id);
+  activeSessionIdRef.current = activeSession?.id;
+  
   const getToolResultsForRun = useCallback((runId: string | undefined): Map<string, ToolResultEvent> | undefined => {
-    if (!runId || !activeSession) return undefined;
-    const runResults = toolResultsByRun[runId];
-    if (!runResults) {
-      return undefined;
-    }
+    if (!runId || !activeSessionIdRef.current) return undefined;
+    const runResults = toolResultsByRunRef.current[runId];
+    if (!runResults) return undefined;
 
     // Convert to Map<callId, ToolResultEvent> format expected by ToolExecution
     const resultsMap = new Map<string, ToolResultEvent>();
     for (const [callId, resultState] of Object.entries(runResults)) {
       resultsMap.set(callId, {
         type: 'tool-result',
-        sessionId: activeSession.id,
+        sessionId: activeSessionIdRef.current,
         runId,
         timestamp: resultState.timestamp,
         result: {
@@ -423,19 +422,31 @@ export const ChatArea: React.FC = () => {
       });
     }
     return resultsMap;
-  }, [activeSession, toolResultsByRun]);
+  }, []);
 
 
-  // Scroll hook with streaming mode for smooth auto-focus (non-virtualized mode)
-  // Always enabled during streaming to ensure content is followed
-  const { scrollRef, forceScrollToBottom } = useChatScroll(
+  // Scroll hook for non-virtualized mode only
+  // When virtualized, the useVirtualizedList handles scrolling
+  const { scrollRef, forceScrollToBottom, isNearBottom: isNearBottomNonVirt } = useChatScroll(
     `${activeSession?.messages.length ?? 0}-${lastAssistantContentLength}`,
     {
-      enabled: !shouldVirtualize || isStreaming, // Active when not virtualized OR streaming
+      enabled: !shouldVirtualize, // Only active when NOT virtualized
       threshold: 200,
-      streamingMode: isStreaming,
+      streamingMode: isStreaming && !shouldVirtualize, // Only stream scroll when not virtualized
     }
   );
+
+  // Unified isNearBottom for both virtualized and non-virtualized modes
+  const showScrollToBottom = shouldVirtualize ? !isNearBottom : !isNearBottomNonVirt();
+
+  // Handle scroll to bottom button click
+  const handleScrollToBottom = useCallback(() => {
+    if (shouldVirtualize) {
+      virtualScrollToBottom('smooth');
+    } else {
+      forceScrollToBottom();
+    }
+  }, [shouldVirtualize, virtualScrollToBottom, forceScrollToBottom]);
 
   // Track last message to auto-scroll on new messages
   const lastMsgRef = useRef<string | null>(null);
@@ -497,37 +508,9 @@ export const ChatArea: React.FC = () => {
     }
   }, [activeSession?.messages, forceScrollToBottom, virtualScrollToBottom, shouldVirtualize]);
 
-  // Continuous scroll during streaming - triggers on content changes
-  const prevContentLengthRef = useRef(0);
-  useEffect(() => {
-    if (!isStreaming) {
-      prevContentLengthRef.current = lastAssistantContentLength;
-      return;
-    }
-    
-    // Content grew during streaming - ensure we're scrolled to bottom
-    if (lastAssistantContentLength > prevContentLengthRef.current) {
-      prevContentLengthRef.current = lastAssistantContentLength;
-      
-      // Use RAF to ensure DOM has updated
-      requestAnimationFrame(() => {
-        if (shouldVirtualize) {
-          // The virtualized hook handles this via streamingDep
-        } else {
-          // For non-virtualized, the scroll ref is attached directly
-          const element = scrollRef.current;
-          if (element) {
-            const { scrollHeight, scrollTop, clientHeight } = element;
-            const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-            // Only scroll if near bottom (within 250px)
-            if (distanceFromBottom <= 250) {
-              element.scrollTop = scrollHeight - clientHeight;
-            }
-          }
-        }
-      });
-    }
-  }, [isStreaming, lastAssistantContentLength, shouldVirtualize, scrollRef]);
+  // Note: Continuous scroll during streaming is handled by the scroll hooks
+  // useChatScroll handles non-virtualized mode
+  // useVirtualizedList handles virtualized mode with streamingDep
 
   // Handle message edit - resends from that point
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
@@ -690,7 +673,7 @@ export const ChatArea: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
+    <div className="flex-1 min-h-0 min-w-0 w-full relative overflow-hidden flex flex-col">
       {/* Conversation Search Bar */}
       {isSearchOpen && (
         <ConversationSearchBar
@@ -706,36 +689,7 @@ export const ChatArea: React.FC = () => {
       )}
 
       {/* Main chat area */}
-      <div className="flex-1 min-h-0 relative">
-        {/* Workspace context indicator - shows current workspace */}
-        {activeWorkspacePath && (
-          <div className="absolute top-2 left-4 z-20">
-            <div className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded-md',
-              'bg-[var(--color-surface-2)]/80 backdrop-blur-sm',
-              'text-[10px] font-mono text-[var(--color-text-muted)]',
-              'border border-[var(--color-border-subtle)]/30'
-            )}>
-              <span className={cn(
-                'w-1.5 h-1.5 rounded-full',
-                agentStatus?.status === 'executing' || agentStatus?.status === 'analyzing' || agentStatus?.status === 'reasoning'
-                  ? 'bg-[var(--color-warning)] animate-pulse' :
-                agentStatus?.status === 'error' ? 'bg-[var(--color-error)]' :
-                agentStatus?.status === 'completed' ? 'bg-[var(--color-success)]' :
-                'bg-[var(--color-text-dim)]'
-              )} />
-              <span className="truncate max-w-[200px]" title={activeWorkspacePath}>
-                {activeWorkspacePath.split(/[\\/]/).pop()}
-              </span>
-              {shouldVirtualize && (
-                <span className="text-[var(--color-text-dim)] ml-1">
-                  ({branchFilteredMessages.length} msgs)
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
+      <div className="flex-1 min-h-0 min-w-0 w-full relative overflow-hidden">
         {/* Branch navigation - show when there are branches */}
         {branches.length > 0 && (
           <div className="absolute top-2 right-4 z-20">
@@ -758,9 +712,48 @@ export const ChatArea: React.FC = () => {
           }}
           aria-hidden="true"
         />
+
+        {/* Agent iteration progress indicator - shows current iteration when running */}
+        {isRunning && agentStatus?.currentIteration && agentStatus.maxIterations && (
+          <div
+            className={cn(
+              'absolute bottom-12 left-4 z-20',
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-full',
+              'bg-[var(--color-surface-2)]/95 border border-[var(--color-warning)]/30',
+              'text-[10px] font-mono text-[var(--color-text-muted)]',
+              'shadow-lg backdrop-blur-sm'
+            )}
+            title={`Iteration ${agentStatus.currentIteration} of ${agentStatus.maxIterations}`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)] animate-pulse" />
+            <span className="text-[var(--color-warning)]">{agentStatus.currentIteration}</span>
+            <span className="text-[var(--color-text-dim)]">/</span>
+            <span>{agentStatus.maxIterations}</span>
+          </div>
+        )}
+
+        {/* Scroll to bottom button - appears when scrolled away from bottom */}
+        {showScrollToBottom && hasMessages && (
+          <button
+            onClick={handleScrollToBottom}
+            className={cn(
+              'absolute bottom-12 right-4 z-20',
+              'flex items-center justify-center w-8 h-8 rounded-full',
+              'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
+              'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
+              'hover:bg-[var(--color-surface-3)] shadow-lg',
+              'transition-all duration-200 ease-out',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/50'
+            )}
+            title="Scroll to bottom"
+            aria-label="Scroll to bottom"
+          >
+            <ArrowDown size={16} />
+          </button>
+        )}
         <div
           className={cn(
-            "h-full overflow-y-auto overflow-x-hidden",
+            "h-full w-full min-w-0 overflow-y-auto overflow-x-hidden",
             "scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent",
             "bg-[var(--color-surface-base)] transition-colors"
           )}
@@ -772,13 +765,10 @@ export const ChatArea: React.FC = () => {
         >
           {/* Virtualized rendering for large histories */}
           {shouldVirtualize ? (
-            <div 
-              className="w-full max-w-[1400px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-5 md:pt-6 pb-8 sm:pb-10"
-              style={{ height: totalHeight, position: 'relative' }}
-            >
-              {/* Expand/Collapse all - inline at top when multiple runs */}
+            <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-5 md:pt-6 pb-8 sm:pb-10 min-w-0 overflow-hidden">
+              {/* Expand/Collapse all - fixed at top when multiple runs */}
               {messageGroups.length > 1 && (
-                <div className="flex justify-end sticky top-0 z-10 pb-2">
+                <div className="flex justify-end pb-2">
                   <button
                     onClick={allExpanded ? collapseAllRuns : expandAllRuns}
                     className={cn(
@@ -795,21 +785,24 @@ export const ChatArea: React.FC = () => {
                 </div>
               )}
               
-              {/* Render only visible virtualized items */}
-              {virtualItems.map((virtualItem) => {
-                const group = virtualItem.item;
-                const groupIdx = virtualItem.index;
-                const isLastGroup = groupIdx === renderGroups.length - 1;
-                const runKey = group.runId ?? `group-${groupIdx}`;
-                const collapsed = isRunCollapsed(groupIdx, renderGroups.length, runKey);
+              {/* Virtualized items container */}
+              <div style={{ height: totalHeight, position: 'relative' }}>
+                {/* Render only visible virtualized items */}
+                {virtualItems.map((virtualItem) => {
+                  const group = virtualItem.item;
+                  const groupIdx = virtualItem.index;
+                  const isLastGroup = groupIdx === renderGroups.length - 1;
+                  const runKey = group.runId ?? `group-${groupIdx}`;
+                  const collapsed = isRunCollapsed(groupIdx, renderGroups.length, runKey);
 
-                return (
-                  <div
-                    key={virtualItem.key}
-                    style={{
-                      position: 'absolute',
-                      top: virtualItem.offsetTop,
-                      left: 0,
+                  return (
+                    <div
+                      key={virtualItem.key}
+                      className="min-w-0 overflow-hidden"
+                      style={{
+                        position: 'absolute',
+                        top: virtualItem.offsetTop,
+                        left: 0,
                       right: 0,
                     }}
                     ref={(el) => {
@@ -846,23 +839,14 @@ export const ChatArea: React.FC = () => {
                   </div>
                 );
               })}
-
-              {/* Todo progress - shows when agent has created a task list */}
-              {hasTodos && activeSession && (
-                <div style={{ position: 'absolute', top: totalHeight - 50, left: 0, right: 0 }}>
-                  <TodoProgress
-                    todos={todos}
-                    className="mt-2"
-                  />
-                </div>
-              )}
+              </div>
 
               {/* Tool confirmation panel - shows when awaiting approval */}
               <ToolConfirmationPanel />
             </div>
           ) : (
             /* Standard rendering for smaller histories */
-            <div className="w-full max-w-[1400px] mx-auto flex flex-col gap-3 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-5 md:pt-6 pb-8 sm:pb-10">
+            <div className="w-full max-w-[1400px] mx-auto flex flex-col gap-3 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-5 md:pt-6 pb-8 sm:pb-10 min-w-0 overflow-hidden">
               {/* Expand/Collapse all - inline at top when multiple runs */}
               {messageGroups.length > 1 && (
                 <div className="flex justify-end">
@@ -911,14 +895,6 @@ export const ChatArea: React.FC = () => {
                   />
                 );
               })}
-
-              {/* Todo progress - shows when agent has created a task list */}
-              {hasTodos && activeSession && (
-                <TodoProgress
-                  todos={todos}
-                  className="mt-2"
-                />
-              )}
 
               {/* Tool confirmation panel - shows when awaiting approval */}
               <ToolConfirmationPanel />

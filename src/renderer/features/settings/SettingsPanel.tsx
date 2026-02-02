@@ -341,7 +341,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
             )}
             {saveState === 'idle' && isDirty && (
               <span className="inline-flex items-center gap-1.5 text-[var(--color-warning)]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)] animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)]" />
                 [MODIFIED] unsaved changes
               </span>
             )}

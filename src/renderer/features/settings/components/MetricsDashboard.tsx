@@ -212,7 +212,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
               <div className="flex items-center gap-2">
                 <span className={cn(
                   'w-2 h-2 rounded-full',
-                  sessionData.isRunning ? 'bg-[var(--color-success)] animate-pulse' 
+                  sessionData.isRunning ? 'bg-[var(--color-success)]' 
                     : sessionData.isPaused ? 'bg-[var(--color-warning)]'
                     : 'bg-[var(--color-text-dim)]'
                 )} />
@@ -428,7 +428,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
                         <div className="flex items-center gap-2">
                           <span className={cn(
                             'w-1.5 h-1.5 rounded-full',
-                            sess.status === 'running' ? 'bg-[var(--color-success)] animate-pulse'
+                            sess.status === 'running' ? 'bg-[var(--color-success)]'
                               : sess.status === 'paused' ? 'bg-[var(--color-warning)]'
                               : 'bg-[var(--color-text-dim)]'
                           )} />

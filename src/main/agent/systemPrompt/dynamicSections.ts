@@ -243,12 +243,119 @@ export function buildCustomPrompt(settings?: PromptSettings): string {
 }
 
 // =============================================================================
-// ADDITIONAL INSTRUCTIONS - Only if present
+// ADDITIONAL INSTRUCTIONS - DEPRECATED (use AGENTS.md instead)
 // =============================================================================
 
-export function buildAdditionalInstructions(instructions?: string): string {
-  if (!instructions) return '';
-  return `<extra>${escapeXml(instructions)}</extra>`;
+/**
+ * Build additional instructions section
+ * @deprecated Use AGENTS.md, CLAUDE.md, or copilot-instructions.md instead.
+ * This function is kept for backward compatibility only.
+ */
+export function buildAdditionalInstructions(_instructions?: string): string {
+  // Deprecated - always returns empty string
+  // Users should use AGENTS.md files for project-specific instructions
+  return '';
+}
+
+// =============================================================================
+// AGENT INSTRUCTIONS - Dynamic agent behavior instructions
+// =============================================================================
+
+import type { AgentInstruction, AgentInstructionTrigger } from '../../../shared/types';
+
+/**
+ * Evaluate if an agent instruction trigger condition is met
+ */
+function evaluateAgentInstructionTrigger(
+  trigger: AgentInstructionTrigger,
+  lastUserMessage?: string
+): boolean {
+  switch (trigger.type) {
+    case 'always':
+      return true;
+
+    case 'manual':
+      // Manual triggers are only activated explicitly - not included by default
+      return false;
+
+    case 'keyword': {
+      if (!trigger.value || !lastUserMessage) return false;
+      const keywords = trigger.value.toLowerCase().split(',').map(k => k.trim());
+      const messageLower = lastUserMessage.toLowerCase();
+      return keywords.some(kw => messageLower.includes(kw));
+    }
+
+    case 'file-type': {
+      if (!trigger.value || !lastUserMessage) return false;
+      const patterns = trigger.value.split(',').map(p => p.trim());
+      return patterns.some(pattern => {
+        try {
+          const regex = new RegExp(pattern.replace(/\./g, '\\.').replace(/\*/g, '.*'), 'i');
+          return regex.test(lastUserMessage);
+        } catch {
+          return lastUserMessage.includes(pattern);
+        }
+      });
+    }
+
+    case 'task-type': {
+      // Task type matching - check if keywords match the task context
+      if (!trigger.value || !lastUserMessage) return false;
+      const taskTypes = trigger.value.toLowerCase().split(',').map(t => t.trim());
+      const messageLower = lastUserMessage.toLowerCase();
+      return taskTypes.some(taskType => messageLower.includes(taskType));
+    }
+
+    default:
+      return false;
+  }
+}
+
+/**
+ * Build agent instructions section for the system prompt
+ * 
+ * Processes enabled agent instructions based on their triggers and priority.
+ * Instructions are sorted by priority (lower = higher priority) and
+ * only included if their trigger conditions are met.
+ */
+export function buildAgentInstructions(
+  agentInstructions?: AgentInstruction[],
+  lastUserMessage?: string
+): string {
+  if (!agentInstructions || agentInstructions.length === 0) return '';
+
+  // Filter enabled instructions and sort by priority
+  const activeInstructions = agentInstructions
+    .filter(instruction => {
+      if (!instruction.enabled) return false;
+      // Evaluate trigger condition
+      return evaluateAgentInstructionTrigger(instruction.trigger, lastUserMessage);
+    })
+    .sort((a, b) => a.priority - b.priority);
+
+  if (activeInstructions.length === 0) return '';
+
+  // Build the agent instructions section
+  const parts: string[] = ['<agent_instructions hint="Specialized behavior instructions for this context">'];
+  
+  for (const instruction of activeInstructions) {
+    const attrs: string[] = [
+      `id="${escapeXml(instruction.id)}"`,
+      `name="${escapeXml(instruction.name)}"`,
+    ];
+    
+    if (instruction.scope !== 'global') {
+      attrs.push(`scope="${instruction.scope}"`);
+    }
+    
+    parts.push(`  <instruction ${attrs.join(' ')}>`);
+    // Include the full instruction content
+    parts.push(`    ${escapeXml(instruction.instructions)}`);
+    parts.push('  </instruction>');
+  }
+  
+  parts.push('</agent_instructions>');
+  return parts.join('\n');
 }
 
 // =============================================================================
@@ -433,5 +540,108 @@ export function buildMCPContext(mcpContext?: MCPContextInfo): string {
   }
   
   parts.push('</mcp_servers>');
+  return parts.join('\n');
+}
+// =============================================================================
+// AGENTS.md CONTEXT - Project-specific agent instructions
+// =============================================================================
+
+import type { AgentsMdContext, InstructionFilesContext, InstructionFile } from '../../../shared/types';
+
+/**
+ * Get instruction file type label for display
+ */
+function getInstructionFileTypeLabel(type: string): string {
+  switch (type) {
+    case 'agents-md': return 'AGENTS.md';
+    case 'claude-md': return 'CLAUDE.md';
+    case 'copilot-instructions': return 'Copilot Instructions';
+    case 'github-instructions': return 'GitHub Instructions';
+    case 'gemini-md': return 'GEMINI.md';
+    case 'cursor-rules': return 'Cursor Rules';
+    default: return type;
+  }
+}
+
+/**
+ * Build AGENTS.md context section
+ * Injects project-specific instructions from AGENTS.md files
+ * Following the AGENTS.md specification (https://agents.md/)
+ */
+export function buildAgentsMdContext(agentsMdContext?: AgentsMdContext): string {
+  if (!agentsMdContext || !agentsMdContext.found) return '';
+  if (!agentsMdContext.combinedContent) return '';
+
+  const parts: string[] = [];
+  
+  // Header with metadata
+  const fileCount = agentsMdContext.allFiles.length;
+  const primaryFile = agentsMdContext.primary?.relativePath ?? 'AGENTS.md';
+  
+  parts.push(`<agents_md hint="Project-specific instructions from AGENTS.md" files="${fileCount}" primary="${escapeXml(primaryFile)}">`);
+  
+  // Add the combined content
+  // We include the raw markdown as agents can parse it well
+  const content = agentsMdContext.combinedContent.trim();
+  
+  // Limit content length to avoid token bloat (max 8KB)
+  const maxContentLength = 8000;
+  if (content.length > maxContentLength) {
+    parts.push(content.substring(0, maxContentLength));
+    parts.push('\n... (truncated, see full AGENTS.md file)');
+  } else {
+    parts.push(content);
+  }
+  
+  parts.push('</agents_md>');
+  return parts.join('\n');
+}
+
+/**
+ * Build extended instruction files context section
+ * Injects project-specific instructions from all instruction file types:
+ * - AGENTS.md (Linux Foundation standard)
+ * - CLAUDE.md (Anthropic Claude Code)
+ * - .github/copilot-instructions.md (GitHub Copilot)
+ * - .github/instructions/*.md (Path-specific Copilot)
+ * - GEMINI.md (Google Gemini CLI)
+ * - .cursor/rules (Cursor editor)
+ */
+export function buildInstructionFilesContext(context?: InstructionFilesContext): string {
+  if (!context || !context.found) return '';
+  if (!context.combinedContent) return '';
+
+  const parts: string[] = [];
+  
+  // Build file types summary
+  const enabledFiles = context.enabledFiles || [];
+  const fileTypes = [...new Set(enabledFiles.map((f: InstructionFile) => f.type))];
+  const fileTypesStr = fileTypes.map(t => getInstructionFileTypeLabel(t)).join(', ');
+  
+  // Header with metadata
+  parts.push(`<project_instructions hint="Project-specific instructions" files="${enabledFiles.length}" types="${escapeXml(fileTypesStr)}">`);
+  
+  // Add file sources if configured to show them
+  if (context.config?.showSourcesInPrompt && enabledFiles.length > 1) {
+    parts.push('  <sources>');
+    for (const file of enabledFiles) {
+      parts.push(`    <file path="${escapeXml(file.relativePath)}" type="${file.type}" priority="${file.priorityOverride ?? file.frontmatter?.priority ?? 0}" />`);
+    }
+    parts.push('  </sources>');
+  }
+  
+  // Add the combined content
+  const content = context.combinedContent.trim();
+  
+  // Use configured max length or default to 32KB
+  const maxContentLength = context.config?.maxCombinedContentLength ?? 32000;
+  if (content.length > maxContentLength) {
+    parts.push(content.substring(0, maxContentLength));
+    parts.push('\n... (truncated due to length limit)');
+  } else {
+    parts.push(content);
+  }
+  
+  parts.push('</project_instructions>');
   return parts.join('\n');
 }

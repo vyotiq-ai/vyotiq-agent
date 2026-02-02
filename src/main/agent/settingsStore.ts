@@ -242,6 +242,13 @@ export class SettingsStore {
               (p: { id: string; isBuiltIn?: boolean }) => !p.isBuiltIn
             )),
           ],
+          // Deep merge agent instructions to preserve built-in ones
+          agentInstructions: [
+            ...(defaultSettings.promptSettings?.agentInstructions ?? []),
+            ...((parsed.promptSettings?.agentInstructions ?? []).filter(
+              (i: { id: string; isBuiltIn?: boolean }) => !i.isBuiltIn
+            )),
+          ],
           responseFormat: {
             ...(defaultSettings.promptSettings?.responseFormat ?? {}),
             ...(parsed.promptSettings?.responseFormat ?? {}),
@@ -519,11 +526,33 @@ export class SettingsStore {
       // Replace with incoming rules (full replacement since UI manages full array)
       mergedRules = incoming.contextInjectionRules;
     }
+
+    // Merge agent instructions
+    let mergedAgentInstructions = [...(base.agentInstructions ?? [])];
+    if (incoming.agentInstructions !== undefined) {
+      // Replace with incoming instructions (full replacement since UI manages full array)
+      mergedAgentInstructions = incoming.agentInstructions;
+    }
     
     // Merge response format
     const mergedResponseFormat = {
       ...(base.responseFormat ?? DEFAULT_PROMPT_SETTINGS.responseFormat),
       ...(incoming.responseFormat ?? {}),
+    };
+
+    // Merge instruction files config
+    const mergedInstructionFilesConfig = {
+      ...(base.instructionFilesConfig ?? DEFAULT_PROMPT_SETTINGS.instructionFilesConfig),
+      ...(incoming.instructionFilesConfig ?? {}),
+      // Deep merge nested objects
+      enabledTypes: {
+        ...(base.instructionFilesConfig?.enabledTypes ?? DEFAULT_PROMPT_SETTINGS.instructionFilesConfig.enabledTypes),
+        ...(incoming.instructionFilesConfig?.enabledTypes ?? {}),
+      },
+      fileOverrides: {
+        ...(base.instructionFilesConfig?.fileOverrides ?? {}),
+        ...(incoming.instructionFilesConfig?.fileOverrides ?? {}),
+      },
     };
     
     const result = {
@@ -532,9 +561,10 @@ export class SettingsStore {
       activePersonaId: incoming.activePersonaId ?? base.activePersonaId,
       personas: mergedPersonas,
       contextInjectionRules: mergedRules,
+      agentInstructions: mergedAgentInstructions,
       responseFormat: mergedResponseFormat,
-      additionalInstructions: incoming.additionalInstructions ?? base.additionalInstructions,
       includeWorkspaceContext: incoming.includeWorkspaceContext ?? base.includeWorkspaceContext,
+      instructionFilesConfig: mergedInstructionFilesConfig,
     };
     
     return result;

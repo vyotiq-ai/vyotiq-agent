@@ -27,6 +27,7 @@ export { InputDropZone } from './InputDropZone';
 // New components for @ mentions and drafts
 export { MentionAutocomplete } from './MentionAutocomplete';
 export { DraftIndicator } from './DraftIndicator';
+export { TodoProgressInline } from './TodoProgressInline';
 
 // Types
 export type { InputHeaderProps } from './InputHeader';

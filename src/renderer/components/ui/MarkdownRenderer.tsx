@@ -270,9 +270,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = memo(({
 
   return (
     <div className={cn(
-      'markdown-content text-left',
+      'markdown-content text-left min-w-0 max-w-full overflow-hidden',
       compact ? 'text-[11px]' : 'text-[12px]',
       '[&_ul]:list-none [&_ol]:list-none [&_li]:list-none', // Ensure no default list styling
+      '[&_pre]:max-w-full [&_pre]:overflow-x-auto', // Ensure code blocks don't overflow
       className
     )}>
       <ReactMarkdown remarkPlugins={plugins.remarkPlugins} rehypePlugins={plugins.rehypePlugins} components={components}>

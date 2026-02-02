@@ -116,15 +116,14 @@ const ThinkingPanelComponent: React.FC<ThinkingPanelProps> = ({
               {thinking}
               {isStreaming && (
                 <span 
-                  className="inline-block w-[2px] h-[12px] bg-[var(--color-info)] animate-pulse ml-0.5 align-middle"
-                  style={{ animationDuration: '800ms' }}
+                  className="inline-block w-[2px] h-[12px] bg-[var(--color-info)] ml-0.5 align-middle animate-blink"
                   aria-hidden="true"
                 />
               )}
             </pre>
           ) : (
             <div className="flex items-center gap-1.5 text-[10px] py-1">
-              <span className="w-1.5 h-1.5 bg-[var(--color-info)] animate-pulse rounded-full" />
+              <span className="w-1.5 h-1.5 bg-[var(--color-info)] rounded-full" />
               <span className="text-[var(--color-text-placeholder)]">reasoning...</span>
             </div>
           )}

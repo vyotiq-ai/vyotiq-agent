@@ -849,22 +849,9 @@ html.light .terminal-container:focus-within {
   transition: all 0.3s ease;
 }
 
-/* Pulsing animation for active status dot */
-@keyframes status-dot-pulse {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 0 6px var(--color-accent-primary);
-  }
-  50% {
-    opacity: 0.6;
-    box-shadow: 0 0 10px var(--color-accent-primary), 0 0 20px var(--color-accent-primary);
-  }
-}
-
 .terminal-status-dot.active {
   background-color: var(--color-accent-primary);
   box-shadow: 0 0 6px var(--color-accent-primary);
-  animation: status-dot-pulse 1.5s ease-in-out infinite;
 }
 
 .terminal-status-dot.warning {

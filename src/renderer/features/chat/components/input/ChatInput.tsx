@@ -22,7 +22,7 @@
  * @example
  * <ChatInput />
  */
-import React, { useState, useCallback, useEffect, memo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, memo, useRef, useMemo } from 'react';
 import { X, History } from 'lucide-react';
 import { useChatInput, useAgentStatus, useSessionCost, useAvailableProviders } from '../../../../hooks';
 import { useAgentActions } from '../../../../state/AgentProvider';
@@ -38,7 +38,9 @@ import { InputToolbar } from './InputToolbar';
 import { InputDropZone } from './InputDropZone';
 import { MentionAutocomplete } from './MentionAutocomplete';
 import { DraftIndicator } from './DraftIndicator';
+import { TodoProgressInline } from './TodoProgressInline';
 import { ChatAttachmentList } from '../ChatAttachmentList';
+import { useTodos } from '../../../../hooks/useTodos';
 
 // =============================================================================
 // Paste Error Banner Component
@@ -264,6 +266,9 @@ export const ChatInput: React.FC = memo(() => {
   const { formattedCost, formattedTotalTokens, hasUsage, breakdownTitle } = useSessionCost();
   const { availableProviders, providersCooldown } = useAvailableProviders();
   
+  // Todo progress for inline display
+  const { todos, stats: todoStats, hasTodos } = useTodos({ sessionId: activeSession?.id ?? null });
+  
   // === Local State ===
   const [isDragging, setIsDragging] = useState(false);
   
@@ -278,25 +283,28 @@ export const ChatInput: React.FC = memo(() => {
     ? 'Session bound to different workspace' 
     : null;
   
-  // Cost info object for toolbar
-  const costInfo = {
+  // PERF: Memoize cost info object to prevent child re-renders
+  const costInfo = useMemo(() => ({
     formattedCost,
     formattedTokens: formattedTotalTokens,
     hasUsage,
     detailsTitle: breakdownTitle,
-  };
+  }), [formattedCost, formattedTotalTokens, hasUsage, breakdownTitle]);
 
-  const contextInfo = contextMetrics?.metrics
-    ? {
-        utilization: contextMetrics.metrics.utilization,
-        totalTokens: contextMetrics.metrics.totalTokens,
-        maxInputTokens: contextMetrics.metrics.maxInputTokens,
-        availableTokens: contextMetrics.metrics.availableTokens,
-        isWarning: contextMetrics.metrics.isWarning,
-        needsPruning: contextMetrics.metrics.needsPruning,
-        tokensByRole: contextMetrics.metrics.tokensByRole,
-      }
-    : undefined;
+  // PERF: Memoize context info object
+  const contextInfo = useMemo(() => {
+    const metrics = contextMetrics?.metrics;
+    if (!metrics) return undefined;
+    return {
+      utilization: metrics.utilization,
+      totalTokens: metrics.totalTokens,
+      maxInputTokens: metrics.maxInputTokens,
+      availableTokens: metrics.availableTokens,
+      isWarning: metrics.isWarning,
+      needsPruning: metrics.needsPruning,
+      tokensByRole: metrics.tokensByRole,
+    };
+  }, [contextMetrics?.metrics]);
   
   // === Handlers ===
   // Use refs to avoid stale closures in event handlers
@@ -386,6 +394,17 @@ export const ChatInput: React.FC = memo(() => {
           isPaused={isPaused}
           onTogglePause={handlePauseResume}
         />
+        
+        {/* Task Progress - inline above composer when tasks exist */}
+        {hasTodos && (
+          <div className="px-3 py-1.5 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
+            <TodoProgressInline 
+              todos={todos} 
+              stats={todoStats}
+              compact={false}
+            />
+          </div>
+        )}
         
         {/* Drop overlay */}
         <InputDropZone isActive={isDragging} />

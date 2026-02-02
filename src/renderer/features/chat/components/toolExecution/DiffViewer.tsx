@@ -432,7 +432,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
     
     return (
       <div 
-        className="font-mono text-[11px] leading-[1.65] overflow-auto scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent"
+        className="font-mono text-[11px] leading-[1.65] overflow-auto scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent min-w-0"
         style={{ maxHeight }}
       >
         {diffLines.map((line, idx) => {
@@ -463,7 +463,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
                     {/* Empty change indicator */}
                     <div className="flex-shrink-0 w-[3px]" />
                     {/* Content */}
-                    <div className="flex-1 px-3 py-px whitespace-pre overflow-x-auto text-[var(--color-text-secondary)]/55 leading-[1.65]">
+                    <div className="flex-1 px-3 py-px whitespace-pre overflow-x-auto text-[var(--color-text-secondary)]/55 leading-[1.65] min-w-0">
                       {contextLine || '\u00A0'}
                     </div>
                   </div>
@@ -570,7 +570,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
               
               {/* Line content with inline diff highlighting */}
               <div className={cn(
-                'flex-1 px-3 py-px whitespace-pre overflow-x-auto leading-[1.65]',
+                'flex-1 px-3 py-px whitespace-pre overflow-x-auto leading-[1.65] min-w-0',
                 isRemoved && 'text-[var(--color-diff-removed-text-content)]',
                 isAdded && 'text-[var(--color-diff-added-text-content)]',
                 isContext && 'text-[var(--color-text-secondary)]/60'
@@ -597,7 +597,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
   const hasChanges = stats.totalChanges > 0;
 
   return (
-    <div className="mt-2 rounded-xl overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)] shadow-[0_6px_20px_rgba(0,0,0,0.18)]">
+    <div className="mt-2 rounded-xl overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)] shadow-[0_6px_20px_rgba(0,0,0,0.18)] min-w-0 max-w-full">
       {/* Header bar - clean, modern design */}
       <div 
         className={cn(
@@ -605,7 +605,8 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
           'bg-gradient-to-r from-[var(--color-surface-1)]/70 via-[var(--color-surface-1)]/60 to-[var(--color-surface-1)]/50',
           'border-b border-[var(--color-border-subtle)]/30',
           'font-mono cursor-pointer transition-colors duration-150',
-          'hover:from-[var(--color-surface-1)]/90 hover:via-[var(--color-surface-1)]/80 hover:to-[var(--color-surface-1)]/70'
+          'hover:from-[var(--color-surface-1)]/90 hover:via-[var(--color-surface-1)]/80 hover:to-[var(--color-surface-1)]/70',
+          'min-w-0 overflow-hidden' // Prevent header overflow
         )}
         onClick={() => toggleCollapsed()}
         role="button"

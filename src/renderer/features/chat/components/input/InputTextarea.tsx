@@ -4,8 +4,11 @@
  * Terminal-styled textarea with blinking cursor and auto-resize.
  * Spell-check disabled to prevent red underlines on file paths.
  */
-import React, { memo, useState, useEffect, useCallback, forwardRef } from 'react';
+import React, { memo, useState, useEffect, useCallback, forwardRef, useRef } from 'react';
 import { cn } from '../../../../utils/cn';
+
+// Debounce delay for selection changes (ms) - reduces re-renders during fast typing
+const SELECTION_DEBOUNCE_MS = 50;
 
 // =============================================================================
 // Types
@@ -102,15 +105,37 @@ export const InputTextarea = memo(forwardRef<HTMLTextAreaElement, InputTextareaP
     onBlur?.();
   }, [onBlur]);
   
+  // Debounce selection changes to reduce re-renders during fast typing
+  const selectionTimeoutRef = useRef<number | null>(null);
+  
+  const debouncedSelectionChange = useCallback((position: number) => {
+    if (selectionTimeoutRef.current) {
+      clearTimeout(selectionTimeoutRef.current);
+    }
+    selectionTimeoutRef.current = window.setTimeout(() => {
+      onSelectionChange?.(position);
+    }, SELECTION_DEBOUNCE_MS);
+  }, [onSelectionChange]);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (selectionTimeoutRef.current) {
+        clearTimeout(selectionTimeoutRef.current);
+      }
+    };
+  }, []);
+  
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
-    onSelectionChange?.(e.target.selectionStart ?? e.target.value.length);
-  }, [onChange, onSelectionChange]);
+    // Debounce selection change during typing
+    debouncedSelectionChange(e.target.selectionStart ?? e.target.value.length);
+  }, [onChange, debouncedSelectionChange]);
 
   const handleSelect = useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
     const target = e.target as HTMLTextAreaElement;
-    onSelectionChange?.(target.selectionStart ?? 0);
-  }, [onSelectionChange]);
+    debouncedSelectionChange(target.selectionStart ?? 0);
+  }, [debouncedSelectionChange]);
   
   const displayPlaceholder = hasWorkspace ? placeholder : noWorkspacePlaceholder;
   const showPlaceholder = !isFocused && value.length === 0;

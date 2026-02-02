@@ -25,12 +25,14 @@ import {
   buildAccessLevel,
   buildPersona,
   buildCustomPrompt,
-  buildAdditionalInstructions,
   buildCommunicationStyle,
   buildToolCategories,
   buildSemanticContext,
   buildMCPContext,
   buildGitContext,
+  buildAgentInstructions,
+  buildAgentsMdContext,
+  buildInstructionFilesContext,
 } from './dynamicSections';
 import { buildInjectedContext } from './contextInjection';
 
@@ -43,8 +45,13 @@ export type { SystemPromptContext } from './types';
  * Uses caching for the unified static prompt and builds dynamic sections per-request.
  */
 export function buildSystemPrompt(context: SystemPromptContext): string {
-  const { promptSettings, accessLevelSettings, logger } = context;
+  const { promptSettings, accessLevelSettings, logger, session } = context;
   const cache = getSystemPromptCache();
+
+  // Get last user message for trigger evaluation
+  const lastUserMessage = session?.state.messages
+    .filter(m => m.role === 'user')
+    .slice(-1)[0]?.content || '';
 
   // Log for debugging
   if (process.env.NODE_ENV === 'development') {
@@ -53,6 +60,7 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
       useCustomSystemPrompt: promptSettings.useCustomSystemPrompt,
       accessLevel: accessLevelSettings?.level,
       cacheValid: cache.isValid(),
+      agentInstructionsCount: promptSettings.agentInstructions?.length ?? 0,
     });
   }
 
@@ -75,6 +83,12 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
     // Git context - repository state
     buildGitContext(context.gitContext),
 
+    // Project instruction files context - AGENTS.md, CLAUDE.md, etc.
+    // Use extended instruction files if available, otherwise fallback to legacy AGENTS.md
+    context.instructionFilesContext 
+      ? buildInstructionFilesContext(context.instructionFilesContext)
+      : buildAgentsMdContext(context.agentsMdContext),
+
     // Terminal and editor context
     buildTerminalContext(context.terminalContext),
     buildEditorContext(context.editorContext),
@@ -84,7 +98,9 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
     buildPersona(promptSettings),
     buildCustomPrompt(promptSettings),
     buildCommunicationStyle(promptSettings.responseFormat),
-    buildAdditionalInstructions(promptSettings.additionalInstructions),
+
+    // Agent instructions - dynamic behavior instructions
+    buildAgentInstructions(promptSettings.agentInstructions, lastUserMessage),
 
     // Injected context from rules
     buildInjectedContext(context),

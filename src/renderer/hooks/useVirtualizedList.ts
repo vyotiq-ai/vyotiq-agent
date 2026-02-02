@@ -30,6 +30,8 @@ export interface VirtualizedListOptions<T> {
   estimatedItemHeight: number;
   /** Number of items to render outside visible area (default: 3) */
   overscan?: number;
+  /** Gap between items in pixels (default: 0) */
+  gap?: number;
   /** Whether to auto-scroll to bottom when new items are added */
   autoScrollToBottom?: boolean;
   /** Threshold from bottom to trigger auto-scroll (default: 150px) */
@@ -80,6 +82,7 @@ export function useVirtualizedList<T>({
   items,
   estimatedItemHeight,
   overscan = 3,
+  gap = 0,
   autoScrollToBottom = true,
   autoScrollThreshold = 150,
   getItemKey = (_, index) => index,
@@ -100,8 +103,12 @@ export function useVirtualizedList<T>({
   
   // Track last scroll height for streaming scroll
   const lastScrollHeightRef = useRef(0);
+  
+  // Track if user manually scrolled away from bottom
+  const userScrolledAwayRef = useRef(false);
+  const lastUserScrollTimeRef = useRef(0);
 
-  // Calculate item offsets and total height
+  // Calculate item offsets and total height (including gaps between items)
   const { itemOffsets, totalHeight } = useMemo(() => {
     const offsets: number[] = [];
     let currentOffset = 0;
@@ -110,10 +117,14 @@ export function useVirtualizedList<T>({
       offsets.push(currentOffset);
       const height = measuredHeights.get(i) ?? estimatedItemHeight;
       currentOffset += height;
+      // Add gap after each item except the last
+      if (i < items.length - 1) {
+        currentOffset += gap;
+      }
     }
 
     return { itemOffsets: offsets, totalHeight: currentOffset };
-  }, [items.length, measuredHeights, estimatedItemHeight]);
+  }, [items.length, measuredHeights, estimatedItemHeight, gap]);
 
   // Find visible range with binary search
   const findStartIndex = useCallback((scrollTop: number): number => {
@@ -132,6 +143,13 @@ export function useVirtualizedList<T>({
     return Math.max(0, low - 1);
   }, [itemOffsets]);
 
+  // Track previous calculation range to avoid unnecessary recalculations
+  const prevRangeRef = useRef<{ startIndex: number; endIndex: number; itemsLength: number }>({
+    startIndex: 0,
+    endIndex: 0,
+    itemsLength: 0,
+  });
+
   // Calculate visible items
   const virtualItems = useMemo((): VirtualItem<T>[] => {
     if (items.length === 0) return [];
@@ -149,21 +167,6 @@ export function useVirtualizedList<T>({
     }
     endIndex = Math.min(items.length - 1, endIndex + overscan);
 
-    // Debug logging
-    if (items.length > 0) {
-      console.log('[VirtualizedList] Calculating items:', {
-        itemsLength: items.length,
-        containerHeight,
-        effectiveHeight,
-        scrollTop,
-        startIndex,
-        endIndex,
-        visibleEnd,
-        firstOffset: itemOffsets[0],
-        totalHeight
-      });
-    }
-
     const result: VirtualItem<T>[] = [];
     for (let i = startIndex; i <= endIndex; i++) {
       result.push({
@@ -175,13 +178,18 @@ export function useVirtualizedList<T>({
       });
     }
 
-    return result;
-  }, [items, containerHeight, scrollTop, findStartIndex, overscan, itemOffsets, measuredHeights, estimatedItemHeight, getItemKey, totalHeight]);
+    // Update previous range tracking (for debugging if needed)
+    prevRangeRef.current = { startIndex, endIndex, itemsLength: items.length };
 
-  // Handle scroll events
+    return result;
+  }, [items, containerHeight, scrollTop, findStartIndex, overscan, itemOffsets, measuredHeights, estimatedItemHeight, getItemKey]);
+
+  // Handle scroll events with user intent tracking
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    let scrollTimeout: number | null = null;
 
     const handleScroll = () => {
       const newScrollTop = container.scrollTop;
@@ -189,11 +197,32 @@ export function useVirtualizedList<T>({
       
       // Check if near bottom
       const distanceFromBottom = totalHeight - (newScrollTop + containerHeight);
-      setIsNearBottom(distanceFromBottom < autoScrollThreshold);
+      const nearBottom = distanceFromBottom < autoScrollThreshold;
+      setIsNearBottom(nearBottom);
+      
+      // Track user scroll intent
+      const now = Date.now();
+      if (distanceFromBottom > autoScrollThreshold) {
+        userScrolledAwayRef.current = true;
+        lastUserScrollTimeRef.current = now;
+      } else {
+        userScrolledAwayRef.current = false;
+      }
+      
+      // Reset flag after 2 seconds of being near bottom
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = window.setTimeout(() => {
+        if (!userScrolledAwayRef.current) {
+          lastUserScrollTimeRef.current = 0;
+        }
+      }, 2000);
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleScroll);
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
   }, [totalHeight, containerHeight, autoScrollThreshold]);
 
   // Handle resize
@@ -231,19 +260,33 @@ export function useVirtualizedList<T>({
     });
   }, [items.length, containerHeight, autoScrollToBottom]);
 
-  // Streaming scroll - continuously scroll as content grows (RAF-based for 60fps)
+  // Streaming scroll - only follow content if user hasn't scrolled away
   useEffect(() => {
     if (!streamingMode || !autoScrollToBottom) {
       return;
     }
 
     let animationId: number;
-    let frameCount = 0;
+    let lastFrameTime = 0;
+    const MIN_FRAME_INTERVAL = 50; // ~20fps is enough for scroll following
     
-    const tick = () => {
+    const tick = (currentTime: number) => {
       const container = containerRef.current;
       if (!container) {
-        // Container not mounted yet, continue waiting
+        animationId = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Throttle frames
+      if (currentTime - lastFrameTime < MIN_FRAME_INTERVAL) {
+        animationId = requestAnimationFrame(tick);
+        return;
+      }
+      lastFrameTime = currentTime;
+
+      // CRITICAL: Don't auto-scroll if user manually scrolled away
+      if (userScrolledAwayRef.current) {
+        lastScrollHeightRef.current = container.scrollHeight;
         animationId = requestAnimationFrame(tick);
         return;
       }
@@ -251,48 +294,27 @@ export function useVirtualizedList<T>({
       const { scrollHeight, scrollTop: currentScrollTop, clientHeight } = container;
       const distanceFromBottom = scrollHeight - currentScrollTop - clientHeight;
       
-      // First few frames: always scroll to bottom to ensure initial position
-      // This handles the case where streaming just started
-      if (frameCount < 10) {
-        frameCount++;
-        if (scrollHeight > clientHeight) {
-          container.scrollTop = scrollHeight - clientHeight;
-        }
-        lastScrollHeightRef.current = scrollHeight;
-        animationId = requestAnimationFrame(tick);
-        return;
-      }
-      
-      // Only auto-scroll if user is near bottom (within threshold + buffer)
-      // This respects user intent if they scroll up to read
-      if (distanceFromBottom <= autoScrollThreshold + 100) {
-        // Content grew - scroll to follow
-        if (scrollHeight > lastScrollHeightRef.current || distanceFromBottom > 5) {
-          const targetScroll = scrollHeight - clientHeight;
-          const diff = targetScroll - currentScrollTop;
-          
-          if (diff > 2) {
-            // Smooth catch-up: scroll 35% of remaining distance per frame
-            // This creates a natural easing effect
-            const scrollAmount = Math.max(3, diff * 0.35);
-            container.scrollTop = currentScrollTop + scrollAmount;
-          }
+      // Only auto-scroll if close to bottom (within threshold)
+      if (distanceFromBottom <= autoScrollThreshold) {
+        const diff = scrollHeight - clientHeight - currentScrollTop;
+        if (diff > 2) {
+          // Gentle scroll: 30% of remaining distance
+          container.scrollTop = currentScrollTop + Math.max(2, diff * 0.3);
         }
       }
       
-      // Always track current height to detect growth
       lastScrollHeightRef.current = scrollHeight;
       animationId = requestAnimationFrame(tick);
     };
 
-    // Initialize height tracking before starting loop
+    // Initialize
     if (containerRef.current) {
       lastScrollHeightRef.current = containerRef.current.scrollHeight;
-      // Immediately scroll to bottom when streaming starts
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      // Only scroll to bottom if user hasn't scrolled away
+      if (!userScrolledAwayRef.current) {
+        containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      }
     }
-
-    // Start the scroll loop
     animationId = requestAnimationFrame(tick);
     
     return () => {
@@ -322,10 +344,13 @@ export function useVirtualizedList<T>({
   }, [items.length, autoScrollToBottom, isNearBottom, streamingMode]);
 
   // Auto-scroll when streaming dependency changes (content updates)
+  // This is a backup for when RAF loop misses an update
   useEffect(() => {
     if (!streamingMode || !autoScrollToBottom) return;
+    // Don't scroll if user has scrolled away
+    if (userScrolledAwayRef.current) return;
     
-    // Scroll to bottom when streaming content updates
+    // Scroll to bottom when streaming content updates and near bottom
     requestAnimationFrame(() => {
       const container = containerRef.current;
       if (!container) return;
@@ -333,8 +358,8 @@ export function useVirtualizedList<T>({
       const { scrollHeight, scrollTop: currentScrollTop, clientHeight } = container;
       const distanceFromBottom = scrollHeight - currentScrollTop - clientHeight;
       
-      // Only scroll if near bottom
-      if (distanceFromBottom <= autoScrollThreshold + 100) {
+      // Only scroll if very close to bottom (within threshold)
+      if (distanceFromBottom <= autoScrollThreshold) {
         container.scrollTop = scrollHeight - clientHeight;
       }
     });

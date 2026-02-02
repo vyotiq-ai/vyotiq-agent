@@ -205,9 +205,9 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
   }
 
   return (
-    <div className="font-mono text-[11px] min-w-0 max-w-full">
+    <div className="font-mono text-[11px] min-w-0 w-full overflow-hidden">
       {/* Tool list with grouping */}
-      <div className="space-y-0.5 min-w-0 overflow-hidden">
+      <div className="space-y-0.5 min-w-0 w-full overflow-hidden">
         {groupedTools.map((item, idx) => {
           if (item.type === 'single') {
             return (

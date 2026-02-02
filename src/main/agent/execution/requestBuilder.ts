@@ -28,6 +28,7 @@ import { ComplianceValidator, PromptOptimizer } from '../compliance';
 import { buildSystemPrompt, DEFAULT_PROMPT_SETTINGS, type SystemPromptContext } from '../systemPrompt';
 import { buildImageGenerationSystemPrompt } from '../imageGenerationPrompt';
 import { buildMCPContextInfo } from '../../mcp';
+import { getAgentsMdReader } from '../workspace/AgentsMdReader';
 import { AGGRESSIVE_CACHE_CONFIG, CONSERVATIVE_CACHE_CONFIG, DEFAULT_CACHE_CONFIG } from '../cache';
 import { normalizeStrictJsonSchema } from '../../utils';
 import { getSharedModelById, getProviderConfig } from '../providers/registry';
@@ -496,6 +497,14 @@ export class RequestBuilder {
     // Build MCP context for available external tools
     const mcpContext = buildMCPContextInfo({ enabled: true });
 
+    // Read AGENTS.md context from workspace (project-specific agent instructions)
+    const agentsMdReader = getAgentsMdReader();
+    if (workspace?.path) {
+      agentsMdReader.setWorkspace(workspace.path);
+    }
+    const editorState = this.getEditorState?.();
+    const agentsMdContext = await agentsMdReader.getContextForFile(editorState?.activeFile);
+
     const context: SystemPromptContext = {
       session,
       providerName: provider.name,
@@ -506,11 +515,12 @@ export class RequestBuilder {
       promptSettings,
       accessLevelSettings,
       terminalContext,
-      editorContext: this.getEditorState?.(),
+      editorContext: editorState,
       workspaceDiagnostics: workspaceDiagnostics ?? undefined,
       workspaceStructure,
       semanticContext,
       mcpContext,
+      agentsMdContext,
       logger: this.logger,
     };
 

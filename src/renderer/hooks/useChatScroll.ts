@@ -25,6 +25,10 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastScrollHeightRef = useRef(0);
   const prevDepRef = useRef<T>(dep);
+  
+  // Track if user manually scrolled away from bottom
+  const userScrolledAwayRef = useRef(false);
+  const lastUserScrollTimeRef = useRef(0);
 
   // Check if near bottom
   const isNearBottom = useCallback(() => {
@@ -59,70 +63,99 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
     lastScrollHeightRef.current = element.scrollHeight;
   }, [scrollToBottomInstant]);
 
-  // Streaming scroll - continuously scroll as content grows
+  // Track user scroll events to detect manual scrolling
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    
+    let scrollTimeout: number | null = null;
+    
+    const handleScroll = () => {
+      const now = Date.now();
+      const { scrollHeight, scrollTop, clientHeight } = element;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      
+      // If user scrolled more than threshold away from bottom, they want to read
+      if (distanceFromBottom > threshold) {
+        userScrolledAwayRef.current = true;
+        lastUserScrollTimeRef.current = now;
+      } else {
+        // User is back near bottom
+        userScrolledAwayRef.current = false;
+      }
+      
+      // Reset user scroll flag after 2 seconds of no scrolling when near bottom
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = window.setTimeout(() => {
+        if (!userScrolledAwayRef.current) {
+          lastUserScrollTimeRef.current = 0;
+        }
+      }, 2000);
+    };
+    
+    element.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      element.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, [threshold]);
+
+  // Streaming scroll - only scroll if user hasn't scrolled away
   useEffect(() => {
     if (!streamingMode || !enabled) {
       return;
     }
 
     let animationId: number;
-    let frameCount = 0;
+    let lastFrameTime = 0;
+    const MIN_FRAME_INTERVAL = 50; // ~20fps is enough for scroll following
     
-    const tick = () => {
+    const tick = (currentTime: number) => {
       const element = scrollRef.current;
       if (!element) {
-        // Element not mounted yet, continue waiting
+        animationId = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Throttle frames
+      if (currentTime - lastFrameTime < MIN_FRAME_INTERVAL) {
+        animationId = requestAnimationFrame(tick);
+        return;
+      }
+      lastFrameTime = currentTime;
+
+      // CRITICAL: Don't auto-scroll if user manually scrolled away
+      if (userScrolledAwayRef.current) {
+        lastScrollHeightRef.current = element.scrollHeight;
         animationId = requestAnimationFrame(tick);
         return;
       }
 
       const { scrollHeight, scrollTop, clientHeight } = element;
-      const currentHeight = scrollHeight;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
       
-      // First few frames: always scroll to bottom to ensure initial position
-      // This handles the case where streaming just started
-      if (frameCount < 10) {
-        frameCount++;
-        if (scrollHeight > clientHeight) {
-          element.scrollTop = scrollHeight - clientHeight;
-        }
-        lastScrollHeightRef.current = currentHeight;
-        animationId = requestAnimationFrame(tick);
-        return;
-      }
-      
-      // Only auto-scroll if user is near bottom (within threshold + buffer)
-      // This respects user intent if they scroll up to read
-      if (distanceFromBottom <= threshold + 100) {
-        // Content grew - scroll to follow
-        if (currentHeight > lastScrollHeightRef.current || distanceFromBottom > 5) {
-          const targetScroll = scrollHeight - clientHeight;
-          const currentScroll = scrollTop;
-          const diff = targetScroll - currentScroll;
-          
-          if (diff > 2) {
-            // Smooth catch-up: scroll 35% of remaining distance per frame
-            // This creates a natural easing effect
-            const scrollAmount = Math.max(3, diff * 0.35);
-            element.scrollTop = currentScroll + scrollAmount;
-          }
+      // Only auto-scroll if very close to bottom (within threshold)
+      if (distanceFromBottom <= threshold) {
+        const diff = scrollHeight - clientHeight - scrollTop;
+        if (diff > 2) {
+          // Gentle scroll: 30% of remaining distance
+          element.scrollTop = scrollTop + Math.max(2, diff * 0.3);
         }
       }
       
-      // Always track current height to detect growth
-      lastScrollHeightRef.current = currentHeight;
+      lastScrollHeightRef.current = scrollHeight;
       animationId = requestAnimationFrame(tick);
     };
 
-    // Initialize height tracking before starting loop
+    // Initialize
     if (scrollRef.current) {
       lastScrollHeightRef.current = scrollRef.current.scrollHeight;
-      // Immediately scroll to bottom when streaming starts
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      // Only scroll to bottom if user hasn't scrolled away
+      if (!userScrolledAwayRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
     }
 
-    // Start the scroll loop
     animationId = requestAnimationFrame(tick);
     
     return () => {
@@ -154,13 +187,20 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
 
   // Force scroll to bottom (for new user messages)
   const forceScrollToBottom = useCallback(() => {
+    userScrolledAwayRef.current = false; // Reset user scroll intent
     scrollToBottomInstant();
   }, [scrollToBottomInstant]);
+
+  // Reset user scroll flag (call when user sends a message)
+  const resetUserScroll = useCallback(() => {
+    userScrolledAwayRef.current = false;
+  }, []);
 
   return { 
     scrollRef, 
     forceScrollToBottom, 
     scrollToBottom,
     isNearBottom,
+    resetUserScroll,
   };
 };

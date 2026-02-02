@@ -66,6 +66,7 @@ export {
   buildAccessLevelSection,
   buildPersonaSection,
   buildCustomPromptSection,
+  /** @deprecated Use AGENTS.md instead */
   buildAdditionalInstructions,
   buildCommunicationStyle,
 

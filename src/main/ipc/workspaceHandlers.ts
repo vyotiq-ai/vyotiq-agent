@@ -292,4 +292,258 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
       return { success: false, error: (error as Error).message };
     }
   });
+
+  // ==========================================================================
+  // AGENTS.md Support
+  // ==========================================================================
+
+  /**
+   * Get AGENTS.md status for the active workspace.
+   * Returns discovered AGENTS.md files and their status.
+   */
+  ipcMain.handle('workspace:agents-md-status', async () => {
+    try {
+      const workspacePath = getActiveWorkspacePath();
+      if (!workspacePath) {
+        return {
+          enabled: false,
+          files: [],
+          primaryFile: null,
+          error: 'No active workspace',
+        };
+      }
+
+      const { getAgentsMdReader } = await import('../agent/workspace/AgentsMdReader');
+      const reader = getAgentsMdReader();
+      reader.setWorkspace(workspacePath);
+
+      // Get full context which includes parsed files
+      const context = await reader.getContextForFile(undefined);
+      
+      if (!context.found || context.allFiles.length === 0) {
+        return {
+          enabled: false,
+          files: [],
+          primaryFile: null,
+          error: null,
+        };
+      }
+
+      return {
+        enabled: true,
+        files: context.allFiles.map(f => ({
+          path: f.filePath,
+          relativePath: f.relativePath,
+          depth: f.depth,
+          sectionCount: f.sections.length,
+          size: f.content.length,
+        })),
+        primaryFile: context.primary ? {
+          path: context.primary.relativePath,
+          sections: context.primary.sections.map(s => s.heading),
+        } : null,
+        error: null,
+      };
+    } catch (error) {
+      logger.error('Failed to get AGENTS.md status', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        enabled: false,
+        files: [],
+        primaryFile: null,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  });
+
+  /**
+   * Refresh AGENTS.md cache for the active workspace.
+   */
+  ipcMain.handle('workspace:agents-md-refresh', async () => {
+    try {
+      const workspacePath = getActiveWorkspacePath();
+      if (!workspacePath) {
+        return { success: false, error: 'No active workspace' };
+      }
+
+      const { getAgentsMdReader } = await import('../agent/workspace/AgentsMdReader');
+      const reader = getAgentsMdReader();
+      reader.clearCache();
+      reader.setWorkspace(workspacePath);
+
+      const files = await reader.discoverFiles();
+      logger.info('AGENTS.md cache refreshed', { fileCount: files.length });
+
+      return { success: true, fileCount: files.length };
+    } catch (error) {
+      logger.error('Failed to refresh AGENTS.md cache', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // ==========================================================================
+  // Instruction Files Support (Extended AGENTS.md)
+  // ==========================================================================
+
+  /**
+   * Get all instruction files status for the active workspace.
+   * Returns all discovered instruction files with their types and status.
+   */
+  ipcMain.handle('workspace:instruction-files-status', async () => {
+    try {
+      const workspacePath = getActiveWorkspacePath();
+      if (!workspacePath) {
+        return {
+          found: false,
+          files: [],
+          enabledCount: 0,
+          byType: {},
+          error: 'No active workspace',
+        };
+      }
+
+      const { getInstructionFilesReader } = await import('../agent/workspace/InstructionFilesReader');
+      const reader = getInstructionFilesReader();
+      reader.setWorkspace(workspacePath);
+
+      const summary = await reader.getSummary();
+      
+      return {
+        ...summary,
+        error: null,
+      };
+    } catch (error) {
+      logger.error('Failed to get instruction files status', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        found: false,
+        files: [],
+        enabledCount: 0,
+        byType: {},
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  });
+
+  /**
+   * Refresh instruction files cache for the active workspace.
+   */
+  ipcMain.handle('workspace:instruction-files-refresh', async () => {
+    try {
+      const workspacePath = getActiveWorkspacePath();
+      if (!workspacePath) {
+        return { success: false, error: 'No active workspace' };
+      }
+
+      const { getInstructionFilesReader } = await import('../agent/workspace/InstructionFilesReader');
+      const reader = getInstructionFilesReader();
+      reader.clearCache();
+      reader.setWorkspace(workspacePath);
+
+      const summary = await reader.getSummary();
+      logger.info('Instruction files cache refreshed', { fileCount: summary.fileCount });
+
+      return { success: true, fileCount: summary.fileCount, enabledCount: summary.enabledCount };
+    } catch (error) {
+      logger.error('Failed to refresh instruction files cache', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  /**
+   * Toggle an instruction file's enabled status.
+   */
+  ipcMain.handle('workspace:instruction-files-toggle', async (_event, relativePath: string, enabled: boolean) => {
+    try {
+      const workspacePath = getActiveWorkspacePath();
+      if (!workspacePath) {
+        return { success: false, error: 'No active workspace' };
+      }
+
+      const { getInstructionFilesReader } = await import('../agent/workspace/InstructionFilesReader');
+      const reader = getInstructionFilesReader();
+      reader.setWorkspace(workspacePath);
+      reader.toggleFile(relativePath, enabled);
+
+      logger.info('Instruction file toggled', { relativePath, enabled });
+
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to toggle instruction file', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  /**
+   * Update instruction files configuration.
+   */
+  ipcMain.handle('workspace:instruction-files-config', async (_event, config: Record<string, unknown>) => {
+    try {
+      const workspacePath = getActiveWorkspacePath();
+      if (!workspacePath) {
+        return { success: false, error: 'No active workspace' };
+      }
+
+      const { getInstructionFilesReader } = await import('../agent/workspace/InstructionFilesReader');
+      const reader = getInstructionFilesReader();
+      reader.setWorkspace(workspacePath);
+      reader.setConfig(config as Partial<import('../../shared/types').InstructionFilesConfig>);
+
+      logger.info('Instruction files config updated', { config });
+
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to update instruction files config', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  /**
+   * Get instruction files context for the active file.
+   */
+  ipcMain.handle('workspace:instruction-files-context', async (_event, activeFilePath?: string) => {
+    try {
+      const workspacePath = getActiveWorkspacePath();
+      if (!workspacePath) {
+        return {
+          found: false,
+          allFiles: [],
+          enabledFiles: [],
+          combinedContent: '',
+          scannedAt: Date.now(),
+          errors: [],
+        };
+      }
+
+      const { getInstructionFilesReader } = await import('../agent/workspace/InstructionFilesReader');
+      const reader = getInstructionFilesReader();
+      reader.setWorkspace(workspacePath);
+
+      const context = await reader.getContextForFile(activeFilePath);
+      
+      return context;
+    } catch (error) {
+      logger.error('Failed to get instruction files context', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        found: false,
+        allFiles: [],
+        enabledFiles: [],
+        combinedContent: '',
+        scannedAt: Date.now(),
+        errors: [{ path: '', error: error instanceof Error ? error.message : 'Unknown error' }],
+      };
+    }
+  });
 }

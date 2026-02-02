@@ -102,11 +102,14 @@ export {
   buildAccessLevel as buildAccessLevelSection,
   buildPersona as buildPersonaSection,
   buildCustomPrompt as buildCustomPromptSection,
+  /** @deprecated Use AGENTS.md instead */
   buildAdditionalInstructions,
   buildCommunicationStyle,
   buildToolCategories,
   buildSemanticContext,
   buildMCPContext,
+  buildAgentsMdContext,
+  buildInstructionFilesContext,
   DYNAMIC_TOOL_CATEGORIES,
 } from './dynamicSections';
 

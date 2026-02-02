@@ -317,7 +317,7 @@ export const DebugTraceViewer: React.FC<DebugTraceViewerProps> = ({
         
         {isRunning && (
           <div className="flex items-center gap-2 px-2 py-1.5 text-[10px] text-[var(--color-text-dim)]">
-            <div className="w-2 h-2 rounded-full bg-[var(--color-accent-primary)] animate-pulse" />
+            <div className="w-2 h-2 rounded-full bg-[var(--color-accent-primary)]" />
             <span>Execution in progress...</span>
           </div>
         )}

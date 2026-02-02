@@ -3,7 +3,7 @@
  */
 
 import type { InternalSession } from '../types';
-import type { PromptSettings, AccessLevelSettings } from '../../../shared/types';
+import type { PromptSettings, AccessLevelSettings, AgentsMdContext, InstructionFilesContext } from '../../../shared/types';
 import type { Logger } from '../../logger';
 import type { SemanticContext } from '../semantic';
 
@@ -204,6 +204,10 @@ export interface SystemPromptContext {
   mcpContext?: MCPContextInfo;
   /** Git context with repository state */
   gitContext?: GitContextInfo;
+  /** AGENTS.md context from workspace (legacy - use instructionFilesContext) */
+  agentsMdContext?: AgentsMdContext;
+  /** Extended instruction files context (AGENTS.md, CLAUDE.md, etc.) */
+  instructionFilesContext?: InstructionFilesContext;
   logger?: Logger;
 }
 

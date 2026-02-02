@@ -175,7 +175,7 @@ const IndexStatus: React.FC<IndexStatusProps> = memo(({
             <div className="mb-4 pb-3 border-b border-[var(--color-border-subtle)]">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <Cpu size={12} className="text-[var(--color-accent-secondary)] animate-pulse" />
+                  <Cpu size={12} className="text-[var(--color-accent-secondary)]" />
                   <span className="text-[10px] text-[var(--color-text-secondary)] font-medium">
                     {progress.phase || 'Downloading embedding model...'}
                   </span>

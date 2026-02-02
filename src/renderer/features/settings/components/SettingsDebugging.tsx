@@ -523,7 +523,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
               <div className="mb-3 p-2 border border-[var(--color-accent-primary)]/30 bg-[var(--color-accent-primary)]/5 rounded">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-[var(--color-accent-primary)] animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-[var(--color-accent-primary)]" />
                     <span className="text-[10px] text-[var(--color-accent-primary)]">Active Trace</span>
                   </div>
                   <span className="text-[9px] text-[var(--color-text-muted)]">
@@ -557,7 +557,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                               'w-1.5 h-1.5 rounded-full flex-shrink-0',
                               trace.status === 'completed' && 'bg-[var(--color-success)]',
                               trace.status === 'failed' && 'bg-[var(--color-error)]',
-                              trace.status === 'running' && 'bg-[var(--color-accent-primary)] animate-pulse',
+                              trace.status === 'running' && 'bg-[var(--color-accent-primary)]',
                               trace.status === 'paused' && 'bg-[var(--color-warning)]'
                             )}
                           />

@@ -2,6 +2,7 @@
  * Home Page
  * 
  * Main workspace view with chat interface and code editor.
+ * Features responsive split-pane layout with resizable panels.
  */
 import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { ChatArea, ChatInput } from '../features/chat';
@@ -9,6 +10,7 @@ import { useEditor } from '../state/EditorProvider';
 import { cn } from '../utils/cn';
 import { Loader2 } from 'lucide-react';
 import { FeatureErrorBoundary } from '../components/layout/ErrorBoundary';
+import { MOBILE_BREAKPOINT } from '../utils/constants';
 
 // Lazy load EditorView to defer Monaco bundle loading until editor is shown
 // Monaco is ~1.5MB and should not block initial chat UI
@@ -30,9 +32,19 @@ export const Home: React.FC = () => {
   const { tabs, isEditorVisible, bottomPanelOpen } = useEditor();
   const [editorWidth, setEditorWidth] = useState(50); // percentage
   const [isResizing, setIsResizing] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // Responsive breakpoint detection
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   
   // Show editor panel when there are open tabs OR when bottom panel is open
-  const showEditor = (isEditorVisible && tabs.length > 0) || bottomPanelOpen;
+  // On mobile, always prioritize chat (editor can be shown in a modal or bottom sheet)
+  const showEditor = !isMobile && ((isEditorVisible && tabs.length > 0) || bottomPanelOpen);
   
   // Handle resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {

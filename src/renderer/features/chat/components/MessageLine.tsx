@@ -345,7 +345,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
     return (
       <div 
         className={cn(
-          'py-1.5 group relative font-mono',
+          'py-1.5 group relative font-mono min-w-0 w-full overflow-hidden',
           isSearchMatch && 'bg-[var(--color-warning)]/10',
           isCurrentSearchMatch && 'ring-1 ring-[var(--color-warning)]'
         )}
@@ -389,7 +389,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
         </div>
 
         {/* Content - full width with subtle left accent */}
-        <div className="pl-3 ml-2 border-l border-[var(--color-accent-primary)]/20">
+        <div className="pl-3 ml-2 border-l border-[var(--color-accent-primary)]/20 min-w-0 w-full overflow-hidden">
           {/* Attachments with image previews */}
           {message.attachments && message.attachments.length > 0 && (
             <MessageAttachments attachments={message.attachments} variant="block" />
@@ -432,7 +432,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
   return (
     <div 
       className={cn(
-        'py-1.5 group relative font-mono',
+        'py-1.5 group relative font-mono min-w-0 w-full overflow-hidden',
         isSearchMatch && 'bg-[var(--color-warning)]/10 rounded-lg',
         isCurrentSearchMatch && 'ring-2 ring-[var(--color-warning)] ring-offset-1 ring-offset-[var(--color-surface-base)]'
       )}
@@ -557,7 +557,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
 
       {/* Content area */}
       <div className={cn(
-        'pl-3 border-l',
+        'pl-3 border-l min-w-0 w-full overflow-hidden',
         showBranding 
           ? 'ml-2 border-[var(--color-accent-primary)]/15' 
           : 'ml-4 border-[var(--color-border-subtle)]/30'
@@ -575,7 +575,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
         )}
 
         {/* Response content */}
-        <div className="break-words overflow-hidden min-w-0">
+        <div className="break-words overflow-hidden min-w-0 w-full">
           {isSummaryMessage ? (
             <details className="group/summary">
               <summary className="cursor-pointer select-none list-none text-[10px] font-mono text-[var(--color-text-muted)] flex items-center gap-2">
@@ -636,8 +636,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
           {/* Streaming cursor - inline with content */}
           {isStreaming && displayContent && (
             <span 
-              className="inline-block w-[2px] h-[14px] bg-[var(--color-accent-primary)] animate-pulse ml-0.5 align-middle"
-              style={{ animationDuration: '800ms' }}
+              className="inline-block w-[2px] h-[14px] bg-[var(--color-accent-primary)] animate-blink ml-0.5 align-middle"
               aria-hidden="true"
             />
           )}

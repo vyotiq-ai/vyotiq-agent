@@ -28,6 +28,7 @@ export {
   buildPersonaSection,
   buildCustomPromptSection,
   buildCommunicationStyle,
+  /** @deprecated Use AGENTS.md instead */
   buildAdditionalInstructions,
   buildInjectedContext,
   evaluateContextInjectionCondition,

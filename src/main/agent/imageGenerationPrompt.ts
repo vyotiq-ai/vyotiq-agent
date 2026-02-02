@@ -39,7 +39,6 @@ When creating images:
 export function buildImageGenerationSystemPrompt(context?: {
   style?: string;
   aspectRatio?: string;
-  additionalInstructions?: string;
 }): string {
   let prompt = IMAGE_GENERATION_SYSTEM_PROMPT;
   
@@ -49,10 +48,6 @@ export function buildImageGenerationSystemPrompt(context?: {
   
   if (context?.aspectRatio) {
     prompt += `\n\n## Aspect Ratio\nGenerate images in ${context.aspectRatio} aspect ratio unless otherwise specified.`;
-  }
-  
-  if (context?.additionalInstructions) {
-    prompt += `\n\n## Additional Instructions\n${context.additionalInstructions}`;
   }
   
   return prompt;

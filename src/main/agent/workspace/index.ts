@@ -5,10 +5,14 @@
  * - Workspace context management
  * - Basic file system operations
  * - Path resolution
+ * - AGENTS.md file discovery and parsing
  */
 
 import type { Logger } from '../../logger';
 import type { WorkspaceManager } from '../../workspaces/workspaceManager';
+
+// Re-export AgentsMdReader
+export { AgentsMdReader, getAgentsMdReader } from './AgentsMdReader';
 
 let workspaceManagerInstance: WorkspaceManager | null = null;
 

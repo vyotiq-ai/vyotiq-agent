@@ -1,32 +1,38 @@
 /**
  * TodoProgress Component
  * 
- * Displays the current todo list progress in a compact, terminal-style format.
+ * Displays the current todo list progress in a clean, persistent terminal-style format.
  * Shows task status with visual indicators and progress tracking.
  * Supports both basic TodoItem[] and enhanced TaskSession data.
  * Maintains existing terminal/CLI styling without $ or - signs.
+ * 
+ * Features:
+ * - Sticky header with progress bar always visible
+ * - Collapsible task list with smooth animations
+ * - Color-coded status indicators
+ * - Responsive design with proper spacing
  */
-import React, { memo, useMemo, useState, useCallback } from 'react';
+import React, { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { 
   ChevronDown, 
-  ChevronRight, 
+  ChevronUp,
   Circle, 
-  CircleCheck, 
-  CircleDot, 
+  CheckCircle, 
+  Loader2, 
   ListTodo,
   ClipboardList,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  FileText,
   FolderOpen,
-  History,
   Target,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import type { TodoItem } from '../../../../shared/types/todo';
 import type { TaskSession, TaskItem } from '../../../../shared/types/todoTask';
 import { calculateTodoStats } from '../../../../shared/types/todo';
+
+// ============================================================================
+// Types
+// ============================================================================
 
 interface TodoProgressProps {
   /** Basic todo items (in-memory) */
@@ -35,226 +41,268 @@ interface TodoProgressProps {
   taskSession?: TaskSession;
   /** Optional class name */
   className?: string;
+  /** Whether to show in compact mode (header only) */
+  compact?: boolean;
+  /** Whether the component is sticky positioned */
+  sticky?: boolean;
 }
 
+// ============================================================================
+// Status Utilities
+// ============================================================================
+
 /**
- * Get status icon for a todo item - uses consistent styling without excessive animation
+ * Get status icon for a todo item
  */
-function getStatusIcon(status: TodoItem['status']) {
+const StatusIcon: React.FC<{ status: TodoItem['status']; size?: number }> = memo(({ status, size = 14 }) => {
   switch (status) {
     case 'completed':
-      return <CircleCheck size={12} className="text-[var(--color-success)]" />;
+      return <CheckCircle size={size} className="text-[var(--color-success)] flex-shrink-0" />;
     case 'in_progress':
-      return <CircleDot size={12} className="text-[var(--color-accent-primary)]" />;
+      return <Loader2 size={size} className="text-[var(--color-accent-primary)] flex-shrink-0 animate-spin" />;
     case 'pending':
     default:
-      return <Circle size={12} className="text-[var(--color-text-dim)]" />;
+      return <Circle size={size} className="text-[var(--color-text-muted)] flex-shrink-0" />;
+  }
+});
+
+StatusIcon.displayName = 'StatusIcon';
+
+/**
+ * Get status color class
+ */
+function getStatusColorClass(status: TodoItem['status']): string {
+  switch (status) {
+    case 'completed':
+      return 'text-[var(--color-text-muted)]';
+    case 'in_progress':
+      return 'text-[var(--color-text-primary)]';
+    case 'pending':
+    default:
+      return 'text-[var(--color-text-secondary)]';
   }
 }
 
-/**
- * Get status label for display
- */
-function getStatusLabel(status: TodoItem['status']): string {
-  switch (status) {
-    case 'completed':
-      return 'done';
-    case 'in_progress':
-      return 'working';
-    case 'pending':
-    default:
-      return 'pending';
-  }
-}
+// ============================================================================
+// Sub-Components
+// ============================================================================
 
 /**
- * Individual todo item display - supports both TodoItem and TaskItem
+ * Animated progress bar with gradient and glow effect
  */
-const TodoItemRow: React.FC<{ 
-  todo: TodoItem | TaskItem; 
-  isLast: boolean;
+const ProgressBarAnimated: React.FC<{ 
+  percentage: number; 
+  completed: number; 
+  total: number;
+  showLabel?: boolean;
+}> = memo(({ percentage, completed, total, showLabel = true }) => {
+  const isComplete = percentage === 100;
+  
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <div className="flex-1 h-1 bg-[var(--color-surface-2)] rounded-full overflow-hidden min-w-[60px]">
+        <div 
+          className={cn(
+            "h-full rounded-full transition-all duration-500 ease-out",
+            isComplete 
+              ? "bg-[var(--color-success)]" 
+              : "bg-gradient-to-r from-[var(--color-accent-primary)] to-[var(--color-accent-primary)]/70"
+          )}
+          style={{ 
+            width: `${percentage}%`,
+            boxShadow: isComplete ? 'none' : '0 0 8px var(--color-accent-primary)'
+          }}
+        />
+      </div>
+      {showLabel && (
+        <span className="text-[10px] font-mono text-[var(--color-text-muted)] tabular-nums whitespace-nowrap">
+          {completed}/{total}
+        </span>
+      )}
+    </div>
+  );
+});
+
+ProgressBarAnimated.displayName = 'ProgressBarAnimated';
+
+/**
+ * Individual task item row
+ */
+const TaskItemRow: React.FC<{ 
+  task: TodoItem | TaskItem; 
+  index: number;
   showExtendedInfo?: boolean;
-}> = memo(({ todo, isLast, showExtendedInfo = false }) => {
-  const statusClass = todo.status === 'completed' 
-    ? 'text-[var(--color-text-dim)] line-through' 
-    : todo.status === 'in_progress'
-      ? 'text-[var(--color-text-primary)]'
-      : 'text-[var(--color-text-secondary)]';
-
-  // Check if this is a TaskItem with extended properties
-  const taskItem = todo as TaskItem;
+}> = memo(({ task, index, showExtendedInfo = false }) => {
+  const isCompleted = task.status === 'completed';
+  const isActive = task.status === 'in_progress';
+  const taskItem = task as TaskItem;
   const hasDescription = showExtendedInfo && 'description' in taskItem && taskItem.description;
-  const hasTargetFiles = showExtendedInfo && 'targetFiles' in taskItem && taskItem.targetFiles?.length;
 
   return (
     <div 
       className={cn(
-        'flex items-start gap-2 py-1 px-2',
-        !isLast && 'border-b border-[var(--color-border-subtle)]/30'
+        'group flex items-start gap-2.5 py-2 px-3',
+        'transition-colors duration-150',
+        isActive && 'bg-[var(--color-accent-primary)]/5',
+        !isCompleted && !isActive && 'hover:bg-[var(--color-surface-2)]/30'
       )}
     >
-      <span className="flex-shrink-0 mt-0.5">
-        {getStatusIcon(todo.status)}
+      {/* Task number */}
+      <span className={cn(
+        'text-[10px] font-mono tabular-nums w-4 text-right flex-shrink-0 pt-0.5',
+        isCompleted ? 'text-[var(--color-text-dim)]' : 'text-[var(--color-text-muted)]'
+      )}>
+        {index + 1}
       </span>
+      
+      {/* Status icon */}
+      <StatusIcon status={task.status} size={14} />
+      
+      {/* Task content */}
       <div className="flex-1 min-w-0">
-        <span className={cn('text-[11px] font-mono leading-tight block', statusClass)}>
-          {todo.content}
+        <span className={cn(
+          'text-[11px] font-mono leading-relaxed block',
+          getStatusColorClass(task.status),
+          isCompleted && 'line-through decoration-[var(--color-text-dim)]/50'
+        )}>
+          {task.content}
         </span>
         {hasDescription && (
-          <span className="text-[10px] text-[var(--color-text-dim)] font-mono mt-0.5 block">
+          <span className="text-[10px] text-[var(--color-text-dim)] font-mono mt-1 block leading-relaxed">
             {taskItem.description}
           </span>
         )}
-        {hasTargetFiles && (
-          <span className="text-[10px] text-[var(--color-text-dim)] font-mono mt-0.5 block">
-            files: {taskItem.targetFiles!.join(', ')}
-          </span>
-        )}
       </div>
-      <span className="text-[10px] font-mono text-[var(--color-text-dim)] flex-shrink-0">
-        [{getStatusLabel(todo.status)}]
-      </span>
     </div>
   );
 });
 
-TodoItemRow.displayName = 'TodoItemRow';
+TaskItemRow.displayName = 'TaskItemRow';
 
 /**
- * Progress bar component - terminal style
+ * Stats badges showing task counts
  */
-const ProgressBar: React.FC<{ percentage: number; completed: number; total: number }> = memo(({ 
-  percentage, 
-  completed, 
-  total 
-}) => (
-  <div className="flex items-center gap-2">
-    <div className="flex-1 h-1.5 bg-[var(--color-surface-2)] rounded-sm overflow-hidden">
-      <div 
-        className={cn(
-          "h-full transition-all duration-300 ease-out rounded-sm",
-          percentage === 100 
-            ? "bg-[var(--color-success)]" 
-            : percentage > 50 
-              ? "bg-[var(--color-accent-primary)]"
-              : "bg-[var(--color-warning)]"
-        )}
-        style={{ width: `${percentage}%` }}
-      />
-    </div>
-    <span className="text-[10px] font-mono text-[var(--color-text-dim)] w-16 text-right">
-      {completed}/{total} ({percentage}%)
-    </span>
-  </div>
-));
-
-ProgressBar.displayName = 'ProgressBar';
-
-/**
- * Stats summary row
- */
-const StatsSummary: React.FC<{ 
+const StatsBadges: React.FC<{ 
   pending: number; 
   inProgress: number; 
   completed: number;
-  iterations?: number;
-}> = memo(({ pending, inProgress, completed, iterations }) => (
-  <div className="flex items-center gap-3 text-[10px] font-mono px-2 py-1 border-t border-[var(--color-border-subtle)]/30">
-    {completed > 0 && (
-      <span className="flex items-center gap-1 text-[var(--color-success)]">
-        <CheckCircle2 size={10} />
-        {completed} done
-      </span>
-    )}
-    {inProgress > 0 && (
-      <span className="flex items-center gap-1 text-[var(--color-accent-primary)]">
-        <Clock size={10} />
-        {inProgress} active
-      </span>
-    )}
-    {pending > 0 && (
-      <span className="flex items-center gap-1 text-[var(--color-text-dim)]">
-        <AlertCircle size={10} />
-        {pending} pending
-      </span>
-    )}
-    {iterations && iterations > 1 && (
-      <span className="flex items-center gap-1 text-[var(--color-text-dim)]">
-        <History size={10} />
-        {iterations} iterations
-      </span>
-    )}
-  </div>
-));
+}> = memo(({ pending, inProgress, completed }) => {
+  const badges = [
+    { count: completed, label: 'done', color: 'text-[var(--color-success)]', show: completed > 0 },
+    { count: inProgress, label: 'active', color: 'text-[var(--color-accent-primary)]', show: inProgress > 0 },
+    { count: pending, label: 'todo', color: 'text-[var(--color-text-muted)]', show: pending > 0 },
+  ].filter(b => b.show);
 
-StatsSummary.displayName = 'StatsSummary';
+  if (badges.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      {badges.map(({ count, label, color }) => (
+        <span key={label} className={cn('text-[10px] font-mono flex items-center gap-1', color)}>
+          <span className="tabular-nums">{count}</span>
+          <span className="opacity-70">{label}</span>
+        </span>
+      ))}
+    </div>
+  );
+});
+
+StatsBadges.displayName = 'StatsBadges';
 
 /**
- * Requirements section - only shown when TaskSession is provided
+ * Requirements section with expandable list
  */
-const RequirementsSection: React.FC<{ requirements: string[] }> = memo(({ requirements }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+const RequirementsPanel: React.FC<{ requirements: string[] }> = memo(({ requirements }) => {
+  const [isOpen, setIsOpen] = useState(false);
 
   if (requirements.length === 0) return null;
 
   return (
-    <div className="border-t border-[var(--color-border-subtle)]/30">
+    <div className="border-t border-[var(--color-border-subtle)]/40">
       <button
         type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-2 py-1 text-[10px] font-mono text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]/30"
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          'w-full flex items-center gap-2 px-3 py-2',
+          'text-[10px] font-mono text-[var(--color-text-muted)]',
+          'hover:bg-[var(--color-surface-2)]/30 transition-colors'
+        )}
       >
-        <Target size={10} />
-        <span>Requirements ({requirements.length})</span>
-        {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        <Target size={10} className="flex-shrink-0" />
+        <span>Requirements</span>
+        <span className="text-[var(--color-text-dim)]">({requirements.length})</span>
+        <div className="flex-1" />
+        {isOpen ? (
+          <ChevronUp size={10} className="transition-transform duration-200" />
+        ) : (
+          <ChevronDown size={10} className="transition-transform duration-200" />
+        )}
       </button>
-      {isExpanded && (
-        <div className="px-2 pb-1">
+      
+      <div className={cn(
+        'overflow-hidden transition-all duration-200',
+        isOpen ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
+      )}>
+        <div className="px-3 pb-2 space-y-1">
           {requirements.map((req, idx) => (
-            <div key={idx} className="text-[10px] font-mono text-[var(--color-text-dim)] py-0.5 pl-4">
-              {idx + 1}. {req}
+            <div key={idx} className="flex items-start gap-2 text-[10px] font-mono text-[var(--color-text-dim)]">
+              <span className="text-[var(--color-text-placeholder)] tabular-nums">{idx + 1}.</span>
+              <span className="leading-relaxed">{req}</span>
             </div>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 });
 
-RequirementsSection.displayName = 'RequirementsSection';
+RequirementsPanel.displayName = 'RequirementsPanel';
 
 /**
- * Plan info header - only shown when TaskSession is provided
+ * Plan metadata display
  */
-const PlanInfo: React.FC<{ session: TaskSession }> = memo(({ session }) => (
-  <div className="flex items-center gap-3 text-[10px] font-mono px-2 py-1 border-b border-[var(--color-border-subtle)]/30 bg-[var(--color-surface-2)]/20">
-    <span className="flex items-center gap-1 text-[var(--color-text-dim)]">
-      <FolderOpen size={10} />
-      .vyotiq/{session.folderName}/
-    </span>
-    <span className="flex items-center gap-1 text-[var(--color-text-dim)]">
-      <FileText size={10} />
-      {session.plan.id.substring(0, 20)}...
+const PlanMetadata: React.FC<{ session: TaskSession }> = memo(({ session }) => (
+  <div className="flex items-center gap-3 px-3 py-1.5 border-b border-[var(--color-border-subtle)]/30 bg-[var(--color-surface-2)]/20">
+    <span className="flex items-center gap-1.5 text-[10px] font-mono text-[var(--color-text-dim)]">
+      <FolderOpen size={10} className="flex-shrink-0" />
+      <span className="truncate max-w-[120px]">.vyotiq/{session.folderName}</span>
     </span>
   </div>
 ));
 
-PlanInfo.displayName = 'PlanInfo';
+PlanMetadata.displayName = 'PlanMetadata';
+
+// ============================================================================
+// Main Component
+// ============================================================================
 
 /**
  * Main TodoProgress component
- * Supports both basic TodoItem[] and enhanced TaskSession display
+ * Clean, persistent task progress display with collapsible details
  */
 const TodoProgressComponent: React.FC<TodoProgressProps> = ({
   todos,
   taskSession,
   className,
+  compact = false,
+  sticky = false,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(!compact);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState<number>(0);
   
-  // Use TaskSession data if available, otherwise use basic todos
+  // Calculate actual content height for smooth animation
+  useEffect(() => {
+    if (contentRef.current) {
+      setContentHeight(contentRef.current.scrollHeight);
+    }
+  }, [todos, taskSession, isExpanded]);
+  
+  // Determine data source
   const hasTaskSession = !!taskSession;
   const displayTodos = hasTaskSession ? taskSession.tasks : todos;
+  
+  // Calculate stats
   const stats = useMemo(() => {
     if (hasTaskSession) {
       return taskSession.stats;
@@ -274,90 +322,151 @@ const TodoProgressComponent: React.FC<TodoProgressProps> = ({
     setIsExpanded(prev => !prev);
   }, []);
 
+  // Don't render if no todos
   if (displayTodos.length === 0) {
     return null;
   }
 
   const isComplete = stats.completionPercentage === 100;
+  const hasActiveTask = stats.inProgress > 0;
   const title = hasTaskSession 
     ? taskSession.taskName 
-    : (isComplete ? 'Tasks Complete' : 'Task Progress');
+    : (isComplete ? 'All Tasks Complete' : 'Task Progress');
   const Icon = hasTaskSession ? ClipboardList : ListTodo;
 
   return (
-    <div className={cn(
-      'rounded border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]/50',
-      'font-mono text-[11px]',
-      isComplete && 'border-[var(--color-success)]/30',
-      className
-    )}>
-      {/* Header */}
+    <div 
+      className={cn(
+        'rounded-lg overflow-hidden',
+        'border border-[var(--color-border-subtle)]',
+        'bg-[var(--color-surface-1)]',
+        'shadow-sm',
+        isComplete && 'border-[var(--color-success)]/25',
+        hasActiveTask && !isComplete && 'border-[var(--color-accent-primary)]/25',
+        sticky && 'sticky bottom-4 z-10',
+        className
+      )}
+    >
+      {/* Header - Always visible */}
       <button
         type="button"
         onClick={toggleExpanded}
         className={cn(
-          'w-full flex items-center gap-2 px-2 py-1.5',
-          'hover:bg-[var(--color-surface-2)]/30 transition-colors',
-          'outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/25',
-          isExpanded && 'border-b border-[var(--color-border-subtle)]/50'
+          'w-full flex items-center gap-3 px-3 py-2.5',
+          'bg-[var(--color-surface-1)]',
+          'hover:bg-[var(--color-surface-2)]/40',
+          'transition-colors duration-150',
+          'outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/30 focus-visible:ring-inset'
         )}
       >
-        <span className="text-[var(--color-text-dim)]">
-          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </span>
+        {/* Icon with status indicator */}
+        <div className="relative flex-shrink-0">
+          <Icon size={16} className={cn(
+            isComplete ? "text-[var(--color-success)]" : "text-[var(--color-accent-primary)]"
+          )} />
+          {hasActiveTask && !isComplete && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--color-accent-primary)]" />
+          )}
+          {isComplete && (
+            <Sparkles size={8} className="absolute -top-1 -right-1 text-[var(--color-success)]" />
+          )}
+        </div>
         
-        <Icon size={12} className={cn(
-          isComplete ? "text-[var(--color-success)]" : "text-[var(--color-accent-primary)]"
-        )} />
-        
+        {/* Title */}
         <span className={cn(
-          "font-medium truncate",
-          isComplete ? "text-[var(--color-success)]" : "text-[var(--color-text-secondary)]"
+          "text-[11px] font-mono font-medium truncate",
+          isComplete ? "text-[var(--color-success)]" : "text-[var(--color-text-primary)]"
         )}>
           {title}
         </span>
 
-        <div className="flex-1 ml-2">
-          <ProgressBar 
+        {/* Spacer */}
+        <div className="flex-1" />
+        
+        {/* Stats badges (collapsed state) */}
+        {!isExpanded && (
+          <StatsBadges 
+            pending={stats.pending}
+            inProgress={stats.inProgress}
+            completed={stats.completed}
+          />
+        )}
+
+        {/* Progress bar */}
+        <div className="w-24 flex-shrink-0">
+          <ProgressBarAnimated 
             percentage={stats.completionPercentage} 
             completed={stats.completed}
             total={stats.total}
+            showLabel={false}
           />
         </div>
+        
+        {/* Percentage */}
+        <span className={cn(
+          "text-[10px] font-mono tabular-nums w-8 text-right",
+          isComplete ? "text-[var(--color-success)]" : "text-[var(--color-text-muted)]"
+        )}>
+          {stats.completionPercentage}%
+        </span>
+        
+        {/* Expand indicator */}
+        {isExpanded ? (
+          <ChevronUp size={14} className="text-[var(--color-text-muted)] transition-transform duration-200 flex-shrink-0" />
+        ) : (
+          <ChevronDown size={14} className="text-[var(--color-text-muted)] transition-transform duration-200 flex-shrink-0" />
+        )}
       </button>
 
-      {/* Expanded content */}
-      {isExpanded && (
-        <div>
-          {/* Plan info - only for TaskSession */}
-          {hasTaskSession && <PlanInfo session={taskSession} />}
+      {/* Expandable content */}
+      <div 
+        className={cn(
+          'overflow-hidden transition-all duration-250 ease-out',
+          isExpanded ? 'opacity-100' : 'opacity-0'
+        )}
+        style={{ 
+          maxHeight: isExpanded ? `${Math.min(contentHeight, 320)}px` : '0px' 
+        }}
+      >
+        <div ref={contentRef}>
+          {/* Plan metadata - TaskSession only */}
+          {hasTaskSession && <PlanMetadata session={taskSession} />}
 
-          {/* Todo list */}
-          <div className="py-1">
-            {sortedTodos.map((todo, idx) => (
-              <TodoItemRow 
-                key={todo.id} 
-                todo={todo} 
-                isLast={idx === sortedTodos.length - 1 && !hasTaskSession}
+          {/* Task list with scroll */}
+          <div className={cn(
+            'divide-y divide-[var(--color-border-subtle)]/20',
+            sortedTodos.length > 5 && 'max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--color-border-subtle)]'
+          )}>
+            {sortedTodos.map((task, idx) => (
+              <TaskItemRow 
+                key={task.id} 
+                task={task} 
+                index={idx}
                 showExtendedInfo={hasTaskSession}
               />
             ))}
           </div>
           
-          {/* Requirements - only for TaskSession */}
-          {hasTaskSession && (
-            <RequirementsSection requirements={taskSession.plan.requirements} />
+          {/* Requirements - TaskSession only */}
+          {hasTaskSession && taskSession.plan.requirements && (
+            <RequirementsPanel requirements={taskSession.plan.requirements} />
           )}
           
-          {/* Stats summary */}
-          <StatsSummary 
-            pending={stats.pending}
-            inProgress={stats.inProgress}
-            completed={stats.completed}
-            iterations={hasTaskSession ? taskSession.iterationCount : undefined}
-          />
+          {/* Footer stats */}
+          <div className="flex items-center justify-between px-3 py-2 border-t border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-2)]/20">
+            <StatsBadges 
+              pending={stats.pending}
+              inProgress={stats.inProgress}
+              completed={stats.completed}
+            />
+            {hasTaskSession && taskSession.iterationCount && taskSession.iterationCount > 1 && (
+              <span className="text-[10px] font-mono text-[var(--color-text-dim)]">
+                iteration {taskSession.iterationCount}
+              </span>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

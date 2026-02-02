@@ -126,14 +126,14 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
 
   return (
     <div className={cn(
-      'px-3 sm:px-4 py-2',
+      'px-3 sm:px-4 py-2 min-w-0 w-full',
       'bg-[var(--color-surface-1)]/30',
       'overflow-hidden'
     )}>
-      <div className="flex items-center justify-between gap-3 min-w-0">
+      <div className="flex items-center justify-between gap-2 min-w-0 w-full overflow-hidden">
         {/* Left: Status + Request preview */}
         <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
             {/* Status indicator */}
             <span className={cn(
               'flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0',
@@ -176,7 +176,7 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
         </div>
 
         {/* Right: Stats badges */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0 overflow-hidden flex-wrap justify-end max-w-[50%]">
           {/* Time */}
           {typeof startAt === 'number' && (
             <span className="text-[9px] font-mono text-[var(--color-text-dim)] tabular-nums">
@@ -190,16 +190,17 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
               className={cn(
                 'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
                 'bg-[var(--color-surface-2)]/60',
-                'text-[9px] font-mono text-[var(--color-text-muted)]'
+                'text-[9px] font-mono text-[var(--color-text-muted)]',
+                'max-w-[180px] overflow-hidden'
               )}
               title={modelInfo.modelId ? `${modelInfo.provider}/${modelInfo.modelId}` : modelInfo.provider}
             >
-              <Cpu size={9} className="text-[var(--color-accent-secondary)]" />
-              <span className="text-[var(--color-text-secondary)]">{modelInfo.provider}</span>
+              <Cpu size={9} className="text-[var(--color-accent-secondary)] flex-shrink-0" />
+              <span className="text-[var(--color-text-secondary)] truncate">{modelInfo.provider}</span>
               {modelInfo.modelId && (
                 <>
-                  <span className="text-[var(--color-text-dim)]">/</span>
-                  <span className="text-[var(--color-text-dim)]">{formatModelIdShort(modelInfo.modelId)}</span>
+                  <span className="text-[var(--color-text-dim)] flex-shrink-0">/</span>
+                  <span className="text-[var(--color-text-dim)] truncate">{formatModelIdShort(modelInfo.modelId)}</span>
                 </>
               )}
             </span>

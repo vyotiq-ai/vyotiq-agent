@@ -200,6 +200,86 @@ declare global {
          * Subscribe to diagnostics cleared events.
          */
         onDiagnosticsCleared: (handler: () => void) => () => void;
+        /**
+         * Get AGENTS.md status for the active workspace.
+         * Returns discovered AGENTS.md files and their sections.
+         */
+        getAgentsMdStatus: () => Promise<{
+          enabled: boolean;
+          files: Array<{
+            path: string;
+            relativePath: string;
+            depth: number;
+            sectionCount: number;
+            size: number;
+          }>;
+          primaryFile: {
+            path: string;
+            sections: string[];
+          } | null;
+          error: string | null;
+        }>;
+        /**
+         * Refresh AGENTS.md cache for the active workspace.
+         */
+        refreshAgentsMd: () => Promise<{
+          success: boolean;
+          fileCount?: number;
+          error?: string;
+        }>;
+        /**
+         * Get all instruction files status for the active workspace.
+         * Returns all discovered instruction files (AGENTS.md, CLAUDE.md, copilot-instructions.md, etc.)
+         */
+        getInstructionFilesStatus: () => Promise<{
+          found: boolean;
+          fileCount: number;
+          enabledCount: number;
+          files: Array<{
+            path: string;
+            type: string;
+            enabled: boolean;
+            priority: number;
+            sectionsCount: number;
+            hasFrontmatter: boolean;
+          }>;
+          byType: Record<string, number>;
+          error: string | null;
+        }>;
+        /**
+         * Refresh instruction files cache for the active workspace.
+         */
+        refreshInstructionFiles: () => Promise<{
+          success: boolean;
+          fileCount?: number;
+          enabledCount?: number;
+          error?: string;
+        }>;
+        /**
+         * Toggle an instruction file's enabled status.
+         */
+        toggleInstructionFile: (relativePath: string, enabled: boolean) => Promise<{
+          success: boolean;
+          error?: string;
+        }>;
+        /**
+         * Update instruction files configuration.
+         */
+        updateInstructionFilesConfig: (config: Record<string, unknown>) => Promise<{
+          success: boolean;
+          error?: string;
+        }>;
+        /**
+         * Get instruction files context for the active file.
+         */
+        getInstructionFilesContext: (activeFilePath?: string) => Promise<{
+          found: boolean;
+          allFiles: unknown[];
+          enabledFiles: unknown[];
+          combinedContent: string;
+          scannedAt: number;
+          errors: Array<{ path: string; error: string }>;
+        }>;
       };
       settings: {
         get: () => Promise<AgentSettings>;

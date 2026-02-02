@@ -387,8 +387,8 @@ export const useChatInput = () => {
     historyIndex: messageHistory.currentHistoryIndex,
     historyLength: messageHistory.historyLength,
 
-    // @ Mentions
-    mentions: {
+    // @ Mentions - stable object reference
+    mentions: useMemo(() => ({
       activeMention: mentions.activeMention,
       suggestions: mentions.suggestions,
       selectedIndex: mentions.selectedIndex,
@@ -399,17 +399,28 @@ export const useChatInput = () => {
       noResults: mentions.noResults,
       searchQuery: mentions.searchQuery,
       totalFiles: mentions.totalFiles,
-    },
+    }), [
+      mentions.activeMention,
+      mentions.suggestions,
+      mentions.selectedIndex,
+      mentions.setSelectedIndex,
+      handleMentionSelect,
+      mentions.parseMentions,
+      mentions.isLoading,
+      mentions.noResults,
+      mentions.searchQuery,
+      mentions.totalFiles,
+    ]),
     cursorPosition,
     setCursorPosition,
 
-    // Draft auto-save
-    draft: {
+    // Draft auto-save - stable object reference
+    draft: useMemo(() => ({
       status: draft.draftStatus,
       hasDraft: draft.hasDraft,
       lastSavedAt: draft.lastSavedAt,
       clearDraft: draft.clearDraft,
-    },
+    }), [draft.draftStatus, draft.hasDraft, draft.lastSavedAt, draft.clearDraft]),
 
     // Workspace files for mentions
     workspaceFiles: workspaceFiles.files,
