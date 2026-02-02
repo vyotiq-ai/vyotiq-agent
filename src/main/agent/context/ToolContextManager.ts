@@ -79,6 +79,18 @@ export interface SessionToolState {
 /** Session tool states - keyed by session ID */
 const sessionToolStates = new Map<string, SessionToolState>();
 
+/** Tool selection cache - avoid recalculating on rapid successive calls */
+interface ToolSelectionCache {
+  sessionId: string;
+  workspaceType: string;
+  messageCount: number;
+  toolUsageHash: string;
+  selectedToolNames: string[];
+  timestamp: number;
+}
+let toolSelectionCache: ToolSelectionCache | null = null;
+const TOOL_SELECTION_CACHE_TTL = 2000; // 2 seconds - recompute after this
+
 /**
  * Get or create session tool state
  */
@@ -879,6 +891,24 @@ export function selectToolsForContext(
   allTools: ToolDefinition[],
   context: ToolSelectionContext
 ): ToolDefinition[] {
+  // Check cache first to avoid expensive recalculation on rapid calls
+  const now = Date.now();
+  const toolUsageHash = context.recentToolUsage.join(',');
+  const messageCount = context.recentMessages.length;
+  
+  if (
+    toolSelectionCache &&
+    toolSelectionCache.sessionId === context.sessionId &&
+    toolSelectionCache.workspaceType === context.workspaceType &&
+    toolSelectionCache.messageCount === messageCount &&
+    toolSelectionCache.toolUsageHash === toolUsageHash &&
+    now - toolSelectionCache.timestamp < TOOL_SELECTION_CACHE_TTL
+  ) {
+    // Return cached tools from allTools based on cached names
+    const cachedSet = new Set(toolSelectionCache.selectedToolNames);
+    return allTools.filter(t => cachedSet.has(t.name));
+  }
+
   const selectedToolNames = new Set<string>();
   const maxTools = context.maxTools ?? 18; // Reduced from 25 to minimize token usage
 
@@ -1081,6 +1111,16 @@ export function selectToolsForContext(
         : 'N/A',
     },
   });
+
+  // Update cache for subsequent rapid calls
+  toolSelectionCache = {
+    sessionId: context.sessionId ?? '',
+    workspaceType: context.workspaceType,
+    messageCount: context.recentMessages.length,
+    toolUsageHash: context.recentToolUsage.join(','),
+    selectedToolNames: selectedTools.map(t => t.name),
+    timestamp: Date.now(),
+  };
 
   return selectedTools;
 }

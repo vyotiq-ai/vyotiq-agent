@@ -12,7 +12,7 @@
 import { ipcMain } from 'electron';
 import { createLogger } from '../logger';
 import type { IpcContext } from './types';
-import { withSafeHandler, sessionCreationMutex, validateNonEmptyString } from './guards';
+import { withSafeHandler, sessionCreationMutex, validateNonEmptyString as _validateNonEmptyString, validateIpcPayload } from './guards';
 
 const logger = createLogger('IPC:Agent');
 
@@ -36,6 +36,13 @@ export function registerAgentHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle('agent:send-message', async (_event, payload) => {
+    // Validate payload structure
+    const validationError = validateIpcPayload('agent:send-message', payload);
+    if (validationError) {
+      logger.warn('agent:send-message validation failed', { error: validationError.error });
+      return validationError;
+    }
+    
     return withSafeHandler(context, 'agent:send-message', async (orchestrator) => {
       logger.info('Sending message for session', {
         sessionId: payload.sessionId,
@@ -47,6 +54,13 @@ export function registerAgentHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle('agent:confirm-tool', async (_event, payload) => {
+    // Validate payload structure
+    const validationError = validateIpcPayload('agent:confirm-tool', payload);
+    if (validationError) {
+      logger.warn('agent:confirm-tool validation failed', { error: validationError.error });
+      return validationError;
+    }
+    
     return withSafeHandler(context, 'agent:confirm-tool', async (orchestrator) => {
       await orchestrator.confirmTool(payload);
       return { success: true };

@@ -31,10 +31,6 @@ import { calculateTodoStats } from '../../../../shared/types/todo';
 interface TodoProgressProps {
   /** Basic todo items (in-memory) */
   todos: TodoItem[];
-  /** Session ID for the todos */
-  sessionId: string;
-  /** Optional run ID */
-  runId?: string;
   /** Optional TaskSession for enhanced display with plan info */
   taskSession?: TaskSession;
   /** Optional class name */
@@ -42,14 +38,14 @@ interface TodoProgressProps {
 }
 
 /**
- * Get status icon for a todo item
+ * Get status icon for a todo item - uses consistent styling without excessive animation
  */
 function getStatusIcon(status: TodoItem['status']) {
   switch (status) {
     case 'completed':
       return <CircleCheck size={12} className="text-[var(--color-success)]" />;
     case 'in_progress':
-      return <CircleDot size={12} className="text-[var(--color-accent-primary)] animate-pulse" />;
+      return <CircleDot size={12} className="text-[var(--color-accent-primary)]" />;
     case 'pending':
     default:
       return <Circle size={12} className="text-[var(--color-text-dim)]" />;
@@ -107,11 +103,6 @@ const TodoItemRow: React.FC<{
         {hasDescription && (
           <span className="text-[10px] text-[var(--color-text-dim)] font-mono mt-0.5 block">
             {taskItem.description}
-          </span>
-        )}
-        {todo.status === 'in_progress' && (
-          <span className="text-[10px] text-[var(--color-accent-primary)] font-mono mt-0.5 block">
-            currently working
           </span>
         )}
         {hasTargetFiles && (
@@ -177,7 +168,7 @@ const StatsSummary: React.FC<{
     )}
     {inProgress > 0 && (
       <span className="flex items-center gap-1 text-[var(--color-accent-primary)]">
-        <Clock size={10} className="animate-pulse" />
+        <Clock size={10} />
         {inProgress} active
       </span>
     )}

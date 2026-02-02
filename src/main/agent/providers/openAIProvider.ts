@@ -767,6 +767,48 @@ export class OpenAIProvider extends BaseLLMProvider {
         continue;
       }
 
+      // Handle user messages with potential attachments (vision support)
+      // @see https://platform.openai.com/docs/guides/vision
+      if (message.role === 'user' && message.attachments && message.attachments.length > 0) {
+        type UserContentBlock = 
+          | { type: 'input_text'; text: string }
+          | { type: 'input_image'; image_url: string };
+        
+        const userContent: UserContentBlock[] = [];
+        
+        // Add text content first
+        if (message.content) {
+          userContent.push({ type: 'input_text', text: message.content });
+        }
+        
+        // Add image attachments
+        for (const attachment of message.attachments) {
+          const isImage = attachment.mimeType?.startsWith('image/');
+          if (isImage && attachment.content) {
+            // OpenAI accepts data URLs for images
+            const dataUrl = `data:${attachment.mimeType || 'image/png'};base64,${attachment.content}`;
+            userContent.push({
+              type: 'input_image',
+              image_url: dataUrl,
+            });
+            logger.debug('Added image attachment to OpenAI request', {
+              name: attachment.name,
+              mimeType: attachment.mimeType,
+              sizeBytes: attachment.content.length,
+            });
+          }
+        }
+        
+        // If we have structured content, use it
+        if (userContent.length > 0) {
+          input.push({
+            role: 'user',
+            content: userContent,
+          });
+          continue;
+        }
+      }
+
       // Regular message
       input.push({
         role: message.role,

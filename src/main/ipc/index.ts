@@ -35,6 +35,17 @@ export type { IpcContext } from './types';
 // Re-export cleanup functions
 export { cleanupTerminalSessions };
 
+// Re-export event batcher for performance optimization
+export {
+  IpcEventBatcher,
+  initIpcEventBatcher,
+  getIpcEventBatcher,
+  sendBatchedEvent,
+  getEventPriority,
+  EventPriority,
+  type EventPriority as EventPriorityType,
+} from './eventBatcher';
+
 // Re-export guards and utilities
 export {
   withOrchestratorGuard,

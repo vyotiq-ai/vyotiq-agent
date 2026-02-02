@@ -29,7 +29,6 @@ export { DynamicToolIndicator } from './components/DynamicToolIndicator';
 export { GeneratedMedia } from './components/GeneratedMedia';
 export { MessageEditDialog } from './components/MessageEditDialog';
 export { RunGroupHeader } from './components/RunGroupHeader';
-export { RunProgress } from './components/RunProgress';
 export { SessionWelcome } from './components/SessionWelcome';
 export { ThinkingPanel } from './components/ThinkingPanel';
 export { TodoProgress } from './components/TodoProgress';

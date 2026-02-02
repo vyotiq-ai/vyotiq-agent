@@ -13,6 +13,7 @@ import {
   FONT_SIZE_SCALES,
   ACCENT_COLOR_PRESETS,
   DEFAULT_APPEARANCE_SETTINGS,
+  ANIMATION_SPEED_MULTIPLIERS,
 } from '../../shared/types';
 
 /**
@@ -60,6 +61,35 @@ export function applyAppearanceSettings(settings: AppearanceSettings): void {
     doc.setAttribute('data-animations', 'true');
   } else {
     doc.removeAttribute('data-animations');
+  }
+
+  // Apply loading indicator style
+  doc.setAttribute('data-loading-style', settings.loadingIndicatorStyle ?? 'spinner');
+
+  // Apply animation speed
+  const speedMultiplier = ANIMATION_SPEED_MULTIPLIERS[settings.animationSpeed ?? 'normal'];
+  doc.style.setProperty('--animation-speed-multiplier', String(speedMultiplier));
+  doc.style.setProperty('--animation-duration-spin', `${1 * speedMultiplier}s`);
+  doc.style.setProperty('--animation-duration-pulse', `${2 * speedMultiplier}s`);
+  doc.style.setProperty('--animation-duration-ping', `${1 * speedMultiplier}s`);
+  doc.style.setProperty('--animation-duration-bounce', `${1 * speedMultiplier}s`);
+
+  // Apply reduce motion preference
+  const reduceMotion = settings.reduceMotion ?? 'system';
+  doc.setAttribute('data-reduce-motion', reduceMotion);
+  
+  // Force enable/disable animations based on reduceMotion setting
+  if (reduceMotion === 'always') {
+    doc.classList.add('reduce-motion');
+    doc.removeAttribute('data-animations');
+  } else if (reduceMotion === 'never') {
+    doc.classList.remove('reduce-motion');
+    if (settings.enableAnimations) {
+      doc.setAttribute('data-animations', 'true');
+    }
+  } else {
+    // 'system' - let CSS media query handle it
+    doc.classList.remove('reduce-motion');
   }
 }
 

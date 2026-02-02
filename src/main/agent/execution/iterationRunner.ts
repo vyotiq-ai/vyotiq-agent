@@ -32,6 +32,7 @@ import {
   extractRetryAfter,
 } from '../utils/errorUtils';
 import { agentMetrics } from '../metrics';
+import type { ProviderHealthCallback } from './types';
 
 export class IterationRunner {
   private readonly logger: Logger;
@@ -40,6 +41,7 @@ export class IterationRunner {
   private readonly debugEmitter: DebugEmitter;
   private readonly streamHandler: StreamHandler;
   private readonly updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void;
+  private readonly getProviderHealthCallback?: () => ProviderHealthCallback | undefined;
 
   constructor(
     logger: Logger,
@@ -47,7 +49,8 @@ export class IterationRunner {
     progressTracker: ProgressTracker,
     debugEmitter: DebugEmitter,
     streamHandler: StreamHandler,
-    updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void
+    updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void,
+    getProviderHealthCallback?: () => ProviderHealthCallback | undefined
   ) {
     this.logger = logger;
     this.emitEvent = emitEvent;
@@ -55,6 +58,7 @@ export class IterationRunner {
     this.debugEmitter = debugEmitter;
     this.streamHandler = streamHandler;
     this.updateSessionState = updateSessionState;
+    this.getProviderHealthCallback = getProviderHealthCallback;
   }
 
   /**
@@ -388,6 +392,8 @@ export class IterationRunner {
         return { result: 'completed' };
       }
 
+      const requestStartTime = Date.now();
+
       try {
         const request = await buildProviderRequest();
         request.signal = controller.signal;
@@ -511,12 +517,34 @@ export class IterationRunner {
           });
         }
 
+        // Store thinking content and signature on the assistant message for tool use preservation
+        // This is critical for Anthropic extended thinking and Gemini thought signatures
+        // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#preserving-thinking-blocks
+        if (streamedThinking && lastThoughtSignature) {
+          // Store the Anthropic thinking signature for multi-turn tool use
+          // Find the message from onStreamOutput callback and update it
+          const lastAssistantMsg = session.state.messages.findLast(
+            (m) => m.role === 'assistant' && m.runId === runId
+          );
+          if (lastAssistantMsg) {
+            lastAssistantMsg.anthropicThinkingSignature = lastThoughtSignature;
+            lastAssistantMsg.thoughtSignature = lastThoughtSignature;
+          }
+        }
+
         // Build token usage with proper typing
         const tokenUsage: TokenUsage = {
           input: streamInputTokens,
           output: streamOutputTokens,
           total: streamInputTokens + streamOutputTokens,
         };
+
+        // Track provider health on success
+        const latencyMs = Date.now() - requestStartTime;
+        const healthCallback = this.getProviderHealthCallback?.();
+        if (healthCallback) {
+          healthCallback(provider.name as LLMProviderName, true, latencyMs);
+        }
 
         if (toolCalls.length > 0) {
           agentMetrics.recordProviderCall(runId, true, attempt > 1);
@@ -589,6 +617,13 @@ export class IterationRunner {
           this.logger.warn('Transient error, retrying', { provider: provider.name, runId, attempt, delay: Math.round(delay) });
           await this.delay(delay);
           continue;
+        }
+
+        // Track provider health on failure (non-retryable or exhausted retries)
+        const failureLatencyMs = Date.now() - requestStartTime;
+        const failureHealthCallback = this.getProviderHealthCallback?.();
+        if (failureHealthCallback) {
+          failureHealthCallback(provider.name as LLMProviderName, false, failureLatencyMs);
         }
 
         agentMetrics.recordProviderCall(runId, false, attempt > 1);

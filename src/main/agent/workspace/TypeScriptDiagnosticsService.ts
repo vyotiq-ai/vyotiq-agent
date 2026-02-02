@@ -382,8 +382,12 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
 
     // Get all source files from the program
     const sourceFiles = program.getSourceFiles().filter(sf => !sf.isDeclarationFile);
+    
+    // Yield to event loop every N files to prevent UI freeze
+    const YIELD_INTERVAL = 20;
 
-    for (const sourceFile of sourceFiles) {
+    for (let i = 0; i < sourceFiles.length; i++) {
+      const sourceFile = sourceFiles[i];
       const filePath = sourceFile.fileName;
       
       if (this.shouldIgnoreFile(filePath)) {
@@ -404,6 +408,11 @@ export class TypeScriptDiagnosticsService extends EventEmitter {
       // Limit total diagnostics
       if (allDiagnostics.length >= this.config.maxDiagnostics) {
         break;
+      }
+      
+      // Yield to event loop periodically to prevent UI freeze
+      if ((i + 1) % YIELD_INTERVAL === 0) {
+        await new Promise(resolve => setImmediate(resolve));
       }
     }
 

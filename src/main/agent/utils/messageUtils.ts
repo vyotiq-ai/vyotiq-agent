@@ -29,6 +29,11 @@ export function convertMessagesToProvider(messages: ChatMessage[]): ProviderMess
         toolCalls: msg.toolCalls,
         providerInternal: msg.providerInternal,
         thinking: msg.reasoningContent || msg.thinking,
+        thoughtSignature: msg.thoughtSignature,
+        // Anthropic extended thinking fields for multi-turn tool use
+        // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#preserving-thinking-blocks
+        anthropicThinkingSignature: msg.anthropicThinkingSignature,
+        redactedThinking: msg.redactedThinking,
         generatedImages: msg.generatedImages,
         generatedAudio: msg.generatedAudio,
       };

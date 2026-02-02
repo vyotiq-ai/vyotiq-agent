@@ -241,6 +241,9 @@ VerifyTasks → check completion
 
   // Risk level - safe as it only manages internal state
   riskLevel: 'safe',
+  
+  // Only allow direct calls
+  allowedCallers: ['direct'],
 
   // UI metadata
   ui: {

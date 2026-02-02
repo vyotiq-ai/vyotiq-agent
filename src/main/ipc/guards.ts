@@ -470,6 +470,78 @@ export const IpcSchemas = {
       data: { type: 'string' },
     },
   },
+  
+  // Browser operations
+  'browser:navigate': {
+    type: 'object',
+    required: ['url'],
+    properties: {
+      url: { type: 'string', minLength: 1 },
+    },
+  },
+  
+  'browser:extract': {
+    type: 'object',
+    required: [],
+    properties: {
+      includeHtml: { type: 'boolean', optional: true },
+      maxLength: { type: 'number', optional: true, min: 100, max: 10000000 },
+    },
+  },
+  
+  'browser:screenshot': {
+    type: 'object',
+    required: [],
+    properties: {
+      fullPage: { type: 'boolean', optional: true },
+      selector: { type: 'string', optional: true },
+      format: { type: 'string', enum: ['png', 'jpeg'], optional: true },
+    },
+  },
+  
+  'browser:click': {
+    type: 'object',
+    required: ['selector'],
+    properties: {
+      selector: { type: 'string', minLength: 1 },
+      clickCount: { type: 'number', optional: true, min: 1, max: 3 },
+    },
+  },
+  
+  'browser:type': {
+    type: 'object',
+    required: ['selector', 'text'],
+    properties: {
+      selector: { type: 'string', minLength: 1 },
+      text: { type: 'string' },
+      delay: { type: 'number', optional: true, min: 0, max: 1000 },
+    },
+  },
+  
+  // Cache operations
+  'cache:clear': {
+    type: 'object',
+    required: [],
+    properties: {
+      type: { type: 'string', enum: ['prompt', 'tool', 'context', 'all'], optional: true },
+    },
+  },
+  
+  // Settings operations
+  'settings:update': {
+    type: 'object',
+    required: [],
+    properties: {},  // Flexible - validated by settingsValidation.ts
+  },
+  
+  'settings:set-api-key': {
+    type: 'object',
+    required: ['provider', 'key'],
+    properties: {
+      provider: { type: 'string', minLength: 1 },
+      key: { type: 'string' },
+    },
+  },
 } as const satisfies Record<string, IpcSchema>;
 
 export type IpcSchemaKey = keyof typeof IpcSchemas;

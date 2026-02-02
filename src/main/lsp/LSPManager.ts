@@ -126,7 +126,7 @@ export class LSPManager extends EventEmitter {
    */
   async shutdown(): Promise<void> {
     // Clear all reconnection timers first
-    for (const [language, timer] of this.reconnectionTimers) {
+    for (const [_language, timer] of this.reconnectionTimers) {
       clearTimeout(timer);
     }
     this.reconnectionTimers.clear();
@@ -803,29 +803,46 @@ export class LSPManager extends EventEmitter {
   // Private Methods
   // ===========================================================================
 
-  private async detectInstalledServers(): Promise<void> {
-    const { execSync } = await import('node:child_process');
+  /**
+   * Execute a shell command asynchronously
+   * Returns true if command exits successfully, false otherwise
+   */
+  private async execAsync(command: string, options: { timeout?: number } = {}): Promise<boolean> {
+    const { exec } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execPromise = promisify(exec);
     const isWindows = process.platform === 'win32';
     
-    for (const [language, config] of Object.entries(LANGUAGE_SERVER_CONFIGS)) {
-      try {
-        // Try to find the command
-        const cmd = isWindows ? 'where' : 'which';
-        execSync(`${cmd} ${config.command}`, { stdio: 'ignore', shell: isWindows ? 'cmd.exe' : undefined });
-        this.installedServers.add(language as SupportedLanguage);
-      } catch {
-        // Server not installed
-      }
+    try {
+      await execPromise(command, {
+        timeout: options.timeout ?? 5000,
+        shell: isWindows ? 'cmd.exe' : undefined,
+        windowsHide: true,
+      });
+      return true;
+    } catch {
+      return false;
     }
+  }
 
-    // TypeScript server is often available via npx
+  private async detectInstalledServers(): Promise<void> {
+    const isWindows = process.platform === 'win32';
+    const cmd = isWindows ? 'where' : 'which';
+    
+    // Check all servers in parallel for faster startup
+    const checks = Object.entries(LANGUAGE_SERVER_CONFIGS).map(async ([language, config]) => {
+      const found = await this.execAsync(`${cmd} ${config.command}`);
+      if (found) {
+        this.installedServers.add(language as SupportedLanguage);
+      }
+    });
+    
+    await Promise.all(checks);
+
+    // TypeScript server is often available via npx - check in parallel with others
     if (!this.installedServers.has('typescript')) {
-      try {
-        execSync('npx --yes typescript-language-server --version', { 
-          stdio: 'ignore',
-          timeout: 10000,
-          shell: isWindows ? 'cmd.exe' : undefined,
-        });
+      const npxAvailable = await this.execAsync('npx --yes typescript-language-server --version', { timeout: 10000 });
+      if (npxAvailable) {
         this.installedServers.add('typescript');
         this.installedServers.add('javascript');
         
@@ -834,8 +851,6 @@ export class LSPManager extends EventEmitter {
         LANGUAGE_SERVER_CONFIGS.typescript.args = ['--yes', 'typescript-language-server', '--stdio'];
         LANGUAGE_SERVER_CONFIGS.javascript.command = 'npx';
         LANGUAGE_SERVER_CONFIGS.javascript.args = ['--yes', 'typescript-language-server', '--stdio'];
-      } catch {
-        // Not available via npx either
       }
     }
   }

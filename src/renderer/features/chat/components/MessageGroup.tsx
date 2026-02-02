@@ -7,7 +7,7 @@
 import React, { memo, useMemo, useCallback } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
-import type { ChatMessage as ChatMessageType, ToolResultEvent, RoutingDecision } from '../../../../shared/types';
+import type { ChatMessage as ChatMessageType, ToolResultEvent, RoutingDecision as _RoutingDecision } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
 import { MessageLine } from './MessageLine';
 import { ToolExecution } from './ToolExecution';
@@ -63,6 +63,8 @@ export interface MessageGroupProps {
   onInsertCode: (code: string, language: string) => Promise<void>;
   /** Callback when a reaction is added */
   onReaction: (messageId: string, reaction: MessageReaction) => void;
+  /** Callback to regenerate the last assistant response */
+  onRegenerate?: () => Promise<void>;
 }
 
 /**
@@ -113,6 +115,7 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
   onRunCode,
   onInsertCode,
   onReaction,
+  onRegenerate,
 }) => {
   const runKey = runId ?? `group-${groupIdx}`;
   const isGroupRunning = isLastGroup && isRunning;
@@ -130,15 +133,11 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
       className={cn(
         'rounded-lg overflow-hidden transition-all duration-200',
         isGroupRunning
-          ? 'border border-[var(--color-warning)]/30 shadow-md shadow-[var(--color-warning)]/10 ring-1 ring-[var(--color-warning)]/10'
+          ? 'border border-[var(--color-warning)]/30 shadow-sm shadow-[var(--color-warning)]/5'
           : 'border border-[var(--color-border-subtle)]/60',
         'bg-[var(--color-surface-1)]/10'
       )}
     >
-      {/* Running indicator bar */}
-      {isGroupRunning && (
-        <div className="h-[2px] bg-gradient-to-r from-transparent via-[var(--color-warning)] to-transparent animate-pulse" />
-      )}
       
       {/* Clickable header to toggle collapse */}
       <button
@@ -189,6 +188,7 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
           onRunCode={onRunCode}
           onInsertCode={onInsertCode}
           onReaction={onReaction}
+          onRegenerate={onRegenerate}
         />
       )}
     </div>
@@ -216,6 +216,7 @@ interface MessageGroupContentProps {
   onRunCode: (code: string, language: string) => Promise<void>;
   onInsertCode: (code: string, language: string) => Promise<void>;
   onReaction: (messageId: string, reaction: MessageReaction) => void;
+  onRegenerate?: () => Promise<void>;
 }
 
 const MessageGroupContent: React.FC<MessageGroupContentProps> = memo(({
@@ -233,6 +234,7 @@ const MessageGroupContent: React.FC<MessageGroupContentProps> = memo(({
   onRunCode,
   onInsertCode,
   onReaction,
+  onRegenerate,
 }) => {
   return (
     <div className="px-3 sm:px-4 py-2 sm:py-3 space-y-1 border-t border-[var(--color-border-subtle)]/20">
@@ -268,6 +270,9 @@ const MessageGroupContent: React.FC<MessageGroupContentProps> = memo(({
           // Messages to pass to ToolExecution: this assistant + its tool results
           const messagesForToolExecution = hasToolCalls ? [message, ...toolMessages] : [];
 
+          // Show regenerate button on the last assistant message of the last group when not running
+          const canRegenerate = isLastGroup && isLastAssistantInGroup && !isGroupRunning && onRegenerate;
+
           return (
             <MessageLine
               key={message.id}
@@ -283,6 +288,7 @@ const MessageGroupContent: React.FC<MessageGroupContentProps> = memo(({
               isSearchMatch={isMessageSearchMatch}
               isCurrentSearchMatch={isCurrentMatch}
               showBranding={isFirstAssistantInGroup}
+              onRegenerate={canRegenerate ? onRegenerate : undefined}
             >
               {hasToolCalls && (
                 <ToolExecution

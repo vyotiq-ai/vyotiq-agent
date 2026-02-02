@@ -39,3 +39,29 @@ export {
   detectEncoding, 
   decodeBuffer 
 } from './encoding';
+
+// Performance utilities (2026 best practices)
+export {
+  // Lazy loading with WeakRef
+  createLazyModule,
+  // Memory-sensitive caching
+  MemorySensitiveCache,
+  // Debounce/throttle with cancellation
+  debounce,
+  throttle,
+  // Object pooling for reduced GC
+  ObjectPool,
+  // Performance metrics
+  recordMetric,
+  createTimer,
+  getMetric,
+  getAllMetrics,
+  clearMetrics,
+  // Streaming with backpressure
+  StreamController,
+  // Batch processing
+  BatchProcessor,
+  // Idle task scheduling
+  scheduleIdleTask,
+  cancelIdleTask,
+} from './performance';

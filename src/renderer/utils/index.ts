@@ -4,6 +4,18 @@ export * from './constants';
 export * from './tools';
 export * from './styles';
 
+// Time formatting utilities
+export {
+  formatRelativeTime,
+  formatRelativeTimeWithSuffix,
+  formatTimeShort,
+  formatFullDateTime,
+  formatPlaybackDuration,
+  formatMs,
+  formatElapsedTime,
+  formatDuration,
+} from './timeFormatting';
+
 // ANSI escape code utilities
 export {
   stripAnsi,

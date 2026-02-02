@@ -6,7 +6,7 @@
  * Supports generated media display for multimodal models (images, audio).
  */
 import React, { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Pencil, X, Check, GitBranch, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Pencil, X, Check, GitBranch, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown, RefreshCw } from 'lucide-react';
 
 import type { ChatMessage } from '../../../../shared/types';
 import { formatTokenUsageEnhanced } from '../../../utils/messageFormatting';
@@ -14,6 +14,7 @@ import { cn } from '../../../utils/cn';
 import { ThinkingPanel } from './ThinkingPanel';
 import { GeneratedMedia } from './GeneratedMedia';
 import { RoutingBadge } from './RoutingBadge';
+import { MessageAttachments } from './MessageAttachments';
 
 interface TokenUsageDisplay {
   text: string;
@@ -33,23 +34,49 @@ function formatTokenUsage(usage?: ChatMessage['usage']): TokenUsageDisplay | und
 /**
  * Get a concise model name for thinking panel display
  * Maps model IDs to user-friendly short names
+ * 
+ * @see https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+ * @see https://api-docs.deepseek.com/guides/thinking_mode
  */
 function getThinkingModelName(modelId?: string): string | undefined {
   if (!modelId) return undefined;
   
+  const lowerModelId = modelId.toLowerCase();
+  
+  // Anthropic Claude models with extended thinking
+  // Claude 3.7+ supports extended thinking, Claude 4+ has it by default
+  if (lowerModelId.includes('claude-4.5') || lowerModelId.includes('claude-opus-4.5')) return 'Claude 4.5 Opus';
+  if (lowerModelId.includes('claude-4') && lowerModelId.includes('opus')) return 'Claude 4 Opus';
+  if (lowerModelId.includes('claude-4') && lowerModelId.includes('sonnet')) return 'Claude 4 Sonnet';
+  if (lowerModelId.includes('claude-3.7')) return 'Claude 3.7 Sonnet';
+  if (lowerModelId.includes('claude-3.5') && lowerModelId.includes('sonnet')) return 'Claude 3.5 Sonnet';
+  if (lowerModelId.includes('claude')) return 'Claude';
+  
+  // OpenAI reasoning models (o-series)
+  if (lowerModelId.includes('o3')) return 'OpenAI o3';
+  if (lowerModelId.includes('o1-pro')) return 'OpenAI o1 Pro';
+  if (lowerModelId.includes('o1-mini')) return 'OpenAI o1 Mini';
+  if (lowerModelId.includes('o1')) return 'OpenAI o1';
+  
   // DeepSeek thinking models (V3.2)
-  // @see https://api-docs.deepseek.com/guides/thinking_mode
-  if (modelId.includes('deepseek-reasoner')) return 'DeepSeek V3.2 Reasoner';
-  if (modelId.includes('deepseek')) return 'DeepSeek';
+  if (lowerModelId.includes('deepseek-reasoner')) return 'DeepSeek V3.2 Reasoner';
+  if (lowerModelId.includes('deepseek')) return 'DeepSeek';
   
   // Gemini thinking models
-  if (modelId.includes('gemini-3')) return 'Gemini 3';
-  if (modelId.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
-  if (modelId.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
-  if (modelId.includes('gemini')) return 'Gemini';
+  if (lowerModelId.includes('gemini-3')) return 'Gemini 3';
+  if (lowerModelId.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
+  if (lowerModelId.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
+  if (lowerModelId.includes('gemini')) return 'Gemini';
   
-  // Future: Add other thinking models as they're supported
-  // if (modelId.includes('claude') && modelId.includes('thinking')) return 'Claude';
+  // GLM thinking models - extract version for precise display
+  // GLM models follow pattern: glm-4, glm-4.5, glm-4.7, glm-4-plus, etc.
+  const glmMatch = lowerModelId.match(/glm-(\d+(?:\.\d+)?(?:-[a-z]+)?)/i);
+  if (glmMatch) {
+    const version = glmMatch[1];
+    // Format: GLM-4.7, GLM-4, GLM-4-plus, etc.
+    return `GLM-${version.toUpperCase()}`;
+  }
+  if (lowerModelId.includes('glm')) return 'GLM';
   
   return undefined;
 }
@@ -193,6 +220,8 @@ interface MessageLineProps {
   children?: React.ReactNode;
   /** Whether to show lambda branding (first assistant message after user) */
   showBranding?: boolean;
+  /** Callback to regenerate the response (only for last assistant message) */
+  onRegenerate?: () => Promise<void>;
 }
 
 const MessageLineComponent: React.FC<MessageLineProps> = ({
@@ -210,11 +239,13 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
   isCurrentSearchMatch = false,
   children,
   showBranding = true,
+  onRegenerate,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Check if message is long enough to be collapsible
@@ -258,8 +289,15 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
     setTimeout(() => setCopied(false), 2000);
   }, [message.content]);
 
-  const handleMouseEnter = useCallback(() => {}, []);
-  const handleMouseLeave = useCallback(() => {}, []);
+  const handleRegenerate = useCallback(async () => {
+    if (!onRegenerate || isRegenerating) return;
+    setIsRegenerating(true);
+    try {
+      await onRegenerate();
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, [onRegenerate, isRegenerating]);
 
   const handleStartEdit = useCallback(() => {
     setEditContent(message.content);
@@ -311,8 +349,6 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
           isSearchMatch && 'bg-[var(--color-warning)]/10',
           isCurrentSearchMatch && 'ring-1 ring-[var(--color-warning)]'
         )}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
         data-message-id={message.id}
       >
         {/* Header row */}
@@ -354,16 +390,9 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
 
         {/* Content - full width with subtle left accent */}
         <div className="pl-3 ml-2 border-l border-[var(--color-accent-primary)]/20">
-          {/* Attachments */}
+          {/* Attachments with image previews */}
           {message.attachments && message.attachments.length > 0 && (
-            <div className="text-[10px] text-[var(--color-text-muted)] mb-1">
-              {message.attachments.map((att) => (
-                <div key={att.id} className="flex items-center gap-1.5">
-                  <span className="text-[var(--color-info)]">{att.name}</span>
-                  <span className="text-[var(--color-text-dim)]">{Math.round(att.size / 1024)}kb</span>
-                </div>
-              ))}
-            </div>
+            <MessageAttachments attachments={message.attachments} variant="block" />
           )}
           
           {/* Content */}
@@ -407,8 +436,6 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
         isSearchMatch && 'bg-[var(--color-warning)]/10 rounded-lg',
         isCurrentSearchMatch && 'ring-2 ring-[var(--color-warning)] ring-offset-1 ring-offset-[var(--color-surface-base)]'
       )}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
       data-message-id={message.id}
     >
       {/* Header row */}
@@ -499,6 +526,21 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
                   title="fork from here"
                 >
                   <GitBranch size={10} />
+                </button>
+              )}
+              {onRegenerate && !isStreaming && (
+                <button
+                  onClick={handleRegenerate}
+                  disabled={isRegenerating}
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    isRegenerating 
+                      ? "text-[var(--color-warning)] animate-spin"
+                      : "text-[var(--color-text-placeholder)] hover:text-[var(--color-warning)] hover:bg-[var(--color-surface-2)]/50"
+                  )}
+                  title="regenerate response"
+                >
+                  <RefreshCw size={10} />
                 </button>
               )}
               <button
@@ -603,14 +645,6 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
 
         {/* Tool executions */}
         {children && <div className="mt-2">{children}</div>}
-
-        {/* Streaming indicator - shows when no content yet */}
-        {isStreaming && !displayContent && !message.isThinkingStreaming && (
-          <div className="flex items-center gap-1.5 text-[10px] py-1">
-            <span className="w-1.5 h-1.5 bg-[var(--color-accent-primary)] animate-pulse rounded-full" />
-            <span className="text-[var(--color-text-placeholder)]">thinking...</span>
-          </div>
-        )}
       </div>
     </div>
   );

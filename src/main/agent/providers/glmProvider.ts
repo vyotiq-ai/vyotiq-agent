@@ -38,12 +38,45 @@ const MODEL_OUTPUT_LIMITS: Record<string, number> = {
   'glm-4.6': 16384,
   'glm-4.5': 8192,
   'glm-4-32b-0414-128k': 8192,
-  'glm-4.6v': 8192,
+  // Vision models (2026)
   'glm-4.5v': 8192,
+  'glm-4.1v-thinking': 8192,
+  'glm-4v-plus-0111': 8192,
+  'glm-4v-plus': 8192,
+  'glm-4v-flash': 8192,
+  'glm-4v': 8192,
   'default': 8192,
 };
 
-const THINKING_MODELS = new Set(['glm-4.7', 'glm-4.6']);
+const THINKING_MODELS = new Set(['glm-4.7', 'glm-4.6', 'glm-4.1v-thinking']);
+
+/**
+ * Vision-capable GLM models (2026)
+ * Only these models support image/video attachments.
+ * @see https://docs.bigmodel.cn/cn/guide/models/vlm
+ */
+const VISION_MODELS = new Set([
+  'glm-4.5v',
+  'glm-4.1v-thinking',
+  'glm-4v-plus-0111',
+  'glm-4v-plus',
+  'glm-4v-flash',
+  'glm-4v',
+]);
+
+/**
+ * Check if a model supports vision/image inputs
+ */
+function isVisionModel(modelId: string): boolean {
+  const normalized = modelId.toLowerCase();
+  // Check exact matches first
+  if (VISION_MODELS.has(normalized)) return true;
+  // Also check for 'v' suffix pattern (e.g., glm-4.5v, glm-4.1v-thinking)
+  return normalized.includes('4v') || 
+         normalized.includes('4.5v') || 
+         normalized.includes('4.1v') ||
+         normalized.includes('-v-');
+}
 
 export class GLMProvider extends BaseLLMProvider {
   readonly name = 'glm' as const;
@@ -404,25 +437,48 @@ export class GLMProvider extends BaseLLMProvider {
         continue;
       }
 
-      // User message with attachments (vision support for GLM-4.6V, GLM-4.5V)
+      // User message with attachments (vision support)
+      // Only vision models (glm-4.5v, glm-4v-plus, etc.) support image attachments
+      // @see https://docs.bigmodel.cn/cn/guide/models/vlm
       if (msg.role === 'user' && msg.attachments?.length) {
+        const hasImageAttachments = msg.attachments.some(a => a.mimeType?.startsWith('image/'));
+        const modelSupportsVision = isVisionModel(model);
+        
+        if (hasImageAttachments && !modelSupportsVision) {
+          logger.warn('Model does not support vision - image attachments will be ignored', {
+            model,
+            attachmentCount: msg.attachments.length,
+            supportedVisionModels: Array.from(VISION_MODELS).join(', '),
+          });
+          // Fall through to send as plain text message
+          messages.push({
+            role: 'user',
+            content: msg.content || '',
+          });
+          continue;
+        }
+        
         const contentParts: Array<Record<string, unknown>> = [];
         
         if (msg.content) {
           contentParts.push({ type: 'text', text: msg.content });
         }
         
-        for (const attachment of msg.attachments) {
-          if (attachment.mimeType?.startsWith('image/')) {
-            const imageData = attachment.content || '';
-            const imageUrl = imageData.startsWith('http') 
-              ? imageData 
-              : `data:${attachment.mimeType};base64,${imageData}`;
-            
-            contentParts.push({
-              type: 'image_url',
-              image_url: { url: imageUrl },
-            });
+        // Only include images if model supports vision
+        if (modelSupportsVision) {
+          for (const attachment of msg.attachments) {
+            if (attachment.mimeType?.startsWith('image/')) {
+              const imageData = attachment.content || '';
+              // Support both URL and base64 formats
+              const imageUrl = imageData.startsWith('http') 
+                ? imageData 
+                : `data:${attachment.mimeType};base64,${imageData}`;
+              
+              contentParts.push({
+                type: 'image_url',
+                image_url: { url: imageUrl },
+              });
+            }
           }
         }
         

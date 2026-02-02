@@ -73,6 +73,11 @@ export class AgentOrchestrator extends EventEmitter {
   private lastEditorStateLogTime = 0;
   private readonly EDITOR_STATE_LOG_DEBOUNCE_MS = 500; // Only log once per 500ms
 
+  // Throttle session-state events to prevent renderer thrashing
+  private lastSessionStateEmitTime = new Map<string, number>();
+  private pendingSessionStateEmits = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly SESSION_STATE_THROTTLE_MS = 100; // Minimum 100ms between session-state events per session
+
   constructor(deps: OrchestratorDeps) {
     super();
     this.settingsStore = deps.settingsStore;
@@ -125,6 +130,16 @@ export class AgentOrchestrator extends EventEmitter {
 
     // Initialize new managers
     this.providerManager = new ProviderManager(this.settingsStore, this.logger, this.runExecutor);
+    
+    // Wire up provider health tracking after ProviderManager is initialized
+    this.runExecutor.setProviderHealthCallback((provider, success, latencyMs) => {
+      if (success) {
+        this.providerManager.recordProviderSuccess(provider, latencyMs);
+      } else {
+        this.providerManager.recordProviderFailure(provider, latencyMs);
+      }
+    });
+    
     this.terminalEventHandler = new TerminalEventHandler(this.terminalManager, this.logger, (event) => this.emitEvent(event));
     this.terminalEventHandler.setupEventListeners();
 
@@ -480,6 +495,21 @@ export class AgentOrchestrator extends EventEmitter {
       // Legacy session without workspace binding - log warning
       this.logger.warn('Sending message for session without workspace binding', {
         sessionId: payload.sessionId,
+      });
+    }
+
+    // Debug: Log attachment info to trace content flow
+    if (payload.attachments?.length) {
+      this.logger.info('Processing message attachments', {
+        attachmentCount: payload.attachments.length,
+        attachments: payload.attachments.map(a => ({
+          id: a.id,
+          name: a.name,
+          mimeType: a.mimeType,
+          size: a.size,
+          hasContent: !!a.content,
+          contentLength: a.content?.length || 0,
+        })),
       });
     }
 
@@ -1004,6 +1034,7 @@ export class AgentOrchestrator extends EventEmitter {
   /**
    * Initialize MCP (Model Context Protocol) integration
    * Connects MCP server tools to the main tool registry
+   * Server connections run in background to avoid blocking startup
    */
   private async initializeMCPIntegration(): Promise<void> {
     try {
@@ -1023,27 +1054,46 @@ export class AgentOrchestrator extends EventEmitter {
       if (mcpSettings?.enabled && mcpSettings?.autoStartServers) {
         const manager = getMCPServerManager();
         
-        // Register saved servers
+        // Register saved servers (fast, in-memory)
         for (const serverConfig of mcpServers) {
           try {
             manager.registerServer(serverConfig);
-            
-            // Auto-connect if server is marked as enabled
-            if (serverConfig.enabled) {
-              await manager.connectServer(serverConfig.id);
-              this.logger.debug('MCP server connected', { name: serverConfig.name });
-            }
           } catch (err) {
-            this.logger.warn('Failed to initialize MCP server', {
+            this.logger.warn('Failed to register MCP server', {
               serverName: serverConfig.name,
               error: err instanceof Error ? err.message : String(err),
             });
           }
         }
         
+        // Connect enabled servers in BACKGROUND (don't await)
+        const enabledServers = mcpServers.filter(s => s.enabled);
+        if (enabledServers.length > 0) {
+          // Use setImmediate to not block the init chain
+          setImmediate(() => {
+            Promise.allSettled(
+              enabledServers.map(async (serverConfig) => {
+                try {
+                  await manager.connectServer(serverConfig.id);
+                  this.logger.debug('MCP server connected', { name: serverConfig.name });
+                } catch (err) {
+                  this.logger.warn('Failed to connect MCP server', {
+                    serverName: serverConfig.name,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                }
+              })
+            ).then(() => {
+              this.logger.info('MCP servers connected in background', {
+                attempted: enabledServers.length,
+              });
+            });
+          });
+        }
+        
         this.logger.info('MCP integration initialized', {
           serversLoaded: mcpServers.length,
-          autoConnected: mcpServers.filter(s => s.enabled).length,
+          autoConnecting: enabledServers.length,
         });
       } else {
         this.logger.info('MCP integration initialized (auto-connect disabled)');
@@ -1056,6 +1106,36 @@ export class AgentOrchestrator extends EventEmitter {
   }
 
   private emitEvent(event: RendererEvent | AgentEvent): void {
+    // Throttle session-state events to prevent renderer thrashing
+    if (event.type === 'session-state') {
+      const sessionEvent = event as { type: 'session-state'; session: { id: string } };
+      const sessionId = sessionEvent.session?.id;
+      
+      if (sessionId) {
+        const now = Date.now();
+        const lastEmit = this.lastSessionStateEmitTime.get(sessionId) ?? 0;
+        
+        // If we're within throttle window, schedule for later
+        if (now - lastEmit < this.SESSION_STATE_THROTTLE_MS) {
+          // Clear existing pending emit
+          const existingTimer = this.pendingSessionStateEmits.get(sessionId);
+          if (existingTimer) clearTimeout(existingTimer);
+          
+          // Schedule new emit at the end of throttle window
+          const delay = this.SESSION_STATE_THROTTLE_MS - (now - lastEmit);
+          const timer = setTimeout(() => {
+            this.lastSessionStateEmitTime.set(sessionId, Date.now());
+            this.pendingSessionStateEmits.delete(sessionId);
+            this.emit('event', event);
+          }, delay);
+          this.pendingSessionStateEmits.set(sessionId, timer);
+          return;
+        }
+        
+        this.lastSessionStateEmitTime.set(sessionId, now);
+      }
+    }
+    
     this.emit('event', event);
   }
 

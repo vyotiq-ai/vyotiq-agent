@@ -11,7 +11,7 @@
  * Uses CSS variables for theme-aware styling.
  */
 import React, { useMemo, useEffect, useCallback } from 'react';
-import { Monitor, Moon, Sun, Palette, Check, Type, Minimize2, Terminal, Sparkles } from 'lucide-react';
+import { Monitor, Moon, Sun, Palette, Check, Type, Minimize2, Terminal, Sparkles, Loader, Zap, Activity } from 'lucide-react';
 import { useTheme, type ThemeMode } from '../../../utils/themeMode.tsx';
 import { cn } from '../../../utils/cn';
 import { 
@@ -19,6 +19,9 @@ import {
   type FontSizeScale,
   type AccentColorPreset,
   type TerminalFont,
+  type LoadingIndicatorStyle,
+  type AnimationSpeed,
+  type ReduceMotionPreference,
   FONT_SIZE_SCALES,
   ACCENT_COLOR_PRESETS,
   DEFAULT_APPEARANCE_SETTINGS,
@@ -109,7 +112,24 @@ const terminalFontOptions: TerminalFont[] = [
 ];
 
 const terminalFontSizeOptions = [10, 11, 12, 13, 14, 16, 18, 20];
+const loadingIndicatorOptions: { id: LoadingIndicatorStyle; label: string; description: string }[] = [
+  { id: 'spinner', label: 'Spinner', description: 'Classic rotating spinner' },
+  { id: 'dots', label: 'Dots', description: 'Pulsing dots animation' },
+  { id: 'pulse', label: 'Pulse', description: 'Gentle pulsing effect' },
+  { id: 'minimal', label: 'Minimal', description: 'Subtle static indicator' },
+];
 
+const animationSpeedOptions: { id: AnimationSpeed; label: string; description: string }[] = [
+  { id: 'slow', label: 'Slow', description: 'Relaxed, slower animations' },
+  { id: 'normal', label: 'Normal', description: 'Default animation speed' },
+  { id: 'fast', label: 'Fast', description: 'Quick, snappy animations' },
+];
+
+const reduceMotionOptions: { id: ReduceMotionPreference; label: string; description: string }[] = [
+  { id: 'system', label: 'System', description: 'Follow system preference' },
+  { id: 'always', label: 'Always', description: 'Always reduce motion' },
+  { id: 'never', label: 'Never', description: 'Always show animations' },
+];
 export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({ 
   settings = DEFAULT_APPEARANCE_SETTINGS,
   onChange,
@@ -572,7 +592,115 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
               )} />
             </div>
           </button>
+        </div>
 
+        {/* Animation Settings - Only show when animations are enabled */}
+        {settings.enableAnimations && (
+          <div className="space-y-3 pl-2 border-l-2 border-[var(--color-border-subtle)]">
+            {/* Loading Indicator Style */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Loader size={10} className="text-[var(--color-text-muted)]" />
+                <span className="text-[9px] text-[var(--color-text-muted)]">loading indicator style</span>
+              </div>
+              <div className="grid grid-cols-4 gap-1">
+                {loadingIndicatorOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => handleChange('loadingIndicatorStyle', option.id)}
+                    className={cn(
+                      "px-2 py-1.5 text-[9px] border rounded-sm transition-all",
+                      settings.loadingIndicatorStyle === option.id
+                        ? "border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]"
+                        : "border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]"
+                    )}
+                    title={option.description}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Animation Speed */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Zap size={10} className="text-[var(--color-text-muted)]" />
+                <span className="text-[9px] text-[var(--color-text-muted)]">animation speed</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {animationSpeedOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => handleChange('animationSpeed', option.id)}
+                    className={cn(
+                      "px-2 py-1.5 text-[9px] border rounded-sm transition-all",
+                      settings.animationSpeed === option.id
+                        ? "border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]"
+                        : "border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]"
+                    )}
+                    title={option.description}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Reduce Motion */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Activity size={10} className="text-[var(--color-text-muted)]" />
+                <span className="text-[9px] text-[var(--color-text-muted)]">reduce motion</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {reduceMotionOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => handleChange('reduceMotion', option.id)}
+                    className={cn(
+                      "px-2 py-1.5 text-[9px] border rounded-sm transition-all",
+                      settings.reduceMotion === option.id
+                        ? "border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]"
+                        : "border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]"
+                    )}
+                    title={option.description}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Animation Preview */}
+            <div className="p-3 border border-[var(--color-border-subtle)] bg-[var(--color-surface-base)] rounded-sm">
+              <div className="flex items-center gap-3 text-[9px] text-[var(--color-text-muted)]">
+                <span>preview:</span>
+                <div className="flex items-center gap-2">
+                  {settings.loadingIndicatorStyle === 'spinner' && (
+                    <div className="w-3 h-3 border border-[var(--color-accent-primary)] border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {settings.loadingIndicatorStyle === 'dots' && (
+                    <div className="flex gap-0.5">
+                      <div className="w-1.5 h-1.5 bg-[var(--color-accent-primary)] rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
+                      <div className="w-1.5 h-1.5 bg-[var(--color-accent-primary)] rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                      <div className="w-1.5 h-1.5 bg-[var(--color-accent-primary)] rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  )}
+                  {settings.loadingIndicatorStyle === 'pulse' && (
+                    <div className="w-3 h-3 bg-[var(--color-accent-primary)] rounded-full animate-pulse" />
+                  )}
+                  {settings.loadingIndicatorStyle === 'minimal' && (
+                    <div className="w-3 h-3 bg-[var(--color-accent-primary)]/50 rounded-full" />
+                  )}
+                  <span className="text-[var(--color-text-secondary)]">Loading...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
           {/* Show Line Numbers */}
           <button
             onClick={() => handleChange('showLineNumbers', !settings.showLineNumbers)}

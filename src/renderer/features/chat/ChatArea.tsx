@@ -245,7 +245,14 @@ export const ChatArea: React.FC = () => {
   // Enable virtualization for large chat histories (100+ messages for better performance)
   const VIRTUALIZATION_THRESHOLD = 100;
   const shouldVirtualize = branchFilteredMessages.length > VIRTUALIZATION_THRESHOLD;
-  
+  // Get the last assistant message content length for scroll dependency
+  // This is used for both virtualized and non-virtualized scroll modes
+  const lastAssistantContentLength = useMemo(() => {
+    if (!activeSession?.messages) return 0;
+    const lastAssistant = [...activeSession.messages].reverse().find(m => m.role === 'assistant');
+    return lastAssistant?.content?.length ?? 0;
+  }, [activeSession?.messages]);
+
   // Virtualized list for performance with large histories
   const {
     virtualItems,
@@ -260,6 +267,8 @@ export const ChatArea: React.FC = () => {
     overscan: 3,
     autoScrollToBottom: true,
     getItemKey: (item, index) => item.runId ?? `group-${index}`,
+    streamingMode: isStreaming,
+    streamingDep: lastAssistantContentLength,
   });
 
   // Log virtualization state for debugging
@@ -268,10 +277,12 @@ export const ChatArea: React.FC = () => {
       logger.debug('Virtualization enabled', { 
         messageCount: branchFilteredMessages.length,
         groupCount: renderGroups.length,
+        virtualItemsCount: virtualItems.length,
+        totalHeight,
         isNearBottom
       });
     }
-  }, [shouldVirtualize, branchFilteredMessages.length, renderGroups.length, isNearBottom]);
+  }, [shouldVirtualize, branchFilteredMessages.length, renderGroups.length, virtualItems.length, totalHeight, isNearBottom]);
 
   // Reset manually toggled runs when session changes
   useEffect(() => {
@@ -415,18 +426,12 @@ export const ChatArea: React.FC = () => {
   }, [activeSession, toolResultsByRun]);
 
 
-  // Get the last assistant message content length for scroll dependency
-  const lastAssistantContentLength = useMemo(() => {
-    if (!activeSession?.messages) return 0;
-    const lastAssistant = [...activeSession.messages].reverse().find(m => m.role === 'assistant');
-    return lastAssistant?.content?.length ?? 0;
-  }, [activeSession?.messages]);
-
-  // Scroll hook with streaming mode for smooth auto-focus
+  // Scroll hook with streaming mode for smooth auto-focus (non-virtualized mode)
+  // Always enabled during streaming to ensure content is followed
   const { scrollRef, forceScrollToBottom } = useChatScroll(
     `${activeSession?.messages.length ?? 0}-${lastAssistantContentLength}`,
     {
-      enabled: true,
+      enabled: !shouldVirtualize || isStreaming, // Active when not virtualized OR streaming
       threshold: 200,
       streamingMode: isStreaming,
     }
@@ -435,6 +440,44 @@ export const ChatArea: React.FC = () => {
   // Track last message to auto-scroll on new messages
   const lastMsgRef = useRef<string | null>(null);
   const lastMsgCountRef = useRef(0);
+  const wasStreamingRef = useRef(false);
+  const prevSessionIdRef = useRef<string | null>(null);
+
+  // Scroll to bottom when session loads or changes
+  useEffect(() => {
+    if (!activeSession?.id) return;
+    
+    // Only scroll on session change (not on every render)
+    if (prevSessionIdRef.current !== activeSession.id) {
+      prevSessionIdRef.current = activeSession.id;
+      
+      // Wait for the container to be mounted and measured
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (shouldVirtualize) {
+            virtualScrollToBottom('instant');
+          } else {
+            forceScrollToBottom();
+          }
+        });
+      });
+    }
+  }, [activeSession?.id, shouldVirtualize, virtualScrollToBottom, forceScrollToBottom]);
+
+  // Force scroll to bottom when streaming starts
+  useEffect(() => {
+    if (isStreaming && !wasStreamingRef.current) {
+      // Streaming just started - force scroll to bottom
+      requestAnimationFrame(() => {
+        if (shouldVirtualize) {
+          virtualScrollToBottom('instant');
+        } else {
+          forceScrollToBottom();
+        }
+      });
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming, shouldVirtualize, virtualScrollToBottom, forceScrollToBottom]);
 
   useEffect(() => {
     if (!activeSession?.messages) return;
@@ -453,6 +496,38 @@ export const ChatArea: React.FC = () => {
       }
     }
   }, [activeSession?.messages, forceScrollToBottom, virtualScrollToBottom, shouldVirtualize]);
+
+  // Continuous scroll during streaming - triggers on content changes
+  const prevContentLengthRef = useRef(0);
+  useEffect(() => {
+    if (!isStreaming) {
+      prevContentLengthRef.current = lastAssistantContentLength;
+      return;
+    }
+    
+    // Content grew during streaming - ensure we're scrolled to bottom
+    if (lastAssistantContentLength > prevContentLengthRef.current) {
+      prevContentLengthRef.current = lastAssistantContentLength;
+      
+      // Use RAF to ensure DOM has updated
+      requestAnimationFrame(() => {
+        if (shouldVirtualize) {
+          // The virtualized hook handles this via streamingDep
+        } else {
+          // For non-virtualized, the scroll ref is attached directly
+          const element = scrollRef.current;
+          if (element) {
+            const { scrollHeight, scrollTop, clientHeight } = element;
+            const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+            // Only scroll if near bottom (within 250px)
+            if (distanceFromBottom <= 250) {
+              element.scrollTop = scrollHeight - clientHeight;
+            }
+          }
+        }
+      });
+    }
+  }, [isStreaming, lastAssistantContentLength, shouldVirtualize, scrollRef]);
 
   // Handle message edit - resends from that point
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
@@ -539,6 +614,16 @@ export const ChatArea: React.FC = () => {
   const handleReaction = useCallback((messageId: string, reaction: MessageReaction) => {
     if (activeSession) {
       actions.addReaction(activeSession.id, messageId, reaction);
+    }
+  }, [activeSession, actions]);
+
+  // Handle regenerating the last assistant response
+  const handleRegenerate = useCallback(async () => {
+    if (!activeSession) return;
+    try {
+      await actions.regenerate(activeSession.id);
+    } catch (err) {
+      logger.error('Failed to regenerate response', { error: err, sessionId: activeSession.id });
     }
   }, [activeSession, actions]);
 
@@ -756,6 +841,7 @@ export const ChatArea: React.FC = () => {
                       onRunCode={handleRunCode}
                       onInsertCode={handleInsertCode}
                       onReaction={handleReaction}
+                      onRegenerate={isLastGroup ? handleRegenerate : undefined}
                     />
                   </div>
                 );
@@ -766,7 +852,6 @@ export const ChatArea: React.FC = () => {
                 <div style={{ position: 'absolute', top: totalHeight - 50, left: 0, right: 0 }}>
                   <TodoProgress
                     todos={todos}
-                    sessionId={activeSession.id}
                     className="mt-2"
                   />
                 </div>
@@ -822,6 +907,7 @@ export const ChatArea: React.FC = () => {
                     onRunCode={handleRunCode}
                     onInsertCode={handleInsertCode}
                     onReaction={handleReaction}
+                    onRegenerate={isLastGroup ? handleRegenerate : undefined}
                   />
                 );
               })}
@@ -830,7 +916,6 @@ export const ChatArea: React.FC = () => {
               {hasTodos && activeSession && (
                 <TodoProgress
                   todos={todos}
-                  sessionId={activeSession.id}
                   className="mt-2"
                 />
               )}

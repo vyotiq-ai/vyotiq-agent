@@ -89,6 +89,15 @@ async function executeNavigate(
   const { url, waitForSelector, timeout } = args;
   const browser = getBrowserManager();
   
+  // Check for early cancellation
+  if (context.signal?.aborted) {
+    return {
+      toolName: 'browser_navigate',
+      success: false,
+      output: 'Navigation cancelled',
+    };
+  }
+  
   context.logger.info('Navigating to URL', { url, waitForSelector, timeout });
 
   if (!url) {

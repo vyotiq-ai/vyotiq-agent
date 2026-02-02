@@ -31,7 +31,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
-import { Toggle } from '../../../components/ui/Toggle';
+import { Toggle as _Toggle, FeatureToggle } from '../../../components/ui';
 import { RendererLogger } from '../../../utils/logger';
 import type { EditorAISettings, LLMProviderName } from '../../../../shared/types';
 
@@ -228,51 +228,6 @@ const EditorAIDiagnostics: React.FC = memo(() => {
 });
 
 EditorAIDiagnostics.displayName = 'EditorAIDiagnostics';
-
-// =============================================================================
-// Feature Toggle Component
-// =============================================================================
-
-interface FeatureToggleProps {
-  icon: React.ReactNode;
-  iconBgClass: string;
-  title: string;
-  description: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}
-
-const FeatureToggle: React.FC<FeatureToggleProps> = memo(({
-  icon,
-  iconBgClass,
-  title,
-  description,
-  checked,
-  onChange,
-}) => (
-  <div className="flex items-center justify-between p-3 rounded bg-[var(--color-surface-2)]/50 border border-[var(--color-border-subtle)]">
-    <div className="flex items-center gap-3">
-      <div className={cn("p-1.5 rounded", iconBgClass)}>
-        {icon}
-      </div>
-      <div>
-        <div className="text-[11px] text-[var(--color-text-primary)] font-medium">
-          {title}
-        </div>
-        <div className="text-[9px] text-[var(--color-text-muted)]">
-          {description}
-        </div>
-      </div>
-    </div>
-    <Toggle
-      checked={checked}
-      onToggle={() => onChange(!checked)}
-      size="sm"
-    />
-  </div>
-));
-
-FeatureToggle.displayName = 'FeatureToggle';
 
 // =============================================================================
 // Slider Setting Component

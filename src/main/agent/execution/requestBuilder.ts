@@ -419,6 +419,13 @@ export class RequestBuilder {
       responseModalities = ['TEXT', 'IMAGE'];
     }
 
+    // Anthropic extended thinking settings
+    // Enable by default for Claude models that support it, unless explicitly disabled
+    // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking
+    const enableAnthropicThinking = session.state.config.enableAnthropicThinking ?? true;
+    const anthropicThinkingBudget = session.state.config.anthropicThinkingBudget ?? 10000;
+    const enableInterleavedThinking = session.state.config.enableInterleavedThinking ?? false;
+
     return {
       systemPrompt,
       messages: providerMessages,
@@ -431,6 +438,10 @@ export class RequestBuilder {
         responseModalities,
         reasoningEffort: session.state.config.reasoningEffort || undefined,
         verbosity: session.state.config.verbosity || undefined,
+        // Anthropic extended thinking configuration
+        enableAnthropicThinking: provider.name === 'anthropic' ? enableAnthropicThinking : undefined,
+        anthropicThinkingBudget: provider.name === 'anthropic' ? anthropicThinkingBudget : undefined,
+        enableInterleavedThinking: provider.name === 'anthropic' ? enableInterleavedThinking : undefined,
       },
     };
   }

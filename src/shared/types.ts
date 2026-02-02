@@ -110,6 +110,22 @@ export interface ChatMessage {
    * @see https://ai.google.dev/gemini-api/docs/thought-signatures
    */
   thoughtSignature?: string;
+
+  /**
+   * Anthropic extended thinking signature for verifying thinking blocks.
+   * Must be passed back with thinking content for multi-turn conversations.
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#thinking-encryption
+   */
+  anthropicThinkingSignature?: string;
+
+  /**
+   * Redacted thinking content (encrypted) from Anthropic.
+   * Safety-flagged reasoning that is encrypted but must be passed back to the API.
+   * Not displayed to users but required for multi-turn tool use conversations.
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#thinking-redaction
+   */
+  redactedThinking?: string;
+
   /**
    * Generated images from image generation models (Gemini 2.5/3 image models).
    * @see https://ai.google.dev/gemini-api/docs/image-generation
@@ -208,6 +224,36 @@ export interface AgentConfig {
    * @see https://api-docs.deepseek.com/guides/thinking_mode
    */
   enableDeepSeekThinking?: boolean;
+
+  // Anthropic Extended Thinking Settings
+  /**
+   * Enable extended thinking for Anthropic Claude models that support it.
+   * When enabled, Claude will show its reasoning process before providing a final answer.
+   * Supported models: Claude 4.5 (Sonnet, Haiku, Opus), Claude 4 (Sonnet, Opus), Claude 3.7 Sonnet
+   * @default true
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking
+   */
+  enableAnthropicThinking?: boolean;
+
+  /**
+   * Token budget for Anthropic extended thinking (minimum 1024, max < maxOutputTokens).
+   * Larger budgets can improve response quality for complex problems.
+   * - Start with 10000 for moderate tasks
+   * - Use 16000+ for complex reasoning tasks
+   * - Maximum 32000 recommended (diminishing returns above this)
+   * @default 10000
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#working-with-thinking-budgets
+   */
+  anthropicThinkingBudget?: number;
+
+  /**
+   * Enable interleaved thinking for Anthropic Claude 4 models with tool use.
+   * Allows Claude to reason between tool calls for more sophisticated decision-making.
+   * Requires the beta header 'interleaved-thinking-2025-05-14'.
+   * @default false
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#interleaved-thinking
+   */
+  enableInterleavedThinking?: boolean;
 
   // Iteration Settings
   /** Maximum number of iterations per run (1-100, default: 20) */
@@ -1333,6 +1379,30 @@ export type TerminalFont =
   | 'system';
 
 /**
+ * Loading indicator visual style
+ */
+export type LoadingIndicatorStyle = 'spinner' | 'dots' | 'pulse' | 'minimal';
+
+/**
+ * Animation speed preference
+ */
+export type AnimationSpeed = 'slow' | 'normal' | 'fast';
+
+/**
+ * Reduce motion behavior preference
+ */
+export type ReduceMotionPreference = 'system' | 'always' | 'never';
+
+/**
+ * Animation speed multipliers
+ */
+export const ANIMATION_SPEED_MULTIPLIERS: Record<AnimationSpeed, number> = {
+  slow: 1.5,
+  normal: 1.0,
+  fast: 0.5,
+};
+
+/**
  * Appearance and UI customization settings
  */
 export interface AppearanceSettings {
@@ -1350,6 +1420,12 @@ export interface AppearanceSettings {
   terminalFontSize: number;
   /** Enable smooth animations */
   enableAnimations: boolean;
+  /** Loading indicator visual style */
+  loadingIndicatorStyle: LoadingIndicatorStyle;
+  /** Animation speed preference */
+  animationSpeed: AnimationSpeed;
+  /** Reduce motion behavior preference */
+  reduceMotion: ReduceMotionPreference;
   /** Show line numbers in code blocks */
   showLineNumbers: boolean;
   /** Enable syntax highlighting in code blocks */
@@ -1366,6 +1442,9 @@ export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   terminalFont: 'JetBrains Mono',
   terminalFontSize: 12,
   enableAnimations: true,
+  loadingIndicatorStyle: 'spinner',
+  animationSpeed: 'normal',
+  reduceMotion: 'system',
   showLineNumbers: true,
   enableSyntaxHighlighting: true,
 };

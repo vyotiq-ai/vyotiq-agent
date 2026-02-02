@@ -8,6 +8,7 @@
 
 import { ipcMain } from 'electron';
 import { createLogger } from '../logger';
+import { validateIpcPayload } from './guards';
 import type { IpcContext } from './types';
 
 const logger = createLogger('IPC:Terminal');
@@ -35,6 +36,13 @@ export function registerTerminalHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('terminal:spawn', async (_event, options: { cwd?: string; id: string }) => {
+    // Validate payload
+    const validationError = validateIpcPayload('terminal:spawn', options);
+    if (validationError) {
+      logger.warn('terminal:spawn validation failed', { error: validationError.error });
+      return validationError;
+    }
+    
     try {
       const pty = await loadNodePty();
       const isWindows = process.platform === 'win32';
@@ -79,6 +87,13 @@ export function registerTerminalHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle('terminal:write', async (_event, payload: { id: string; data: string }) => {
+    // Validate payload
+    const validationError = validateIpcPayload('terminal:write', payload);
+    if (validationError) {
+      logger.warn('terminal:write validation failed', { error: validationError.error });
+      return validationError;
+    }
+    
     try {
       const session = terminalSessions.get(payload.id);
       if (!session) {

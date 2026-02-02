@@ -11,8 +11,8 @@ I need you to help me prepare a complete release for Vyotiq AI. Perform the foll
 
 ## 1. ANALYZE CHANGES
 First, analyze all changes since the last release:
-- Run `git diff v1.4.0..HEAD --stat` to see changed files
-- Run `git log v1.4.0..HEAD --oneline` to see commits
+- Run `git diff v1.5.0..HEAD --stat` to see changed files
+- Run `git log v1.5.0..HEAD --oneline` to see commits
 - Identify all modified, added, and deleted files
 - Categorize changes by type (features, fixes, docs, refactors, etc.)
 
@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vulnerability fixes
 
 [Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/vX.X.X...HEAD
-[X.X.X]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.4.0...vX.X.X
+[X.X.X]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.5.0...vX.X.X
 ```
 
 ## 4. UPDATE VERSION IN FILES
@@ -142,9 +142,10 @@ Release: vX.X.X
 - `git` - Git integration
 
 ## 7. GIT COMMANDS TO EXECUTE
+
 After all updates are made, run these commands:
 
-```bash
+\`\`\`bash
 # Stage all changes
 git add -A
 
@@ -157,12 +158,14 @@ git tag -a vX.X.X -m "Release vX.X.X - <short description>"
 # Push commit and tags
 git push origin main
 git push origin vX.X.X
-```
+\`\`\`
 
 ## 8. CREATE GITHUB RELEASE
+
 **IMPORTANT:** Pushing a tag does NOT create a GitHub Release automatically. You must explicitly create the release using GitHub CLI or the web interface.
 
 ### Option A: Using GitHub CLI (Recommended)
+
 ```bash
 # Create release with notes (replace X.X.X with actual version)
 gh release create vX.X.X --title "vX.X.X - <short description>" --notes "<release notes>"
@@ -175,7 +178,8 @@ gh release create vX.X.X --title "vX.X.X - <short description>"
 ```
 
 ### Option B: Using GitHub Web Interface
-1. Go to https://github.com/vyotiq-ai/vyotiq-agent/releases/new
+
+1. Go to <https://github.com/vyotiq-ai/vyotiq-agent/releases/new>
 2. Select the tag you just pushed (vX.X.X)
 3. Fill in the release title and notes
 4. Click "Publish release"
@@ -216,7 +220,7 @@ gh release create vX.X.X --title "vX.X.X - <short description>"
 
 ---
 
-**Full Changelog:** https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.4.0...vX.X.X
+**Full Changelog:** https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.5.0...vX.X.X
 
 ## Installation
 
@@ -279,9 +283,9 @@ gh release list
 
 ## CONTEXT ABOUT CURRENT STATE
 
-**Current Version:** 1.4.0
+**Current Version:** 1.5.0
 **Repository:** https://github.com/vyotiq-ai/vyotiq-agent
-**Last Release Tag:** v1.4.0
+**Last Release Tag:** v1.5.0
 
 **Project Stack:**
 - Electron 39.2 + React 19.2 + TypeScript 5.9
@@ -297,7 +301,7 @@ gh release list
 - `docs/*.md` - All documentation
 
 Now analyze the changes and proceed with the release!
-```
+```text
 
 ---
 

@@ -59,6 +59,19 @@
 
 ## 📢 Recent Updates
 
+### UI & Developer Experience Improvements (v1.5.0 - February 2026)
+
+Major update with new UI components, React hooks, and developer experience improvements.
+
+**Highlights:**
+
+- 🎨 **New UI Components**: ErrorState, LoadingState, FeatureToggle, MessageAttachments
+- 🪝 **React Hooks**: useAsync, useFormValidation, usePagination for cleaner code
+- ⚡ **Performance**: Event batching, improved virtualization, optimized HMR
+- 📚 **Documentation**: Complete MCP API reference and architecture docs
+- 🔧 **Build System**: ESLint flat config, improved Vite configuration
+- 🛡️ **Settings**: Schema validation and enhanced appearance options
+
 ### MCP System Refactoring (v1.4.0 - January 2026)
 
 Complete architectural overhaul of the Model Context Protocol system with new registry, enhanced UI, and improved reliability.

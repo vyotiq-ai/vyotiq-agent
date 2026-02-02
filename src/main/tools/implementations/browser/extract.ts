@@ -30,6 +30,15 @@ async function executeExtract(
   const { includeHtml, maxLength = 50000, selector, extract, waitForContent = true } = args;
   const browser = getBrowserManager();
   
+  // Check for early cancellation
+  if (context.signal?.aborted) {
+    return {
+      toolName: 'browser_extract',
+      success: false,
+      output: 'Content extraction cancelled',
+    };
+  }
+  
   context.logger.info('Extracting page content', { includeHtml, maxLength, selector, waitForContent });
 
   // Check if browser has a page loaded

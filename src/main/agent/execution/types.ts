@@ -26,6 +26,15 @@ import type { LLMProvider } from '../providers/baseProvider';
 import type { DebugSettings, AccessLevelSettings } from '../../../shared/types';
 
 /**
+ * Provider health tracking callback
+ */
+export type ProviderHealthCallback = (
+  provider: LLMProviderName,
+  success: boolean,
+  latencyMs: number
+) => void;
+
+/**
  * Dependencies required by RunExecutor
  */
 export interface RunExecutorDeps {
@@ -47,6 +56,8 @@ export interface RunExecutorDeps {
   getTaskRoutingSettings?: () => TaskRoutingSettings | undefined;
   getEditorState?: () => EditorState;
   getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>;
+  /** Callback for tracking provider health (success/failure, latency) */
+  onProviderHealth?: ProviderHealthCallback;
 }
 
 /**

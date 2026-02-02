@@ -328,6 +328,45 @@ html.light {
   --color-indigo-400: #818cf8;
   --color-indigo-500: #6366f1;
   --color-indigo-600: #4f46e5;
+  
+  /* ========== Animation Variables (Tailwind CSS 4) ========== */
+  /* Required for animate-* utility classes to work */
+  --animate-spin: spin 1s linear infinite;
+  --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-ping: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-bounce: bounce 1s infinite;
+}
+
+/* ========== Animation Keyframes ========== */
+/* Defined outside @theme for broad CSS compatibility */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(-25%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
 }
 
 html, body, #root {
@@ -461,7 +500,107 @@ html.light {
   border-width: 1px;
 }
 
-/* Animations */
+/* ========== Standard Animations ========== */
+/* Explicit animation definitions to ensure animations work */
+/* Using !important to ensure these override any conflicting styles */
+
+.animate-spin {
+  animation: spin 1s linear infinite !important;
+  animation-play-state: running !important;
+  will-change: transform;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
+  animation-play-state: running !important;
+  will-change: opacity;
+}
+
+.animate-ping {
+  animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite !important;
+  animation-play-state: running !important;
+  will-change: transform, opacity;
+}
+
+.animate-bounce {
+  animation: bounce 1s infinite !important;
+  animation-play-state: running !important;
+  will-change: transform;
+}
+
+/* ========== Animation Speed Modifiers ========== */
+/* Applied via CSS variables from animation speed settings */
+html[data-animations="true"] .animate-spin {
+  animation-duration: var(--animation-duration-spin, 1s) !important;
+}
+
+html[data-animations="true"] .animate-pulse {
+  animation-duration: var(--animation-duration-pulse, 2s) !important;
+}
+
+html[data-animations="true"] .animate-ping {
+  animation-duration: var(--animation-duration-ping, 1s) !important;
+}
+
+html[data-animations="true"] .animate-bounce {
+  animation-duration: var(--animation-duration-bounce, 1s) !important;
+}
+
+/* ========== Loading Indicator Styles ========== */
+/* Styles for different loading indicator variants */
+
+/* Dots loading animation keyframes */
+@keyframes loading-dots {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* Pulse loading animation (different from standard pulse) */
+@keyframes loading-pulse {
+  0%, 100% { transform: scale(0.95); opacity: 0.7; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+
+/* Minimal indicator just shows a static element */
+html[data-loading-style="minimal"] .loading-indicator-animated {
+  animation: none !important;
+  opacity: 0.6;
+}
+
+/* Dots style loading indicator */
+html[data-loading-style="dots"] .loading-indicator-animated {
+  animation: loading-dots 1.4s ease-in-out infinite !important;
+}
+
+/* Pulse style loading indicator */
+html[data-loading-style="pulse"] .loading-indicator-animated {
+  animation: loading-pulse 1.5s ease-in-out infinite !important;
+}
+
+/* Default spinner style */
+html[data-loading-style="spinner"] .loading-indicator-animated,
+html:not([data-loading-style]) .loading-indicator-animated {
+  animation: spin 1s linear infinite !important;
+}
+
+/* ========== Reduce Motion ========== */
+/* Force reduce motion when data-reduce-motion="always" */
+html[data-reduce-motion="always"] .animate-spin,
+html[data-reduce-motion="always"] .animate-pulse,
+html[data-reduce-motion="always"] .animate-ping,
+html[data-reduce-motion="always"] .animate-bounce,
+html[data-reduce-motion="always"] .loading-indicator-animated,
+html.reduce-motion .animate-spin,
+html.reduce-motion .animate-pulse,
+html.reduce-motion .animate-ping,
+html.reduce-motion .animate-bounce,
+html.reduce-motion .loading-indicator-animated {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Custom Animations */
+
 @keyframes spin-slow {
   from {
     transform: rotate(0deg);
@@ -473,6 +612,7 @@ html.light {
 
 .animate-spin-slow {
   animation: spin-slow 3s linear infinite;
+  will-change: transform;
 }
 
 /* Blinking cursor animation for terminal */
@@ -2036,23 +2176,34 @@ code {
 /* ========================================================================== */
 /* Reduced Motion                                                             */
 /* Respect user preference for reduced motion                                 */
+/* Note: Loading spinners (.animate-spin, .animate-pulse) are exempt for UX   */
 /* ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  /* Only apply system reduce-motion when user hasn't explicitly set preference */
+  html:not([data-reduce-motion="never"]) *,
+  html:not([data-reduce-motion="never"]) *::before,
+  html:not([data-reduce-motion="never"]) *::after {
+    transition-duration: 0.01ms !important;
+  }
+  
+  /* But allow loading indicators to still animate (accessibility exception) */
+  html:not([data-reduce-motion="never"]) *:not([class*="animate-"]),
+  html:not([data-reduce-motion="never"]) *:not([class*="animate-"])::before,
+  html:not([data-reduce-motion="never"]) *:not([class*="animate-"])::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
   }
 }
 
 /* Also disable when user turns off animations in settings */
-html:not([data-animations="true"]) *,
-html:not([data-animations="true"]) *::before,
-html:not([data-animations="true"]) *::after {
-  animation-duration: 0.01ms !important;
-  animation-iteration-count: 1 !important;
+/* Note: Intentionally allows loading spinner animations for feedback */
+html:not([data-animations="true"]):not([data-reduce-motion="never"]) * {
   transition-duration: 0.01ms !important;
 }
+
+html:not([data-animations="true"]):not([data-reduce-motion="never"]) *:not([class*="animate-"]) {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+}
+

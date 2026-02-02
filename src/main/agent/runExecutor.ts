@@ -96,6 +96,7 @@ interface RunExecutorDeps {
     filesWithErrors: string[];
     collectedAt: number;
   } | null>;
+  onProviderHealth?: (provider: LLMProviderName, success: boolean, latencyMs: number) => void;
 }
 
 export class RunExecutor {
@@ -153,6 +154,9 @@ export class RunExecutor {
   // Active controllers for cancellation
   private readonly activeControllers = new Map<string, AbortController>();
 
+  // Provider health tracking (can be set after construction)
+  private onProviderHealth?: (provider: LLMProviderName, success: boolean, latencyMs: number) => void;
+
   // Default iteration settings
   private readonly defaultMaxIterations = 20;
   private readonly defaultMaxRetries = 2;
@@ -202,6 +206,7 @@ export class RunExecutor {
     this.getTaskRoutingSettings = deps.getTaskRoutingSettings ?? (() => undefined);
     this.getEditorState = deps.getEditorState;
     this.getWorkspaceDiagnostics = deps.getWorkspaceDiagnostics;
+    this.onProviderHealth = deps.onProviderHealth;
 
     // Initialize debugger
     const debugSettings = this.getDebugSettings();
@@ -261,7 +266,8 @@ export class RunExecutor {
       this.progressTracker,
       this.debugEmitter,
       this.streamHandler,
-      this.updateSessionState
+      this.updateSessionState,
+      () => this.onProviderHealth
     );
     this.toolQueueProcessor = new ToolQueueProcessor(
       this.toolRegistry,
@@ -339,6 +345,16 @@ export class RunExecutor {
   updateProviders(providers: ProviderMap): void {
     this.providers = providers;
     this.providerSelector.updateProviders(providers);
+  }
+
+  /**
+   * Set the provider health callback for tracking success/failure and latency.
+   * This is called after ProviderManager is initialized.
+   */
+  setProviderHealthCallback(
+    callback: (provider: LLMProviderName, success: boolean, latencyMs: number) => void
+  ): void {
+    this.onProviderHealth = callback;
   }
 
   /**

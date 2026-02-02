@@ -553,8 +553,9 @@ function analyzeJsonParseError(input: string, toolName: string): JsonErrorAnalys
     };
   }
   
-  // Check for encoding issues
-  if (/[\uFEFF\u200B\u200C\u200D\u2060]/.test(trimmed)) {
+  // Check for encoding issues (BOM, zero-width characters)
+  // Note: Using separate character class entries to avoid misleading joined sequences
+  if (/\uFEFF|\u200B|\u200C|\u200D|\u2060/.test(trimmed)) {
     return {
       errorType: 'encoding',
       issue: 'Invisible/zero-width characters detected',

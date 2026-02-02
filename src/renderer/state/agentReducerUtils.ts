@@ -64,6 +64,20 @@ export function hasSessionChanged(
     // Title change is meaningful
     if (existing.title !== incoming.title) return true;
     
+    // Config changes are meaningful (yoloMode, provider, model selection, etc.)
+    if (existing.config !== incoming.config) {
+        // Check specific config fields that affect UI behavior
+        if (existing.config.yoloMode !== incoming.config.yoloMode) return true;
+        if (existing.config.preferredProvider !== incoming.config.preferredProvider) return true;
+        if (existing.config.selectedModelId !== incoming.config.selectedModelId) return true;
+        if (existing.config.allowAutoSwitch !== incoming.config.allowAutoSwitch) return true;
+        if (existing.config.enableProviderFallback !== incoming.config.enableProviderFallback) return true;
+        if (existing.config.enableAutoModelSelection !== incoming.config.enableAutoModelSelection) return true;
+        if (existing.config.temperature !== incoming.config.temperature) return true;
+        if (existing.config.maxOutputTokens !== incoming.config.maxOutputTokens) return true;
+        if (existing.config.maxIterations !== incoming.config.maxIterations) return true;
+    }
+    
     // Message count change is meaningful
     if (existing.messages.length !== incoming.messages.length) return true;
     

@@ -111,6 +111,15 @@ These commands automatically run in background mode:
   async execute(args: RunTerminalArgs, context: ToolExecutionContext): Promise<ToolExecutionResult> {
     const { command, cwd, run_in_background, timeout, description } = args;
 
+    // Check for early cancellation
+    if (context.signal?.aborted) {
+      return {
+        success: false,
+        output: 'Command execution cancelled',
+        toolName: 'run',
+      };
+    }
+
     if (!command || command.trim() === '') {
       return {
         success: false,

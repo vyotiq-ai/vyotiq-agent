@@ -344,9 +344,12 @@ export class SemanticIndexer {
         phase: `Indexing ${filesToIndex.length} files...`,
       });
 
-      // Index files
+      // Index files with periodic yielding to keep UI responsive
       const embeddingService = getEmbeddingService();
       const chunker = getCodeChunker();
+      
+      // Yield to event loop every N files to prevent blocking
+      const YIELD_INTERVAL = 5;
 
       for (let i = 0; i < filesToIndex.length; i++) {
         if (this.indexingAborted) {
@@ -386,6 +389,11 @@ export class SemanticIndexer {
           totalChunks: this.indexingMetrics.chunksCreated,
           phase: `Indexing files (${Math.round(filesPerSecond * 10) / 10} files/sec)...`,
         });
+        
+        // Yield to event loop periodically to keep UI responsive
+        if ((i + 1) % YIELD_INTERVAL === 0) {
+          await new Promise(resolve => setImmediate(resolve));
+        }
       }
 
       this.totalChunksIndexed = this.indexingMetrics.chunksCreated;

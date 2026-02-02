@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-02-02
+
+### Added
+
+- **UI Components**:
+  - `ErrorState` component for consistent error display across the app
+  - `FeatureToggle` component for feature flag management
+  - `LoadingState` component for loading indicators
+  - `MessageAttachments` component for chat message attachments
+- **React Hooks**:
+  - `useAsync` hook for async operation management
+  - `useFormValidation` hook for form validation logic
+  - `usePagination` hook for paginated data handling
+- **Core Utilities**:
+  - `eventBatcher` for batching IPC events and reducing overhead
+  - `settingsValidation` for validating settings schemas
+  - `performance` utilities for main process performance tracking
+  - `timeFormatting` utilities for consistent time display
+- **Provider Enhancements**:
+  - Extended Anthropic provider with improved streaming support
+  - Enhanced GLM provider with additional model configurations
+  - Extended base provider with common streaming utilities
+- **Documentation**:
+  - Complete MCP API reference in `docs/API.md`
+  - MCP architecture diagrams in `docs/ARCHITECTURE.md`
+  - Enhanced release documentation with GitHub CLI examples
+
+### Changed
+
+- **Chat System Refactoring**:
+  - Improved `ChatArea` with better scroll handling and virtualization
+  - Enhanced `MessageLine` with attachment support and better rendering
+  - Updated `MessageGroup` for improved message organization
+  - Refactored `useChatSubmit` hook for better error handling
+  - Improved `useChatScroll` with optimized scroll behavior
+- **Settings UI Improvements**:
+  - Enhanced `SettingsAppearance` with more customization options
+  - Improved `SettingsEditorAI` with better model selection
+  - Refined `SettingsIndexing` with cleaner UI
+- **Build Configuration**:
+  - Updated `forge.config.ts` with improved build settings
+  - Enhanced `vite.main.config.ts` with better optimization
+  - Improved `vite.renderer.config.mjs` for faster HMR
+- **MCP Client Enhancements**:
+  - Improved connection handling and error recovery
+  - Better tool execution with timeout handling
+- **LSP Manager Improvements**:
+  - Enhanced language server lifecycle management
+  - Better diagnostic handling and caching
+- **Code Chunker Optimization**:
+  - Improved language-aware chunking for semantic search
+  - Better handling of large files
+- **IPC System**:
+  - Added event batching for reduced IPC overhead
+  - Enhanced type guards for safer IPC communication
+- **Session Storage**:
+  - Improved debounced persistence logic
+  - Better error handling for storage operations
+- **Context Injection**:
+  - Enhanced system prompt context injection
+  - Better workspace context handling
+- **ESLint Migration**:
+  - Migrated to flat config format (`eslint.config.js`)
+
+### Removed
+
+- `docs/context.md` - Consolidated into main documentation
+- `RunProgress.tsx` - Replaced with improved `TodoProgress` component
+
+### Fixed
+
+- Improved scroll behavior in chat interface
+- Better error handling in provider streaming
+- TypeScript diagnostics service reliability improvements
+- Workspace manager path handling edge cases
+
 ## [1.4.0] - 2026-01-31
 
 ### Added
@@ -117,7 +193,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session persistence with SQLite
 - Conversation branching and history
 
-[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.1.0...v1.2.0

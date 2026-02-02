@@ -9,7 +9,7 @@ import { getToolResultCache, getContextCache } from './main/agent/cache';
 import { initBrowserManager, getBrowserManager } from './main/browser';
 import { initFileWatcher, watchWorkspace, stopWatching } from './main/workspaces/fileWatcher';
 import type { RendererEvent, BrowserState } from './shared/types';
-import { registerIpcHandlers } from './main/ipc';
+import { registerIpcHandlers, IpcEventBatcher, type EventPriority as _EventPriority } from './main/ipc';
 import { getSessionHealthMonitor } from './main/agent/sessionHealth';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -30,17 +30,31 @@ let settingsStore: SettingsStore;
 let workspaceManager: WorkspaceManager;
 let infraInitialized = false;
 let ipcRegistered = false;
+let eventBatcher: IpcEventBatcher | null = null;
 const logger = new ConsoleLogger('Vyotiq');
 
+/**
+ * High-performance event emission with batching for high-frequency events.
+ * Uses IpcEventBatcher for streaming deltas and other frequent updates.
+ */
 const emitToRenderer = (event: RendererEvent): void => {
   if (!mainWindow) return;
 
-  // Primary event stream for the renderer (AgentProvider subscribes here)
-  mainWindow.webContents.send('agent:event', event);
+  // Use batcher for high-frequency events when available
+  if (eventBatcher) {
+    eventBatcher.send('agent:event', event);
+  } else {
+    // Fallback to direct send before batcher is initialized
+    mainWindow.webContents.send('agent:event', event);
+  }
 
   if (event.type === 'browser-state') {
     // Real-time browser state updates for the browser panel
-    mainWindow.webContents.send('browser:state-changed', event.state);
+    if (eventBatcher) {
+      eventBatcher.send('browser:state-changed', event.state);
+    } else {
+      mainWindow.webContents.send('browser:state-changed', event.state);
+    }
   } else if (event.type === 'file-changed') {
     // Real-time file change events for file tree updates
     const payload = event as unknown as { changeType: string; path: string; oldPath?: string };
@@ -68,257 +82,87 @@ const emitToRenderer = (event: RendererEvent): void => {
   }
 };
 
-const bootstrapInfrastructure = async () => {
-  if (infraInitialized) return;
+/**
+ * Initialize heavy services (LSP, TypeScript diagnostics) in background
+ * Called after window is shown to prevent UI freeze
+ */
+const initializeDeferredServices = async () => {
+  const activeWorkspace = workspaceManager.getActive();
+  
+  // Initialize LSP manager for multi-language code intelligence
+  const { initLSPManager, getLSPManager, initLSPBridge, getLSPBridge } = await import('./main/lsp');
+  initLSPManager(logger);
+  logger.info('LSP manager initialized');
 
-  try {
-    const userData = app.getPath('userData');
+  // Initialize LSP bridge for real-time file change synchronization
+  const lspBridge = initLSPBridge(logger);
 
-    // Initialize all services
-    settingsStore = new SettingsStore(path.join(userData, 'settings.json'));
-    workspaceManager = new WorkspaceManager(path.join(userData, 'workspaces.json'));
-
-    // Load all data in parallel
-    await Promise.all([settingsStore.load(), workspaceManager.load()]);
-
-    // Apply cache settings from persisted settings
-    const settings = settingsStore.get();
-    if (settings.cacheSettings) {
-      const toolCache = getToolResultCache();
-      const contextCache = getContextCache();
-
-      // Apply tool cache settings
-      if (settings.cacheSettings.toolCache) {
-        toolCache.updateConfig({
-          maxAge: settings.cacheSettings.toolCache.defaultTtlMs,
-          maxSize: settings.cacheSettings.toolCache.maxEntries,
-          enableLRU: settings.cacheSettings.enableLruEviction,
-        });
-      }
-
-      // Apply context cache settings
-      if (settings.cacheSettings.contextCache) {
-        contextCache.setConfig({
-          maxSizeBytes: settings.cacheSettings.contextCache.maxSizeMb * 1024 * 1024,
-          defaultTTL: settings.cacheSettings.contextCache.defaultTtlMs,
-          enableTTL: settings.cacheSettings.contextCache.enabled,
-        });
-      }
-
-      logger.info('Cache settings applied', {
-        toolCacheEnabled: settings.cacheSettings.toolCache?.enabled,
-        contextCacheEnabled: settings.cacheSettings.contextCache?.enabled,
-        strategy: settings.cacheSettings.promptCacheStrategy,
-      });
-    }
-
-    // Auto-import Claude Code credentials if not already connected
-    if (!settings.claudeSubscription) {
-      try {
-        const { autoImportCredentials, setSubscriptionUpdateCallback, setStatusChangeCallback } = await import('./main/agent/claudeAuth');
-
-        // Set callback to emit status changes to renderer
-        setStatusChangeCallback((event) => {
-          emitToRenderer({
-            type: 'claude-subscription',
-            eventType: event.type,
-            message: event.message,
-            tier: event.tier,
-          });
-        });
-
-        const subscription = await autoImportCredentials();
-        if (subscription) {
-          await settingsStore.update({ claudeSubscription: subscription });
-
-          // Set callback to auto-save refreshed tokens
-          setSubscriptionUpdateCallback(async (updated) => {
-            await settingsStore.update({ claudeSubscription: updated });
-            emitToRenderer({ type: 'settings-update', settings: settingsStore.get() });
-            logger.debug('Claude subscription auto-updated after refresh');
-          });
-
-          logger.info('Claude Code credentials auto-imported', { tier: subscription.tier });
-        }
-      } catch (err) {
-        logger.debug('Claude Code auto-import skipped', {
-          error: err instanceof Error ? err.message : String(err)
-        });
-      }
-    } else {
-      // Start background refresh for existing subscription
-      try {
-        const { startBackgroundRefresh, setSubscriptionUpdateCallback, setStatusChangeCallback } = await import('./main/agent/claudeAuth');
-
-        // Set callback to emit status changes to renderer
-        setStatusChangeCallback((event) => {
-          emitToRenderer({
-            type: 'claude-subscription',
-            eventType: event.type,
-            message: event.message,
-            tier: event.tier,
-          });
-        });
-
-        setSubscriptionUpdateCallback(async (updated) => {
-          await settingsStore.update({ claudeSubscription: updated });
-          emitToRenderer({ type: 'settings-update', settings: settingsStore.get() });
-          logger.debug('Claude subscription auto-updated after refresh');
-        });
-        startBackgroundRefresh(settings.claudeSubscription);
-        logger.info('Claude Code background refresh started');
-      } catch (err) {
-        logger.debug('Failed to start Claude background refresh', {
-          error: err instanceof Error ? err.message : String(err)
-        });
-      }
-    }
-
-    // Create orchestrator AFTER settings are fully loaded
-    orchestrator = new AgentOrchestrator({
-      settingsStore,
-      workspaceManager,
-      logger,
-      sessionsPath: path.join(userData, 'sessions.json')
-    });
-
-    // Initialize orchestrator (load sessions, validate configuration)
-    await orchestrator.init();
-
-    // Initialize LSP manager for multi-language code intelligence
-    const { initLSPManager, getLSPManager, initLSPBridge, getLSPBridge } = await import('./main/lsp');
-    initLSPManager(logger);
-    logger.info('LSP manager initialized');
-
-    // Initialize LSP bridge for real-time file change synchronization
-    const lspBridge = initLSPBridge(logger);
-
-    // Initialize LSP for active workspace if one exists
-    const activeWorkspace = workspaceManager.getActive();
-    if (activeWorkspace?.path) {
-      const lspManager = getLSPManager();
-      if (lspManager) {
-        await lspManager.initialize(activeWorkspace.path);
+  // Initialize LSP for active workspace if one exists (runs async checks now)
+  if (activeWorkspace?.path) {
+    const lspManager = getLSPManager();
+    if (lspManager) {
+      // Non-blocking - uses async exec now
+      lspManager.initialize(activeWorkspace.path).then(() => {
         logger.info('LSP manager initialized for active workspace', { workspacePath: activeWorkspace.path });
-      }
-
-      // Initialize TypeScript diagnostics service for the workspace
-      const { initTypeScriptDiagnosticsService } = await import('./main/agent/workspace/TypeScriptDiagnosticsService');
-      const tsDiagnosticsService = initTypeScriptDiagnosticsService(logger);
-      await tsDiagnosticsService.initialize(activeWorkspace.path);
-
-      // Forward diagnostics events to renderer in the expected format
-      tsDiagnosticsService.on('diagnostics', (event) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          if (event.type === 'diagnostics-updated' && event.snapshot) {
-            mainWindow.webContents.send('diagnostics:updated', {
-              diagnostics: event.snapshot.diagnostics,
-              errorCount: event.snapshot.errorCount,
-              warningCount: event.snapshot.warningCount,
-              filesWithErrors: event.snapshot.filesWithErrors,
-              timestamp: event.snapshot.timestamp,
-            });
-          } else if (event.type === 'file-diagnostics' && event.filePath && event.diagnostics) {
-            mainWindow.webContents.send('diagnostics:file-updated', {
-              filePath: event.filePath,
-              diagnostics: event.diagnostics,
-            });
-          } else if (event.type === 'diagnostics-cleared') {
-            mainWindow.webContents.send('diagnostics:cleared', {});
-          }
-        }
+      }).catch((err) => {
+        logger.warn('LSP initialization failed', { error: err instanceof Error ? err.message : String(err) });
       });
-
-      logger.info('TypeScript diagnostics service initialized');
     }
 
-    // Connect file watcher to LSP bridge for real-time updates
-    const { setLSPChangeHandler } = await import('./main/workspaces/fileWatcher');
-    setLSPChangeHandler((filePath, changeType) => {
-      const bridge = getLSPBridge();
-      if (bridge) {
-        bridge.onFileChanged(filePath, changeType);
-      }
+    // Initialize TypeScript diagnostics service for the workspace (non-blocking)
+    const { initTypeScriptDiagnosticsService } = await import('./main/agent/workspace/TypeScriptDiagnosticsService');
+    const tsDiagnosticsService = initTypeScriptDiagnosticsService(logger);
+    
+    // Run in background - don't await
+    tsDiagnosticsService.initialize(activeWorkspace.path).then(() => {
+      logger.info('TypeScript diagnostics service initialized');
+    }).catch((err) => {
+      logger.debug('TypeScript diagnostics not available', { error: err instanceof Error ? err.message : String(err) });
     });
 
-    // Forward LSP diagnostics updates to renderer
-    lspBridge.on('diagnostics', (event) => {
+    // Forward diagnostics events to renderer in the expected format
+    tsDiagnosticsService.on('diagnostics', (event) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('lsp:diagnostics-updated', event);
+        if (event.type === 'diagnostics-updated' && event.snapshot) {
+          mainWindow.webContents.send('diagnostics:updated', {
+            diagnostics: event.snapshot.diagnostics,
+            errorCount: event.snapshot.errorCount,
+            warningCount: event.snapshot.warningCount,
+            filesWithErrors: event.snapshot.filesWithErrors,
+            timestamp: event.snapshot.timestamp,
+          });
+        } else if (event.type === 'file-diagnostics' && event.filePath && event.diagnostics) {
+          mainWindow.webContents.send('diagnostics:file-updated', {
+            filePath: event.filePath,
+            diagnostics: event.diagnostics,
+          });
+        } else if (event.type === 'diagnostics-cleared') {
+          mainWindow.webContents.send('diagnostics:cleared', {});
+        }
       }
     });
-
-    logger.info('LSP bridge connected to file watcher');
-
-    // Setup event forwarding AFTER initialization is complete
-    orchestrator.on('event', (event) => emitToRenderer(event));
-
-    // Wire up session health monitor to emit IPC events
-    const healthMonitor = getSessionHealthMonitor();
-    healthMonitor.setEventEmitter((event) => {
-      emitToRenderer(event as unknown as RendererEvent);
-    });
-    logger.info('Session health monitor connected to IPC');
-
-    infraInitialized = true;
-    logger.info('Infrastructure fully initialized', {
-      hasProviders: orchestrator?.hasAvailableProviders() ?? false,
-    });
-  } catch (error) {
-    logger.error('Failed to initialize infrastructure', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-
-    // Don't throw - allow the app to start even if some services fail
-    // The UI will show appropriate error messages
-    infraInitialized = true; // Mark as initialized to prevent retry loops
   }
-};
 
-const createWindow = async () => {
-  await bootstrapInfrastructure();
-
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 400,
-    minHeight: 500,
-    autoHideMenuBar: true,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: 'rgba(0,0,0,0)',
-      symbolColor: '#71717a',
-      height: 32,
-    },
-    backgroundColor: '#050506',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: false,
-    },
+  // Connect file watcher to LSP bridge for real-time updates
+  const { setLSPChangeHandler } = await import('./main/workspaces/fileWatcher');
+  setLSPChangeHandler((filePath, changeType) => {
+    const bridge = getLSPBridge();
+    if (bridge) {
+      bridge.onFileChanged(filePath, changeType);
+    }
   });
 
-  mainWindow.setMenu(null);
+  // Forward LSP diagnostics updates to renderer
+  lspBridge.on('diagnostics', (event) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('lsp:diagnostics-updated', event);
+    }
+  });
 
-  // Note: DevTools console errors (Autofill.enable, etc.) are benign and don't affect functionality.
-  // They occur when DevTools probes unsupported CDP domains in Electron.
-
-  // Initialize the embedded browser manager with settings
-  const settings = settingsStore.get();
-  initBrowserManager(mainWindow, settings.browserSettings);
-  logger.info('Browser manager initialized with settings');
-
-  // Initialize file watcher for real-time file tree updates
-  initFileWatcher(mainWindow);
-  const activeWorkspace = workspaceManager.getActive();
-  if (activeWorkspace?.path) {
-    await watchWorkspace(activeWorkspace.path);
-  }
-  logger.info('File watcher initialized');
-
+  logger.info('LSP bridge connected to file watcher');
+  
   // Initialize semantic indexer for code search (respects settings)
+  const settings = settingsStore.get();
   const semanticSettings = settings.semanticSettings;
   if (semanticSettings?.enabled !== false) {
     try {
@@ -372,52 +216,55 @@ const createWindow = async () => {
       });
       
       const semanticIndexer = getSemanticIndexer();
-      await semanticIndexer.initialize();
       
-      // Clear the progress callback after initialization
-      embeddingService.setProgressCallback(null);
-      
-      // Emit final model status after initialization completes
-      const finalModelStatus = await embeddingService.getModelStatus();
-      emitToRenderer({
-        type: 'semantic:modelStatus',
-        modelId: finalModelStatus.modelId,
-        isCached: finalModelStatus.isCached,
-        isLoaded: finalModelStatus.isLoaded,
-        status: finalModelStatus.isLoaded ? 'ready' : 'error',
-      } as RendererEvent);
+      // Initialize in background - don't block
+      semanticIndexer.initialize().then(async () => {
+        // Clear the progress callback after initialization
+        embeddingService.setProgressCallback(null);
+        
+        // Emit final model status after initialization completes
+        const finalModelStatus = await embeddingService.getModelStatus();
+        emitToRenderer({
+          type: 'semantic:modelStatus',
+          modelId: finalModelStatus.modelId,
+          isCached: finalModelStatus.isCached,
+          isLoaded: finalModelStatus.isLoaded,
+          status: finalModelStatus.isLoaded ? 'ready' : 'error',
+        } as RendererEvent);
 
-      // Register workspace structure getter for system prompt context
-      // This allows the agent to use rich workspace analysis from semantic indexer
-      setSemanticWorkspaceStructureGetter(async () => {
-        const structure = semanticIndexer.getWorkspaceStructureForPrompt();
-        return structure ?? undefined;
-      });
-
-      // Auto-index active workspace in background (only if autoIndexOnStartup is enabled)
-      if (activeWorkspace?.path && semanticSettings?.autoIndexOnStartup !== false) {
-        // Non-blocking background indexing
-        semanticIndexer.indexWorkspace(activeWorkspace.path, {
-          fileTypes: semanticSettings?.indexFileTypes?.length ? semanticSettings.indexFileTypes.map(t => `.${t}`) : undefined,
-          excludePatterns: semanticSettings?.excludePatterns,
-          onProgress: (progress) => {
-            emitToRenderer({
-              type: 'semantic:indexProgress',
-              ...progress,
-            });
-          },
-        }).catch((err) => {
-          logger.warn('Background indexing failed', {
-            error: err instanceof Error ? err.message : String(err),
-          });
+        // Register workspace structure getter for system prompt context
+        setSemanticWorkspaceStructureGetter(async () => {
+          const structure = semanticIndexer.getWorkspaceStructureForPrompt();
+          return structure ?? undefined;
         });
-      }
 
-      logger.info('Semantic indexer initialized', {
-        enabled: true,
-        autoIndex: semanticSettings?.autoIndexOnStartup !== false,
-        watchChanges: semanticSettings?.watchForChanges !== false,
-        modelLoaded: embeddingService.isUsingOnnxModel(),
+        // Auto-index active workspace in background
+        if (activeWorkspace?.path && semanticSettings?.autoIndexOnStartup !== false) {
+          semanticIndexer.indexWorkspace(activeWorkspace.path, {
+            fileTypes: semanticSettings?.indexFileTypes?.length ? semanticSettings.indexFileTypes.map(t => `.${t}`) : undefined,
+            excludePatterns: semanticSettings?.excludePatterns,
+            onProgress: (progress) => {
+              emitToRenderer({
+                type: 'semantic:indexProgress',
+                ...progress,
+              });
+            },
+          }).catch((err) => {
+            logger.warn('Background indexing failed', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }
+
+        logger.info('Semantic indexer initialized', {
+          enabled: true,
+          autoIndex: semanticSettings?.autoIndexOnStartup !== false,
+          modelLoaded: embeddingService.isUsingOnnxModel(),
+        });
+      }).catch((err) => {
+        logger.warn('Semantic indexer initialization failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
     } catch (err) {
       logger.warn('Semantic indexer initialization failed (non-critical)', {
@@ -427,6 +274,183 @@ const createWindow = async () => {
   } else {
     logger.info('Semantic indexer disabled by settings');
   }
+  
+  logger.info('Deferred services initialization complete');
+};
+
+const bootstrapInfrastructure = async () => {
+  if (infraInitialized) return;
+
+  try {
+    const userData = app.getPath('userData');
+
+    // Initialize all services
+    settingsStore = new SettingsStore(path.join(userData, 'settings.json'));
+    workspaceManager = new WorkspaceManager(path.join(userData, 'workspaces.json'));
+
+    // Load all data in parallel
+    await Promise.all([settingsStore.load(), workspaceManager.load()]);
+
+    // Apply cache settings from persisted settings
+    const settings = settingsStore.get();
+    if (settings.cacheSettings) {
+      const toolCache = getToolResultCache();
+      const contextCache = getContextCache();
+
+      // Apply tool cache settings
+      if (settings.cacheSettings.toolCache) {
+        toolCache.updateConfig({
+          maxAge: settings.cacheSettings.toolCache.defaultTtlMs,
+          maxSize: settings.cacheSettings.toolCache.maxEntries,
+          enableLRU: settings.cacheSettings.enableLruEviction,
+        });
+      }
+
+      // Apply context cache settings
+      if (settings.cacheSettings.contextCache) {
+        contextCache.setConfig({
+          maxSizeBytes: settings.cacheSettings.contextCache.maxSizeMb * 1024 * 1024,
+          defaultTTL: settings.cacheSettings.contextCache.defaultTtlMs,
+          enableTTL: settings.cacheSettings.contextCache.enabled,
+        });
+      }
+
+      logger.info('Cache settings applied', {
+        toolCacheEnabled: settings.cacheSettings.toolCache?.enabled,
+        contextCacheEnabled: settings.cacheSettings.contextCache?.enabled,
+        strategy: settings.cacheSettings.promptCacheStrategy,
+      });
+    }
+
+    // Auto-import Claude Code credentials in BACKGROUND (don't block startup)
+    // This does network requests which can be slow
+    setImmediate(async () => {
+      try {
+        const { autoImportCredentials, startBackgroundRefresh, setSubscriptionUpdateCallback, setStatusChangeCallback } = await import('./main/agent/claudeAuth');
+
+        // Set callback to emit status changes to renderer
+        setStatusChangeCallback((event) => {
+          emitToRenderer({
+            type: 'claude-subscription',
+            eventType: event.type,
+            message: event.message,
+            tier: event.tier,
+          });
+        });
+
+        setSubscriptionUpdateCallback(async (updated) => {
+          await settingsStore.update({ claudeSubscription: updated });
+          emitToRenderer({ type: 'settings-update', settings: settingsStore.get() });
+          logger.debug('Claude subscription auto-updated after refresh');
+        });
+
+        const currentSettings = settingsStore.get();
+        if (!currentSettings.claudeSubscription) {
+          const subscription = await autoImportCredentials();
+          if (subscription) {
+            await settingsStore.update({ claudeSubscription: subscription });
+            logger.info('Claude Code credentials auto-imported', { tier: subscription.tier });
+          }
+        } else {
+          // Start background refresh for existing subscription
+          startBackgroundRefresh(currentSettings.claudeSubscription);
+          logger.info('Claude Code background refresh started');
+        }
+      } catch (err) {
+        logger.debug('Claude Code auth setup skipped', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    });
+
+    // Create orchestrator AFTER settings are fully loaded
+    orchestrator = new AgentOrchestrator({
+      settingsStore,
+      workspaceManager,
+      logger,
+      sessionsPath: path.join(userData, 'sessions.json')
+    });
+
+    // Initialize orchestrator (load sessions, validate configuration)
+    await orchestrator.init();
+
+    // Setup event forwarding AFTER initialization is complete
+    orchestrator.on('event', (event) => emitToRenderer(event));
+
+    // Wire up session health monitor to emit IPC events
+    const healthMonitor = getSessionHealthMonitor();
+    healthMonitor.setEventEmitter((event) => {
+      emitToRenderer(event as unknown as RendererEvent);
+    });
+    logger.info('Session health monitor connected to IPC');
+
+    infraInitialized = true;
+    logger.info('Infrastructure initialized (deferred services pending)', {
+      hasProviders: orchestrator?.hasAvailableProviders() ?? false,
+    });
+  } catch (error) {
+    logger.error('Failed to initialize infrastructure', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Don't throw - allow the app to start even if some services fail
+    // The UI will show appropriate error messages
+    infraInitialized = true; // Mark as initialized to prevent retry loops
+  }
+};
+
+const createWindow = async () => {
+  await bootstrapInfrastructure();
+
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 400,
+    minHeight: 500,
+    autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: 'rgba(0,0,0,0)',
+      symbolColor: '#71717a',
+      height: 32,
+    },
+    backgroundColor: '#050506',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+    },
+  });
+
+  mainWindow.setMenu(null);
+
+  // Initialize IPC event batcher for high-frequency event optimization
+  eventBatcher = new IpcEventBatcher(() => mainWindow, { 
+    batchIntervalMs: 16, // ~60fps for smooth UI updates
+    maxBatchSize: 50,
+  });
+  logger.info('IPC event batcher initialized');
+
+  // Note: DevTools console errors (Autofill.enable, etc.) are benign and don't affect functionality.
+  // They occur when DevTools probes unsupported CDP domains in Electron.
+
+  // Initialize the embedded browser manager with settings
+  const settings = settingsStore.get();
+  initBrowserManager(mainWindow, settings.browserSettings);
+  logger.info('Browser manager initialized with settings');
+
+  // Initialize file watcher for real-time file tree updates
+  initFileWatcher(mainWindow);
+  const activeWorkspace = workspaceManager.getActive();
+  if (activeWorkspace?.path) {
+    // Start file watcher - non-blocking with setImmediate wrapper
+    watchWorkspace(activeWorkspace.path).catch((err) => {
+      logger.warn('File watcher setup failed', { error: err instanceof Error ? err.message : String(err) });
+    });
+  }
+  logger.info('File watcher initialized');
 
   // Setup browser state event forwarding for real-time UI updates
   const browserManager = getBrowserManager();
@@ -466,6 +490,16 @@ const createWindow = async () => {
     emitToRenderer({ type: 'workspace-update', workspaces: workspaceManager.list() });
     emitToRenderer({ type: 'settings-update', settings: settingsStore.get() });
     emitToRenderer({ type: 'sessions-update', sessions: orchestrator!.getSessions() });
+    
+    // Initialize heavy services in background AFTER UI is shown
+    // This prevents "Not Responding" during startup
+    setImmediate(() => {
+      initializeDeferredServices().catch((err) => {
+        logger.warn('Deferred services initialization failed (non-critical)', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    });
   });
 };
 

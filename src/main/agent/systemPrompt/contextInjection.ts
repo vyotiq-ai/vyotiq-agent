@@ -75,21 +75,65 @@ export function evaluateContextInjectionCondition(
 
 /**
  * Process template placeholders
+ * 
+ * Supported placeholders:
+ * - {{workspace}} - Workspace path
+ * - {{workspaceName}} - Workspace name
+ * - {{session}} - Session ID
+ * - {{provider}} - Current provider name
+ * - {{modelId}} - Current model ID
+ * - {{activeFile}} - Currently active file
+ * - {{openFiles}} - Comma-separated list of open files
+ * - {{openFilesCount}} - Number of open files
+ * - {{diagnosticsCount}} - Total number of diagnostics
+ * - {{errorCount}} - Number of errors
+ * - {{warningCount}} - Number of warnings
+ * - {{date}} - Current date (ISO format)
+ * - {{time}} - Current time
+ * - {{os}} - Operating system
  */
 export function processContextRuleTemplate(
   template: string,
   session: InternalSession,
   workspace: { id: string; path: string; name?: string } | undefined,
   providerName: string,
-  editorContext?: SystemPromptContext['editorContext']
+  editorContext?: SystemPromptContext['editorContext'],
+  modelId?: string
 ): string {
   let result = template;
 
+  // Workspace context
   result = result.replace(/\{\{workspace\}\}/g, workspace?.path ?? 'No workspace');
+  result = result.replace(/\{\{workspaceName\}\}/g, workspace?.name ?? workspace?.path?.split(/[\\/]/).pop() ?? 'No workspace');
+  
+  // Session context
   result = result.replace(/\{\{session\}\}/g, session.state.id);
+  
+  // Provider context
   result = result.replace(/\{\{provider\}\}/g, providerName);
+  result = result.replace(/\{\{modelId\}\}/g, modelId ?? 'unknown');
+  
+  // Editor context
   result = result.replace(/\{\{activeFile\}\}/g, editorContext?.activeFile || 'None');
   result = result.replace(/\{\{openFiles\}\}/g, editorContext?.openFiles.join(', ') || 'None');
+  result = result.replace(/\{\{openFilesCount\}\}/g, String(editorContext?.openFiles.length ?? 0));
+  
+  // Diagnostics context
+  const diagnostics = editorContext?.diagnostics ?? [];
+  const errorCount = diagnostics.filter(d => d.severity === 'error').length;
+  const warningCount = diagnostics.filter(d => d.severity === 'warning').length;
+  result = result.replace(/\{\{diagnosticsCount\}\}/g, String(diagnostics.length));
+  result = result.replace(/\{\{errorCount\}\}/g, String(errorCount));
+  result = result.replace(/\{\{warningCount\}\}/g, String(warningCount));
+  
+  // Temporal context
+  const now = new Date();
+  result = result.replace(/\{\{date\}\}/g, now.toISOString().split('T')[0]);
+  result = result.replace(/\{\{time\}\}/g, now.toTimeString().split(' ')[0]);
+  
+  // System context
+  const osName = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux';
+  result = result.replace(/\{\{os\}\}/g, osName);
 
   return result;
 }
@@ -118,7 +162,8 @@ export function buildInjectedContext(context: SystemPromptContext): string {
       context.session,
       context.workspace,
       context.providerName,
-      context.editorContext
+      context.editorContext,
+      context.modelId
     );
     parts.push(`  <rule name="${rule.name}" priority="${rule.priority}">`);
     parts.push(`    ${content}`);

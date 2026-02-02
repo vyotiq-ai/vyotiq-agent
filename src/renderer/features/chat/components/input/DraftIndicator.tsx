@@ -10,6 +10,7 @@
 import React, { memo, useMemo } from 'react';
 import { Save, Check, AlertCircle, RotateCcw, Loader2 } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
+import { formatRelativeTime } from '../../../../utils/timeFormatting';
 import type { DraftStatus } from '../../hooks/useDraftMessage';
 
 // =============================================================================
@@ -25,27 +26,6 @@ export interface DraftIndicatorProps {
   visible?: boolean;
   /** Additional className */
   className?: string;
-}
-
-// =============================================================================
-// Utility Functions
-// =============================================================================
-
-/**
- * Format relative time for display
- */
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now();
-  const diffMs = now - timestamp;
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-
-  if (diffSec < 10) return 'just now';
-  if (diffSec < 60) return `${diffSec}s ago`;
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHour < 24) return `${diffHour}h ago`;
-  return new Date(timestamp).toLocaleDateString();
 }
 
 // =============================================================================

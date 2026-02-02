@@ -210,6 +210,8 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
         type="button"
         onClick={onToggleYolo}
         disabled={isModelDisabled}
+        aria-pressed={yoloEnabled}
+        aria-label={yoloEnabled ? 'Disable auto-confirm mode' : 'Enable auto-confirm mode'}
         className={cn(
           'flex items-center gap-1 text-[10px] font-mono transition-colors whitespace-nowrap',
           'rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',

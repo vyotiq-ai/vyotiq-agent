@@ -49,6 +49,14 @@ interface JSONRPCNotification {
   params?: unknown;
 }
 
+/** Incoming request from MCP server (e.g., sampling/createMessage) */
+interface JSONRPCIncomingRequest {
+  jsonrpc: '2.0';
+  id: number | string;
+  method: string;
+  params?: unknown;
+}
+
 // =============================================================================
 // MCP Protocol Types
 // =============================================================================
@@ -89,6 +97,46 @@ interface MCPToolCallResultRaw {
 }
 
 // =============================================================================
+// MCP Sampling Request Types
+// =============================================================================
+
+interface MCPSamplingMessage {
+  role: 'user' | 'assistant';
+  content: {
+    type: 'text' | 'image';
+    text?: string;
+    data?: string;
+    mimeType?: string;
+  };
+}
+
+interface MCPSamplingRequest {
+  messages: MCPSamplingMessage[];
+  modelPreferences?: {
+    hints?: Array<{ name: string }>;
+    costPriority?: number;
+    speedPriority?: number;
+    intelligencePriority?: number;
+  };
+  systemPrompt?: string;
+  includeContext?: 'none' | 'thisServer' | 'allServers';
+  temperature?: number;
+  maxTokens: number;
+  stopSequences?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+interface MCPSamplingResponse {
+  role: 'assistant';
+  content: {
+    type: 'text';
+    text: string;
+  };
+  model: string;
+  stopReason?: 'endTurn' | 'stopSequence' | 'maxTokens';
+}
+
+// =============================================================================
 // MCP Client Events
 // =============================================================================
 
@@ -100,6 +148,8 @@ export interface MCPClientEvents {
   resourcesChanged: (resources: MCPResourceDefinition[]) => void;
   promptsChanged: (prompts: MCPPromptDefinition[]) => void;
   log: (level: string, message: string, data?: unknown) => void;
+  /** Emitted when the server requests a sampling completion */
+  samplingRequest: (request: MCPSamplingRequest, respond: (response: MCPSamplingResponse) => void) => void;
 }
 
 // =============================================================================
@@ -579,7 +629,8 @@ export class MCPClient extends EventEmitter {
   private async refreshCapabilities(): Promise<void> {
     if (this._capabilities?.tools) {
       const tools = await this.refreshTools();
-      if (JSON.stringify(tools) !== JSON.stringify(this._tools)) {
+      // Use shallow comparison first (length check), then deep compare only if needed
+      if (!this.arraysEqual(tools, this._tools)) {
         this._tools = tools;
         this.emit('toolsChanged', tools);
       }
@@ -587,7 +638,7 @@ export class MCPClient extends EventEmitter {
 
     if (this._capabilities?.resources) {
       const resources = await this.refreshResources();
-      if (JSON.stringify(resources) !== JSON.stringify(this._resources)) {
+      if (!this.arraysEqual(resources, this._resources)) {
         this._resources = resources;
         this.emit('resourcesChanged', resources);
       }
@@ -595,11 +646,22 @@ export class MCPClient extends EventEmitter {
 
     if (this._capabilities?.prompts) {
       const prompts = await this.refreshPrompts();
-      if (JSON.stringify(prompts) !== JSON.stringify(this._prompts)) {
+      if (!this.arraysEqual(prompts, this._prompts)) {
         this._prompts = prompts;
         this.emit('promptsChanged', prompts);
       }
     }
+  }
+
+  /**
+   * Efficient array comparison - checks length first, then JSON only if needed
+   */
+  private arraysEqual<T>(a: T[] | undefined, b: T[] | undefined): boolean {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    if (a.length !== b.length) return false;
+    // Only do expensive JSON comparison if lengths match
+    return JSON.stringify(a) === JSON.stringify(b);
   }
 
   /**
@@ -736,24 +798,31 @@ export class MCPClient extends EventEmitter {
     }
   }
 
-  private handleMessage(message: JSONRPCResponse | JSONRPCNotification): void {
-    // Check if it's a response (has id)
+  private handleMessage(message: JSONRPCResponse | JSONRPCNotification | JSONRPCIncomingRequest): void {
+    // Check if it's a response (has id and result/error)
     if ('id' in message && message.id !== null) {
-      const pending = this.pendingRequests.get(message.id);
-      if (pending) {
-        clearTimeout(pending.timeout);
-        this.pendingRequests.delete(message.id);
+      // Check if it's a response (has result or error) vs an incoming request (has method)
+      if ('result' in message || 'error' in message) {
+        // It's a response to our request
+        const pending = this.pendingRequests.get(message.id);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this.pendingRequests.delete(message.id);
 
-        if (message.error) {
-          pending.reject(
-            new Error(`${message.error.code}: ${message.error.message}`)
-          );
-        } else {
-          pending.resolve(message.result);
+          if ((message as JSONRPCResponse).error) {
+            pending.reject(
+              new Error(`${(message as JSONRPCResponse).error!.code}: ${(message as JSONRPCResponse).error!.message}`)
+            );
+          } else {
+            pending.resolve((message as JSONRPCResponse).result);
+          }
         }
+      } else if ('method' in message) {
+        // It's an incoming request from the server
+        this.handleIncomingRequest(message as JSONRPCIncomingRequest);
       }
     } else {
-      // It's a notification
+      // It's a notification (no id)
       this.handleNotification(message as JSONRPCNotification);
     }
   }
@@ -788,6 +857,95 @@ export class MCPClient extends EventEmitter {
       }
       default:
         logger.debug('Unhandled notification', { method: notification.method });
+    }
+  }
+
+  /**
+   * Handle incoming requests from MCP server (e.g., sampling/createMessage).
+   */
+  private handleIncomingRequest(request: JSONRPCIncomingRequest): void {
+    logger.debug('Received incoming request', { method: request.method, id: request.id });
+
+    switch (request.method) {
+      case 'sampling/createMessage': {
+        const samplingRequest = request.params as MCPSamplingRequest;
+        
+        // Create a respond function that sends the response back
+        const respond = (response: MCPSamplingResponse): void => {
+          this.sendResponse(request.id, response);
+        };
+
+        // Emit the sampling request event for the application to handle
+        this.emit('samplingRequest', samplingRequest, respond);
+        break;
+      }
+      default:
+        logger.warn('Unhandled incoming request', { method: request.method });
+        // Send error response for unsupported methods
+        this.sendErrorResponse(request.id, -32601, `Method not found: ${request.method}`);
+    }
+  }
+
+  /**
+   * Send a JSON-RPC response to an incoming request.
+   */
+  private sendResponse(id: number | string, result: unknown): void {
+    const response: JSONRPCResponse = {
+      jsonrpc: '2.0',
+      id,
+      result,
+    };
+
+    this.sendRawMessage(response);
+  }
+
+  /**
+   * Send a JSON-RPC error response.
+   */
+  private sendErrorResponse(id: number | string, code: number, message: string): void {
+    const response: JSONRPCResponse = {
+      jsonrpc: '2.0',
+      id,
+      error: { code, message },
+    };
+
+    this.sendRawMessage(response);
+  }
+
+  /**
+   * Send a raw JSON-RPC message to the server.
+   */
+  private sendRawMessage(message: JSONRPCResponse | JSONRPCNotification): void {
+    const data = JSON.stringify(message);
+
+    switch (this.transport.type) {
+      case 'stdio':
+        if (this.process && !this.process.killed && this.process.stdin) {
+          this.process.stdin.write(data + '\n', (err) => {
+            if (err) {
+              logger.error('Failed to send response', { error: err.message });
+            }
+          });
+        }
+        break;
+      case 'sse':
+      case 'streamable-http':
+        if (this.httpEndpoint) {
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
+          if (this.sessionId) {
+            headers['X-MCP-Session-ID'] = this.sessionId;
+          }
+          fetch(this.httpEndpoint, {
+            method: 'POST',
+            headers,
+            body: data,
+          }).catch((err) => {
+            logger.error('Failed to send HTTP response', { error: err.message });
+          });
+        }
+        break;
     }
   }
 

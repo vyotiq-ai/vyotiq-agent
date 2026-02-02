@@ -240,6 +240,7 @@ action="reset_cache_stats"
   requiresApproval: false,
   category: 'system',
   riskLevel: 'safe',
+  allowedCallers: ['direct'],
   schema: {
     type: 'object',
     properties: {

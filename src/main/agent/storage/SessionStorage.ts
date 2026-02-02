@@ -149,30 +149,45 @@ export class SessionStorage {
 
   /**
    * Rebuild index by scanning session files
+   * Uses parallel loading with concurrency limit to prevent blocking
    */
   private async rebuildIndex(): Promise<void> {
     this.sessionIndex.clear();
     
     try {
       const files = await fs.readdir(this.sessionsDir);
+      const jsonFiles = files.filter(f => f.endsWith('.json'));
       
-      for (const file of files) {
-        if (!file.endsWith('.json')) continue;
+      // Process files in parallel batches to avoid overwhelming the event loop
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < jsonFiles.length; i += BATCH_SIZE) {
+        const batch = jsonFiles.slice(i, i + BATCH_SIZE);
         
-        try {
-          const filePath = path.join(this.sessionsDir, file);
-          const content = await fs.readFile(filePath, 'utf-8');
-          const session = JSON.parse(content) as AgentSessionState;
-          
-          this.sessionIndex.set(session.id, {
-            sessionId: session.id,
-            workspaceId: session.workspaceId,
-            createdAt: session.createdAt,
-            updatedAt: session.updatedAt,
-            fileName: file,
-          });
-        } catch (error) {
-          logger.error('Error reading session file', { file, error: error instanceof Error ? error.message : String(error) });
+        const results = await Promise.allSettled(
+          batch.map(async (file) => {
+            const filePath = path.join(this.sessionsDir, file);
+            const content = await fs.readFile(filePath, 'utf-8');
+            const session = JSON.parse(content) as AgentSessionState;
+            return { file, session };
+          })
+        );
+        
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            const { file, session } = result.value;
+            this.sessionIndex.set(session.id, {
+              sessionId: session.id,
+              workspaceId: session.workspaceId,
+              createdAt: session.createdAt,
+              updatedAt: session.updatedAt,
+              fileName: file,
+            });
+          }
+        }
+        
+        // Yield to event loop between batches
+        if (i + BATCH_SIZE < jsonFiles.length) {
+          await new Promise(resolve => setImmediate(resolve));
         }
       }
       
@@ -385,26 +400,33 @@ export class SessionStorage {
 
   /**
    * Load all sessions (optionally filtered by workspace)
+   * Uses parallel loading with batching to prevent blocking
    */
   async loadAllSessions(workspaceId?: string): Promise<AgentSessionState[]> {
-    const sessions: AgentSessionState[] = [];
+    // Get filtered metadata first (fast, in-memory)
+    const metadataList = Array.from(this.sessionIndex.values())
+      .filter(m => !workspaceId || m.workspaceId === workspaceId);
     
-    for (const metadata of this.sessionIndex.values()) {
-      // Filter by workspace if specified
-      if (workspaceId && metadata.workspaceId !== workspaceId) {
-        continue;
+    const sessions: AgentSessionState[] = [];
+    const BATCH_SIZE = 10;
+    
+    // Load sessions in parallel batches
+    for (let i = 0; i < metadataList.length; i += BATCH_SIZE) {
+      const batch = metadataList.slice(i, i + BATCH_SIZE);
+      
+      const results = await Promise.allSettled(
+        batch.map(metadata => this.loadSession(metadata.sessionId))
+      );
+      
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          sessions.push(result.value);
+        }
       }
       
-      try {
-        const session = await this.loadSession(metadata.sessionId);
-        if (session) {
-          sessions.push(session);
-        }
-      } catch (error) {
-        logger.error('Error loading session', {
-          sessionId: metadata.sessionId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+      // Yield to event loop between batches
+      if (i + BATCH_SIZE < metadataList.length) {
+        await new Promise(resolve => setImmediate(resolve));
       }
     }
     

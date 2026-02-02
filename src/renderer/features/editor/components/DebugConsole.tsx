@@ -179,7 +179,6 @@ export const DebugConsole: React.FC<DebugConsoleProps> = memo(({ className }) =>
       try {
         // Use Function constructor for expression evaluation
         // This creates a function that returns the expression result
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval
         const evaluator = new Function(`"use strict"; return (${expression});`);
         const evalResult = evaluator();
         result = typeof evalResult === 'object'

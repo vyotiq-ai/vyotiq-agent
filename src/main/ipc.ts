@@ -66,3 +66,13 @@ export const registerIpcHandlers = (context: IpcContext) => {
 
 // Re-export cleanup function for use in app shutdown
 export { cleanupTerminalSessions };
+
+// Re-export event batcher for performance optimization
+export {
+  IpcEventBatcher,
+  initIpcEventBatcher,
+  getIpcEventBatcher,
+  sendBatchedEvent,
+  getEventPriority,
+  EventPriority,
+} from './ipc/eventBatcher';

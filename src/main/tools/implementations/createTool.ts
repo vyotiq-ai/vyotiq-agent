@@ -54,6 +54,7 @@ Use this to create reusable workflows that combine multiple tool calls.
 
   requiresApproval: true,
   riskLevel: 'moderate',
+  allowedCallers: ['direct'],
   category: 'other',
 
   schema: {

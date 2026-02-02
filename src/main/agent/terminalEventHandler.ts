@@ -159,7 +159,7 @@ export class TerminalEventHandler {
      */
     public removeEventListeners(): void {
         // Clear all pending flush timers
-        for (const [pid, buffer] of this.terminalBuffers) {
+        for (const [_pid, buffer] of this.terminalBuffers) {
             if (buffer.timer) {
                 clearTimeout(buffer.timer);
             }

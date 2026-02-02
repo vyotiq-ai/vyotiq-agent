@@ -637,14 +637,14 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 
   // Track if vyotiq API is ready
   const [apiReady, setApiReady] = useState(() => !!window.vyotiq?.agent);
-  const [apiError, setApiError] = useState<string | null>(null);
+  const [_apiError, setApiError] = useState<string | null>(null);
   
   // Check for API readiness with better error handling
   useEffect(() => {
     if (apiReady) return;
     
     let attempts = 0;
-    const maxAttempts = 100; // 5 seconds at 50ms intervals
+    const _maxAttempts = 100; // 5 seconds at 50ms intervals
     
     // Poll for API availability
     const checkInterval = setInterval(() => {

@@ -415,6 +415,25 @@ export class DeepSeekProvider extends BaseLLMProvider {
         return baseMessage;
       }
       
+      // DeepSeek does NOT support vision/image inputs (as of 2026)
+      // Log warning and ignore image attachments
+      // @see https://api-docs.deepseek.com - no vision endpoint exists
+      if (message.role === 'user' && message.attachments && message.attachments.length > 0) {
+        const hasImageAttachments = message.attachments.some(a => a.mimeType?.startsWith('image/'));
+        if (hasImageAttachments) {
+          logger.warn('DeepSeek does not support vision - image attachments will be ignored', {
+            attachmentCount: message.attachments.length,
+            imageCount: message.attachments.filter(a => a.mimeType?.startsWith('image/')).length,
+            suggestion: 'Switch to a vision-capable provider like Anthropic Claude, OpenAI GPT-4o, or Gemini',
+          });
+        }
+        // Return text-only message, ignoring attachments
+        return {
+          role: 'user',
+          content: message.content || ''
+        };
+      }
+      
       return {
         role: message.role,
         content: message.content || ''

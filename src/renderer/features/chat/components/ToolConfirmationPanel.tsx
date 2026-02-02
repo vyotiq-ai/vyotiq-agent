@@ -690,8 +690,7 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
           <span className={cn(
             'w-1.5 h-1.5 rounded-full flex-shrink-0',
             'bg-[var(--color-warning)]',
-            'shadow-[0_0_6px_var(--color-warning)]',
-            'animate-pulse'
+            'shadow-[0_0_6px_var(--color-warning)]'
           )} />
           <span className="text-[10px] text-[var(--color-warning)] font-medium">
             confirm

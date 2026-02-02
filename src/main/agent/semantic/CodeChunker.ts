@@ -125,6 +125,27 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   '.md': 'markdown',
   '.mdx': 'markdown',
   '.txt': 'text',
+  // Additional languages
+  '.dart': 'dart',
+  '.ex': 'elixir',
+  '.exs': 'elixir',
+  '.erl': 'erlang',
+  '.hrl': 'erlang',
+  '.hs': 'haskell',
+  '.lhs': 'haskell',
+  '.ml': 'ocaml',
+  '.mli': 'ocaml',
+  '.fs': 'fsharp',
+  '.fsi': 'fsharp',
+  '.fsx': 'fsharp',
+  '.clj': 'clojure',
+  '.cljs': 'clojure',
+  '.cljc': 'clojure',
+  '.edn': 'clojure',
+  '.jl': 'julia',
+  '.zig': 'zig',
+  '.nim': 'nim',
+  '.nimble': 'nim',
 };
 
 /**
@@ -320,6 +341,274 @@ const SCALA_PATTERNS: LanguagePatterns = {
   blockEnd: '}',
 };
 
+// =============================================================================
+// Additional Language Patterns (Lua, SQL, Shell, Vue, Svelte, etc.)
+// =============================================================================
+
+const LUA_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:local\s+)?function\s+(\w+(?:\.\w+)*)\s*\(/,
+  classPattern: /^local\s+(\w+)\s*=\s*(?:class|setmetatable)\s*\(/,
+  importPattern: /^(?:require|dofile|loadfile)\s*[\("']/,
+  singleLineComment: '--',
+  multiLineCommentStart: '--[[',
+  multiLineCommentEnd: ']]',
+  blockStart: 'function',
+  blockEnd: 'end',
+};
+
+const SQL_PATTERNS: LanguagePatterns = {
+  functionPattern: /^CREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\s+(\w+)/i,
+  classPattern: /^CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i,
+  typePattern: /^CREATE\s+(?:OR\s+REPLACE\s+)?TYPE\s+(\w+)/i,
+  importPattern: /^(?:USE|INCLUDE)\s+/i,
+  singleLineComment: '--',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: 'BEGIN',
+  blockEnd: 'END',
+};
+
+const BASH_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:function\s+)?(\w+)\s*\(\s*\)\s*{?/,
+  classPattern: /^#!/,  // Shebang as "class" for file identification
+  importPattern: /^(?:source|\.|import)\s+/,
+  singleLineComment: '#',
+  multiLineCommentStart: ": '",
+  multiLineCommentEnd: "'",
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const POWERSHELL_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:function|filter)\s+(\w+(?:-\w+)*)/i,
+  classPattern: /^class\s+(\w+)/i,
+  enumPattern: /^enum\s+(\w+)/i,
+  importPattern: /^(?:Import-Module|using\s+(?:module|namespace))\s+/i,
+  singleLineComment: '#',
+  multiLineCommentStart: '<#',
+  multiLineCommentEnd: '#>',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const VUE_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:export\s+)?(?:async\s+)?(?:function|const)\s+(\w+)|^\s*(\w+)\s*\(.*\)\s*{/,
+  classPattern: /^export\s+default\s+(?:defineComponent|{)|^<script/,
+  typePattern: /^(?:interface|type)\s+(\w+)/,
+  importPattern: /^import\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const SVELTE_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:export\s+)?(?:async\s+)?(?:function|const)\s+(\w+)|^\s*(\w+)\s*=/,
+  classPattern: /^<script/,
+  typePattern: /^(?:interface|type)\s+(\w+)/,
+  importPattern: /^import\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const HTML_PATTERNS: LanguagePatterns = {
+  functionPattern: /^<(\w+)(?:\s|>)/,  // HTML tags as "functions"
+  classPattern: /^<!DOCTYPE|^<html/i,
+  importPattern: /^<(?:link|script)\s+.*(?:href|src)=/i,
+  singleLineComment: '<!--',
+  multiLineCommentStart: '<!--',
+  multiLineCommentEnd: '-->',
+  blockStart: '<',
+  blockEnd: '>',
+};
+
+const CSS_PATTERNS: LanguagePatterns = {
+  functionPattern: /^@(?:mixin|function)\s+(\w+)/,
+  classPattern: /^\.(\w[\w-]*)|^#(\w[\w-]*)|^(\w+)\s*{/,
+  typePattern: /^@keyframes\s+(\w+)/,
+  importPattern: /^@import\s+/,
+  singleLineComment: '//',  // SCSS/Less
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const MARKDOWN_PATTERNS: LanguagePatterns = {
+  functionPattern: /^#{1,6}\s+(.+)/,  // Headers as "functions"
+  classPattern: /^---$/,  // Frontmatter delimiter
+  importPattern: /^!\[|^\[.*\]\(.*\)/,  // Images and links
+  singleLineComment: '<!--',
+  multiLineCommentStart: '<!--',
+  multiLineCommentEnd: '-->',
+  blockStart: '```',
+  blockEnd: '```',
+};
+
+const R_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(\w+)\s*<-\s*function\s*\(/,
+  classPattern: /^setClass\s*\(\s*["'](\w+)["']/,
+  importPattern: /^(?:library|require|source)\s*\(/,
+  singleLineComment: '#',
+  multiLineCommentStart: '#',  // R doesn't have multi-line comments
+  multiLineCommentEnd: '#',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+// =============================================================================
+// Additional Language Patterns (Dart, Elixir, Erlang, Haskell, OCaml, F#, etc.)
+// =============================================================================
+
+const OBJECTIVE_C_PATTERNS: LanguagePatterns = {
+  functionPattern: /^[-+]\s*\([^)]+\)\s*(\w+)/,
+  classPattern: /^@(?:interface|implementation)\s+(\w+)/,
+  interfacePattern: /^@protocol\s+(\w+)/,
+  typePattern: /^typedef\s+(?:struct|enum)\s+(\w+)/,
+  importPattern: /^#import\s+|^@import\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const DART_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:@\w+\s*)*(?:static\s+)?(?:async\s+)?(?:[\w<>]+\s+)?(\w+)\s*\(/,
+  classPattern: /^(?:abstract\s+)?class\s+(\w+)/,
+  interfacePattern: /^(?:abstract\s+)?class\s+(\w+)/,  // Dart uses abstract classes as interfaces
+  enumPattern: /^enum\s+(\w+)/,
+  typePattern: /^typedef\s+(\w+)/,
+  importPattern: /^import\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const ELIXIR_PATTERNS: LanguagePatterns = {
+  functionPattern: /^\s*(?:def|defp|defmacro|defmacrop)\s+(\w+[!?]?)/,
+  classPattern: /^\s*defmodule\s+([\w.]+)/,
+  interfacePattern: /^\s*defprotocol\s+([\w.]+)/,
+  typePattern: /^\s*@type\s+(\w+)/,
+  importPattern: /^\s*(?:import|alias|use|require)\s+/,
+  singleLineComment: '#',
+  multiLineCommentStart: '@moduledoc """',
+  multiLineCommentEnd: '"""',
+  blockStart: 'do',
+  blockEnd: 'end',
+};
+
+const ERLANG_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(\w+)\s*\([^)]*\)\s*->/,
+  classPattern: /^-module\s*\((\w+)\)/,
+  typePattern: /^-type\s+(\w+)/,
+  importPattern: /^-(?:include|include_lib)\s*\(/,
+  singleLineComment: '%',
+  multiLineCommentStart: '%',
+  multiLineCommentEnd: '%',
+  blockStart: '->',
+  blockEnd: '.',
+};
+
+const HASKELL_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(\w+)\s*::|^(\w+)\s+[^=]*=/,
+  classPattern: /^(?:data|newtype)\s+(\w+)/,
+  interfacePattern: /^class\s+(\w+)/,
+  typePattern: /^type\s+(\w+)/,
+  importPattern: /^import\s+(?:qualified\s+)?/,
+  singleLineComment: '--',
+  multiLineCommentStart: '{-',
+  multiLineCommentEnd: '-}',
+  blockStart: 'where',
+  blockEnd: '',
+};
+
+const OCAML_PATTERNS: LanguagePatterns = {
+  functionPattern: /^let\s+(?:rec\s+)?(\w+)/,
+  classPattern: /^class\s+(\w+)/,
+  interfacePattern: /^module\s+type\s+(\w+)/,
+  typePattern: /^type\s+(\w+)/,
+  importPattern: /^open\s+/,
+  singleLineComment: '(*',
+  multiLineCommentStart: '(*',
+  multiLineCommentEnd: '*)',
+  blockStart: 'struct',
+  blockEnd: 'end',
+};
+
+const FSHARP_PATTERNS: LanguagePatterns = {
+  functionPattern: /^let\s+(?:rec\s+)?(?:inline\s+)?(\w+)/,
+  classPattern: /^type\s+(\w+)\s*=/,
+  interfacePattern: /^type\s+(\w+)\s*=/,
+  typePattern: /^type\s+(\w+)/,
+  importPattern: /^open\s+/,
+  singleLineComment: '//',
+  multiLineCommentStart: '(*',
+  multiLineCommentEnd: '*)',
+  blockStart: '',
+  blockEnd: '',
+};
+
+const CLOJURE_PATTERNS: LanguagePatterns = {
+  functionPattern: /^\(defn?-?\s+(\S+)/,
+  classPattern: /^\(defprotocol\s+(\S+)/,
+  interfacePattern: /^\(defprotocol\s+(\S+)/,
+  typePattern: /^\(defrecord\s+(\S+)/,
+  importPattern: /^\((?:ns|require|use|import)\s+/,
+  singleLineComment: ';',
+  multiLineCommentStart: '#_',
+  multiLineCommentEnd: '',
+  blockStart: '(',
+  blockEnd: ')',
+};
+
+const JULIA_PATTERNS: LanguagePatterns = {
+  functionPattern: /^function\s+(\w+)|^(\w+)\([^)]*\)\s*=/,
+  classPattern: /^(?:abstract\s+type|struct|mutable\s+struct)\s+(\w+)/,
+  interfacePattern: /^abstract\s+type\s+(\w+)/,
+  typePattern: /^const\s+(\w+)/,
+  importPattern: /^(?:using|import)\s+/,
+  singleLineComment: '#',
+  multiLineCommentStart: '#=',
+  multiLineCommentEnd: '=#',
+  blockStart: '',
+  blockEnd: 'end',
+};
+
+const ZIG_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:pub\s+)?fn\s+(\w+)/,
+  classPattern: /^(?:pub\s+)?const\s+(\w+)\s*=\s*struct/,
+  interfacePattern: /^(?:pub\s+)?const\s+(\w+)\s*=\s*struct/,
+  enumPattern: /^(?:pub\s+)?const\s+(\w+)\s*=\s*enum/,
+  typePattern: /^(?:pub\s+)?const\s+(\w+)/,
+  importPattern: /^const\s+\w+\s*=\s*@import/,
+  singleLineComment: '//',
+  multiLineCommentStart: '/*',
+  multiLineCommentEnd: '*/',
+  blockStart: '{',
+  blockEnd: '}',
+};
+
+const NIM_PATTERNS: LanguagePatterns = {
+  functionPattern: /^(?:proc|func|method|template|macro|iterator)\s+(\w+)/,
+  classPattern: /^type\s+(\w+)\s*=\s*(?:object|ref\s+object)/,
+  interfacePattern: /^type\s+(\w+)\s*=\s*concept/,
+  enumPattern: /^type\s+(\w+)\s*=\s*enum/,
+  typePattern: /^type\s+(\w+)/,
+  importPattern: /^import\s+/,
+  singleLineComment: '#',
+  multiLineCommentStart: '#[',
+  multiLineCommentEnd: ']#',
+  blockStart: '',
+  blockEnd: '',
+};
+
 const LANGUAGE_PATTERNS: Record<string, LanguagePatterns> = {
   typescript: TYPESCRIPT_PATTERNS,
   javascript: TYPESCRIPT_PATTERNS,
@@ -335,6 +624,33 @@ const LANGUAGE_PATTERNS: Record<string, LanguagePatterns> = {
   kotlin: KOTLIN_PATTERNS,
   swift: SWIFT_PATTERNS,
   scala: SCALA_PATTERNS,
+  // Additional languages
+  lua: LUA_PATTERNS,
+  sql: SQL_PATTERNS,
+  bash: BASH_PATTERNS,
+  zsh: BASH_PATTERNS,
+  powershell: POWERSHELL_PATTERNS,
+  vue: VUE_PATTERNS,
+  svelte: SVELTE_PATTERNS,
+  html: HTML_PATTERNS,
+  css: CSS_PATTERNS,
+  scss: CSS_PATTERNS,
+  sass: CSS_PATTERNS,
+  less: CSS_PATTERNS,
+  markdown: MARKDOWN_PATTERNS,
+  r: R_PATTERNS,
+  // New languages
+  'objective-c': OBJECTIVE_C_PATTERNS,
+  dart: DART_PATTERNS,
+  elixir: ELIXIR_PATTERNS,
+  erlang: ERLANG_PATTERNS,
+  haskell: HASKELL_PATTERNS,
+  ocaml: OCAML_PATTERNS,
+  fsharp: FSHARP_PATTERNS,
+  clojure: CLOJURE_PATTERNS,
+  julia: JULIA_PATTERNS,
+  zig: ZIG_PATTERNS,
+  nim: NIM_PATTERNS,
 };
 
 // =============================================================================

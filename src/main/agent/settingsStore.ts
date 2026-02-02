@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { safeStorage } from 'electron';
-import type { AgentConfig, AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, AutonomousFeatureFlags, SemanticSettings, AppearanceSettings } from '../../shared/types';
+import type { AgentConfig, AgentSettings, LLMProviderName, ProviderSettings, SafetySettings, CacheSettings, DebugSettings, PromptSettings, AutonomousFeatureFlags, SemanticSettings, AppearanceSettings as _AppearanceSettings } from '../../shared/types';
 import { DEFAULT_CACHE_SETTINGS, DEFAULT_DEBUG_SETTINGS, DEFAULT_PROMPT_SETTINGS, DEFAULT_COMPLIANCE_SETTINGS, DEFAULT_ACCESS_LEVEL_SETTINGS, DEFAULT_BROWSER_SETTINGS, DEFAULT_TASK_ROUTING_SETTINGS, DEFAULT_EDITOR_AI_SETTINGS, DEFAULT_AUTONOMOUS_FEATURE_FLAGS, DEFAULT_TOOL_CONFIG_SETTINGS, DEFAULT_SEMANTIC_SETTINGS, DEFAULT_APPEARANCE_SETTINGS } from '../../shared/types';
 import type { MCPSettings, MCPServerConfig } from '../../shared/types/mcp';
 import { DEFAULT_MCP_SETTINGS } from '../../shared/types/mcp';

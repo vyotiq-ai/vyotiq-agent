@@ -459,6 +459,9 @@ export class EmbeddingService {
       const cacheKey = this.getCacheKey(text);
       const cached = this.cache.get(cacheKey);
       if (cached) {
+        // Move to end for LRU (re-insert to update access order)
+        this.cache.delete(cacheKey);
+        this.cache.set(cacheKey, cached);
         return {
           vector: cached,
           tokenCount: 0,
@@ -528,6 +531,9 @@ export class EmbeddingService {
             const cacheKey = this.getCacheKey(batch[j]);
             const cached = this.cache.get(cacheKey);
             if (cached) {
+              // Move to end for LRU (re-insert to update access order)
+              this.cache.delete(cacheKey);
+              this.cache.set(cacheKey, cached);
               batchResults[j] = {
                 vector: cached,
                 tokenCount: 0,
@@ -775,11 +781,21 @@ export class EmbeddingService {
 
   /**
    * Add to cache with LRU eviction
+   * 
+   * Uses Map's insertion-order iteration for LRU:
+   * - New entries are added at the end
+   * - Cache hits re-insert entries to move them to the end
+   * - Eviction removes from the beginning (least recently used)
    */
   private addToCache(text: string, vector: Float32Array): void {
     const key = this.getCacheKey(text);
     
-    // Evict oldest if at capacity
+    // If key already exists, delete it first to update insertion order
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    }
+    
+    // Evict oldest (least recently used) if at capacity
     if (this.cache.size >= this.config.maxCacheEntries) {
       const firstKey = this.cache.keys().next().value;
       if (firstKey !== undefined) {

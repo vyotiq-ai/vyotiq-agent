@@ -66,6 +66,7 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
     }
 
     let animationId: number;
+    let frameCount = 0;
     
     const tick = () => {
       const element = scrollRef.current;
@@ -79,19 +80,31 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
       const currentHeight = scrollHeight;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
       
+      // First few frames: always scroll to bottom to ensure initial position
+      // This handles the case where streaming just started
+      if (frameCount < 10) {
+        frameCount++;
+        if (scrollHeight > clientHeight) {
+          element.scrollTop = scrollHeight - clientHeight;
+        }
+        lastScrollHeightRef.current = currentHeight;
+        animationId = requestAnimationFrame(tick);
+        return;
+      }
+      
       // Only auto-scroll if user is near bottom (within threshold + buffer)
       // This respects user intent if they scroll up to read
-      if (distanceFromBottom <= threshold + 50) {
+      if (distanceFromBottom <= threshold + 100) {
         // Content grew - scroll to follow
-        if (currentHeight > lastScrollHeightRef.current) {
+        if (currentHeight > lastScrollHeightRef.current || distanceFromBottom > 5) {
           const targetScroll = scrollHeight - clientHeight;
           const currentScroll = scrollTop;
           const diff = targetScroll - currentScroll;
           
-          if (diff > 3) {
-            // Smooth catch-up: scroll 25% of remaining distance per frame
+          if (diff > 2) {
+            // Smooth catch-up: scroll 35% of remaining distance per frame
             // This creates a natural easing effect
-            const scrollAmount = Math.max(2, diff * 0.25);
+            const scrollAmount = Math.max(3, diff * 0.35);
             element.scrollTop = currentScroll + scrollAmount;
           }
         }
@@ -105,6 +118,8 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
     // Initialize height tracking before starting loop
     if (scrollRef.current) {
       lastScrollHeightRef.current = scrollRef.current.scrollHeight;
+      // Immediately scroll to bottom when streaming starts
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
 
     // Start the scroll loop

@@ -492,6 +492,21 @@ export interface ProviderMessage {
    * @see https://ai.google.dev/gemini-api/docs/thought-signatures
    */
   thoughtSignature?: string;
+
+  /**
+   * Anthropic extended thinking signature for verifying thinking blocks.
+   * Must be passed back with thinking content for multi-turn tool use.
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#thinking-encryption
+   */
+  anthropicThinkingSignature?: string;
+
+  /**
+   * Redacted thinking content (encrypted) from Anthropic.
+   * Safety-flagged reasoning that is encrypted but must be passed back to the API.
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#thinking-redaction
+   */
+  redactedThinking?: string;
+
   /**
    * Generated images from multimodal models (e.g., Gemini image generation).
    * Used for validation - messages with generated media should not be filtered out.
@@ -574,6 +589,31 @@ export interface ProviderRequestConfig {
       voiceName: string;
     }>;
   };
+
+  // Anthropic Extended Thinking Settings
+  /**
+   * Enable extended thinking for Anthropic Claude models.
+   * When enabled, Claude will show its reasoning process before providing a final answer.
+   * @default false
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking
+   */
+  enableAnthropicThinking?: boolean;
+
+  /**
+   * Token budget for Anthropic extended thinking (minimum 1024).
+   * Must be less than maxOutputTokens.
+   * @default 10000
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#working-with-thinking-budgets
+   */
+  anthropicThinkingBudget?: number;
+
+  /**
+   * Enable interleaved thinking for Anthropic Claude 4 models with tool use.
+   * Allows Claude to reason between tool calls.
+   * @default false
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#interleaved-thinking
+   */
+  enableInterleavedThinking?: boolean;
 }
 
 /** Cache control configuration for prompt caching */

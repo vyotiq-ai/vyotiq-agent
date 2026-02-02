@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { formatRelativeTimeWithSuffix, formatFullDateTime } from '../../utils/timeFormatting';
 import { useUndoHistory } from './useUndoHistory';
 import { ContentPreview } from './components/ContentPreview';
 import type { FileChange, RunChangeGroup } from './types';
@@ -29,19 +30,6 @@ interface UndoHistoryPanelProps {
   isOpen: boolean;
   onClose: () => void;
   sessionId: string | null;
-}
-
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  if (diff < 60000) return 'just now';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return new Date(timestamp).toLocaleDateString();
-}
-
-function formatFullTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString();
 }
 
 function getChangeTypeIcon(changeType: FileChange['changeType']) {
@@ -171,7 +159,7 @@ const RunGroup: React.FC<RunGroupProps> = memo(({ group, onUndoChange, onRedoCha
             <span className="text-[10px] font-medium text-[var(--color-text-primary)]">Run {group.runId.slice(0, 8)}</span>
             <span className="text-[9px] text-[var(--color-text-muted)]">{filteredChanges.length} file{filteredChanges.length !== 1 ? 's' : ''}</span>
           </div>
-          <div className="flex items-center gap-1 text-[9px] text-[var(--color-text-dim)]"><Clock size={9} /><span title={formatFullTime(group.endTime)}>{formatRelativeTime(group.endTime)}</span></div>
+          <div className="flex items-center gap-1 text-[9px] text-[var(--color-text-dim)]"><Clock size={9} /><span title={formatFullDateTime(group.endTime)}>{formatRelativeTimeWithSuffix(group.endTime)}</span></div>
         </div>
         {undoableCount > 0 && <button onClick={(e) => { e.stopPropagation(); void onUndoRun(group.runId); }} disabled={isProcessing} className={cn('flex items-center gap-1 px-2 py-1 rounded text-[9px] bg-[var(--color-warning)]/10 text-[var(--color-warning)] hover:bg-[var(--color-warning)]/20', isProcessing && 'opacity-50')}><RotateCcw size={10} />Undo All ({undoableCount})</button>}
       </div>

@@ -171,6 +171,46 @@ export class AnthropicProvider extends BaseLLMProvider {
   private isValidAnthropicModel(modelId: string): boolean {
     return AnthropicProvider.VALID_MODEL_PATTERNS.some(pattern => pattern.test(modelId));
   }
+
+  /**
+   * Models that support extended thinking
+   * @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#supported-models
+   */
+  private static readonly EXTENDED_THINKING_MODELS = [
+    /^claude-sonnet-4-5/,      // Claude Sonnet 4.5
+    /^claude-haiku-4-5/,       // Claude Haiku 4.5
+    /^claude-opus-4-5/,        // Claude Opus 4.5
+    /^claude-opus-4-1/,        // Claude Opus 4.1
+    /^claude-opus-4/,          // Claude Opus 4
+    /^claude-sonnet-4/,        // Claude Sonnet 4
+    /^claude-3-7-sonnet/,      // Claude 3.7 Sonnet (deprecated)
+  ];
+
+  /**
+   * Check if a model supports extended thinking
+   */
+  private supportsExtendedThinking(model: string): boolean {
+    return AnthropicProvider.EXTENDED_THINKING_MODELS.some(pattern => pattern.test(model));
+  }
+
+  /**
+   * Check if extended thinking should be enabled for this request
+   */
+  private isExtendedThinkingEnabled(request: import('./baseProvider').ProviderRequest): boolean {
+    const model = this.getValidatedModel(request.config.model);
+    
+    // Extended thinking requires explicit opt-in and model support
+    if (!request.config.enableAnthropicThinking) {
+      return false;
+    }
+    
+    if (!this.supportsExtendedThinking(model)) {
+      logger.debug('Extended thinking not supported for model', { model });
+      return false;
+    }
+    
+    return true;
+  }
   
   /**
    * Get validated model ID - falls back to default if invalid
@@ -334,8 +374,22 @@ export class AnthropicProvider extends BaseLLMProvider {
       headers['x-api-key'] = apiKey;
     }
     
+    // Build beta headers array
+    const betaHeaders: string[] = [];
+    
+    // Add prompt caching beta header if needed
     if (request.cache?.cacheSystemPrompt || request.cache?.cacheFileContexts || request.cache?.cacheTools) {
-      headers['anthropic-beta'] = 'prompt-caching-2024-07-31';
+      betaHeaders.push('prompt-caching-2024-07-31');
+    }
+    
+    // Add interleaved thinking beta header for Claude 4 models with tool use
+    // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#interleaved-thinking
+    if (request.config.enableInterleavedThinking && this.isExtendedThinkingEnabled(request)) {
+      betaHeaders.push('interleaved-thinking-2025-05-14');
+    }
+    
+    if (betaHeaders.length > 0) {
+      headers['anthropic-beta'] = betaHeaders.join(',');
     }
     
     return headers;
@@ -408,9 +462,16 @@ export class AnthropicProvider extends BaseLLMProvider {
     const decoder = new TextDecoder();
     let buffer = '';
     
-    let currentBlockType: 'text' | 'tool_use' | null = null;
+    // Track current content block state
+    let currentBlockType: 'text' | 'tool_use' | 'thinking' | 'redacted_thinking' | null = null;
     let currentToolUseIndex = -1;
     const validToolIndices = new Set<number>();
+    
+    // Extended thinking state
+    // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking
+    let isThinkingStarted = false;
+    let isThinkingEnded = false;
+    let currentThinkingSignature: string | undefined;
 
     try {
       while (true) {
@@ -441,7 +502,33 @@ export class AnthropicProvider extends BaseLLMProvider {
                 case 'content_block_start':
                   currentBlockType = event.content_block?.type ?? null;
                   
+                  // Handle thinking content block start (extended thinking)
+                  // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#streaming-thinking
+                  if (event.content_block?.type === 'thinking') {
+                    if (!isThinkingStarted) {
+                      isThinkingStarted = true;
+                      yield { thinkingStart: true };
+                      logger.debug('Extended thinking started', { index: event.index });
+                    }
+                  }
+                  
+                  // Handle redacted thinking blocks (encrypted for safety)
+                  // These must be passed back to the API but not displayed to users
+                  // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#thinking-redaction
+                  if (event.content_block?.type === 'redacted_thinking') {
+                    logger.debug('Redacted thinking block received', { 
+                      index: event.index,
+                      hasData: !!event.content_block.data,
+                    });
+                  }
+                  
                   if (event.content_block?.type === 'tool_use') {
+                    // If we were in thinking mode, signal end before tool use
+                    if (isThinkingStarted && !isThinkingEnded) {
+                      isThinkingEnded = true;
+                      yield { thinkingEnd: true };
+                    }
+                    
                     const toolName = event.content_block.name;
                     const toolId = event.content_block.id;
                     
@@ -465,12 +552,39 @@ export class AnthropicProvider extends BaseLLMProvider {
                       });
                     }
                   }
+                  
+                  // Handle text block start - signal thinking end if we were thinking
+                  if (event.content_block?.type === 'text') {
+                    if (isThinkingStarted && !isThinkingEnded) {
+                      isThinkingEnded = true;
+                      yield { thinkingEnd: true };
+                    }
+                  }
                   break;
                   
                 case 'content_block_delta':
-                  if (event.delta?.type === 'text_delta') {
+                  // Handle thinking_delta events (extended thinking content)
+                  // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#streaming-thinking
+                  if (event.delta?.type === 'thinking_delta') {
+                    const thinkingText = event.delta.thinking;
+                    if (typeof thinkingText === 'string' && thinkingText.length > 0) {
+                      yield { thinkingDelta: thinkingText };
+                    }
+                  }
+                  // Handle signature_delta events (thinking block signature)
+                  // The signature is used to verify thinking blocks when passed back to the API
+                  else if (event.delta?.type === 'signature_delta') {
+                    const signature = event.delta.signature;
+                    if (typeof signature === 'string') {
+                      currentThinkingSignature = (currentThinkingSignature || '') + signature;
+                    }
+                  }
+                  // Handle regular text deltas
+                  else if (event.delta?.type === 'text_delta') {
                     yield { delta: event.delta.text };
-                  } else if (event.delta?.type === 'input_json_delta') {
+                  }
+                  // Handle tool argument deltas  
+                  else if (event.delta?.type === 'input_json_delta') {
                     const deltaIndex = event.index ?? currentToolUseIndex;
                     if (deltaIndex >= 0 && validToolIndices.has(deltaIndex)) {
                       yield {
@@ -484,6 +598,12 @@ export class AnthropicProvider extends BaseLLMProvider {
                   break;
                   
                 case 'content_block_stop':
+                  // Emit thought signature when thinking block stops
+                  if (currentBlockType === 'thinking' && currentThinkingSignature) {
+                    yield { thoughtSignature: currentThinkingSignature };
+                    currentThinkingSignature = undefined;
+                  }
+                  
                   if (currentBlockType === 'tool_use') {
                     currentToolUseIndex = -1;
                   }
@@ -572,10 +692,30 @@ export class AnthropicProvider extends BaseLLMProvider {
     let validatedMessages = this.validateMessages(request.messages);
     validatedMessages = this.ensureCompleteToolCallSequences(validatedMessages);
     
+    // Check if extended thinking is enabled
+    const isThinkingEnabled = this.isExtendedThinkingEnabled(request);
+    const thinkingBudget = request.config.anthropicThinkingBudget ?? 10000;
+    
+    // Build thinking configuration if enabled
+    // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#how-to-use-extended-thinking
+    const thinkingConfig = isThinkingEnabled ? {
+      type: 'enabled',
+      budget_tokens: Math.max(1024, Math.min(thinkingBudget, maxTokens - 1)), // Must be < max_tokens
+    } : undefined;
+    
+    // Log thinking configuration for debugging
+    if (isThinkingEnabled) {
+      logger.debug('Extended thinking enabled', {
+        model,
+        budgetTokens: thinkingConfig?.budget_tokens,
+        maxTokens,
+        interleavedThinking: request.config.enableInterleavedThinking,
+      });
+    }
+    
     const body: Record<string, unknown> = {
       model,
       max_tokens: maxTokens,
-      temperature: request.config.temperature,
       system: systemContent,
       stream,
       tools: toolsContent,
@@ -596,11 +736,35 @@ export class AnthropicProvider extends BaseLLMProvider {
             };
           }
           if (message.role === 'assistant') {
+            // Extended content block types for assistant messages
+            // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#preserving-thinking-blocks
             type AssistantContentBlock = 
               | { type: 'text'; text: string } 
-              | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> };
+              | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+              | { type: 'thinking'; thinking: string; signature: string }
+              | { type: 'redacted_thinking'; data: string };
             
             const content: AssistantContentBlock[] = [];
+            
+            // CRITICAL: Preserve thinking blocks for tool use loops
+            // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#preserving-thinking-blocks
+            // When Claude invokes tools, thinking blocks must be passed back to maintain reasoning continuity
+            if (isThinkingEnabled && message.thinking && message.anthropicThinkingSignature) {
+              content.push({
+                type: 'thinking',
+                thinking: message.thinking,
+                signature: message.anthropicThinkingSignature,
+              });
+            }
+            
+            // Preserve redacted thinking blocks (encrypted content)
+            // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#thinking-redaction
+            if (isThinkingEnabled && message.redactedThinking) {
+              content.push({
+                type: 'redacted_thinking',
+                data: message.redactedThinking,
+              });
+            }
             
             if (message.content) {
               content.push({ type: 'text', text: message.content });
@@ -627,12 +791,68 @@ export class AnthropicProvider extends BaseLLMProvider {
               content: message.content || '...'
             };
           }
+          // Handle user messages with potential attachments (vision support)
+          // @see https://docs.anthropic.com/en/docs/build-with-claude/vision
+          if (message.role === 'user' && message.attachments && message.attachments.length > 0) {
+            type UserContentBlock = 
+              | { type: 'text'; text: string }
+              | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+            
+            const userContent: UserContentBlock[] = [];
+            
+            // Add image attachments first (Claude processes images before text)
+            for (const attachment of message.attachments) {
+              const isImage = attachment.mimeType?.startsWith('image/');
+              if (isImage && attachment.content) {
+                // Supported formats: image/jpeg, image/png, image/gif, image/webp
+                const mediaType = attachment.mimeType || 'image/png';
+                userContent.push({
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: mediaType,
+                    data: attachment.content,
+                  },
+                });
+                logger.debug('Added image attachment to Anthropic request', {
+                  name: attachment.name,
+                  mimeType: mediaType,
+                  sizeBytes: attachment.content.length,
+                });
+              }
+            }
+            
+            // Add text content
+            if (message.content) {
+              userContent.push({ type: 'text', text: message.content });
+            }
+            
+            // If we have structured content, use it; otherwise fall back to simple text
+            if (userContent.length > 0) {
+              return {
+                role: 'user',
+                content: userContent,
+              };
+            }
+          }
+          
           return {
             role: message.role,
             content: message.content || '(empty message)'
           };
         }),
     };
+    
+    // Add thinking configuration if enabled
+    // NOTE: Temperature is not compatible with extended thinking
+    if (thinkingConfig) {
+      body.thinking = thinkingConfig;
+      // Temperature must not be set when thinking is enabled
+      // @see https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking#feature-compatibility
+    } else {
+      // Only set temperature when thinking is disabled
+      body.temperature = request.config.temperature;
+    }
     
     return body;
   }

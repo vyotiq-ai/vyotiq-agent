@@ -15,7 +15,12 @@
     "types": ["node", "vitest/globals"],
     "lib": ["ESNext", "DOM"],
     "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo",
+    "forceConsistentCasingInFileNames": true,
+    "useDefineForClassFields": true
   },
   "include": [
     "src"

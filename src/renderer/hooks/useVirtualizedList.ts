@@ -32,10 +32,14 @@ export interface VirtualizedListOptions<T> {
   overscan?: number;
   /** Whether to auto-scroll to bottom when new items are added */
   autoScrollToBottom?: boolean;
-  /** Threshold from bottom to trigger auto-scroll (default: 100px) */
+  /** Threshold from bottom to trigger auto-scroll (default: 150px) */
   autoScrollThreshold?: number;
   /** Get a unique key for each item */
   getItemKey?: (item: T, index: number) => string | number;
+  /** Enable streaming mode for continuous content updates (uses RAF loop) */
+  streamingMode?: boolean;
+  /** Dependency that triggers scroll updates during streaming */
+  streamingDep?: unknown;
 }
 
 export interface VirtualItem<T> {
@@ -79,6 +83,8 @@ export function useVirtualizedList<T>({
   autoScrollToBottom = true,
   autoScrollThreshold = 150,
   getItemKey = (_, index) => index,
+  streamingMode = false,
+  streamingDep,
 }: VirtualizedListOptions<T>): VirtualizedListResult<T> {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -91,6 +97,9 @@ export function useVirtualizedList<T>({
   
   // Previous item count for auto-scroll detection
   const prevItemCountRef = useRef(items.length);
+  
+  // Track last scroll height for streaming scroll
+  const lastScrollHeightRef = useRef(0);
 
   // Calculate item offsets and total height
   const { itemOffsets, totalHeight } = useMemo(() => {
@@ -125,16 +134,35 @@ export function useVirtualizedList<T>({
 
   // Calculate visible items
   const virtualItems = useMemo((): VirtualItem<T>[] => {
-    if (items.length === 0 || containerHeight === 0) return [];
+    if (items.length === 0) return [];
+    
+    // If container height is 0, render first few items as fallback
+    // This handles the case where the container hasn't been measured yet
+    const effectiveHeight = containerHeight > 0 ? containerHeight : 800;
 
     const startIndex = Math.max(0, findStartIndex(scrollTop) - overscan);
-    const visibleEnd = scrollTop + containerHeight;
+    const visibleEnd = scrollTop + effectiveHeight;
     
     let endIndex = startIndex;
     while (endIndex < items.length && itemOffsets[endIndex] < visibleEnd) {
       endIndex++;
     }
     endIndex = Math.min(items.length - 1, endIndex + overscan);
+
+    // Debug logging
+    if (items.length > 0) {
+      console.log('[VirtualizedList] Calculating items:', {
+        itemsLength: items.length,
+        containerHeight,
+        effectiveHeight,
+        scrollTop,
+        startIndex,
+        endIndex,
+        visibleEnd,
+        firstOffset: itemOffsets[0],
+        totalHeight
+      });
+    }
 
     const result: VirtualItem<T>[] = [];
     for (let i = startIndex; i <= endIndex; i++) {
@@ -148,7 +176,7 @@ export function useVirtualizedList<T>({
     }
 
     return result;
-  }, [items, containerHeight, scrollTop, findStartIndex, overscan, itemOffsets, measuredHeights, estimatedItemHeight, getItemKey]);
+  }, [items, containerHeight, scrollTop, findStartIndex, overscan, itemOffsets, measuredHeights, estimatedItemHeight, getItemKey, totalHeight]);
 
   // Handle scroll events
   useEffect(() => {
@@ -185,9 +213,98 @@ export function useVirtualizedList<T>({
     return () => observer.disconnect();
   }, []);
 
-  // Auto-scroll to bottom when new items are added
+  // Scroll to bottom on initial mount when items exist
+  const hasInitializedRef = useRef(false);
   useEffect(() => {
-    if (!autoScrollToBottom) return;
+    if (hasInitializedRef.current) return;
+    if (items.length === 0) return;
+    if (!containerHeight) return;
+    
+    hasInitializedRef.current = true;
+    
+    // Scroll to bottom on initial load
+    requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (container && autoScrollToBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+  }, [items.length, containerHeight, autoScrollToBottom]);
+
+  // Streaming scroll - continuously scroll as content grows (RAF-based for 60fps)
+  useEffect(() => {
+    if (!streamingMode || !autoScrollToBottom) {
+      return;
+    }
+
+    let animationId: number;
+    let frameCount = 0;
+    
+    const tick = () => {
+      const container = containerRef.current;
+      if (!container) {
+        // Container not mounted yet, continue waiting
+        animationId = requestAnimationFrame(tick);
+        return;
+      }
+
+      const { scrollHeight, scrollTop: currentScrollTop, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - currentScrollTop - clientHeight;
+      
+      // First few frames: always scroll to bottom to ensure initial position
+      // This handles the case where streaming just started
+      if (frameCount < 10) {
+        frameCount++;
+        if (scrollHeight > clientHeight) {
+          container.scrollTop = scrollHeight - clientHeight;
+        }
+        lastScrollHeightRef.current = scrollHeight;
+        animationId = requestAnimationFrame(tick);
+        return;
+      }
+      
+      // Only auto-scroll if user is near bottom (within threshold + buffer)
+      // This respects user intent if they scroll up to read
+      if (distanceFromBottom <= autoScrollThreshold + 100) {
+        // Content grew - scroll to follow
+        if (scrollHeight > lastScrollHeightRef.current || distanceFromBottom > 5) {
+          const targetScroll = scrollHeight - clientHeight;
+          const diff = targetScroll - currentScrollTop;
+          
+          if (diff > 2) {
+            // Smooth catch-up: scroll 35% of remaining distance per frame
+            // This creates a natural easing effect
+            const scrollAmount = Math.max(3, diff * 0.35);
+            container.scrollTop = currentScrollTop + scrollAmount;
+          }
+        }
+      }
+      
+      // Always track current height to detect growth
+      lastScrollHeightRef.current = scrollHeight;
+      animationId = requestAnimationFrame(tick);
+    };
+
+    // Initialize height tracking before starting loop
+    if (containerRef.current) {
+      lastScrollHeightRef.current = containerRef.current.scrollHeight;
+      // Immediately scroll to bottom when streaming starts
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+
+    // Start the scroll loop
+    animationId = requestAnimationFrame(tick);
+    
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    };
+  }, [streamingMode, autoScrollToBottom, autoScrollThreshold]);
+
+  // Auto-scroll to bottom when new items are added (non-streaming mode)
+  useEffect(() => {
+    if (!autoScrollToBottom || streamingMode) return;
     
     const newItemCount = items.length;
     const hadNewItems = newItemCount > prevItemCountRef.current;
@@ -198,11 +315,30 @@ export function useVirtualizedList<T>({
       requestAnimationFrame(() => {
         const container = containerRef.current;
         if (container) {
-          container.scrollTop = totalHeight;
+          container.scrollTop = container.scrollHeight;
         }
       });
     }
-  }, [items.length, autoScrollToBottom, isNearBottom, totalHeight]);
+  }, [items.length, autoScrollToBottom, isNearBottom, streamingMode]);
+
+  // Auto-scroll when streaming dependency changes (content updates)
+  useEffect(() => {
+    if (!streamingMode || !autoScrollToBottom) return;
+    
+    // Scroll to bottom when streaming content updates
+    requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (!container) return;
+      
+      const { scrollHeight, scrollTop: currentScrollTop, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - currentScrollTop - clientHeight;
+      
+      // Only scroll if near bottom
+      if (distanceFromBottom <= autoScrollThreshold + 100) {
+        container.scrollTop = scrollHeight - clientHeight;
+      }
+    });
+  }, [streamingDep, streamingMode, autoScrollToBottom, autoScrollThreshold]);
 
   // Scroll to specific index
   const scrollToIndex = useCallback((index: number, behavior: ScrollBehavior = 'smooth') => {

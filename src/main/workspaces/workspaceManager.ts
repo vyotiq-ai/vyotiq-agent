@@ -38,25 +38,24 @@ export class WorkspaceManager {
    * Validate that all workspace paths exist on disk.
    * Marks workspaces with missing paths as invalid but keeps them in the list
    * so users can choose to remove or update them.
+   * Uses parallel checking for speed.
    */
   private async validateWorkspaces(): Promise<void> {
-    const invalidPaths: string[] = [];
-    
-    for (const entry of this.store.entries) {
-      try {
-        const stat = await fs.stat(entry.path);
-        if (!stat.isDirectory()) {
-          invalidPaths.push(entry.path);
+    // Check all workspace paths in parallel
+    const validationResults = await Promise.all(
+      this.store.entries.map(async (entry) => {
+        try {
+          const stat = await fs.stat(entry.path);
+          return { entry, valid: stat.isDirectory() };
+        } catch {
+          return { entry, valid: false };
         }
-      } catch (error) {
-        // Path doesn't exist or is inaccessible
-        logger.debug('Workspace path invalid or inaccessible', {
-          path: entry.path,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        invalidPaths.push(entry.path);
-      }
-    }
+      })
+    );
+    
+    const invalidPaths = validationResults
+      .filter(r => !r.valid)
+      .map(r => r.entry.path);
     
     if (invalidPaths.length > 0) {
       logger.warn('Some workspace paths no longer exist', { invalidPaths });
