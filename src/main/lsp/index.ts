@@ -10,6 +10,8 @@ export { LSPManager, DEFAULT_LSP_MANAGER_CONFIG, type LSPManagerConfig } from '.
 export { LSPBridge, initLSPBridge, getLSPBridge, type DiagnosticsUpdateEvent } from './LSPBridge';
 export {
   LANGUAGE_SERVER_CONFIGS,
+  BUNDLED_SERVERS,
+  getBundledServerPath,
   getLanguageFromExtension,
   getConfigForFile,
   isLanguageSupported,

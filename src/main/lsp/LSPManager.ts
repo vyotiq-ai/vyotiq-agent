@@ -14,6 +14,7 @@ import { LSPClient } from './LSPClient';
 import {
   LANGUAGE_SERVER_CONFIGS,
   getLanguageFromExtension,
+  getBundledServerPath,
   SYMBOL_KIND_NAMES,
   COMPLETION_KIND_NAMES,
 } from './serverConfigs';
@@ -828,9 +829,29 @@ export class LSPManager extends EventEmitter {
   private async detectInstalledServers(): Promise<void> {
     const isWindows = process.platform === 'win32';
     const cmd = isWindows ? 'where' : 'which';
+    const binExt = isWindows ? '.cmd' : '';
     
     // Check all servers in parallel for faster startup
     const checks = Object.entries(LANGUAGE_SERVER_CONFIGS).map(async ([language, config]) => {
+      // Bundled servers - resolve path at runtime and check if binary exists
+      if (config.bundled) {
+        // Get the proper bundled server path (handles dev vs production)
+        const serverName = config.command.split(/[/\\]/).pop() || config.command;
+        const resolvedPath = getBundledServerPath(serverName);
+        
+        try {
+          await fs.promises.access(resolvedPath, fs.constants.F_OK);
+          // Update the config with the resolved path
+          config.command = resolvedPath;
+          this.installedServers.add(language as SupportedLanguage);
+          this.logger.debug(`Bundled server available: ${language}`, { command: resolvedPath });
+        } catch {
+          this.logger.warn(`Bundled server not found: ${language}`, { command: resolvedPath });
+        }
+        return;
+      }
+      
+      // External servers - check if installed on PATH
       const found = await this.execAsync(`${cmd} ${config.command}`);
       if (found) {
         this.installedServers.add(language as SupportedLanguage);
@@ -839,7 +860,7 @@ export class LSPManager extends EventEmitter {
     
     await Promise.all(checks);
 
-    // TypeScript server is often available via npx - check in parallel with others
+    // TypeScript server fallback via npx (if bundled version not found)
     if (!this.installedServers.has('typescript')) {
       const npxAvailable = await this.execAsync('npx --yes typescript-language-server --version', { timeout: 10000 });
       if (npxAvailable) {

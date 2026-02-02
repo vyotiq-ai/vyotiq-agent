@@ -50,14 +50,10 @@ export interface InputToolbarProps {
     };
   };
   className?: string;
-  /** Active provider being used for current iteration (when running) */
+  /** Active provider being used for current run (when running) */
   activeProvider?: string;
-  /** Active model being used for current iteration (when running) */
+  /** Active model being used for current run (when running) */
   activeModelId?: string;
-  /** Current iteration number */
-  currentIteration?: number;
-  /** Maximum iterations */
-  maxIterations?: number;
   /** Whether agent is currently working */
   isWorking?: boolean;
 }
@@ -124,8 +120,6 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
   className,
   activeProvider,
   activeModelId,
-  currentIteration,
-  maxIterations,
   isWorking,
 }) => {
   const isActionDisabled = disabled || !hasWorkspace;
@@ -160,7 +154,7 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
         providersCooldown={providersCooldown}
       />
 
-      {/* Active iteration info when running */}
+      {/* Active provider info when running */}
       {isWorking && activeProvider && (
         <>
           <span className="h-3 w-px bg-[var(--color-border-subtle)]" />
@@ -175,11 +169,6 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
                 <span className="text-[var(--color-text-dim)]">/</span>
                 <span className="text-[var(--color-text-secondary)]">{formatModelId(activeModelId)}</span>
               </>
-            )}
-            {currentIteration && maxIterations && (
-              <span className="text-[var(--color-text-muted)] ml-1">
-                [{currentIteration}/{maxIterations}]
-              </span>
             )}
           </span>
         </>

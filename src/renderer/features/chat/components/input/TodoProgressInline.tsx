@@ -9,7 +9,7 @@
  * - Minimal height footprint for header integration
  * - Color-coded progress indication
  * - Responsive text hiding on small screens
- * - No pulsing animations (clean, minimal design)
+ * - Clean, minimal design without excessive animations
  */
 import React, { memo, useMemo } from 'react';
 import { CheckCircle, Circle, Loader2 } from 'lucide-react';

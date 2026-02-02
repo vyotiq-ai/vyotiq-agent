@@ -59,6 +59,17 @@
 
 ## 📢 Recent Updates
 
+### Multi-Agent Instruction Files Support (v1.6.0 - February 2026)
+
+New instruction files system following 2025-2026 multi-agent specification standards.
+
+**Highlights:**
+
+- 📄 **AGENTS.md Support**: Full implementation of the [agents.md specification](https://agents.md/)
+- 🔀 **Multi-Format**: Support for CLAUDE.md, copilot-instructions.md, GEMINI.md, .cursor/rules
+- 📊 **TodoProgressInline**: Compact task progress display in chat input header
+- ⚙️ **Settings UI**: New instruction files configuration panel with priority ordering
+
 ### UI & Developer Experience Improvements (v1.5.0 - February 2026)
 
 Major update with new UI components, React hooks, and developer experience improvements.

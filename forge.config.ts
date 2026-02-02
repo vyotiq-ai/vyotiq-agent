@@ -27,17 +27,35 @@ const config: ForgeConfig = {
   },
   hooks: {
     packageAfterCopy: async (_config, buildPath) => {
-      // Copy native modules to the build path so they're included in the package
+      // Copy native modules and language servers to the build path so they're included in the package
       const fs = await import('fs/promises');
       const path = await import('path');
       
+      // Native modules that need to be copied
       const nativeModules = ['better-sqlite3', 'bindings', 'file-uri-to-path', 'onnxruntime-node'];
+      
+      // Language server packages (bundled for LSP support)
+      const languageServerPackages = [
+        'typescript-language-server',
+        'typescript', // Required by typescript-language-server
+        'vscode-langservers-extracted',
+        'vscode-languageserver',
+        'vscode-languageserver-protocol',
+        'vscode-languageserver-types',
+        'vscode-languageserver-textdocument',
+        'vscode-jsonrpc',
+        'vscode-uri',
+      ];
+      
       const nodeModulesPath = path.join(process.cwd(), 'node_modules');
       const destNodeModules = path.join(buildPath, 'node_modules');
+      const destBinPath = path.join(destNodeModules, '.bin');
       
-      // Create node_modules in build path if it doesn't exist
+      // Create directories
       await fs.mkdir(destNodeModules, { recursive: true });
+      await fs.mkdir(destBinPath, { recursive: true });
       
+      // Copy native modules
       for (const mod of nativeModules) {
         const srcPath = path.join(nodeModulesPath, mod);
         const destPath = path.join(destNodeModules, mod);
@@ -48,6 +66,50 @@ const config: ForgeConfig = {
           console.log(`Copied native module: ${mod}`);
         } catch {
           console.log(`Native module not found (skipping): ${mod}`);
+        }
+      }
+      
+      // Copy language server packages
+      for (const pkg of languageServerPackages) {
+        const srcPath = path.join(nodeModulesPath, pkg);
+        const destPath = path.join(destNodeModules, pkg);
+        
+        try {
+          await fs.access(srcPath);
+          await fs.cp(srcPath, destPath, { recursive: true });
+          console.log(`Copied language server package: ${pkg}`);
+        } catch {
+          console.log(`Language server package not found (skipping): ${pkg}`);
+        }
+      }
+      
+      // Copy .bin executables for language servers
+      const srcBinPath = path.join(nodeModulesPath, '.bin');
+      const binaries = [
+        'typescript-language-server',
+        'typescript-language-server.cmd',
+        'vscode-css-language-server',
+        'vscode-css-language-server.cmd',
+        'vscode-html-language-server',
+        'vscode-html-language-server.cmd',
+        'vscode-json-language-server',
+        'vscode-json-language-server.cmd',
+        'vscode-eslint-language-server',
+        'vscode-eslint-language-server.cmd',
+        'vscode-markdown-language-server',
+        'vscode-markdown-language-server.cmd',
+      ];
+      
+      for (const bin of binaries) {
+        const srcBin = path.join(srcBinPath, bin);
+        const destBin = path.join(destBinPath, bin);
+        
+        try {
+          await fs.access(srcBin);
+          await fs.cp(srcBin, destBin, { recursive: true });
+          console.log(`Copied binary: ${bin}`);
+        } catch {
+          // Binary doesn't exist (platform-specific)
         }
       }
     },

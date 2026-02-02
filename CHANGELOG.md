@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-02-02
+
+### Added
+
+- **Instruction Files System**:
+  - `AgentsMdReader` service for parsing AGENTS.md files following the [agents.md specification](https://agents.md/)
+  - `InstructionFilesReader` for multi-type instruction file support (AGENTS.md, CLAUDE.md, copilot-instructions.md, GEMINI.md, .cursor/rules)
+  - YAML frontmatter parsing with metadata extraction
+  - File-level enable/disable configuration
+  - Priority ordering from config and frontmatter
+  - Hierarchical content resolution (closest to current file wins)
+- **UI Components**:
+  - `TodoProgressInline` component for compact task progress display in ChatInput header
+  - Expandable task progress panel in `InputHeader` showing all tasks
+  - Minimal progress bar with status icons and responsive design
+- **LSP Enhancements**:
+  - Extended language server configurations for additional languages
+  - Improved bundled server path resolution for development and production
+- **Workspace Handlers**:
+  - IPC handlers for instruction file discovery and retrieval
+  - Workspace context API extensions
+
+### Changed
+
+- **System Prompt Builder**:
+  - Enhanced dynamic sections with instruction files integration
+  - Improved context injection with multi-source instructions
+- **Chat Interface**:
+  - Improved `ChatArea` with better scroll handling
+  - Enhanced `MessageGroup` with updated styling
+  - Refined `TodoProgress` component with better task visualization
+- **InputHeader**:
+  - Integrated expandable task progress panel
+  - Context-aware status messages based on agent phase
+- **Settings UI**:
+  - Extended `SettingsPrompts` with instruction files configuration panel
+  - Added toggles for each instruction file type
+  - Priority ordering controls
+- **Chat Input**:
+  - Integrated `TodoProgressInline` in input header
+  - Improved scroll behavior in `useChatScroll` hook
+- **Build Configuration**:
+  - Updated `forge.config.ts` with improved packaging settings
+
+### Fixed
+
+- Improved virtualized list performance in chat
+- Better handling of large instruction files (1MB limit)
+- Cache invalidation for modified instruction files
+- LSP server path resolution in packaged builds
+
 ## [1.5.0] - 2026-02-02
 
 ### Added
@@ -193,7 +244,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session persistence with SQLite
 - Conversation branching and history
 
-[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.2.0...v1.3.0

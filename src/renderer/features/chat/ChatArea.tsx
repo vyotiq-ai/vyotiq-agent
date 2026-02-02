@@ -130,9 +130,6 @@ export const ChatArea: React.FC = () => {
       return true;
     }
   );
-  
-  // Agent status for UI display - shows iteration progress when agent is running
-  const agentStatus = useAgentSelector((state) => (state.activeSessionId ? state.agentStatus[state.activeSessionId] : undefined));
 
   // Log session changes for debugging (only on session ID change)
   useEffect(() => {
@@ -712,25 +709,6 @@ export const ChatArea: React.FC = () => {
           }}
           aria-hidden="true"
         />
-
-        {/* Agent iteration progress indicator - shows current iteration when running */}
-        {isRunning && agentStatus?.currentIteration && agentStatus.maxIterations && (
-          <div
-            className={cn(
-              'absolute bottom-12 left-4 z-20',
-              'flex items-center gap-1.5 px-2.5 py-1 rounded-full',
-              'bg-[var(--color-surface-2)]/95 border border-[var(--color-warning)]/30',
-              'text-[10px] font-mono text-[var(--color-text-muted)]',
-              'shadow-lg backdrop-blur-sm'
-            )}
-            title={`Iteration ${agentStatus.currentIteration} of ${agentStatus.maxIterations}`}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)] animate-pulse" />
-            <span className="text-[var(--color-warning)]">{agentStatus.currentIteration}</span>
-            <span className="text-[var(--color-text-dim)]">/</span>
-            <span>{agentStatus.maxIterations}</span>
-          </div>
-        )}
 
         {/* Scroll to bottom button - appears when scrolled away from bottom */}
         {showScrollToBottom && hasMessages && (

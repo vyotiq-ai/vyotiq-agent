@@ -38,7 +38,6 @@ import { InputToolbar } from './InputToolbar';
 import { InputDropZone } from './InputDropZone';
 import { MentionAutocomplete } from './MentionAutocomplete';
 import { DraftIndicator } from './DraftIndicator';
-import { TodoProgressInline } from './TodoProgressInline';
 import { ChatAttachmentList } from '../ChatAttachmentList';
 import { useTodos } from '../../../../hooks/useTodos';
 
@@ -266,8 +265,8 @@ export const ChatInput: React.FC = memo(() => {
   const { formattedCost, formattedTotalTokens, hasUsage, breakdownTitle } = useSessionCost();
   const { availableProviders, providersCooldown } = useAvailableProviders();
   
-  // Todo progress for inline display
-  const { todos, stats: todoStats, hasTodos } = useTodos({ sessionId: activeSession?.id ?? null });
+  // Todo progress for inline display in header
+  const { todos, stats: todoStats } = useTodos({ sessionId: activeSession?.id ?? null });
   
   // === Local State ===
   const [isDragging, setIsDragging] = useState(false);
@@ -384,7 +383,7 @@ export const ChatInput: React.FC = memo(() => {
         role="region"
         aria-label="Chat input terminal"
       >
-        {/* Header */}
+        {/* Header - includes status, iteration, and task progress all in one line */}
         <InputHeader
           isWorking={isWorking}
           statusMessage={statusMessage}
@@ -393,18 +392,11 @@ export const ChatInput: React.FC = memo(() => {
           elapsedTime={formattedElapsedTime}
           isPaused={isPaused}
           onTogglePause={handlePauseResume}
+          currentIteration={currentIteration}
+          maxIterations={maxIterations}
+          todos={todos}
+          todoStats={todoStats}
         />
-        
-        {/* Task Progress - inline above composer when tasks exist */}
-        {hasTodos && (
-          <div className="px-3 py-1.5 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
-            <TodoProgressInline 
-              todos={todos} 
-              stats={todoStats}
-              compact={false}
-            />
-          </div>
-        )}
         
         {/* Drop overlay */}
         <InputDropZone isActive={isDragging} />
@@ -504,8 +496,6 @@ export const ChatInput: React.FC = memo(() => {
             className="flex-1 min-w-0"
             activeProvider={activeProvider}
             activeModelId={activeModelId}
-            currentIteration={currentIteration}
-            maxIterations={maxIterations}
             isWorking={isWorking}
           />
 

@@ -3,30 +3,94 @@
  * 
  * Defines configurations for supported language servers.
  * Each config specifies how to start and communicate with a language server.
+ * 
+ * Bundled servers (included with the app):
+ * - typescript-language-server (TypeScript/JavaScript)
+ * - vscode-langservers-extracted (HTML, CSS, JSON, ESLint)
+ * 
+ * External servers (require installation):
+ * - pylsp (Python) - pip install python-lsp-server
+ * - rust-analyzer (Rust) - rustup component add rust-analyzer
+ * - gopls (Go) - go install golang.org/x/tools/gopls@latest
+ * - clangd (C/C++) - system package manager
+ * - Others as noted in each config
  */
 
+import * as path from 'node:path';
 import type { LanguageServerConfig, SupportedLanguage } from './types';
+
+// =============================================================================
+// Bundled Server Paths
+// =============================================================================
+
+/**
+ * Check if we're on Windows (affects binary extension)
+ */
+const isWindows = process.platform === 'win32';
+const binExt = isWindows ? '.cmd' : '';
+
+/**
+ * Get the path to bundled language server binaries.
+ * In development, uses node_modules. In production, uses resources/node_modules.
+ * This is called lazily to avoid importing 'app' at module load time.
+ */
+export function getBundledServerPath(serverName: string): string {
+  // Lazy import to avoid sandbox issues
+  const { app } = require('electron');
+  const isDev = !app.isPackaged;
+  
+  if (isDev) {
+    // Development: use node_modules directly
+    return path.join(process.cwd(), 'node_modules', '.bin', serverName);
+  } else {
+    // Production: bundled in resources
+    const resourcesPath = process.resourcesPath || path.dirname(app.getPath('exe'));
+    return path.join(resourcesPath, 'node_modules', '.bin', serverName);
+  }
+}
+
+/**
+ * Get a bundled server path lazily (for config initialization)
+ */
+function bundledPath(serverName: string): string {
+  // During initial config creation, just use the node_modules path
+  // The actual path will be resolved when the server is started
+  return path.join(process.cwd(), 'node_modules', '.bin', serverName);
+}
+
+// =============================================================================
+// Bundled Server Configurations
+// =============================================================================
+
+/**
+ * Servers bundled with the application (always available)
+ */
+export const BUNDLED_SERVERS: SupportedLanguage[] = [
+  'typescript', 'javascript', 'html', 'css', 'json',
+];
 
 /**
  * Default language server configurations.
- * These use commonly available language servers that can be installed via npm/pip/cargo.
+ * Bundled servers use local paths, external servers use system PATH.
  */
 export const LANGUAGE_SERVER_CONFIGS: Record<SupportedLanguage, LanguageServerConfig> = {
   typescript: {
     language: 'typescript',
     displayName: 'TypeScript',
     extensions: ['.ts', '.tsx', '.mts', '.cts'],
-    command: 'typescript-language-server',
+    command: bundledPath(`typescript-language-server${binExt}`),
     args: ['--stdio'],
     rootPatterns: ['tsconfig.json', 'package.json'],
+    bundled: true,
   },
   javascript: {
     language: 'javascript',
     displayName: 'JavaScript',
     extensions: ['.js', '.jsx', '.mjs', '.cjs'],
-    command: 'typescript-language-server',
+    command: bundledPath(`typescript-language-server${binExt}`),
     args: ['--stdio'],
     rootPatterns: ['package.json', 'jsconfig.json'],
+    bundled: true,
   },
   python: {
     language: 'python',
@@ -142,25 +206,28 @@ export const LANGUAGE_SERVER_CONFIGS: Record<SupportedLanguage, LanguageServerCo
     language: 'html',
     displayName: 'HTML',
     extensions: ['.html', '.htm'],
-    command: 'vscode-html-language-server',
+    command: bundledPath(`vscode-html-language-server${binExt}`),
     args: ['--stdio'],
     rootPatterns: ['index.html'],
+    bundled: true,
   },
   css: {
     language: 'css',
     displayName: 'CSS',
     extensions: ['.css', '.scss', '.sass', '.less'],
-    command: 'vscode-css-language-server',
+    command: bundledPath(`vscode-css-language-server${binExt}`),
     args: ['--stdio'],
     rootPatterns: [],
+    bundled: true,
   },
   json: {
     language: 'json',
     displayName: 'JSON',
     extensions: ['.json', '.jsonc'],
-    command: 'vscode-json-language-server',
+    command: bundledPath(`vscode-json-language-server${binExt}`),
     args: ['--stdio'],
     rootPatterns: [],
+    bundled: true,
   },
   yaml: {
     language: 'yaml',

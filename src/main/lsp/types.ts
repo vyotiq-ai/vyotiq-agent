@@ -285,6 +285,8 @@ export interface LanguageServerConfig {
   rootPatterns?: string[];
   /** Whether this server is installed/available */
   installed?: boolean;
+  /** Whether this server is bundled with the app (always available) */
+  bundled?: boolean;
 }
 
 // =============================================================================
