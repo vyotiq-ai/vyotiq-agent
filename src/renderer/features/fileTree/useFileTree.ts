@@ -308,7 +308,7 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
   }, [preferences.showHiddenFiles, preferences.sortBy, preferences.sortDirection, preferences.compactFolders, gitStatus, clipboard]);
 
   // ==========================================================================
-  // Fetch files
+  // Fetch files (with cache for instant loading)
   // ==========================================================================
   
   const fetchFiles = useCallback(async () => {
@@ -319,10 +319,12 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
     setError(null);
     
     try {
+      // Use cache for instant loading - the backend will serve from cache if available
       const result = await window.vyotiq.files.listDir(workspacePath, {
         recursive: true,
         maxDepth,
         showHidden: preferences.showHiddenFiles,
+        useCache: true, // Enable instant loading from cache
       });
       
       if (result?.success && result.files) {
@@ -336,7 +338,11 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
           lastWorkspaceRef.current = workspacePath;
         }
         
-        logger.debug('File tree loaded', { path: workspacePath, count: tree.length });
+        logger.debug('File tree loaded', { 
+          path: workspacePath, 
+          count: tree.length,
+          cached: !!result.cached,
+        });
       } else {
         setError(result?.error || 'Failed to load files');
       }

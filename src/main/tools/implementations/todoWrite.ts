@@ -172,6 +172,8 @@ VerifyTasks → check completion
 
   requiresApproval: false,
   category: 'agent-internal',
+  riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   schema: {
     type: 'object',
@@ -238,12 +240,6 @@ VerifyTasks → check completion
 
   // Search keywords for tool discovery
   searchKeywords: ['todo', 'task', 'checklist', 'progress', 'plan', 'organize', 'track'],
-
-  // Risk level - safe as it only manages internal state
-  riskLevel: 'safe',
-  
-  // Only allow direct calls
-  allowedCallers: ['direct'],
 
   // UI metadata
   ui: {

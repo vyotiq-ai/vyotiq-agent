@@ -142,10 +142,10 @@ export const OpenRouterFilters: React.FC<OpenRouterFiltersProps> = ({
 
       {/* Expanded Filters */}
       {isExpanded && (
-        <div className="border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]/50 p-2 space-y-3">
+        <div className="border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]/50 p-2 space-y-3" role="region" aria-label="Model filters">
           {hasActiveFilters && (
-            <button onClick={clearFilters} className="flex items-center gap-1 text-[9px] text-[var(--color-error)] hover:text-[var(--color-error)]/80">
-              <X size={10} />clear
+            <button onClick={clearFilters} className="flex items-center gap-1 text-[9px] text-[var(--color-error)] hover:text-[var(--color-error)]/80" aria-label="Clear all filters">
+              <X size={10} aria-hidden="true" />clear
             </button>
           )}
           <FilterSection label="context" icon={<Cpu size={10} />}>
@@ -185,31 +185,47 @@ export const OpenRouterFilters: React.FC<OpenRouterFiltersProps> = ({
 
 // Helpers
 const FilterSection: React.FC<{ label: string; icon?: React.ReactNode; children: React.ReactNode }> = ({ label, icon, children }) => (
-  <div className="space-y-1">
-    <div className="flex items-center gap-1 text-[9px] text-[var(--color-text-dim)]">{icon}<span>--{label}</span></div>
+  <div className="space-y-1" role="group" aria-labelledby={`filter-${label}`}>
+    <div id={`filter-${label}`} className="flex items-center gap-1 text-[9px] text-[var(--color-text-dim)]">{icon}<span>--{label}</span></div>
     <div className="ml-3">{children}</div>
   </div>
 );
 
 const QuickToggle: React.FC<{ label: string; icon: React.ReactNode; active: boolean; onClick: () => void }> = ({ label, icon, active, onClick }) => (
-  <button onClick={onClick} className={cn(
-    "flex items-center gap-1 px-1.5 py-0.5 text-[9px] border transition-colors",
-    active ? "border-[var(--color-accent-primary)]/40 text-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10"
-           : "border-[var(--color-border-subtle)] text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)]"
-  )}>{icon}{label}</button>
+  <button 
+    onClick={onClick} 
+    aria-pressed={active}
+    aria-label={`Filter by ${label}`}
+    className={cn(
+      "flex items-center gap-1 px-1.5 py-0.5 text-[9px] border transition-colors",
+      active ? "border-[var(--color-accent-primary)]/40 text-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10"
+             : "border-[var(--color-border-subtle)] text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)]"
+    )}
+  ><span aria-hidden="true">{icon}</span>{label}</button>
 );
 
 const ChipToggle: React.FC<{ label: string; active: boolean; onClick: () => void }> = ({ label, active, onClick }) => (
-  <button onClick={onClick} className={cn(
-    "px-1.5 py-0.5 text-[8px] border transition-colors",
-    active ? "border-[var(--color-accent-secondary)]/40 text-[var(--color-accent-secondary)] bg-[var(--color-accent-secondary)]/10"
-           : "border-[var(--color-border-subtle)] text-[var(--color-text-placeholder)] hover:text-[var(--color-text-dim)]"
-  )}>{label}</button>
+  <button 
+    onClick={onClick} 
+    aria-pressed={active}
+    aria-label={`${active ? 'Remove' : 'Add'} ${label} filter`}
+    className={cn(
+      "px-1.5 py-0.5 text-[8px] border transition-colors",
+      active ? "border-[var(--color-accent-secondary)]/40 text-[var(--color-accent-secondary)] bg-[var(--color-accent-secondary)]/10"
+             : "border-[var(--color-border-subtle)] text-[var(--color-text-placeholder)] hover:text-[var(--color-text-dim)]"
+    )}
+  >{label}</button>
 );
 
 const NumInput: React.FC<{ placeholder: string; value?: number; onChange: (v?: number) => void; step?: number; width?: string }> = 
   ({ placeholder, value, onChange, step = 1, width = "w-16" }) => (
-  <input type="number" step={step} placeholder={placeholder} value={value ?? ''}
+  <input 
+    type="number" 
+    step={step} 
+    placeholder={placeholder} 
+    value={value ?? ''}
+    aria-label={`${placeholder} value`}
     onChange={(e) => onChange(e.target.value ? (step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value)) : undefined)}
-    className={cn(width, "bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] px-1.5 py-0.5 text-[9px] outline-none focus-visible:border-[var(--color-accent-primary)]/30")} />
+    className={cn(width, "bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] px-1.5 py-0.5 text-[9px] outline-none focus-visible:border-[var(--color-accent-primary)]/30")} 
+  />
 );

@@ -1,11 +1,14 @@
 /**
  * ProblemsPanel Component
  * 
- * VS Code-style problems panel showing errors and warnings from Monaco markers.
- * Displays diagnostics grouped by file with clickable navigation.
+ * VS Code-style problems panel showing errors and warnings from both:
+ * - Monaco markers (for open files)
+ * - Workspace diagnostics (TypeScript service + LSP for all files)
+ * 
+ * Provides real-time updates via push events, no polling required.
  */
 
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo, useRef } from 'react';
 import * as monaco from 'monaco-editor';
 import { 
   AlertCircle, 
@@ -15,9 +18,11 @@ import {
   ChevronDown,
   X,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { getFileIcon } from '../../fileTree/utils/fileIcons';
+import { useWorkspaceContext } from '../../../state/WorkspaceContextProvider';
 
 export interface Problem {
   file: string;
@@ -88,6 +93,20 @@ function getFileName(filePath: string): string {
   return parts[parts.length - 1] || filePath;
 }
 
+/**
+ * Normalize file path for comparison
+ */
+function normalizePath(filePath: string): string {
+  return filePath.replace(/\\/g, '/').toLowerCase();
+}
+
+/**
+ * Create a unique key for deduplication
+ */
+function problemKey(p: Problem): string {
+  return `${normalizePath(p.file)}:${p.line}:${p.column}:${p.message}`;
+}
+
 export const ProblemsPanel: React.FC<ProblemsPanelProps> = memo(({
   isOpen,
   onClose,
@@ -97,17 +116,45 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = memo(({
   const [problems, setProblems] = useState<Problem[]>([]);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [filterSeverity, setFilterSeverity] = useState<Problem['severity'] | 'all'>('all');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Get workspace diagnostics from context (real-time updates)
+  const { state: workspaceState, refreshDiagnostics } = useWorkspaceContext();
+  const { diagnostics: workspaceDiagnostics, diagnosticsLoading } = workspaceState;
 
-  // Gather all Monaco markers
-  const refreshProblems = useCallback(() => {
+  /**
+   * Merge Monaco markers with workspace diagnostics
+   * Monaco markers take priority for open files (more up-to-date)
+   * Workspace diagnostics provide coverage for closed files
+   */
+  const mergeProblems = useCallback(() => {
+    const problemMap = new Map<string, Problem>();
+    
+    // First, add workspace diagnostics (all files including closed)
+    for (const diag of workspaceDiagnostics) {
+      const problem: Problem = {
+        file: diag.filePath,
+        fileName: diag.fileName || getFileName(diag.filePath),
+        line: diag.line,
+        column: diag.column,
+        endLine: diag.endLine,
+        endColumn: diag.endColumn,
+        message: diag.message,
+        severity: diag.severity,
+        source: diag.source,
+        code: diag.code,
+      };
+      problemMap.set(problemKey(problem), problem);
+    }
+    
+    // Then, add/override with Monaco markers (most current for open files)
     const models = monaco.editor.getModels();
-    const allProblems: Problem[] = [];
-
     for (const model of models) {
       const markers = monaco.editor.getModelMarkers({ resource: model.uri });
       
       for (const marker of markers) {
-        allProblems.push({
+        const problem: Problem = {
           file: model.uri.fsPath || model.uri.path,
           fileName: getFileName(model.uri.path),
           line: marker.startLineNumber,
@@ -118,10 +165,15 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = memo(({
           severity: markerSeverityToType(marker.severity),
           source: marker.source,
           code: marker.code?.toString(),
-        });
+        };
+        // Monaco markers override workspace diagnostics for the same issue
+        problemMap.set(problemKey(problem), problem);
       }
     }
 
+    // Convert to array and sort
+    const allProblems = Array.from(problemMap.values());
+    
     // Sort by severity (errors first), then by file, then by line
     allProblems.sort((a, b) => {
       const severityOrder = { error: 0, warning: 1, info: 2, hint: 3 };
@@ -141,25 +193,72 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = memo(({
       allProblems.filter(p => p.severity === 'error').map(p => p.file)
     );
     setExpandedFiles(prev => new Set([...prev, ...filesWithErrors]));
-  }, []);
+  }, [workspaceDiagnostics]);
 
-  // Refresh on mount and when panel opens
+  /**
+   * Manual refresh - fetches latest diagnostics from backend
+   */
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshDiagnostics();
+      // Also trigger Monaco marker refresh
+      mergeProblems();
+    } finally {
+      // Small delay for visual feedback
+      setTimeout(() => setIsRefreshing(false), 300);
+    }
+  }, [refreshDiagnostics, mergeProblems]);
+
+  // Merge problems when panel opens or workspace diagnostics change
   useEffect(() => {
     if (isOpen) {
-      refreshProblems();
+      mergeProblems();
     }
-  }, [isOpen, refreshProblems]);
+  }, [isOpen, mergeProblems, workspaceDiagnostics]);
 
-  // Listen for marker changes
+  // Listen for Monaco marker changes (real-time for open files)
   useEffect(() => {
     if (!isOpen) return;
 
     const disposable = monaco.editor.onDidChangeMarkers(() => {
-      refreshProblems();
+      // Debounce marker changes to avoid too frequent updates
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      refreshTimeoutRef.current = setTimeout(() => {
+        mergeProblems();
+        refreshTimeoutRef.current = null;
+      }, 100);
     });
 
-    return () => disposable.dispose();
-  }, [isOpen, refreshProblems]);
+    return () => {
+      disposable.dispose();
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
+  }, [isOpen, mergeProblems]);
+
+  // Subscribe to real-time LSP diagnostics updates
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const unsubscribeLsp = window.vyotiq?.lsp?.onDiagnosticsUpdated?.(() => {
+      // Trigger merge when LSP diagnostics arrive
+      mergeProblems();
+    });
+
+    const unsubscribeFile = window.vyotiq?.workspace?.onFileDiagnosticsChange?.(() => {
+      // Trigger merge when file diagnostics arrive
+      mergeProblems();
+    });
+
+    return () => {
+      unsubscribeLsp?.();
+      unsubscribeFile?.();
+    };
+  }, [isOpen, mergeProblems]);
 
   // Group problems by file
   const fileProblems: FileProblems[] = React.useMemo(() => {
@@ -249,6 +348,11 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = memo(({
         </div>
 
         <div className="flex items-center gap-1">
+          {/* Loading indicator */}
+          {(isRefreshing || diagnosticsLoading) && (
+            <Loader2 size={12} className="text-[var(--color-text-muted)] animate-spin" />
+          )}
+          
           {/* Filter dropdown */}
           <select
             value={filterSeverity}
@@ -262,11 +366,17 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = memo(({
           </select>
           
           <button
-            onClick={refreshProblems}
-            className="p-1 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
-            title="Refresh"
+            onClick={handleRefresh}
+            disabled={isRefreshing || diagnosticsLoading}
+            className={cn(
+              "p-1 rounded transition-colors",
+              isRefreshing || diagnosticsLoading
+                ? "text-[var(--color-text-muted)] cursor-not-allowed"
+                : "hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+            )}
+            title="Refresh diagnostics"
           >
-            <RefreshCw size={12} />
+            <RefreshCw size={12} className={cn(isRefreshing && "animate-spin")} />
           </button>
           
           <button

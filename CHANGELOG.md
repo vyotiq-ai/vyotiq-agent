@@ -96,7 +96,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Settings UI Improvements**:
   - Enhanced `SettingsAppearance` with more customization options
   - Improved `SettingsEditorAI` with better model selection
-  - Refined `SettingsIndexing` with cleaner UI
 - **Build Configuration**:
   - Updated `forge.config.ts` with improved build settings
   - Enhanced `vite.main.config.ts` with better optimization
@@ -219,17 +218,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dynamic MCP tool integration with the agent
 - Real-time server status monitoring and reconnection
 - Server metrics including connection statistics and latency tracking
-
-## [1.1.0] - 2026-01-15
-
-### Added
-
-- Local AI-powered semantic search using vector embeddings
-- `codebase_search` tool for semantic code discovery
-- Transformers.js with ONNX runtime for local embeddings
-- Language-aware code chunking for 15+ languages
-- Background workspace indexing with progress tracking
-- Optional GPU acceleration for faster indexing
 
 ## [1.0.0] - 2026-01-10
 

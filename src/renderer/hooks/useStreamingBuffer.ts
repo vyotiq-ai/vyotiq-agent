@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect, useMemo } from 'react';
+import { useThrottleControl } from './useThrottleControl';
 
 /** Streaming mode determines how content is batched and delivered */
 export type StreamingMode = 
@@ -18,6 +19,8 @@ interface StreamingBufferOptions {
   onFlush: (sessionId: string, messageId: string, accumulatedDelta: string) => void;
   /** Enable adaptive batching based on content rate (default: true) */
   adaptiveBatching?: boolean;
+  /** Enable agent-aware throttling (uses faster interval when agent running) */
+  agentAwareThrottling?: boolean;
 }
 
 interface BufferState {
@@ -38,6 +41,9 @@ const MODE_INTERVALS: Record<StreamingMode, number> = {
   typewriter: 16,  // 60 fps - for character-by-character effect
 };
 
+/** Fastest interval when agent is running - 60fps for responsive streaming */
+const AGENT_RUNNING_INTERVAL = 16;
+
 /**
  * A hook that batches streaming deltas to reduce React re-renders.
  * Instead of dispatching every single character, it accumulates deltas
@@ -49,6 +55,7 @@ const MODE_INTERVALS: Record<StreamingMode, number> = {
  * - Multiple streaming modes for different use cases
  * - Efficient buffer management with automatic cleanup
  * - Idle detection to stop flush loop when not needed
+ * - Agent-aware throttling: uses faster intervals when agent is running
  */
 export const useStreamingBuffer = (options: StreamingBufferOptions) => {
   const {
@@ -57,13 +64,25 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
     maxBufferSize = 100,
     onFlush,
     adaptiveBatching = true,
+    agentAwareThrottling = true,
   } = options;
   
-  // Compute actual flush interval from mode or custom value
-  const flushInterval = useMemo(() => 
+  // Get agent running state for adaptive throttling
+  const { isAgentRunning, shouldBypassThrottle } = useThrottleControl();
+  
+  // Compute base flush interval from mode or custom value
+  const baseFlushInterval = useMemo(() => 
     customInterval ?? MODE_INTERVALS[mode],
     [customInterval, mode]
   );
+  
+  // Compute effective flush interval - use fastest interval when agent is running
+  const flushInterval = useMemo(() => {
+    if (agentAwareThrottling && (isAgentRunning || shouldBypassThrottle)) {
+      return AGENT_RUNNING_INTERVAL;
+    }
+    return baseFlushInterval;
+  }, [agentAwareThrottling, isAgentRunning, shouldBypassThrottle, baseFlushInterval]);
 
   // Keyed by `${sessionId}:${messageId}`
   const buffersRef = useRef<Map<string, BufferState>>(new Map());
@@ -263,7 +282,13 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
     isActive,
     /** Current streaming mode */
     mode,
-    /** Effective flush interval being used */
+    /** Effective flush interval being used (may be faster when agent is running) */
     flushInterval,
+    /** Base flush interval before agent-aware adjustments */
+    baseFlushInterval,
+    /** Whether agent is currently running (affects flush interval) */
+    isAgentRunning,
+    /** Whether throttling is being bypassed */
+    isThrottleBypassed: shouldBypassThrottle,
   };
-};
+}

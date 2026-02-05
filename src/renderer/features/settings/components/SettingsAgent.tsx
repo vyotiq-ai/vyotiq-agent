@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { TriangleAlert, Zap, Shield, Sparkles, RefreshCw, Brain, Lightbulb, Search, Layers } from 'lucide-react';
-import { Toggle } from '../../../components/ui/Toggle';
+import { TriangleAlert, Zap, Shield, Search } from 'lucide-react';
 import type { AgentSettings, LLMProviderName } from '../../../../shared/types';
+import { SETTINGS_CONSTRAINTS } from '../../../../shared/types';
 import { PROVIDERS, PROVIDER_ORDER, isProviderConfigured } from '../../../../shared/providers';
 import type { ModelInfo } from '../../../../shared/providers/types';
 import { fetchProviderModels } from '../../../utils/models';
 import { cn } from '../../../utils/cn';
+import {
+  SettingsSection,
+  SettingsGroup,
+  SettingsToggleRow,
+  SettingsSlider,
+  SettingsSelect,
+} from '../primitives';
 
 interface SettingsAgentProps {
   config: AgentSettings['defaultConfig'];
@@ -43,10 +50,8 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
       // Sort: flagship first, then balanced, fast, legacy
       const tierOrder = { flagship: 0, balanced: 1, fast: 2, legacy: 3 };
       combined.sort((a, b) => {
-        // Sort by tier first
         const tierDiff = tierOrder[a.tier] - tierOrder[b.tier];
         if (tierDiff !== 0) return tierDiff;
-        // Then by provider
         return a.provider.localeCompare(b.provider);
       });
       
@@ -80,77 +85,66 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
     if (!modelId) return null;
     return allModels.find(m => m.id === modelId) || { id: modelId, name: modelId, provider: 'unknown' as LLMProviderName };
   }, [config.selectedModelId, allModels]);
-  
-  return (
-    <section className="space-y-4 font-mono">
-      <header>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[var(--color-accent-primary)] text-[11px]">#</span>
-          <h3 className="text-[11px] text-[var(--color-text-primary)]">agent</h3>
-        </div>
-        <p className="text-[10px] text-[var(--color-text-dim)]">
-          # Configure model routing and behavior
-        </p>
-      </header>
 
-      {/* Model Routing Section */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Sparkles size={11} className="text-[var(--color-accent-primary)]" />
-          routing
-        </div>
-        
+  // Build provider options for select
+  const providerOptions = useMemo(() => [
+    { value: 'auto', label: 'auto' },
+    ...PROVIDER_ORDER.map((provider) => {
+      const info = PROVIDERS[provider];
+      const configured = isProviderConfigured(provider, apiKeys);
+      return {
+        value: provider,
+        label: `${info.shortName.toLowerCase()}${!configured ? ' (---)' : ''}`,
+        disabled: !configured,
+      };
+    }),
+  ], [apiKeys]);
+
+  const fallbackProviderOptions = useMemo(() =>
+    PROVIDER_ORDER.map((provider) => {
+      const info = PROVIDERS[provider];
+      const configured = isProviderConfigured(provider, apiKeys);
+      return {
+        value: provider,
+        label: `${info.shortName.toLowerCase()}${!configured ? ' (---)' : ''}`,
+        disabled: !configured,
+      };
+    }), [apiKeys]);
+
+  const reasoningEffortOptions = [
+    { value: 'auto', label: 'auto (from temp)' },
+    { value: 'none', label: 'none (fastest)' },
+    { value: 'low', label: 'low' },
+    { value: 'medium', label: 'medium' },
+    { value: 'high', label: 'high' },
+    { value: 'xhigh', label: 'xhigh (gpt-5.2 only)' },
+  ];
+
+  const verbosityOptions = [
+    { value: 'low', label: 'low (concise)' },
+    { value: 'medium', label: 'medium (balanced)' },
+    { value: 'high', label: 'high (detailed)' },
+  ];
+
+  return (
+    <SettingsSection title="agent" description="Configure model routing and behavior">
+      {/* Routing Group */}
+      <SettingsGroup title="routing">
         <div className="grid gap-3 sm:grid-cols-2">
-          {/* Preferred Provider */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-[var(--color-text-muted)]">--provider</label>
-            <select
-              className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30"
-              value={config.preferredProvider}
-              onChange={(e) => onChange('preferredProvider', e.target.value)}
-            >
-              <option value="auto">auto</option>
-              {PROVIDER_ORDER.map((provider) => {
-                const info = PROVIDERS[provider];
-                const configured = isProviderConfigured(provider, apiKeys);
-                return (
-                  <option 
-                    key={provider} 
-                    value={provider}
-                    disabled={!configured}
-                  >
-                    {info.shortName.toLowerCase()} {!configured && '(---)'}
-                  </option>
-                );
-              })}
-            </select>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># auto=smart routing</p>
-          </div>
-          
-          {/* Fallback Provider */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-[var(--color-text-muted)]">--fallback</label>
-            <select
-              className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30"
-              value={config.fallbackProvider}
-              onChange={(e) => onChange('fallbackProvider', e.target.value)}
-            >
-              {PROVIDER_ORDER.map((provider) => {
-                const info = PROVIDERS[provider];
-                const configured = isProviderConfigured(provider, apiKeys);
-                return (
-                  <option 
-                    key={provider} 
-                    value={provider}
-                    disabled={!configured}
-                  >
-                    {info.shortName.toLowerCase()} {!configured && '(---)'}
-                  </option>
-                );
-              })}
-            </select>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># used when primary fails</p>
-          </div>
+          <SettingsSelect
+            label="provider"
+            description="auto=smart routing"
+            value={config.preferredProvider}
+            options={providerOptions}
+            onChange={(v) => onChange('preferredProvider', v)}
+          />
+          <SettingsSelect
+            label="fallback"
+            description="used when primary fails"
+            value={config.fallbackProvider}
+            options={fallbackProviderOptions}
+            onChange={(v) => onChange('fallbackProvider', v)}
+          />
         </div>
 
         {configuredProviders.length === 0 && (
@@ -160,105 +154,78 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
           </div>
         )}
         
-        <Toggle
+        <SettingsToggleRow
           label="--auto-switch"
           description="# switch providers mid-run on failure"
           checked={config.allowAutoSwitch}
           onToggle={() => onChange('allowAutoSwitch', !config.allowAutoSwitch)}
         />
 
-        <Toggle
+        <SettingsToggleRow
           label="--enable-fallback"
           description="# fallback to another provider on error"
           checked={config.enableProviderFallback !== false}
           onToggle={() => onChange('enableProviderFallback', !(config.enableProviderFallback !== false))}
         />
 
-        <Toggle
+        <SettingsToggleRow
           label="--auto-model"
           description="# auto-select model based on task (when provider=auto)"
           checked={config.enableAutoModelSelection !== false}
           onToggle={() => onChange('enableAutoModelSelection', !(config.enableAutoModelSelection !== false))}
         />
-      </div>
+      </SettingsGroup>
 
-      {/* Generation Settings */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Zap size={11} className="text-[var(--color-info)]" />
-          generation
-        </div>
-        
+      {/* Generation Group */}
+      <SettingsGroup title="generation" icon={<Zap size={11} />}>
         <div className="grid gap-3 sm:grid-cols-2">
-          {/* Temperature */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--temp</label>
-              <span className="text-[10px] text-[var(--color-accent-primary)]">{config.temperature.toFixed(1)}</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={2}
-              step={0.1}
-              className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-              value={config.temperature}
-              onChange={(e) => onChange('temperature', Number(e.target.value))}
-            />
-            <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-              <span>0</span>
-              <span>1</span>
-              <span>2</span>
-            </div>
-          </div>
-          
-          {/* Max Output Tokens */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--max-tokens</label>
-              <span className="text-[10px] text-[var(--color-accent-primary)]">{config.maxOutputTokens.toLocaleString()}</span>
-            </div>
-            <input
-              type="range"
-              min={1024}
-              max={32768}
-              step={1024}
-              className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-              value={config.maxOutputTokens}
-              onChange={(e) => onChange('maxOutputTokens', Number(e.target.value))}
-            />
-            <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-              <span>1k</span>
-              <span>16k</span>
-              <span>32k</span>
-            </div>
-          </div>
+          <SettingsSlider
+            label="temp"
+            value={config.temperature ?? SETTINGS_CONSTRAINTS.temperature.default}
+            onChange={(v) => onChange('temperature', v)}
+            min={SETTINGS_CONSTRAINTS.temperature.min}
+            max={SETTINGS_CONSTRAINTS.temperature.max}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+          />
+          <SettingsSlider
+            label="max tokens"
+            value={config.maxOutputTokens ?? SETTINGS_CONSTRAINTS.maxOutputTokens.default}
+            onChange={(v) => onChange('maxOutputTokens', v)}
+            min={1024}
+            max={SETTINGS_CONSTRAINTS.maxOutputTokens.max}
+            step={1024}
+            format={(v) => v.toLocaleString()}
+          />
         </div>
 
-        {/* Manual Override */}
-        <div className="space-y-1.5">
-          <label className="text-[10px] text-[var(--color-text-muted)]">--model-override</label>
+        {/* Model Override Input */}
+        <div className="py-2 font-mono">
+          <label className="text-[11px] text-[var(--color-text-primary)] flex items-center gap-1 mb-2">
+            <span className="text-[var(--color-accent-secondary)]">--</span>
+            model-override
+          </label>
           <input
             type="text"
-            className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30 placeholder:text-[var(--color-text-placeholder)]"
+            className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-3 py-1.5 text-[11px] font-mono outline-none transition-colors focus-visible:border-[var(--color-accent-primary)]/30 placeholder:text-[var(--color-text-placeholder)]"
             placeholder="e.g. claude-3-opus-latest"
             value={config.selectedModelId ?? ''}
             onChange={(e) => onChange('selectedModelId', e.target.value)}
           />
-          <p className="text-[9px] text-[var(--color-text-dim)]"># bypass routing, use exact model id</p>
+          <p className="text-[10px] text-[var(--color-text-dim)] mt-2">
+            <span className="text-[var(--color-text-placeholder)]">#</span> bypass routing, use exact model id
+          </p>
         </div>
-      </div>
+      </SettingsGroup>
 
-      {/* Default Model Selection */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Layers size={11} className="text-[var(--color-accent-secondary)]" />
-          default model
-        </div>
-        
-        <div className="space-y-1.5">
+      {/* Default Model Selection Group */}
+      <SettingsGroup title="default model">
+        <div className="py-2 font-mono space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] text-[var(--color-text-muted)]">--default-model</label>
+            <label className="text-[11px] text-[var(--color-text-primary)] flex items-center gap-1">
+              <span className="text-[var(--color-accent-secondary)]">--</span>
+              default-model
+            </label>
             {loadingModels && (
               <span className="text-[9px] text-[var(--color-text-dim)]">loading...</span>
             )}
@@ -272,7 +239,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
             )}
           </div>
           
-          {/* Selected model display / dropdown trigger */}
+          {/* Model Dropdown */}
           <div className="relative">
             <button
               type="button"
@@ -284,7 +251,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
               }}
               disabled={configuredProviders.length === 0}
               className={cn(
-                "w-full bg-[var(--color-surface-1)] text-left border px-2 py-1.5 text-[10px] outline-none transition-all",
+                "w-full bg-[var(--color-surface-1)] text-left border px-3 py-1.5 text-[11px] font-mono outline-none transition-all",
                 configuredProviders.length === 0 
                   ? "border-[var(--color-border-subtle)]/50 text-[var(--color-text-dim)] cursor-not-allowed"
                   : "border-[var(--color-border-subtle)] text-[var(--color-text-primary)] hover:border-[var(--color-accent-primary)]/30",
@@ -293,7 +260,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
             >
               {selectedModel ? (
                 <span className="flex items-center gap-2">
-                  <span className={cn("text-[9px]", PROVIDERS[selectedModel.provider as LLMProviderName]?.color || 'text-[var(--color-text-dim)]')}>
+                  <span className={cn("text-[10px]", PROVIDERS[selectedModel.provider as LLMProviderName]?.color || 'text-[var(--color-text-dim)]')}>
                     [{selectedModel.provider}]
                   </span>
                   <span className="truncate">{selectedModel.name || selectedModel.id}</span>
@@ -305,7 +272,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
               )}
             </button>
             
-            {/* Dropdown */}
+            {/* Dropdown Panel */}
             {showModelDropdown && configuredProviders.length > 0 && (
               <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] shadow-lg max-h-64 overflow-hidden flex flex-col">
                 {/* Search */}
@@ -317,7 +284,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
                       placeholder="Search models..."
                       value={modelSearchQuery}
                       onChange={(e) => setModelSearchQuery(e.target.value)}
-                      className="w-full bg-[var(--color-surface-2)] text-[var(--color-text-primary)] border-none pl-6 pr-2 py-1 text-[10px] outline-none placeholder:text-[var(--color-text-placeholder)]"
+                      className="w-full bg-[var(--color-surface-2)] text-[var(--color-text-primary)] border-none pl-6 pr-2 py-1 text-[10px] font-mono outline-none placeholder:text-[var(--color-text-placeholder)]"
                       autoFocus
                     />
                   </div>
@@ -325,7 +292,6 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
                 
                 {/* Model list */}
                 <div className="overflow-y-auto flex-1">
-                  {/* Auto option */}
                   <button
                     type="button"
                     onClick={() => {
@@ -334,7 +300,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
                       setModelSearchQuery('');
                     }}
                     className={cn(
-                      "w-full text-left px-2 py-1.5 text-[10px] hover:bg-[var(--color-surface-2)] transition-colors",
+                      "w-full text-left px-2 py-1.5 text-[10px] font-mono hover:bg-[var(--color-surface-2)] transition-colors",
                       !config.selectedModelId && "bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]"
                     )}
                   >
@@ -360,7 +326,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
                           setModelSearchQuery('');
                         }}
                         className={cn(
-                          "w-full text-left px-2 py-1.5 text-[10px] hover:bg-[var(--color-surface-2)] transition-colors",
+                          "w-full text-left px-2 py-1.5 text-[10px] font-mono hover:bg-[var(--color-surface-2)] transition-colors",
                           config.selectedModelId === model.id && "bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]"
                         )}
                       >
@@ -369,15 +335,6 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
                             [{model.provider}]
                           </span>
                           <span className="truncate">{model.name}</span>
-                          <span className={cn(
-                            "text-[8px] ml-auto shrink-0",
-                            model.tier === 'flagship' ? 'text-[var(--color-warning)]' :
-                            model.tier === 'fast' ? 'text-[var(--color-accent-primary)]' :
-                            model.tier === 'legacy' ? 'text-[var(--color-text-dim)]' :
-                            'text-[var(--color-info)]'
-                          )}>
-                            {model.tier}
-                          </span>
                         </div>
                         <div className="text-[8px] text-[var(--color-text-dim)] truncate mt-0.5">
                           {model.id}
@@ -399,8 +356,8 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
             )}
           </div>
           
-          <p className="text-[9px] text-[var(--color-text-dim)]">
-            # model used when provider=auto (overrides task routing)
+          <p className="text-[10px] text-[var(--color-text-dim)]">
+            <span className="text-[var(--color-text-placeholder)]">#</span> model used when provider=auto (overrides task routing)
           </p>
           
           {config.selectedModelId && (
@@ -413,63 +370,34 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
             </button>
           )}
         </div>
-      </div>
+      </SettingsGroup>
 
-      {/* OpenAI Reasoning Settings */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Lightbulb size={11} className="text-[var(--color-warning)]" />
-          reasoning (openai)
-        </div>
-        
+      {/* Reasoning Group (OpenAI) */}
+      <SettingsGroup title="reasoning (openai)">
         <div className="grid gap-3 sm:grid-cols-2">
-          {/* Reasoning Effort */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-[var(--color-text-muted)]">--reasoning-effort</label>
-            <select
-              className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30"
-              value={config.reasoningEffort ?? 'auto'}
-              onChange={(e) => onChange('reasoningEffort', e.target.value === 'auto' ? '' : e.target.value)}
-            >
-              <option value="auto">auto (from temp)</option>
-              <option value="none">none (fastest)</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-              <option value="xhigh">xhigh (gpt-5.2 only)</option>
-            </select>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># controls reasoning depth</p>
-          </div>
-          
-          {/* Verbosity */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-[var(--color-text-muted)]">--verbosity</label>
-            <select
-              className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30"
-              value={config.verbosity ?? 'medium'}
-              onChange={(e) => onChange('verbosity', e.target.value)}
-            >
-              <option value="low">low (concise)</option>
-              <option value="medium">medium (balanced)</option>
-              <option value="high">high (detailed)</option>
-            </select>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># response length (gpt-5.2)</p>
-          </div>
+          <SettingsSelect
+            label="reasoning effort"
+            description="controls reasoning depth"
+            value={config.reasoningEffort ?? 'auto'}
+            options={reasoningEffortOptions}
+            onChange={(v) => onChange('reasoningEffort', v === 'auto' ? '' : v)}
+          />
+          <SettingsSelect
+            label="verbosity"
+            description="response length (gpt-5.2)"
+            value={config.verbosity ?? 'medium'}
+            options={verbosityOptions}
+            onChange={(v) => onChange('verbosity', v)}
+          />
         </div>
-        
-        <p className="text-[9px] text-[var(--color-text-dim)]">
-          # these settings only apply to openai gpt-5.x models
+        <p className="text-[10px] text-[var(--color-text-dim)]">
+          <span className="text-[var(--color-text-placeholder)]">#</span> these settings only apply to openai gpt-5.x models
         </p>
-      </div>
+      </SettingsGroup>
 
-      {/* Safety Settings */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Shield size={11} className="text-[var(--color-warning)]" />
-          safety
-        </div>
-        
-        <Toggle
+      {/* Safety Group */}
+      <SettingsGroup title="safety" icon={<Shield size={11} />}>
+        <SettingsToggleRow
           label="--yolo"
           description="# skip all confirmation prompts"
           checked={config.yoloMode}
@@ -489,95 +417,46 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
             </div>
           </div>
         )}
-      </div>
+      </SettingsGroup>
 
-      {/* Iteration Settings */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <RefreshCw size={11} className="text-[var(--color-accent-secondary)]" />
-          iterations
-        </div>
-        
+      {/* Iterations Group */}
+      <SettingsGroup title="iterations">
         <div className="grid gap-3 sm:grid-cols-2">
-          {/* Max Iterations */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--max-iterations</label>
-              <span className="text-[10px] text-[var(--color-accent-primary)]">{config.maxIterations ?? 20}</span>
-            </div>
-            <input
-              type="range"
-              min={5}
-              max={100}
-              step={5}
-              className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-              value={config.maxIterations ?? 20}
-              onChange={(e) => onChange('maxIterations', Number(e.target.value))}
-            />
-            <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-              <span>5</span>
-              <span>50</span>
-              <span>100</span>
-            </div>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># max tool loops per request</p>
-          </div>
-          
-          {/* Max Retries */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--max-retries</label>
-              <span className="text-[10px] text-[var(--color-accent-primary)]">{config.maxRetries ?? 2}</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={5}
-              step={1}
-              className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-              value={config.maxRetries ?? 2}
-              onChange={(e) => onChange('maxRetries', Number(e.target.value))}
-            />
-            <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-              <span>0</span>
-              <span>2</span>
-              <span>5</span>
-            </div>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># retry on transient errors</p>
-          </div>
-        </div>
-        
-        {/* Retry Delay */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-[10px] text-[var(--color-text-muted)]">--retry-delay</label>
-            <span className="text-[10px] text-[var(--color-accent-primary)]">{((config.retryDelayMs ?? 1500) / 1000).toFixed(1)}s</span>
-          </div>
-          <input
-            type="range"
-            min={500}
-            max={10000}
-            step={500}
-            className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-            value={config.retryDelayMs ?? 1500}
-            onChange={(e) => onChange('retryDelayMs', Number(e.target.value))}
+          <SettingsSlider
+            label="max iterations"
+            description="max tool loops per request (no upper limit)"
+            value={config.maxIterations ?? SETTINGS_CONSTRAINTS.maxIterations.default}
+            onChange={(v) => onChange('maxIterations', v)}
+            min={SETTINGS_CONSTRAINTS.maxIterations.min}
+            max={500}
+            step={5}
           />
-          <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-            <span>0.5s</span>
-            <span>5s</span>
-            <span>10s</span>
-          </div>
-          <p className="text-[9px] text-[var(--color-text-dim)]"># base delay between retries (with backoff)</p>
-        </div>
-      </div>
-
-      {/* Context Management */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Brain size={11} className="text-[var(--color-success)]" />
-          context
+          <SettingsSlider
+            label="max retries"
+            description="retry on transient errors"
+            value={config.maxRetries ?? SETTINGS_CONSTRAINTS.maxRetries.default}
+            onChange={(v) => onChange('maxRetries', v)}
+            min={SETTINGS_CONSTRAINTS.maxRetries.min}
+            max={SETTINGS_CONSTRAINTS.maxRetries.max}
+            step={1}
+          />
         </div>
         
-        <Toggle
+        <SettingsSlider
+          label="retry delay"
+          description="base delay between retries (with backoff)"
+          value={config.retryDelayMs ?? SETTINGS_CONSTRAINTS.retryDelayMs.default}
+          onChange={(v) => onChange('retryDelayMs', v)}
+          min={SETTINGS_CONSTRAINTS.retryDelayMs.min}
+          max={SETTINGS_CONSTRAINTS.retryDelayMs.max}
+          step={500}
+          format={(v) => `${(v / 1000).toFixed(1)}s`}
+        />
+      </SettingsGroup>
+
+      {/* Context Group */}
+      <SettingsGroup title="context">
+        <SettingsToggleRow
           label="--summarize"
           description="# auto-summarize long conversations"
           checked={config.enableContextSummarization !== false}
@@ -586,56 +465,31 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
         
         {config.enableContextSummarization !== false && (
           <div className="grid gap-3 sm:grid-cols-2 animate-in slide-in-from-top-1 duration-150">
-            {/* Summarization Threshold */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] text-[var(--color-text-muted)]">--summarize-after</label>
-                <span className="text-[10px] text-[var(--color-accent-primary)]">{config.summarizationThreshold ?? 100} msgs</span>
-              </div>
-              <input
-                type="range"
-                min={20}
-                max={500}
-                step={10}
-                className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-                value={config.summarizationThreshold ?? 100}
-                onChange={(e) => onChange('summarizationThreshold', Number(e.target.value))}
-              />
-              <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-                <span>20</span>
-                <span>250</span>
-                <span>500</span>
-              </div>
-            </div>
-            
-            {/* Keep Recent Messages */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] text-[var(--color-text-muted)]">--keep-recent</label>
-                <span className="text-[10px] text-[var(--color-accent-primary)]">{config.keepRecentMessages ?? 40} msgs</span>
-              </div>
-              <input
-                type="range"
-                min={10}
-                max={100}
-                step={5}
-                className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-                value={config.keepRecentMessages ?? 40}
-                onChange={(e) => onChange('keepRecentMessages', Number(e.target.value))}
-              />
-              <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-                <span>10</span>
-                <span>55</span>
-                <span>100</span>
-              </div>
-            </div>
+            <SettingsSlider
+              label="summarize after"
+              value={config.summarizationThreshold ?? SETTINGS_CONSTRAINTS.summarizationThreshold.default}
+              onChange={(v) => onChange('summarizationThreshold', v)}
+              min={SETTINGS_CONSTRAINTS.summarizationThreshold.min}
+              max={SETTINGS_CONSTRAINTS.summarizationThreshold.max}
+              step={10}
+              format={(v) => `${v} msgs`}
+            />
+            <SettingsSlider
+              label="keep recent"
+              value={config.keepRecentMessages ?? SETTINGS_CONSTRAINTS.keepRecentMessages.default}
+              onChange={(v) => onChange('keepRecentMessages', v)}
+              min={SETTINGS_CONSTRAINTS.keepRecentMessages.min}
+              max={SETTINGS_CONSTRAINTS.keepRecentMessages.max}
+              step={5}
+              format={(v) => `${v} msgs`}
+            />
           </div>
         )}
         
-        <p className="text-[9px] text-[var(--color-text-dim)]">
-          # summarization prevents context overflow in long sessions
+        <p className="text-[10px] text-[var(--color-text-dim)]">
+          <span className="text-[var(--color-text-placeholder)]">#</span> summarization prevents context overflow in long sessions
         </p>
-      </div>
-    </section>
+      </SettingsGroup>
+    </SettingsSection>
   );
 };

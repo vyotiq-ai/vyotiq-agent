@@ -63,6 +63,7 @@ export default [
         HTMLInputElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
         HTMLButtonElement: 'readonly',
+        HTMLSelectElement: 'readonly',
         HTMLUListElement: 'readonly',
         HTMLSpanElement: 'readonly',
         HTMLAudioElement: 'readonly',
@@ -80,6 +81,7 @@ export default [
         ScrollBehavior: 'readonly',
         IntersectionObserverInit: 'readonly',
         ResizeObserver: 'readonly',
+        ResizeObserverEntry: 'readonly',
         IntersectionObserver: 'readonly',
         MutationObserver: 'readonly',
         // Browser functions

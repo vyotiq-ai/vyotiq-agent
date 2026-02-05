@@ -187,11 +187,11 @@ export const AddServerModal: React.FC<AddServerModalProps> = memo(
     }, [selectedSource, packageId, serverName, category, envVars, autoStart, onInstall]);
 
     const renderSourceStep = () => (
-      <div className="space-y-4">
-        <p className="text-[11px] text-[var(--color-text-secondary)]">
+      <div className="space-y-3 sm:space-y-4">
+        <p className="text-[10px] sm:text-[11px] text-[var(--color-text-secondary)]">
           Select how you want to add your MCP server
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-2 sm:gap-3 sm:grid-cols-2">
           {SOURCE_OPTIONS.map((source) => {
             const Icon = source.icon;
             return (
@@ -199,23 +199,23 @@ export const AddServerModal: React.FC<AddServerModalProps> = memo(
                 key={source.id}
                 onClick={() => handleSourceSelect(source.id)}
                 className={cn(
-                  'flex items-start gap-3 p-3 rounded-lg border text-left transition-all',
+                  'flex items-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg border text-left transition-all',
                   'bg-[var(--color-surface-base)] border-[var(--color-border)]',
                   'hover:border-[var(--color-accent)] hover:bg-[var(--color-surface-elevated)]'
                 )}
               >
-                <div className="w-8 h-8 rounded flex items-center justify-center bg-[var(--color-accent)]/10">
-                  <Icon className="w-4 h-4 text-[var(--color-accent)]" />
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded flex items-center justify-center bg-[var(--color-accent)]/10 flex-shrink-0">
+                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--color-accent)]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-mono text-[var(--color-text-primary)]">
+                  <div className="text-[10px] sm:text-xs font-mono text-[var(--color-text-primary)]">
                     {source.name}
                   </div>
-                  <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                  <div className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] mt-0.5">
                     {source.description}
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[var(--color-text-muted)]" />
+                <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--color-text-muted)]" />
               </button>
             );
           })}

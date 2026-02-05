@@ -380,7 +380,7 @@ export function registerFileHandlers(context: IpcContext): void {
   });
 
   // ==========================================================================
-  // File Tree
+  // File Tree (with caching for instant loading)
   // ==========================================================================
 
   ipcMain.handle('files:list-dir', async (_event, dirPath: string, options?: {
@@ -388,6 +388,7 @@ export function registerFileHandlers(context: IpcContext): void {
     recursive?: boolean;
     maxDepth?: number;
     ignorePatterns?: string[];
+    useCache?: boolean;
   }) => {
     try {
       const resolvedPath = path.isAbsolute(dirPath) 
@@ -409,9 +410,31 @@ export function registerFileHandlers(context: IpcContext): void {
 
       const showHidden = options?.showHidden ?? false;
       const recursive = options?.recursive ?? false;
-      const maxDepth = options?.maxDepth ?? 10;
+      const maxDepth = options?.maxDepth ?? 20;
+      const useCache = options?.useCache ?? true;
       const ignorePatterns = options?.ignorePatterns ?? [];
 
+      // Use workspace file cache for instant loading when recursive
+      if (recursive && useCache) {
+        try {
+          const { getWorkspaceFileCache } = await import('../workspaces/WorkspaceFileCache');
+          const cache = getWorkspaceFileCache();
+          const cachedTree = await cache.getFileTree(resolvedPath, {
+            showHidden,
+            maxDepth,
+          });
+          
+          if (cachedTree?.children) {
+            return { success: true, files: cachedTree.children, cached: true };
+          }
+        } catch (cacheError) {
+          logger.debug('Cache unavailable, falling back to direct listing', {
+            error: cacheError instanceof Error ? cacheError.message : String(cacheError),
+          });
+        }
+      }
+
+      // Fallback to direct listing (or when cache is disabled)
       const defaultIgnorePatterns = ['node_modules', '__pycache__', '.git', 'dist', 'build', '.next', '.cache'];
       const allIgnorePatterns = [...defaultIgnorePatterns, ...ignorePatterns];
 
@@ -427,33 +450,41 @@ export function registerFileHandlers(context: IpcContext): void {
         const entries = await fs.readdir(dir, { withFileTypes: true });
         const results: FileNode[] = [];
 
-        for (const entry of entries) {
-          if (!showHidden && entry.name.startsWith('.')) continue;
-          if (matchesIgnorePattern(entry.name, allIgnorePatterns)) continue;
+        // Process entries in parallel for speed
+        const processed = await Promise.all(
+          entries.map(async (entry) => {
+            if (!showHidden && entry.name.startsWith('.')) return null;
+            if (matchesIgnorePattern(entry.name, allIgnorePatterns)) return null;
 
-          const fullPath = path.join(dir, entry.name);
-          const isDirectory = entry.isDirectory();
+            const fullPath = path.join(dir, entry.name);
+            const isDirectory = entry.isDirectory();
 
-          const node: FileNode = {
-            name: entry.name,
-            path: fullPath,
-            type: isDirectory ? 'directory' : 'file',
-            language: isDirectory ? undefined : languageFromPath(fullPath),
-          };
+            const node: FileNode = {
+              name: entry.name,
+              path: fullPath,
+              type: isDirectory ? 'directory' : 'file',
+              language: isDirectory ? undefined : languageFromPath(fullPath),
+            };
 
-          if (isDirectory && recursive && depth < maxDepth) {
-            try {
-              node.children = await listDir(fullPath, depth + 1);
-            } catch (err) {
-              logger.debug('Cannot read subdirectory', {
-                path: fullPath,
-                error: err instanceof Error ? err.message : String(err)
-              });
-              node.children = [];
+            if (isDirectory && recursive && depth < maxDepth) {
+              try {
+                node.children = await listDir(fullPath, depth + 1);
+              } catch (err) {
+                logger.debug('Cannot read subdirectory', {
+                  path: fullPath,
+                  error: err instanceof Error ? err.message : String(err)
+                });
+                node.children = [];
+              }
             }
-          }
 
-          results.push(node);
+            return node;
+          })
+        );
+
+        // Filter nulls and add to results
+        for (const node of processed) {
+          if (node) results.push(node);
         }
 
         return results.sort((a, b) => {
@@ -467,6 +498,33 @@ export function registerFileHandlers(context: IpcContext): void {
     } catch (error) {
       logger.error('Failed to list directory', { error: error instanceof Error ? error.message : String(error) });
       return { success: false, error: (error as Error).message, files: [] };
+    }
+  });
+
+  // Pre-warm cache for a workspace (for instant switching)
+  ipcMain.handle('files:prewarm-cache', async (_event, workspacePath: string) => {
+    try {
+      const { getWorkspaceFileCache } = await import('../workspaces/WorkspaceFileCache');
+      const cache = getWorkspaceFileCache();
+      await cache.prewarmCache(workspacePath);
+      return { success: true };
+    } catch (error) {
+      logger.debug('Failed to prewarm cache', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // Invalidate cache for a workspace
+  ipcMain.handle('files:invalidate-cache', async (_event, workspacePath: string) => {
+    try {
+      const { getWorkspaceFileCache } = await import('../workspaces/WorkspaceFileCache');
+      const cache = getWorkspaceFileCache();
+      cache.invalidateCache(workspacePath);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
     }
   });
 }

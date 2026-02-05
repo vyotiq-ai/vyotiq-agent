@@ -621,7 +621,7 @@ describe('Argument Validation and Normalization', () => {
     });
 
     it('should convert string float "3.14" to number 3.14', async () => {
-      const result = await registry.execute('number_test', { ratio: '3.14' }, mockContext);
+      const result = await registry.execute('number_test', { count: 1, ratio: '3.14' }, mockContext);
       expect(result.success).toBe(true);
       expect(numberTool.execute).toHaveBeenCalledWith(
         expect.objectContaining({ ratio: 3.14 }),
@@ -660,13 +660,12 @@ describe('Argument Validation and Normalization', () => {
       );
     });
 
-    it('should keep non-numeric string as string when conversion fails', async () => {
+    it('should fail validation when non-numeric string cannot be converted', async () => {
       const result = await registry.execute('number_test', { count: 'not-a-number' }, mockContext);
-      expect(result.success).toBe(true);
-      expect(numberTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ count: 'not-a-number' }),
-        mockContext
-      );
+      // Schema validation correctly rejects non-numeric strings for number fields
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('count');
+      expect(numberTool.execute).not.toHaveBeenCalled();
     });
 
     it('should convert scientific notation string "1e5" to number 100000', async () => {
@@ -679,7 +678,7 @@ describe('Argument Validation and Normalization', () => {
     });
 
     it('should convert negative float string "-2.5" to number -2.5', async () => {
-      const result = await registry.execute('number_test', { ratio: '-2.5' }, mockContext);
+      const result = await registry.execute('number_test', { count: 1, ratio: '-2.5' }, mockContext);
       expect(result.success).toBe(true);
       expect(numberTool.execute).toHaveBeenCalledWith(
         expect.objectContaining({ ratio: -2.5 }),
@@ -1688,26 +1687,24 @@ describe('JSON String Parsing for Array/Object Parameters', () => {
       );
     });
 
-    it('should parse JSON array string for object parameter', async () => {
+    it('should fail validation when JSON array string is provided for object parameter', async () => {
       const result = await registry.execute('object_tool', { 
         config: '[1, 2, 3]' 
       }, mockContext);
-      expect(result.success).toBe(true);
-      expect(objectTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ config: [1, 2, 3] }),
-        mockContext
-      );
+      // Schema validation correctly rejects arrays for object fields
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('config');
+      expect(objectTool.execute).not.toHaveBeenCalled();
     });
 
-    it('should keep non-JSON string as-is for object parameter', async () => {
+    it('should fail validation when non-JSON string is provided for object parameter', async () => {
       const result = await registry.execute('object_tool', { 
         config: 'not a json string' 
       }, mockContext);
-      expect(result.success).toBe(true);
-      expect(objectTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ config: 'not a json string' }),
-        mockContext
-      );
+      // Schema validation correctly rejects strings for object fields
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('config');
+      expect(objectTool.execute).not.toHaveBeenCalled();
     });
 
     it('should recover JSON with trailing comma', async () => {
@@ -1732,15 +1729,14 @@ describe('JSON String Parsing for Array/Object Parameters', () => {
       );
     });
 
-    it('should handle array provided for object parameter', async () => {
+    it('should fail validation when array is provided for object parameter', async () => {
       const result = await registry.execute('object_tool', { 
         config: ['item1', 'item2'] 
       }, mockContext);
-      expect(result.success).toBe(true);
-      expect(objectTool.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ config: ['item1', 'item2'] }),
-        mockContext
-      );
+      // Schema validation correctly rejects arrays for object fields
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('config');
+      expect(objectTool.execute).not.toHaveBeenCalled();
     });
   });
 

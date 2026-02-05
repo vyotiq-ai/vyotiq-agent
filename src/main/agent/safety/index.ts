@@ -1,9 +1,13 @@
 /**
  * Safety System
- * Provides file operation validation, protected path checking, and command blocking
+ * Provides file operation validation, protected path checking, command blocking,
+ * and automatic file backup/restore functionality.
  */
 
 import path from 'node:path';
+import fs from 'node:fs/promises';
+import { existsSync, mkdirSync } from 'node:fs';
+import crypto from 'node:crypto';
 import { minimatch } from 'minimatch';
 import type { 
   SafetyConfig, 
@@ -13,8 +17,11 @@ import type {
   BackupInfo 
 } from './types';
 import type { SafetySettings } from '../../../shared/types';
+import { createLogger } from '../../logger';
 
 export * from './types';
+
+const logger = createLogger('SafetyManager');
 
 /** Result of file operation validation */
 export interface FileOperationValidationResult {
@@ -236,18 +243,248 @@ export class SafetyManager {
     return { ...this.config };
   }
 
-  createBackup(filePath: string): BackupInfo {
-    // Minimal implementation - return mock backup info
-    return {
-      id: `backup-${Date.now()}`,
-      path: filePath,
-      timestamp: Date.now(),
-      size: 0,
-    };
+  /**
+   * Get the backup directory path
+   */
+  private getBackupDir(): string {
+    const baseDir = process.env.VYOTIQ_DATA_DIR || path.join(process.env.HOME || process.env.USERPROFILE || '.', '.vyotiq');
+    return path.join(baseDir, 'backups');
   }
 
-  restoreBackup(_backupId: string): Promise<void> {
-    // Minimal implementation - no-op for now
-    return Promise.resolve();
+  /**
+   * Ensure backup directory exists
+   */
+  private ensureBackupDir(): string {
+    const backupDir = this.getBackupDir();
+    if (!existsSync(backupDir)) {
+      mkdirSync(backupDir, { recursive: true });
+    }
+    return backupDir;
+  }
+
+  /**
+   * Generate a unique backup ID
+   */
+  private generateBackupId(filePath: string): string {
+    const hash = crypto.createHash('md5').update(filePath).digest('hex').slice(0, 8);
+    return `backup-${hash}-${Date.now()}`;
+  }
+
+  /**
+   * Create a backup of a file before modification
+   * @param filePath The path to the file to backup
+   * @returns BackupInfo with backup details
+   */
+  async createBackup(filePath: string): Promise<BackupInfo> {
+    const userSettings = this.config.userSettings;
+    
+    // Check if backups are enabled
+    if (!userSettings?.enableAutoBackup) {
+      logger.debug('Auto backup disabled, skipping backup', { filePath });
+      return {
+        id: `skip-${Date.now()}`,
+        path: filePath,
+        timestamp: Date.now(),
+        size: 0,
+      };
+    }
+
+    try {
+      const backupDir = this.ensureBackupDir();
+      const backupId = this.generateBackupId(filePath);
+      
+      // Check if file exists
+      if (!existsSync(filePath)) {
+        logger.debug('File does not exist, cannot backup', { filePath });
+        return {
+          id: backupId,
+          path: filePath,
+          timestamp: Date.now(),
+          size: 0,
+        };
+      }
+
+      // Read file stats and content
+      const stats = await fs.stat(filePath);
+      const content = await fs.readFile(filePath);
+      
+      // Create backup file path with original extension preserved
+      const ext = path.extname(filePath);
+      const backupFileName = `${backupId}${ext}`;
+      const backupPath = path.join(backupDir, backupFileName);
+      
+      // Write backup
+      await fs.writeFile(backupPath, content);
+      
+      // Store backup metadata
+      const metadata: BackupInfo & { originalPath: string } = {
+        id: backupId,
+        path: backupPath,
+        originalPath: filePath,
+        timestamp: Date.now(),
+        size: stats.size,
+      };
+      
+      // Write metadata file
+      await fs.writeFile(
+        path.join(backupDir, `${backupId}.meta.json`),
+        JSON.stringify(metadata, null, 2)
+      );
+      
+      logger.info('Created backup', { backupId, filePath, size: stats.size });
+      
+      // Cleanup old backups based on retention count
+      await this.cleanupOldBackups(filePath);
+      
+      return {
+        id: backupId,
+        path: backupPath,
+        timestamp: metadata.timestamp,
+        size: metadata.size,
+      };
+    } catch (error) {
+      logger.error('Failed to create backup', { filePath, error });
+      // Return a stub backup info on failure - don't block the operation
+      return {
+        id: `failed-${Date.now()}`,
+        path: filePath,
+        timestamp: Date.now(),
+        size: 0,
+      };
+    }
+  }
+
+  /**
+   * Restore a file from backup
+   * @param backupId The backup ID to restore
+   */
+  async restoreBackup(backupId: string): Promise<void> {
+    try {
+      const backupDir = this.getBackupDir();
+      const metadataPath = path.join(backupDir, `${backupId}.meta.json`);
+      
+      // Read metadata
+      if (!existsSync(metadataPath)) {
+        throw new Error(`Backup metadata not found: ${backupId}`);
+      }
+      
+      const metadataContent = await fs.readFile(metadataPath, 'utf-8');
+      const metadata = JSON.parse(metadataContent) as BackupInfo & { originalPath: string };
+      
+      // Check backup file exists
+      if (!existsSync(metadata.path)) {
+        throw new Error(`Backup file not found: ${metadata.path}`);
+      }
+      
+      // Read backup content
+      const content = await fs.readFile(metadata.path);
+      
+      // Restore to original path
+      await fs.writeFile(metadata.originalPath, content);
+      
+      logger.info('Restored backup', { backupId, originalPath: metadata.originalPath });
+    } catch (error) {
+      logger.error('Failed to restore backup', { backupId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * List all backups for a specific file
+   * @param filePath The original file path
+   * @returns Array of BackupInfo for the file
+   */
+  async listBackups(filePath?: string): Promise<BackupInfo[]> {
+    try {
+      const backupDir = this.getBackupDir();
+      if (!existsSync(backupDir)) {
+        return [];
+      }
+      
+      const files = await fs.readdir(backupDir);
+      const metaFiles = files.filter(f => f.endsWith('.meta.json'));
+      
+      const backups: BackupInfo[] = [];
+      for (const metaFile of metaFiles) {
+        try {
+          const content = await fs.readFile(path.join(backupDir, metaFile), 'utf-8');
+          const metadata = JSON.parse(content) as BackupInfo & { originalPath: string };
+          
+          // Filter by file path if provided
+          if (!filePath || metadata.originalPath === filePath) {
+            backups.push({
+              id: metadata.id,
+              path: metadata.path,
+              timestamp: metadata.timestamp,
+              size: metadata.size,
+            });
+          }
+        } catch {
+          // Skip invalid metadata files
+        }
+      }
+      
+      // Sort by timestamp descending (newest first)
+      return backups.sort((a, b) => b.timestamp - a.timestamp);
+    } catch (error) {
+      logger.error('Failed to list backups', { filePath, error });
+      return [];
+    }
+  }
+
+  /**
+   * Delete a backup
+   * @param backupId The backup ID to delete
+   */
+  async deleteBackup(backupId: string): Promise<void> {
+    try {
+      const backupDir = this.getBackupDir();
+      const metadataPath = path.join(backupDir, `${backupId}.meta.json`);
+      
+      if (existsSync(metadataPath)) {
+        const content = await fs.readFile(metadataPath, 'utf-8');
+        const metadata = JSON.parse(content) as BackupInfo;
+        
+        // Delete backup file
+        if (existsSync(metadata.path)) {
+          await fs.unlink(metadata.path);
+        }
+        
+        // Delete metadata file
+        await fs.unlink(metadataPath);
+        
+        logger.info('Deleted backup', { backupId });
+      }
+    } catch (error) {
+      logger.error('Failed to delete backup', { backupId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Cleanup old backups based on retention settings
+   * @param filePath The file path to cleanup backups for
+   */
+  private async cleanupOldBackups(filePath: string): Promise<void> {
+    const retentionCount = this.config.userSettings?.backupRetentionCount ?? 5;
+    
+    if (retentionCount <= 0) {
+      return; // No cleanup if retention is disabled
+    }
+    
+    try {
+      const backups = await this.listBackups(filePath);
+      
+      // Delete backups beyond retention count
+      if (backups.length > retentionCount) {
+        const toDelete = backups.slice(retentionCount);
+        for (const backup of toDelete) {
+          await this.deleteBackup(backup.id);
+          logger.debug('Cleaned up old backup', { backupId: backup.id, filePath });
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to cleanup old backups', { filePath, error });
+    }
   }
 }

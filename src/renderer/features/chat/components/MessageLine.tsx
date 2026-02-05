@@ -345,7 +345,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
     return (
       <div 
         className={cn(
-          'py-1.5 group relative font-mono min-w-0 w-full overflow-hidden',
+          'py-1.5 group relative font-mono min-w-0 w-full',
           isSearchMatch && 'bg-[var(--color-warning)]/10',
           isCurrentSearchMatch && 'ring-1 ring-[var(--color-warning)]'
         )}
@@ -389,7 +389,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
         </div>
 
         {/* Content - full width with subtle left accent */}
-        <div className="pl-3 ml-2 border-l border-[var(--color-accent-primary)]/20 min-w-0 w-full overflow-hidden">
+        <div className="pl-3 ml-2 border-l border-[var(--color-accent-primary)]/20 min-w-0 w-full">
           {/* Attachments with image previews */}
           {message.attachments && message.attachments.length > 0 && (
             <MessageAttachments attachments={message.attachments} variant="block" />
@@ -403,14 +403,15 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
                 onKeyDown={handleEditKeyDown}
+                aria-label="Edit message content"
                 className="w-full min-h-[60px] p-2 text-[12px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] focus:border-[var(--color-accent-primary)] text-[var(--color-text-primary)] resize-none outline-none"
               />
-              <div className="flex justify-end gap-2">
-                <button onClick={handleCancelEdit} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]">
-                  <X size={12} />
+              <div className="flex justify-end gap-2" role="toolbar" aria-label="Edit actions">
+                <button onClick={handleCancelEdit} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]" aria-label="Cancel edit">
+                  <X size={12} aria-hidden="true" />
                 </button>
-                <button onClick={handleSaveEdit} className="p-1 text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)]">
-                  <Check size={12} />
+                <button onClick={handleSaveEdit} className="p-1 text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)]" aria-label="Save edit">
+                  <Check size={12} aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -432,7 +433,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
   return (
     <div 
       className={cn(
-        'py-1.5 group relative font-mono min-w-0 w-full overflow-hidden',
+        'py-1.5 group relative font-mono min-w-0 w-full',
         isSearchMatch && 'bg-[var(--color-warning)]/10 rounded-lg',
         isCurrentSearchMatch && 'ring-2 ring-[var(--color-warning)] ring-offset-1 ring-offset-[var(--color-surface-base)]'
       )}
@@ -440,7 +441,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
     >
       {/* Header row */}
       <div className="flex items-center justify-between gap-2 text-[10px] mb-1">
-        <div className="min-w-0 flex items-center gap-2 font-mono overflow-hidden">
+        <div className="min-w-0 flex items-center gap-2 font-mono">
           {showBranding ? (
             <>
               <span className="text-[var(--color-accent-primary)] text-sm font-medium">λ</span>
@@ -557,7 +558,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
 
       {/* Content area */}
       <div className={cn(
-        'pl-3 border-l min-w-0 w-full overflow-hidden',
+        'pl-3 border-l min-w-0 w-full',
         showBranding 
           ? 'ml-2 border-[var(--color-accent-primary)]/15' 
           : 'ml-4 border-[var(--color-border-subtle)]/30'
@@ -575,7 +576,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
         )}
 
         {/* Response content */}
-        <div className="break-words overflow-hidden min-w-0 w-full">
+        <div className="break-words min-w-0 w-full">
           {isSummaryMessage ? (
             <details className="group/summary">
               <summary className="cursor-pointer select-none list-none text-[10px] font-mono text-[var(--color-text-muted)] flex items-center gap-2">
@@ -633,12 +634,30 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
             />
           )}
           
-          {/* Streaming cursor - inline with content */}
+          {/* Streaming cursor - softer pulsing indicator */}
           {isStreaming && displayContent && (
             <span 
-              className="inline-block w-[2px] h-[14px] bg-[var(--color-accent-primary)] animate-blink ml-0.5 align-middle"
-              aria-hidden="true"
+              className={cn(
+                "inline-block w-[3px] h-[14px] rounded-[1px] ml-0.5 align-middle",
+                "bg-[var(--color-accent-primary)]",
+                "animate-streaming"
+              )}
+              aria-label="Streaming content"
+              role="status"
             />
+          )}
+          
+          {/* Empty streaming state - thinking indicator */}
+          {isStreaming && !displayContent && (
+            <span 
+              className="inline-flex items-center gap-0.5 text-[var(--color-text-muted)] text-[10px]"
+              aria-label="Thinking"
+              role="status"
+            >
+              <span className="thinking-dot">•</span>
+              <span className="thinking-dot">•</span>
+              <span className="thinking-dot">•</span>
+            </span>
           )}
         </div>
 

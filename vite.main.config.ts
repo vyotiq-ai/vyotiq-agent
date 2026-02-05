@@ -25,12 +25,6 @@ export default defineConfig({
         'node-pty',
         '@homebridge/node-pty-prebuilt-multiarch',
         'better-sqlite3',
-        // ONNX Runtime packages
-        'onnxruntime-node',
-        'onnxruntime-common',
-        'onnxruntime-web',
-        // Huggingface transformers (contains nested onnxruntime)
-        '@huggingface/transformers',
         // Electron internals
         'electron',
       ],
@@ -58,10 +52,6 @@ export default defineConfig({
       'node-pty',
       '@homebridge/node-pty-prebuilt-multiarch',
       'better-sqlite3',
-      'onnxruntime-node',
-      'onnxruntime-common',
-      'onnxruntime-web',
-      '@huggingface/transformers',
     ],
   },
   esbuild: {

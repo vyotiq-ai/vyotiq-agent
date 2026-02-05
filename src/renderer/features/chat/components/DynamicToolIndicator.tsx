@@ -4,7 +4,7 @@
  * Shows:
  * - Badge indicating tool was dynamically created
  * - Tooltip with tool info
- * - Lifecycle state
+ * - Lifecycle state with smooth transitions
  */
 import React, { memo, useState } from 'react';
 import { cn } from '../../../utils/cn';
@@ -55,15 +55,17 @@ const DynamicToolIndicatorComponent: React.FC<DynamicToolIndicatorProps> = ({
         onBlur={() => setShowTooltip(false)}
         className={cn(
           'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium',
-          'transition-colors cursor-help',
+          'transition-all duration-200 cursor-help',
           status === 'active'
             ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
             : status === 'deprecated'
             ? 'bg-[var(--color-warning)]/10 text-[var(--color-warning)]'
-            : 'bg-[var(--color-surface-3)] text-[var(--color-text-dim)]'
+            : 'bg-[var(--color-surface-3)] text-[var(--color-text-dim)]',
+          'hover:scale-105 active:scale-95'
         )}
         aria-label={`Dynamic tool: ${toolName}`}
       >
+        {/* Lightning icon */}
         <svg
           className="w-3 h-3"
           fill="none"
@@ -80,7 +82,7 @@ const DynamicToolIndicatorComponent: React.FC<DynamicToolIndicatorProps> = ({
         <span>Dynamic</span>
       </button>
 
-      {/* Tooltip */}
+      {/* Tooltip with enter animation */}
       {showTooltip && (
         <div
           className={cn(
@@ -88,7 +90,7 @@ const DynamicToolIndicatorComponent: React.FC<DynamicToolIndicatorProps> = ({
             'w-48 p-2 rounded-lg shadow-lg',
             'bg-[var(--color-surface-1)] border border-[var(--color-border)]',
             'text-[10px] text-[var(--color-text-secondary)]',
-            'animate-in fade-in-0 zoom-in-95 duration-100'
+            'animate-fade-in'
           )}
         >
           <div className="font-medium text-[var(--color-text-primary)] mb-1">
@@ -115,13 +117,14 @@ const DynamicToolIndicatorComponent: React.FC<DynamicToolIndicatorProps> = ({
             
             <div className="flex justify-between">
               <span className="text-[var(--color-text-dim)]">Usage:</span>
-              <span>{usageCount} calls</span>
+              <span className="tabular-nums">{usageCount} calls</span>
             </div>
             
             <div className="flex justify-between">
               <span className="text-[var(--color-text-dim)]">Success rate:</span>
               <span
                 className={cn(
+                  'tabular-nums transition-colors duration-200',
                   successRate >= 90
                     ? 'text-[var(--color-success)]'
                     : successRate >= 70

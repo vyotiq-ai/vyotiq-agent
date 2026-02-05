@@ -116,12 +116,271 @@ declare global {
           }>;
         }) => Promise<{ success: boolean; error?: string }>;
         addReaction: (sessionId: string, messageId: string, reaction: 'up' | 'down' | null) => Promise<{ success: boolean; error?: string }>;
+        
+        // ==========================================================================
+        // Multi-Session Management (Concurrent Sessions Across Workspaces)
+        // ==========================================================================
+        
+        /**
+         * Get all running sessions across all workspaces.
+         */
+        getAllRunningSessions: () => Promise<AgentSessionState[]>;
+        
+        /**
+         * Get running session count per workspace.
+         */
+        getRunningSessionsByWorkspace: () => Promise<Record<string, number>>;
+        
+        /**
+         * Get global session statistics for multi-workspace concurrent execution.
+         */
+        getGlobalSessionStats: () => Promise<{
+          totalRunning: number;
+          totalQueued: number;
+          runningByWorkspace: Record<string, number>;
+          canStartNew: boolean;
+        } | null>;
+        
+        /**
+         * Get detailed running session information across all workspaces.
+         */
+        getDetailedRunningSessions: () => Promise<Array<{
+          sessionId: string;
+          workspaceId: string;
+          status: string;
+          startedAt: number;
+          iteration: number;
+          maxIterations: number;
+          provider?: string;
+        }>>;
+        
+        /**
+         * Check if a new session can be started in a workspace.
+         */
+        canStartSession: (workspaceId: string) => Promise<{
+          allowed: boolean;
+          reason?: string;
+        }>;
+        
+        /**
+         * Get workspace resource metrics for multi-workspace management.
+         */
+        getWorkspaceResources: () => Promise<unknown>;
+        
+        /**
+         * Get concurrent execution statistics.
+         */
+        getConcurrentStats: () => Promise<unknown>;
       };
       workspace: {
         list: () => Promise<WorkspaceEntry[]>;
         add: () => Promise<WorkspaceEntry[]>;
         setActive: (workspaceId: string) => Promise<WorkspaceEntry[]>;
         remove: (workspaceId: string) => Promise<WorkspaceEntry[]>;
+        
+        // ==========================================================================
+        // Multi-Workspace Tab Management
+        // ==========================================================================
+        
+        /**
+         * Get all open workspace tabs with their state.
+         */
+        getTabs: () => Promise<{
+          success: boolean;
+          tabs?: Array<{
+            workspaceId: string;
+            order: number;
+            isFocused: boolean;
+            openedAt: number;
+            lastFocusedAt: number;
+            hasUnsavedChanges?: boolean;
+            isRunning?: boolean;
+            customLabel?: string;
+            workspace: WorkspaceEntry | null;
+          }>;
+          focusedTabId?: string | null;
+          maxTabs?: number;
+          error?: string;
+        }>;
+        
+        /**
+         * Open a workspace in a new tab (or focus existing tab).
+         */
+        openTab: (workspaceId: string) => Promise<{
+          success: boolean;
+          tabs?: Array<{
+            workspaceId: string;
+            order: number;
+            isFocused: boolean;
+            openedAt: number;
+            lastFocusedAt: number;
+            hasUnsavedChanges?: boolean;
+            isRunning?: boolean;
+          }>;
+          focusedTabId?: string | null;
+          error?: string;
+        }>;
+        
+        /**
+         * Close a workspace tab.
+         */
+        closeTab: (workspaceId: string) => Promise<{
+          success: boolean;
+          tabs?: Array<{
+            workspaceId: string;
+            order: number;
+            isFocused: boolean;
+            openedAt: number;
+            lastFocusedAt: number;
+            hasUnsavedChanges?: boolean;
+            isRunning?: boolean;
+          }>;
+          focusedTabId?: string | null;
+          error?: string;
+        }>;
+        
+        /**
+         * Focus a specific workspace tab.
+         */
+        focusTab: (workspaceId: string) => Promise<{
+          success: boolean;
+          tabs?: Array<{
+            workspaceId: string;
+            order: number;
+            isFocused: boolean;
+            openedAt: number;
+            lastFocusedAt: number;
+            hasUnsavedChanges?: boolean;
+            isRunning?: boolean;
+          }>;
+          focusedTabId?: string | null;
+          error?: string;
+        }>;
+        
+        /**
+         * Reorder workspace tabs.
+         */
+        reorderTabs: (workspaceId: string, newOrder: number) => Promise<{
+          success: boolean;
+          tabs?: Array<{
+            workspaceId: string;
+            order: number;
+            isFocused: boolean;
+            openedAt: number;
+            lastFocusedAt: number;
+            hasUnsavedChanges?: boolean;
+            isRunning?: boolean;
+          }>;
+          focusedTabId?: string | null;
+          error?: string;
+        }>;
+        
+        /**
+         * Get workspaces that have open tabs.
+         */
+        getActiveWorkspaces: () => Promise<{
+          success: boolean;
+          workspaces?: WorkspaceEntry[];
+          error?: string;
+        }>;
+        
+        /**
+         * Set maximum number of tabs allowed.
+         */
+        setMaxTabs: (maxTabs: number) => Promise<{
+          success: boolean;
+          maxTabs?: number;
+          error?: string;
+        }>;
+        
+        // ==========================================================================
+        // Workspace Resource Management (Multi-workspace Concurrent Sessions)
+        // ==========================================================================
+        
+        /**
+         * Get resource metrics for all active workspaces.
+         */
+        getResourceMetrics: () => Promise<{
+          success: boolean;
+          metrics?: Array<{
+            workspaceId: string;
+            activeSessions: number;
+            activeToolExecutions: number;
+            memoryEstimateBytes: number;
+            lastActivityAt: number;
+            requestCounts: Record<string, number>;
+          }>;
+          error?: string;
+        }>;
+        
+        /**
+         * Get resource metrics for a specific workspace.
+         */
+        getWorkspaceMetrics: (workspaceId: string) => Promise<{
+          success: boolean;
+          metrics?: {
+            workspaceId: string;
+            activeSessions: number;
+            activeToolExecutions: number;
+            memoryEstimateBytes: number;
+            lastActivityAt: number;
+            requestCounts: Record<string, number>;
+          } | null;
+          error?: string;
+        }>;
+        
+        /**
+         * Get total active sessions across all workspaces.
+         */
+        getTotalActiveSessions: () => Promise<{
+          success: boolean;
+          count?: number;
+          error?: string;
+        }>;
+        
+        /**
+         * Get resource limits configuration.
+         */
+        getResourceLimits: () => Promise<{
+          success: boolean;
+          limits?: {
+            maxSessionsPerWorkspace: number;
+            maxToolExecutionsPerWorkspace: number;
+            rateLimitWindowMs: number;
+            maxRequestsPerWindow: number;
+          };
+          error?: string;
+        }>;
+        
+        /**
+         * Update resource limits configuration.
+         */
+        updateResourceLimits: (limits: {
+          maxSessionsPerWorkspace?: number;
+          maxToolExecutionsPerWorkspace?: number;
+          rateLimitWindowMs?: number;
+          maxRequestsPerWindow?: number;
+        }) => Promise<{
+          success: boolean;
+          error?: string;
+        }>;
+        
+        /**
+         * Initialize workspace resources (for pre-warming).
+         */
+        initResources: (workspaceId: string) => Promise<{
+          success: boolean;
+          error?: string;
+        }>;
+        
+        /**
+         * Cleanup workspace resources.
+         */
+        cleanupResources: (workspaceId: string) => Promise<{
+          success: boolean;
+          error?: string;
+        }>;
+        
         /**
          * Get all TypeScript/ESLint diagnostics from the entire workspace codebase.
          * Returns errors and warnings from all files, not just open ones.
@@ -478,6 +737,7 @@ declare global {
           showHidden?: boolean;
           recursive?: boolean;
           maxDepth?: number;
+          useCache?: boolean;
         }) => Promise<{
           success: boolean;
           files?: Array<{
@@ -488,6 +748,7 @@ declare global {
             children?: Array<unknown>;
           }>;
           error?: string;
+          cached?: boolean;
         }>;
         saveAs: (content: string, options?: {
           defaultPath?: string;
@@ -542,6 +803,10 @@ declare global {
           language?: string;
           error?: string;
         }>;
+        /** Prewarm the file cache for faster file tree loading */
+        prewarmCache: (workspacePath: string) => Promise<{ success: boolean; error?: string }>;
+        /** Invalidate the file cache for a workspace */
+        invalidateCache: (workspacePath: string) => Promise<{ success: boolean; error?: string }>;
         /** Subscribe to file change events from the main process */
         onFileChange: (handler: (event: {
           type: 'create' | 'write' | 'delete' | 'rename' | 'createDir';
@@ -1664,6 +1929,29 @@ declare global {
           diagnostics?: { errorCount: number; warningCount: number; diagnosticsCount: number };
           error?: string;
         }>;
+
+        /**
+         * Subscribe to real-time LSP diagnostics updates.
+         * Called whenever a language server pushes diagnostics via textDocument/publishDiagnostics.
+         */
+        onDiagnosticsUpdated: (handler: (event: {
+          filePath: string;
+          diagnostics: Array<{
+            filePath?: string;
+            fileName?: string;
+            line: number;
+            column: number;
+            endLine?: number;
+            endColumn?: number;
+            message: string;
+            severity: 'error' | 'warning' | 'info' | 'hint';
+            source?: string;
+            code?: string | number;
+          }>;
+          source: 'lsp' | 'typescript';
+          language?: string;
+          timestamp: number;
+        }) => void) => () => void;
       };
 
       // Session Health Monitoring API
@@ -1930,159 +2218,6 @@ declare global {
          * Subscribe to terminal exit events
          */
         onExit: (handler: (event: { id: string; exitCode: number }) => void) => () => void;
-      };
-
-      /**
-       * Semantic Indexing API
-       * Local vector embeddings and semantic search for the codebase
-       */
-      semantic: {
-        /**
-         * Index the current workspace
-         */
-        indexWorkspace: (options?: {
-          forceReindex?: boolean;
-          fileTypes?: string[];
-          excludePatterns?: string[];
-        }) => Promise<{ success: boolean; error?: string }>;
-
-        /**
-         * Perform semantic search
-         */
-        search: (
-          query: string,
-          options?: {
-            limit?: number;
-            minScore?: number;
-            filePathPattern?: string;
-            fileTypes?: string[];
-            languages?: string[];
-            symbolTypes?: string[];
-            includeContent?: boolean;
-          }
-        ) => Promise<{
-          results: Array<{
-            document: {
-              id: string;
-              filePath: string;
-              chunkIndex: number;
-              content: string;
-              metadata: {
-                fileType: string;
-                language?: string;
-                symbolType?: string;
-                symbolName?: string;
-                startLine?: number;
-                endLine?: number;
-              };
-            };
-            score: number;
-            distance: number;
-          }>;
-          queryTimeMs: number;
-          totalDocumentsSearched: number;
-        } | { success: false; error: string }>;
-
-        /**
-         * Get indexing progress
-         */
-        getProgress: () => Promise<{
-          totalFiles: number;
-          indexedFiles: number;
-          currentFile: string | null;
-          isIndexing: boolean;
-          status: 'idle' | 'scanning' | 'indexing' | 'complete' | 'error';
-          error?: string;
-          startTime?: number;
-          estimatedTimeRemaining?: number;
-        }>;
-
-        /**
-         * Get index statistics
-         */
-        getStats: () => Promise<{
-          indexedFiles: number;
-          totalChunks: number;
-          lastIndexTime: number | null;
-          indexSizeBytes: number;
-          indexHealth: 'healthy' | 'degraded' | 'needs-rebuild' | 'empty';
-          avgQueryTimeMs?: number;
-          workspaceInfo?: {
-            projectType: string;
-            framework?: string;
-            totalFiles: number;
-            estimatedLinesOfCode: number;
-          };
-          embeddingInfo?: {
-            isUsingOnnx: boolean;
-            cacheSize: number;
-            dimension: number;
-            modelId?: string;
-            quality?: string;
-          };
-        }>;
-
-        /**
-         * Clear the index
-         */
-        clearIndex: () => Promise<{ success: boolean; error?: string }>;
-
-        /**
-         * Abort current indexing
-         */
-        abortIndexing: () => Promise<{ success: boolean }>;
-
-        /**
-         * Get indexed files
-         */
-        getIndexedFiles: () => Promise<string[]>;
-
-        /**
-         * Check if indexer is ready
-         */
-        isReady: () => Promise<boolean>;
-
-        /**
-         * Subscribe to indexing progress events
-         */
-        onProgress: (handler: (progress: {
-          type: 'semantic:indexProgress';
-          totalFiles: number;
-          indexedFiles: number;
-          currentFile: string | null;
-          isIndexing: boolean;
-          status: string;
-          phase?: string;
-          filesPerSecond?: number;
-          totalChunks?: number;
-          estimatedTimeRemaining?: number;
-          modelDownloadProgress?: number;
-          modelDownloadFile?: string;
-        }) => void) => () => void;
-
-        /**
-         * Subscribe to model status events (emitted when model loading state changes)
-         */
-        onModelStatus: (handler: (status: {
-          type: 'semantic:modelStatus';
-          modelId: string;
-          isCached: boolean;
-          isLoaded: boolean;
-          status: 'cached' | 'needs-download' | 'loading' | 'ready' | 'error';
-        }) => void) => () => void;
-
-        /**
-         * Subscribe to model download progress events
-         */
-        onModelProgress: (handler: (progress: {
-          type: 'semantic:modelProgress';
-          status: 'downloading' | 'loading' | 'ready' | 'error';
-          file?: string;
-          progress?: number;
-          loaded?: number;
-          total?: number;
-          error?: string;
-        }) => void) => () => void;
       };
 
       /**

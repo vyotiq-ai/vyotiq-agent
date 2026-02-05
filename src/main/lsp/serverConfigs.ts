@@ -35,8 +35,9 @@ const binExt = isWindows ? '.cmd' : '';
  * This is called lazily to avoid importing 'app' at module load time.
  */
 export function getBundledServerPath(serverName: string): string {
-  // Lazy import to avoid sandbox issues
-  const { app } = require('electron');
+  // Use dynamic require to avoid sandbox issues at module load time
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { app } = require('electron') as typeof import('electron');
   const isDev = !app.isPackaged;
   
   if (isDev) {

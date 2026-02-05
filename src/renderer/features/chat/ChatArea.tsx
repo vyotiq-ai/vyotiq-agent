@@ -10,6 +10,13 @@
  * - Todo progress tracking for complex tasks
  * 
  * All content is rendered inline without unnecessary cards or modals.
+ * 
+ * Performance optimizations:
+ * - Virtualized rendering for large chat histories (100+ messages)
+ * - Deferred value for message groups during streaming
+ * - Stable callback references with refs
+ * - Custom equality checks for selectors
+ * - Extracted state management into reusable hooks
  */
 import React, { useMemo, useRef, useEffect, useCallback, useState, useDeferredValue } from 'react';
 import { ChevronsUpDown, ArrowDown } from 'lucide-react';
@@ -28,42 +35,16 @@ import { ToolConfirmationPanel } from './components/ToolConfirmationPanel';
 import { BranchNavigation } from './components/BranchNavigation';
 import { ConversationSearchBar } from './components/ConversationSearchBar';
 import { MessageGroup } from './components/MessageGroup';
-import type { ChatMessage as ChatMessageType, ToolResultEvent, ConversationBranch } from '../../../shared/types';
+import { groupMessagesByRun, useSearchRunExpansion } from './hooks/useChatAreaState';
+import type { ToolResultEvent, ConversationBranch } from '../../../shared/types';
 
 /** Message reaction type */
 type MessageReaction = 'up' | 'down' | null;
 
 const logger = createLogger('ChatArea');
 
-/**
- * Group messages by run to display them as cohesive tasks
- */
-function groupMessagesByRun(messages: ChatMessageType[]) {
-  const groups: {
-    runId?: string;
-    messages: ChatMessageType[];
-  }[] = [];
-
-  let currentGroup: { runId?: string; messages: ChatMessageType[] } = { runId: undefined, messages: [] };
-
-  for (const msg of messages) {
-    const msgRunId = msg.runId;
-
-    if (msgRunId !== currentGroup.runId && currentGroup.messages.length > 0) {
-      groups.push(currentGroup);
-      currentGroup = { runId: msgRunId, messages: [] };
-    }
-
-    currentGroup.runId = msgRunId;
-    currentGroup.messages.push(msg);
-  }
-
-  if (currentGroup.messages.length > 0) {
-    groups.push(currentGroup);
-  }
-
-  return groups;
-}
+/** Virtualization threshold - enable virtualization for large chat histories */
+const VIRTUALIZATION_THRESHOLD = 100;
 
 export const ChatArea: React.FC = () => {
   useRenderProfiler('ChatArea');
@@ -232,9 +213,9 @@ export const ChatArea: React.FC = () => {
   // Use deferred groups for rendering to keep input responsive during streaming
   const renderGroups = isStreaming ? deferredMessageGroups : messageGroups;
 
-  // Enable virtualization for large chat histories (100+ messages for better performance)
-  const VIRTUALIZATION_THRESHOLD = 100;
+  // Enable virtualization for large chat histories
   const shouldVirtualize = branchFilteredMessages.length > VIRTUALIZATION_THRESHOLD;
+  
   // Get the last assistant message content length for scroll dependency
   // This is used for both virtualized and non-virtualized scroll modes
   const lastAssistantContentLength = useMemo(() => {
@@ -275,37 +256,8 @@ export const ChatArea: React.FC = () => {
     setManuallyToggledRuns(new Set());
   }, [activeSession?.id]);
 
-  // #7: Auto-expand runs containing search matches
-  useEffect(() => {
-    if (!isSearchActive || matchingMessageIds.size === 0) return;
-
-    // Find which runs contain matching messages and expand them
-    const runsToExpand = new Set<string>();
-    messageGroups.forEach((group, idx) => {
-      const runKey = group.runId ?? `group-${idx}`;
-      const hasMatch = group.messages.some(m => matchingMessageIds.has(m.id));
-      if (hasMatch) {
-        runsToExpand.add(runKey);
-      }
-    });
-
-    // Expand runs with matches (add to manually toggled if they would be collapsed by default)
-    if (runsToExpand.size > 0) {
-      setManuallyToggledRuns(prev => {
-        const next = new Set(prev);
-        messageGroups.forEach((group, idx) => {
-          const runKey = group.runId ?? `group-${idx}`;
-          const isLastGroup = idx === messageGroups.length - 1;
-          const defaultCollapsed = !isLastGroup;
-
-          if (runsToExpand.has(runKey) && defaultCollapsed && !next.has(runKey)) {
-            next.add(runKey); // Toggle to expand
-          }
-        });
-        return next;
-      });
-    }
-  }, [isSearchActive, matchingMessageIds, messageGroups]);
+  // Auto-expand runs containing search matches using extracted hook
+  useSearchRunExpansion(isSearchActive, matchingMessageIds, messageGroups, setManuallyToggledRuns);
 
   // Toggle run collapse state
   const toggleRunCollapse = useCallback((runKey: string) => {
@@ -320,7 +272,7 @@ export const ChatArea: React.FC = () => {
     });
   }, []);
 
-  // #1: Expand/Collapse all runs
+  // Expand/Collapse all runs
   const expandAllRuns = useCallback(() => {
     // Add all older runs to manually toggled (they default to collapsed)
     const toToggle = new Set<string>();
@@ -711,24 +663,29 @@ export const ChatArea: React.FC = () => {
         />
 
         {/* Scroll to bottom button - appears when scrolled away from bottom */}
-        {showScrollToBottom && hasMessages && (
-          <button
-            onClick={handleScrollToBottom}
-            className={cn(
-              'absolute bottom-12 right-4 z-20',
-              'flex items-center justify-center w-8 h-8 rounded-full',
-              'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
-              'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
-              'hover:bg-[var(--color-surface-3)] shadow-lg',
-              'transition-all duration-200 ease-out',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/50'
-            )}
-            title="Scroll to bottom"
-            aria-label="Scroll to bottom"
-          >
-            <ArrowDown size={16} />
-          </button>
-        )}
+        <button
+          onClick={handleScrollToBottom}
+          className={cn(
+            'absolute bottom-12 right-4 z-20',
+            'flex items-center justify-center w-8 h-8 rounded-full',
+            'bg-[var(--color-surface-2)]/95 backdrop-blur-sm border border-[var(--color-border-subtle)]',
+            'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
+            'hover:bg-[var(--color-surface-3)] hover:border-[var(--color-accent-primary)]/30',
+            'shadow-lg hover:shadow-xl',
+            'transition-all duration-200 ease-out',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/50',
+            // Fade animation based on visibility
+            showScrollToBottom && hasMessages
+              ? 'opacity-100 translate-y-0 pointer-events-auto'
+              : 'opacity-0 translate-y-2 pointer-events-none'
+          )}
+          title="Scroll to bottom"
+          aria-label="Scroll to bottom"
+          aria-hidden={!showScrollToBottom || !hasMessages}
+          tabIndex={showScrollToBottom && hasMessages ? 0 : -1}
+        >
+          <ArrowDown size={16} className="transition-transform group-hover:translate-y-0.5" />
+        </button>
         <div
           className={cn(
             "h-full w-full min-w-0 overflow-y-auto overflow-x-hidden",
@@ -743,7 +700,7 @@ export const ChatArea: React.FC = () => {
         >
           {/* Virtualized rendering for large histories */}
           {shouldVirtualize ? (
-            <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-5 md:pt-6 pb-8 sm:pb-10 min-w-0 overflow-hidden">
+            <div className="w-full max-w-[1800px] 2xl:max-w-[2000px] mx-auto px-2 sm:px-3 md:px-4 lg:px-6 xl:px-8 2xl:px-10 pt-3 sm:pt-4 md:pt-5 lg:pt-6 pb-6 sm:pb-8 md:pb-10 min-w-0">
               {/* Expand/Collapse all - fixed at top when multiple runs */}
               {messageGroups.length > 1 && (
                 <div className="flex justify-end pb-2">
@@ -776,7 +733,7 @@ export const ChatArea: React.FC = () => {
                   return (
                     <div
                       key={virtualItem.key}
-                      className="min-w-0 overflow-hidden"
+                      className="min-w-0"
                       style={{
                         position: 'absolute',
                         top: virtualItem.offsetTop,
@@ -824,7 +781,7 @@ export const ChatArea: React.FC = () => {
             </div>
           ) : (
             /* Standard rendering for smaller histories */
-            <div className="w-full max-w-[1400px] mx-auto flex flex-col gap-3 px-3 sm:px-4 md:px-6 lg:px-8 pt-4 sm:pt-5 md:pt-6 pb-8 sm:pb-10 min-w-0 overflow-hidden">
+            <div className="w-full max-w-[1800px] 2xl:max-w-[2000px] mx-auto flex flex-col gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 lg:px-6 xl:px-8 2xl:px-10 pt-3 sm:pt-4 md:pt-5 lg:pt-6 pb-6 sm:pb-8 md:pb-10 min-w-0">
               {/* Expand/Collapse all - inline at top when multiple runs */}
               {messageGroups.length > 1 && (
                 <div className="flex justify-end">

@@ -11,6 +11,8 @@ import { initFileWatcher, watchWorkspace, stopWatching } from './main/workspaces
 import type { RendererEvent, BrowserState } from './shared/types';
 import { registerIpcHandlers, IpcEventBatcher, type EventPriority as _EventPriority } from './main/ipc';
 import { getSessionHealthMonitor } from './main/agent/sessionHealth';
+import { initThrottleController, getThrottleController } from './main/agent/performance/BackgroundThrottleController';
+import { getThrottleEventLogger } from './main/agent/performance/ThrottleEventLogger';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -63,15 +65,6 @@ const emitToRenderer = (event: RendererEvent): void => {
       path: payload.path,
       ...(payload.oldPath && { oldPath: payload.oldPath }),
     });
-  } else if (event.type === 'semantic:indexProgress') {
-    // Semantic indexing progress events
-    mainWindow.webContents.send('semantic:indexProgress', event);
-  } else if (event.type === 'semantic:modelStatus') {
-    // Model status events (cached, loading, ready)
-    mainWindow.webContents.send('semantic:modelStatus', event);
-  } else if (event.type === 'semantic:modelProgress') {
-    // Model download progress events
-    mainWindow.webContents.send('semantic:modelProgress', event);
   } else if (event.type === 'session-health-update') {
     // Session health update events for real-time monitoring
     const healthEvent = event as unknown as { sessionId: string; data: unknown };
@@ -106,6 +99,33 @@ const initializeDeferredServices = async () => {
         logger.info('LSP manager initialized for active workspace', { workspacePath: activeWorkspace.path });
       }).catch((err) => {
         logger.warn('LSP initialization failed', { error: err instanceof Error ? err.message : String(err) });
+      });
+
+      // Forward LSPManager diagnostics events to renderer (real-time push from language servers)
+      lspManager.on('diagnostics', ({ uri, diagnostics, language }) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          // Convert file:// URI to file path
+          let filePath = uri;
+          try {
+            if (uri.startsWith('file://')) {
+              filePath = new URL(uri).pathname;
+              // Handle Windows paths (remove leading slash)
+              if (process.platform === 'win32' && filePath.startsWith('/')) {
+                filePath = filePath.slice(1);
+              }
+            }
+          } catch {
+            // Keep original URI if parsing fails
+          }
+          
+          mainWindow.webContents.send('lsp:diagnostics-updated', {
+            filePath,
+            diagnostics,
+            source: 'lsp',
+            language,
+            timestamp: Date.now(),
+          });
+        }
       });
     }
 
@@ -160,120 +180,6 @@ const initializeDeferredServices = async () => {
   });
 
   logger.info('LSP bridge connected to file watcher');
-  
-  // Initialize semantic indexer for code search (respects settings)
-  const settings = settingsStore.get();
-  const semanticSettings = settings.semanticSettings;
-  if (semanticSettings?.enabled !== false) {
-    try {
-      const { getSemanticIndexer, setSemanticSettingsGetter, getEmbeddingService } = await import('./main/agent/semantic');
-      const { setSemanticWorkspaceStructureGetter } = await import('./main/agent/execution');
-      
-      // Register settings getter so SemanticIndexer can check settings dynamically
-      setSemanticSettingsGetter(() => settingsStore.get().semanticSettings);
-      
-      // Check embedding model status first and emit to renderer
-      const embeddingService = getEmbeddingService();
-      const modelStatus = await embeddingService.getModelStatus();
-      
-      logger.info('Embedding model status', {
-        modelId: modelStatus.modelId,
-        isCached: modelStatus.isCached,
-        quality: modelStatus.quality,
-      });
-      
-      // Emit model status to renderer so UI can show download progress
-      emitToRenderer({
-        type: 'semantic:modelStatus',
-        modelId: modelStatus.modelId,
-        isCached: modelStatus.isCached,
-        isLoaded: modelStatus.isLoaded,
-        status: modelStatus.isCached ? 'cached' : 'needs-download',
-      } as RendererEvent);
-      
-      // Set up progress callback for model download to forward to renderer
-      embeddingService.setProgressCallback((progress) => {
-        emitToRenderer({
-          type: 'semantic:modelProgress',
-          status: progress.status,
-          file: progress.file,
-          progress: progress.progress,
-          loaded: progress.loaded,
-          total: progress.total,
-          error: progress.error,
-        } as RendererEvent);
-        
-        // When model is ready, emit status event so UI can refresh
-        if (progress.status === 'ready') {
-          emitToRenderer({
-            type: 'semantic:modelStatus',
-            modelId: modelStatus.modelId,
-            isCached: true,
-            isLoaded: true,
-            status: 'ready',
-          } as RendererEvent);
-        }
-      });
-      
-      const semanticIndexer = getSemanticIndexer();
-      
-      // Initialize in background - don't block
-      semanticIndexer.initialize().then(async () => {
-        // Clear the progress callback after initialization
-        embeddingService.setProgressCallback(null);
-        
-        // Emit final model status after initialization completes
-        const finalModelStatus = await embeddingService.getModelStatus();
-        emitToRenderer({
-          type: 'semantic:modelStatus',
-          modelId: finalModelStatus.modelId,
-          isCached: finalModelStatus.isCached,
-          isLoaded: finalModelStatus.isLoaded,
-          status: finalModelStatus.isLoaded ? 'ready' : 'error',
-        } as RendererEvent);
-
-        // Register workspace structure getter for system prompt context
-        setSemanticWorkspaceStructureGetter(async () => {
-          const structure = semanticIndexer.getWorkspaceStructureForPrompt();
-          return structure ?? undefined;
-        });
-
-        // Auto-index active workspace in background
-        if (activeWorkspace?.path && semanticSettings?.autoIndexOnStartup !== false) {
-          semanticIndexer.indexWorkspace(activeWorkspace.path, {
-            fileTypes: semanticSettings?.indexFileTypes?.length ? semanticSettings.indexFileTypes.map(t => `.${t}`) : undefined,
-            excludePatterns: semanticSettings?.excludePatterns,
-            onProgress: (progress) => {
-              emitToRenderer({
-                type: 'semantic:indexProgress',
-                ...progress,
-              });
-            },
-          }).catch((err) => {
-            logger.warn('Background indexing failed', {
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-        }
-
-        logger.info('Semantic indexer initialized', {
-          enabled: true,
-          autoIndex: semanticSettings?.autoIndexOnStartup !== false,
-          modelLoaded: embeddingService.isUsingOnnxModel(),
-        });
-      }).catch((err) => {
-        logger.warn('Semantic indexer initialization failed', {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    } catch (err) {
-      logger.warn('Semantic indexer initialization failed (non-critical)', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  } else {
-    logger.info('Semantic indexer disabled by settings');
-  }
   
   logger.info('Deferred services initialization complete');
 };
@@ -421,6 +327,9 @@ const createWindow = async () => {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
+      // Disable Chromium's background throttling to ensure agent continues
+      // running at full speed when window is not focused
+      backgroundThrottling: false,
     },
   });
 
@@ -432,6 +341,65 @@ const createWindow = async () => {
     maxBatchSize: 50,
   });
   logger.info('IPC event batcher initialized');
+
+  // Initialize background throttle controller for power/visibility state tracking
+  // This coordinates with the event batcher to disable throttling when agent is running
+  const throttleController = initThrottleController(mainWindow);
+  const throttleLogger = getThrottleEventLogger();
+  
+  // Wire throttle controller to event batcher for coordinated throttling
+  throttleController.on('state-changed', (event) => {
+    const state = throttleController.getState();
+    
+    // Sync agent running state with event batcher
+    if (state.agentRunning) {
+      eventBatcher?.setAgentRunning(true);
+    } else {
+      eventBatcher?.setAgentRunning(false);
+    }
+    
+    // Emit throttle state to renderer
+    emitToRenderer({
+      type: 'throttle-state-changed',
+      state: {
+        isThrottled: state.isThrottled,
+        agentRunning: state.agentRunning,
+        windowVisible: state.windowVisible,
+        windowFocused: state.windowFocused,
+        effectiveInterval: throttleController.getEffectiveInterval(),
+      },
+    } as unknown as RendererEvent);
+    
+    // Log state changes
+    if (event.type === 'state-changed' && event.currentState.isThrottled !== undefined) {
+      if (event.currentState.isThrottled) {
+        throttleLogger.logThrottleActivated(
+          Array.from(state.throttleReasons),
+          event.metadata
+        );
+      } else {
+        throttleLogger.logThrottleDeactivated(
+          Array.from(state.bypassReasons),
+          event.metadata?.durationMs as number | undefined
+        );
+      }
+    }
+  });
+  
+  // Log timing anomalies
+  throttleController.on('timing-anomaly', (event) => {
+    const metadata = event.metadata as { operationId?: string; durationMs?: number } | undefined;
+    if (metadata?.operationId && metadata?.durationMs) {
+      throttleLogger.logTimingAnomaly(
+        metadata.operationId,
+        metadata.durationMs,
+        500, // threshold
+        event.currentState.isThrottled ?? false
+      );
+    }
+  });
+  
+  logger.info('Background throttle controller initialized');
 
   // Note: DevTools console errors (Autofill.enable, etc.) are benign and don't affect functionality.
   // They occur when DevTools probes unsupported CDP domains in Electron.

@@ -341,22 +341,22 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
                       <span>{formatNum(sessionData.ctx.maxInputTokens)} max</span>
                     </div>
                     {sessionData.ctx.tokensByRole && (
-                      <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)] grid grid-cols-4 gap-2">
+                      <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-[var(--color-border-subtle)] grid grid-cols-2 xs:grid-cols-4 gap-2">
                         <div className="text-center">
-                          <div className="text-[var(--color-accent-secondary)] text-xs font-medium">{formatNum(sessionData.ctx.tokensByRole.system)}</div>
-                          <div className="text-[8px] text-[var(--color-text-dim)]">System</div>
+                          <div className="text-[var(--color-accent-secondary)] text-[10px] sm:text-xs font-medium">{formatNum(sessionData.ctx.tokensByRole.system)}</div>
+                          <div className="text-[7px] sm:text-[8px] text-[var(--color-text-dim)]">System</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-[var(--color-info)] text-xs font-medium">{formatNum(sessionData.ctx.tokensByRole.user)}</div>
-                          <div className="text-[8px] text-[var(--color-text-dim)]">User</div>
+                          <div className="text-[var(--color-info)] text-[10px] sm:text-xs font-medium">{formatNum(sessionData.ctx.tokensByRole.user)}</div>
+                          <div className="text-[7px] sm:text-[8px] text-[var(--color-text-dim)]">User</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-[var(--color-success)] text-xs font-medium">{formatNum(sessionData.ctx.tokensByRole.assistant)}</div>
-                          <div className="text-[8px] text-[var(--color-text-dim)]">Assistant</div>
+                          <div className="text-[var(--color-success)] text-[10px] sm:text-xs font-medium">{formatNum(sessionData.ctx.tokensByRole.assistant)}</div>
+                          <div className="text-[7px] sm:text-[8px] text-[var(--color-text-dim)]">Assistant</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-[var(--color-warning)] text-xs font-medium">{formatNum(sessionData.ctx.tokensByRole.tool)}</div>
-                          <div className="text-[8px] text-[var(--color-text-dim)]">Tool</div>
+                          <div className="text-[var(--color-warning)] text-[10px] sm:text-xs font-medium">{formatNum(sessionData.ctx.tokensByRole.tool)}</div>
+                          <div className="text-[7px] sm:text-[8px] text-[var(--color-text-dim)]">Tool</div>
                         </div>
                       </div>
                     )}

@@ -3,28 +3,45 @@
  * 
  * Provides validation utilities for all settings types.
  * Ensures settings values are within valid ranges and have correct formats.
+ * Uses SETTINGS_CONSTRAINTS from shared/types for consistent validation limits.
  */
 
 import { createLogger } from '../logger';
 import type {
+  AgentConfig,
   BrowserSettings,
   ComplianceSettings,
   AccessLevelSettings,
   TaskRoutingSettings,
   PromptSettings,
   SafetySettings,
-  SemanticSettings,
   ToolConfigSettings,
+  EditorAISettings,
+  AppearanceSettings,
+  DebugSettings,
+  CacheSettings,
+  LLMProviderName,
 } from '../../shared/types';
+import type {
+  MCPSettings,
+} from '../../shared/types/mcp';
 import {
   DEFAULT_BROWSER_SETTINGS,
+  // These defaults are imported for reference - some are used in sanitize functions
   DEFAULT_COMPLIANCE_SETTINGS as _DEFAULT_COMPLIANCE_SETTINGS,
   DEFAULT_ACCESS_LEVEL_SETTINGS as _DEFAULT_ACCESS_LEVEL_SETTINGS,
   DEFAULT_TASK_ROUTING_SETTINGS as _DEFAULT_TASK_ROUTING_SETTINGS,
   DEFAULT_PROMPT_SETTINGS as _DEFAULT_PROMPT_SETTINGS,
-  DEFAULT_SEMANTIC_SETTINGS,
   DEFAULT_TOOL_CONFIG_SETTINGS,
+  DEFAULT_EDITOR_AI_SETTINGS as _DEFAULT_EDITOR_AI_SETTINGS,
+  DEFAULT_APPEARANCE_SETTINGS as _DEFAULT_APPEARANCE_SETTINGS,
+  DEFAULT_DEBUG_SETTINGS as _DEFAULT_DEBUG_SETTINGS,
+  DEFAULT_CACHE_SETTINGS as _DEFAULT_CACHE_SETTINGS,
+  SETTINGS_CONSTRAINTS,
 } from '../../shared/types';
+import {
+  DEFAULT_MCP_SETTINGS as _DEFAULT_MCP_SETTINGS,
+} from '../../shared/types/mcp';
 
 const logger = createLogger('SettingsValidation');
 
@@ -75,7 +92,8 @@ function validateRange(
   }
 }
 
-function validatePositive(
+// Note: These validation functions are available for future validation rules
+function _validatePositive(
   value: number | undefined,
   field: string,
   errors: ValidationError[]
@@ -86,7 +104,7 @@ function validatePositive(
   }
 }
 
-function validateNonNegative(
+function _validateNonNegative(
   value: number | undefined,
   field: string,
   errors: ValidationError[]
@@ -187,6 +205,119 @@ export function validateBrowserSettings(settings: Partial<BrowserSettings>): Val
 }
 
 // =============================================================================
+// Agent Config (defaultConfig) Validation
+// =============================================================================
+
+/**
+ * Validate agent configuration settings (defaultConfig)
+ * These are the core agent behavior settings including iterations, retries, etc.
+ */
+export function validateAgentConfig(config: Partial<AgentConfig>): ValidationResult {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
+
+  // Validate temperature (0 to 2)
+  validateRange(
+    config.temperature,
+    SETTINGS_CONSTRAINTS.temperature.min,
+    SETTINGS_CONSTRAINTS.temperature.max,
+    'temperature',
+    errors
+  );
+
+  // Validate maxOutputTokens (1 to 200000)
+  validateRange(
+    config.maxOutputTokens,
+    SETTINGS_CONSTRAINTS.maxOutputTokens.min,
+    SETTINGS_CONSTRAINTS.maxOutputTokens.max,
+    'maxOutputTokens',
+    errors
+  );
+
+  // Validate maxIterations (minimum 1, no upper limit)
+  if (config.maxIterations !== undefined) {
+    if (typeof config.maxIterations !== 'number' || !Number.isFinite(config.maxIterations)) {
+      errors.push({ field: 'maxIterations', message: 'maxIterations must be a valid number', value: config.maxIterations });
+    } else if (config.maxIterations < SETTINGS_CONSTRAINTS.maxIterations.min) {
+      errors.push({ field: 'maxIterations', message: `maxIterations must be at least ${SETTINGS_CONSTRAINTS.maxIterations.min}`, value: config.maxIterations });
+    }
+  }
+
+  // Validate maxRetries (0 to 5)
+  validateRange(
+    config.maxRetries,
+    SETTINGS_CONSTRAINTS.maxRetries.min,
+    SETTINGS_CONSTRAINTS.maxRetries.max,
+    'maxRetries',
+    errors
+  );
+
+  // Validate retryDelayMs (100 to 10000)
+  validateRange(
+    config.retryDelayMs,
+    SETTINGS_CONSTRAINTS.retryDelayMs.min,
+    SETTINGS_CONSTRAINTS.retryDelayMs.max,
+    'retryDelayMs',
+    errors
+  );
+
+  // Validate summarizationThreshold (10 to 500)
+  validateRange(
+    config.summarizationThreshold,
+    SETTINGS_CONSTRAINTS.summarizationThreshold.min,
+    SETTINGS_CONSTRAINTS.summarizationThreshold.max,
+    'summarizationThreshold',
+    errors
+  );
+
+  // Validate keepRecentMessages (5 to 100)
+  validateRange(
+    config.keepRecentMessages,
+    SETTINGS_CONSTRAINTS.keepRecentMessages.min,
+    SETTINGS_CONSTRAINTS.keepRecentMessages.max,
+    'keepRecentMessages',
+    errors
+  );
+
+  // Validate anthropic thinking budget if present
+  if (config.anthropicThinkingBudget !== undefined) {
+    validateRange(
+      config.anthropicThinkingBudget,
+      SETTINGS_CONSTRAINTS.anthropicThinkingBudget.min,
+      SETTINGS_CONSTRAINTS.anthropicThinkingBudget.max,
+      'anthropicThinkingBudget',
+      errors
+    );
+  }
+
+  // Warnings for high-risk configurations
+  if (config.yoloMode === true) {
+    warnings.push({
+      field: 'yoloMode',
+      message: 'YOLO mode is enabled - all tool confirmations will be skipped',
+      suggestion: 'This can lead to unintended file modifications or command executions',
+    });
+  }
+
+  if (config.maxIterations !== undefined && config.maxIterations > 50) {
+    warnings.push({
+      field: 'maxIterations',
+      message: 'High iteration limit may lead to long-running agent loops',
+      suggestion: 'Consider using a lower limit unless explicitly needed',
+    });
+  }
+
+  if (config.temperature !== undefined && config.temperature > 1.5) {
+    warnings.push({
+      field: 'temperature',
+      message: 'Very high temperature may produce less coherent responses',
+    });
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+// =============================================================================
 // Compliance Settings Validation
 // =============================================================================
 
@@ -213,7 +344,8 @@ export function validateComplianceSettings(settings: Partial<ComplianceSettings>
 // Access Level Settings Validation
 // =============================================================================
 
-const VALID_ACCESS_LEVELS = ['standard', 'restricted', 'elevated'] as const;
+// Must match AccessLevel type: 'read-only' | 'standard' | 'elevated' | 'admin'
+const VALID_ACCESS_LEVELS = ['read-only', 'standard', 'elevated', 'admin'] as const;
 
 export function validateAccessLevelSettings(settings: Partial<AccessLevelSettings>): ValidationResult {
   const errors: ValidationError[] = [];
@@ -314,7 +446,8 @@ export function validateTaskRoutingSettings(settings: Partial<TaskRoutingSetting
 // Prompt Settings Validation
 // =============================================================================
 
-const MAX_CUSTOM_PROMPT_LENGTH = 100000; // 100KB
+// Use centralized constraints for prompt length validation
+const MAX_CUSTOM_PROMPT_LENGTH = SETTINGS_CONSTRAINTS.maxMessageLength.max;
 
 export function validatePromptSettings(settings: Partial<PromptSettings>): ValidationResult {
   const errors: ValidationError[] = [];
@@ -407,68 +540,6 @@ export function validatePromptSettings(settings: Partial<PromptSettings>): Valid
 }
 
 // =============================================================================
-// Semantic Settings Validation
-// =============================================================================
-
-export function validateSemanticSettings(settings: Partial<SemanticSettings>): ValidationResult {
-  const errors: ValidationError[] = [];
-  const warnings: ValidationWarning[] = [];
-
-  // Validate chunk sizes
-  validatePositive(settings.targetChunkSize, 'targetChunkSize', errors);
-  validatePositive(settings.minChunkSize, 'minChunkSize', errors);
-  validatePositive(settings.maxChunkSize, 'maxChunkSize', errors);
-
-  if (
-    settings.minChunkSize !== undefined &&
-    settings.maxChunkSize !== undefined &&
-    settings.minChunkSize > settings.maxChunkSize
-  ) {
-    errors.push({
-      field: 'minChunkSize',
-      message: 'minChunkSize cannot be greater than maxChunkSize',
-    });
-  }
-
-  if (
-    settings.targetChunkSize !== undefined &&
-    settings.maxChunkSize !== undefined &&
-    settings.targetChunkSize > settings.maxChunkSize
-  ) {
-    warnings.push({
-      field: 'targetChunkSize',
-      message: 'targetChunkSize is greater than maxChunkSize',
-      suggestion: 'Consider setting targetChunkSize <= maxChunkSize',
-    });
-  }
-
-  // Validate max file size (1KB to 100MB)
-  validateRange(settings.maxFileSize, 1024, 100 * 1024 * 1024, 'maxFileSize', errors);
-
-  // Validate cache entries
-  validateRange(settings.maxCacheEntries, 100, 1000000, 'maxCacheEntries', errors);
-
-  // Validate HNSW parameters
-  validateRange(settings.hnswM, 4, 64, 'hnswM', errors);
-  validateRange(settings.hnswEfSearch, 10, 500, 'hnswEfSearch', errors);
-
-  // Validate search score threshold (0 to 1)
-  validateRange(settings.minSearchScore, 0, 1, 'minSearchScore', errors);
-
-  // Validate auto-optimize threshold
-  validatePositive(settings.autoOptimizeAfter, 'autoOptimizeAfter', errors);
-
-  // Validate embedding quality
-  validateEnum(settings.embeddingQuality, ['fast', 'balanced', 'quality'] as const, 'embeddingQuality', errors);
-
-  // Validate file types
-  validateStringArray(settings.indexFileTypes, 'indexFileTypes', errors);
-  validateStringArray(settings.excludePatterns, 'excludePatterns', errors);
-
-  return { valid: errors.length === 0, errors, warnings };
-}
-
-// =============================================================================
 // Tool Settings Validation
 // =============================================================================
 
@@ -497,10 +568,28 @@ export function validateSafetySettings(settings: Partial<SafetySettings>): Valid
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
 
-  // Validate limits
-  validatePositive(settings.maxFilesPerRun, 'maxFilesPerRun', errors);
-  validatePositive(settings.maxBytesPerRun, 'maxBytesPerRun', errors);
-  validateNonNegative(settings.backupRetentionCount, 'backupRetentionCount', errors);
+  // Validate limits using centralized constraints
+  validateRange(
+    settings.maxFilesPerRun,
+    SETTINGS_CONSTRAINTS.maxFilesPerRun.min,
+    SETTINGS_CONSTRAINTS.maxFilesPerRun.max,
+    'maxFilesPerRun',
+    errors
+  );
+  validateRange(
+    settings.maxBytesPerRun,
+    SETTINGS_CONSTRAINTS.maxBytesPerRun.min,
+    SETTINGS_CONSTRAINTS.maxBytesPerRun.max,
+    'maxBytesPerRun',
+    errors
+  );
+  validateRange(
+    settings.backupRetentionCount,
+    0,
+    SETTINGS_CONSTRAINTS.backupRetentionCount.max,
+    'backupRetentionCount',
+    errors
+  );
 
   // Validate arrays
   validateStringArray(settings.protectedPaths, 'protectedPaths', errors);
@@ -519,38 +608,295 @@ export function validateSafetySettings(settings: Partial<SafetySettings>): Valid
 }
 
 // =============================================================================
+// Editor AI Settings Validation
+// =============================================================================
+
+const VALID_PROVIDERS: readonly (LLMProviderName | 'auto')[] = [
+  'anthropic', 'openai', 'deepseek', 'gemini', 'openrouter', 'xai', 'mistral', 'glm', 'auto'
+] as const;
+
+export function validateEditorAISettings(settings: Partial<EditorAISettings>): ValidationResult {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
+  // Note: defaults available as DEFAULT_EDITOR_AI_SETTINGS if needed for validation reference
+
+  // Validate debounce delay (50ms to 2000ms)
+  validateRange(settings.inlineCompletionDebounceMs, 50, 2000, 'inlineCompletionDebounceMs', errors);
+
+  // Validate max tokens (16 to 2048)
+  validateRange(settings.inlineCompletionMaxTokens, 16, 2048, 'inlineCompletionMaxTokens', errors);
+
+  // Validate temperature (0 to 1 for completions)
+  validateRange(settings.completionTemperature, 0, 1, 'completionTemperature', errors);
+
+  // Validate context lines (1 to 500)
+  validateRange(settings.contextLinesBefore, 1, 500, 'contextLinesBefore', errors);
+  validateRange(settings.contextLinesAfter, 1, 200, 'contextLinesAfter', errors);
+
+  // Validate provider
+  validateEnum(settings.preferredProvider, VALID_PROVIDERS, 'preferredProvider', errors);
+
+  // Warn if all features are disabled
+  if (settings.enableInlineCompletions === false && 
+      settings.enableQuickFixes === false && 
+      settings.enableCodeActions === false) {
+    warnings.push({
+      field: 'editorAISettings',
+      message: 'All Editor AI features are disabled',
+      suggestion: 'Enable at least one feature to use Editor AI capabilities',
+    });
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+// =============================================================================
+// Appearance Settings Validation
+// =============================================================================
+
+const VALID_FONT_SIZE_SCALES = ['compact', 'default', 'comfortable', 'large'] as const;
+const VALID_ACCENT_COLORS = ['emerald', 'blue', 'purple', 'amber', 'rose', 'custom'] as const;
+const VALID_TERMINAL_FONTS = ['JetBrains Mono', 'Fira Code', 'Source Code Pro', 'Cascadia Code', 'Monaco', 'Menlo', 'Consolas', 'system'] as const;
+// Must match LoadingIndicatorStyle type: 'spinner' | 'dots' | 'pulse' | 'minimal'
+const VALID_LOADING_INDICATOR_STYLES = ['spinner', 'dots', 'pulse', 'minimal'] as const;
+const VALID_ANIMATION_SPEEDS = ['slow', 'normal', 'fast'] as const;
+const VALID_REDUCE_MOTION = ['system', 'always', 'never'] as const;
+
+export function validateAppearanceSettings(settings: Partial<AppearanceSettings>): ValidationResult {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
+
+  // Validate enums
+  validateEnum(settings.fontSizeScale, VALID_FONT_SIZE_SCALES, 'fontSizeScale', errors);
+  validateEnum(settings.accentColor, VALID_ACCENT_COLORS, 'accentColor', errors);
+  validateEnum(settings.terminalFont, VALID_TERMINAL_FONTS, 'terminalFont', errors);
+  validateEnum(settings.loadingIndicatorStyle, VALID_LOADING_INDICATOR_STYLES, 'loadingIndicatorStyle', errors);
+  validateEnum(settings.animationSpeed, VALID_ANIMATION_SPEEDS, 'animationSpeed', errors);
+  validateEnum(settings.reduceMotion, VALID_REDUCE_MOTION, 'reduceMotion', errors);
+
+  // Validate terminal font size (8 to 24)
+  validateRange(settings.terminalFontSize, 8, 24, 'terminalFontSize', errors);
+
+  // Validate custom accent color if using custom
+  if (settings.accentColor === 'custom') {
+    if (!settings.customAccentColor) {
+      errors.push({
+        field: 'customAccentColor',
+        message: 'Custom accent color is required when accentColor is "custom"',
+      });
+    } else if (!/^#[0-9a-fA-F]{6}$/.test(settings.customAccentColor)) {
+      errors.push({
+        field: 'customAccentColor',
+        message: 'Custom accent color must be a valid hex color (e.g., #10B981)',
+        value: settings.customAccentColor,
+      });
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+// =============================================================================
+// Debug Settings Validation
+// =============================================================================
+
+const VALID_TRACE_FORMATS = ['json', 'markdown'] as const;
+const VALID_LOG_LEVELS = ['error', 'warn', 'info', 'debug', 'trace'] as const;
+
+export function validateDebugSettings(settings: Partial<DebugSettings>): ValidationResult {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
+
+  // Validate enums
+  validateEnum(settings.traceExportFormat, VALID_TRACE_FORMATS, 'traceExportFormat', errors);
+  validateEnum(settings.logLevel, VALID_LOG_LEVELS, 'logLevel', errors);
+
+  // Validate ranges
+  validateRange(settings.maxPreviewLength, 100, 10000, 'maxPreviewLength', errors);
+  validateRange(settings.highlightDurationThreshold, 100, 60000, 'highlightDurationThreshold', errors);
+
+  // Validate breakOnTools format (comma-separated tool names)
+  if (settings.breakOnTools && typeof settings.breakOnTools === 'string') {
+    const tools = settings.breakOnTools.split(',').map(t => t.trim()).filter(Boolean);
+    for (const tool of tools) {
+      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tool)) {
+        errors.push({
+          field: 'breakOnTools',
+          message: `Invalid tool name format: "${tool}"`,
+          value: tool,
+        });
+      }
+    }
+  }
+
+  // Warn about performance impact
+  if (settings.verboseLogging === true && settings.captureFullPayloads === true) {
+    warnings.push({
+      field: 'debugSettings',
+      message: 'Verbose logging with full payload capture may impact performance',
+      suggestion: 'Consider disabling one of these options in production',
+    });
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+// =============================================================================
+// Cache Settings Validation
+// =============================================================================
+
+const VALID_CACHE_STRATEGIES = ['default', 'aggressive', 'conservative'] as const;
+
+export function validateCacheSettings(settings: Partial<CacheSettings>): ValidationResult {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
+
+  // Validate prompt cache strategy
+  validateEnum(settings.promptCacheStrategy, VALID_CACHE_STRATEGIES, 'promptCacheStrategy', errors);
+
+  // Validate tool cache settings
+  if (settings.toolCache) {
+    validateRange(settings.toolCache.defaultTtlMs, 1000, 3600000, 'toolCache.defaultTtlMs', errors);
+    validateRange(settings.toolCache.maxEntries, 10, 10000, 'toolCache.maxEntries', errors);
+
+    // Validate per-tool TTLs
+    if (settings.toolCache.toolTtls) {
+      for (const [tool, ttl] of Object.entries(settings.toolCache.toolTtls)) {
+        if (typeof ttl !== 'number' || ttl < 1000 || ttl > 3600000) {
+          errors.push({
+            field: `toolCache.toolTtls.${tool}`,
+            message: `TTL for ${tool} must be between 1000ms and 3600000ms`,
+            value: ttl,
+          });
+        }
+      }
+    }
+  }
+
+  // Validate context cache settings
+  if (settings.contextCache) {
+    validateRange(settings.contextCache.maxSizeMb, 1, 1024, 'contextCache.maxSizeMb', errors);
+    validateRange(settings.contextCache.defaultTtlMs, 1000, 3600000, 'contextCache.defaultTtlMs', errors);
+  }
+
+  // Validate enablePromptCache
+  if (settings.enablePromptCache) {
+    const validProviders: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'openrouter', 'xai', 'mistral', 'glm'];
+    for (const [provider] of Object.entries(settings.enablePromptCache)) {
+      if (!validProviders.includes(provider as LLMProviderName)) {
+        warnings.push({
+          field: `enablePromptCache.${provider}`,
+          message: `Unknown provider "${provider}" in prompt cache settings`,
+        });
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+// =============================================================================
+// MCP Settings Validation
+// =============================================================================
+
+export function validateMCPSettings(settings: Partial<MCPSettings>): ValidationResult {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
+
+  // Validate timeouts
+  validateRange(settings.connectionTimeoutMs, 1000, 120000, 'connectionTimeoutMs', errors);
+  validateRange(settings.toolTimeoutMs, 1000, 300000, 'toolTimeoutMs', errors);
+
+  // Validate connection limits
+  validateRange(settings.maxConcurrentConnections, 1, 50, 'maxConcurrentConnections', errors);
+
+  // Validate cache TTL
+  validateRange(settings.cacheTtlMs, 1000, 3600000, 'cacheTtlMs', errors);
+
+  // Validate retry settings
+  validateRange(settings.retryCount, 0, 10, 'retryCount', errors);
+  validateRange(settings.retryDelayMs, 100, 30000, 'retryDelayMs', errors);
+
+  // Validate custom registries (must be valid URLs)
+  if (settings.customRegistries) {
+    for (let i = 0; i < settings.customRegistries.length; i++) {
+      const url = settings.customRegistries[i];
+      try {
+        new URL(url);
+      } catch {
+        errors.push({
+          field: `customRegistries[${i}]`,
+          message: 'Invalid URL format',
+          value: url,
+        });
+      }
+    }
+  }
+
+  // Warn if MCP is enabled but all registry sources are disabled
+  if (settings.enabled !== false && settings.enabledRegistrySources) {
+    const anyEnabled = Object.values(settings.enabledRegistrySources).some(v => v === true);
+    if (!anyEnabled && (!settings.customRegistries || settings.customRegistries.length === 0)) {
+      warnings.push({
+        field: 'enabledRegistrySources',
+        message: 'No registry sources are enabled and no custom registries are configured',
+        suggestion: 'Enable at least one registry source or add a custom registry URL',
+      });
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+// =============================================================================
 // Combined Settings Validation
 // =============================================================================
 
 export interface FullValidationResult {
   valid: boolean;
   sections: {
+    defaultConfig?: ValidationResult;
     browser?: ValidationResult;
     compliance?: ValidationResult;
     accessLevel?: ValidationResult;
     taskRouting?: ValidationResult;
     prompt?: ValidationResult;
-    semantic?: ValidationResult;
     tool?: ValidationResult;
     safety?: ValidationResult;
+    editorAI?: ValidationResult;
+    appearance?: ValidationResult;
+    debug?: ValidationResult;
+    cache?: ValidationResult;
+    mcp?: ValidationResult;
   };
   totalErrors: number;
   totalWarnings: number;
 }
 
 export function validateAllSettings(settings: {
+  defaultConfig?: Partial<AgentConfig>;
   browserSettings?: Partial<BrowserSettings>;
   complianceSettings?: Partial<ComplianceSettings>;
   accessLevelSettings?: Partial<AccessLevelSettings>;
   taskRoutingSettings?: Partial<TaskRoutingSettings>;
   promptSettings?: Partial<PromptSettings>;
-  semanticSettings?: Partial<SemanticSettings>;
   toolSettings?: Partial<ToolConfigSettings>;
   safetySettings?: Partial<SafetySettings>;
+  editorAISettings?: Partial<EditorAISettings>;
+  appearanceSettings?: Partial<AppearanceSettings>;
+  debugSettings?: Partial<DebugSettings>;
+  cacheSettings?: Partial<CacheSettings>;
+  mcpSettings?: Partial<MCPSettings>;
 }): FullValidationResult {
   const sections: FullValidationResult['sections'] = {};
   let totalErrors = 0;
   let totalWarnings = 0;
+
+  if (settings.defaultConfig) {
+    sections.defaultConfig = validateAgentConfig(settings.defaultConfig);
+    totalErrors += sections.defaultConfig.errors.length;
+    totalWarnings += sections.defaultConfig.warnings.length;
+  }
 
   if (settings.browserSettings) {
     sections.browser = validateBrowserSettings(settings.browserSettings);
@@ -582,12 +928,6 @@ export function validateAllSettings(settings: {
     totalWarnings += sections.prompt.warnings.length;
   }
 
-  if (settings.semanticSettings) {
-    sections.semantic = validateSemanticSettings(settings.semanticSettings);
-    totalErrors += sections.semantic.errors.length;
-    totalWarnings += sections.semantic.warnings.length;
-  }
-
   if (settings.toolSettings) {
     sections.tool = validateToolSettings(settings.toolSettings);
     totalErrors += sections.tool.errors.length;
@@ -598,6 +938,36 @@ export function validateAllSettings(settings: {
     sections.safety = validateSafetySettings(settings.safetySettings);
     totalErrors += sections.safety.errors.length;
     totalWarnings += sections.safety.warnings.length;
+  }
+
+  if (settings.editorAISettings) {
+    sections.editorAI = validateEditorAISettings(settings.editorAISettings);
+    totalErrors += sections.editorAI.errors.length;
+    totalWarnings += sections.editorAI.warnings.length;
+  }
+
+  if (settings.appearanceSettings) {
+    sections.appearance = validateAppearanceSettings(settings.appearanceSettings);
+    totalErrors += sections.appearance.errors.length;
+    totalWarnings += sections.appearance.warnings.length;
+  }
+
+  if (settings.debugSettings) {
+    sections.debug = validateDebugSettings(settings.debugSettings);
+    totalErrors += sections.debug.errors.length;
+    totalWarnings += sections.debug.warnings.length;
+  }
+
+  if (settings.cacheSettings) {
+    sections.cache = validateCacheSettings(settings.cacheSettings);
+    totalErrors += sections.cache.errors.length;
+    totalWarnings += sections.cache.warnings.length;
+  }
+
+  if (settings.mcpSettings) {
+    sections.mcp = validateMCPSettings(settings.mcpSettings);
+    totalErrors += sections.mcp.errors.length;
+    totalWarnings += sections.mcp.warnings.length;
   }
 
   const valid = totalErrors === 0;
@@ -630,27 +1000,6 @@ export function sanitizeBrowserSettings(settings: Partial<BrowserSettings>): Bro
     trustedLocalhostPorts: (settings.trustedLocalhostPorts ?? defaults.trustedLocalhostPorts)
       .filter(p => typeof p === 'number' && p >= 1 && p <= 65535),
   };
-}
-
-/**
- * Sanitize semantic settings by clamping values to valid ranges
- */
-export function sanitizeSemanticSettings(settings: Partial<SemanticSettings>): SemanticSettings {
-  const defaults = DEFAULT_SEMANTIC_SETTINGS;
-  const result = {
-    ...defaults,
-    ...settings,
-  };
-
-  // Clamp values to valid ranges
-  result.targetChunkSize = Math.max(100, result.targetChunkSize ?? defaults.targetChunkSize);
-  result.minChunkSize = Math.max(50, result.minChunkSize ?? defaults.minChunkSize);
-  result.maxChunkSize = Math.max(result.minChunkSize, result.maxChunkSize ?? defaults.maxChunkSize);
-  result.hnswM = Math.max(4, Math.min(64, result.hnswM ?? defaults.hnswM));
-  result.hnswEfSearch = Math.max(10, Math.min(500, result.hnswEfSearch ?? defaults.hnswEfSearch));
-  result.minSearchScore = Math.max(0, Math.min(1, result.minSearchScore ?? defaults.minSearchScore));
-
-  return result;
 }
 
 /**

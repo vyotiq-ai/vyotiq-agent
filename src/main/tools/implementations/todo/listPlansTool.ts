@@ -180,6 +180,7 @@ ListPlans → See all plans in workspace
 
   searchKeywords: ['list', 'plans', 'tasks', 'history', 'all', 'show'],
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   ui: {
     icon: 'List',

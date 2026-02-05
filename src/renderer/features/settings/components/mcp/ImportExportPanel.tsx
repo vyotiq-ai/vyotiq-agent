@@ -173,19 +173,19 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
     }, [onImport]);
 
     return (
-      <div className={cn('space-y-4', className)}>
+      <div className={cn('space-y-3 sm:space-y-4', className)}>
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-medium text-[var(--color-text-primary)] flex items-center gap-2">
-            <FileJson className="w-4 h-4" />
+          <h3 className="text-[10px] sm:text-xs font-medium text-[var(--color-text-primary)] flex items-center gap-2">
+            <FileJson className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             Import / Export
           </h3>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
           {/* Export section */}
-          <div className="p-4 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)] space-y-3">
-            <h4 className="text-[11px] font-medium text-[var(--color-text-primary)]">Export</h4>
-            <p className="text-[10px] text-[var(--color-text-muted)]">
+          <div className="p-3 sm:p-4 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)] space-y-2 sm:space-y-3">
+            <h4 className="text-[10px] sm:text-[11px] font-medium text-[var(--color-text-primary)]">Export</h4>
+            <p className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)]">
               Download your server configurations as JSON. Environment variables are excluded for
               security.
             </p>
@@ -221,15 +221,15 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
                 {copied ? 'Copied' : 'Copy'}
               </Button>
             </div>
-            <p className="text-[9px] text-[var(--color-text-muted)]">
+            <p className="text-[8px] sm:text-[9px] text-[var(--color-text-muted)]">
               All installed servers will be exported
             </p>
           </div>
 
           {/* Import section */}
-          <div className="p-4 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)] space-y-3">
-            <h4 className="text-[11px] font-medium text-[var(--color-text-primary)]">Import</h4>
-            <p className="text-[10px] text-[var(--color-text-muted)]">
+          <div className="p-3 sm:p-4 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)] space-y-2 sm:space-y-3">
+            <h4 className="text-[10px] sm:text-[11px] font-medium text-[var(--color-text-primary)]">Import</h4>
+            <p className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)]">
               Import server configurations from a JSON file or clipboard. You'll need to
               reconfigure environment variables.
             </p>

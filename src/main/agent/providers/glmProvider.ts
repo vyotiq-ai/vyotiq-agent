@@ -108,15 +108,34 @@ export class GLMProvider extends BaseLLMProvider {
 
     const apiKey = this.assertApiKey();
     
+    // Default models to return on failure
+    const defaultGLMModels: GLMModel[] = [
+      { id: 'glm-4.7', object: 'model', owned_by: 'zhipu' },
+      { id: 'glm-4.6', object: 'model', owned_by: 'zhipu' },
+      { id: 'glm-4.5', object: 'model', owned_by: 'zhipu' },
+      { id: 'glm-4.5v', object: 'model', owned_by: 'zhipu' },
+    ];
+    
     try {
+      // Create a timeout controller
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => timeoutController.abort(), 10000); // 10 second timeout
+      
+      // Combine user signal with timeout
+      const combinedSignal = signal 
+        ? AbortSignal.any([signal, timeoutController.signal])
+        : timeoutController.signal;
+      
       const response = await fetch(`${this.baseUrl}/models`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Accept-Language': 'en-US,en',
         },
-        signal,
+        signal: combinedSignal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -124,14 +143,21 @@ export class GLMProvider extends BaseLLMProvider {
       }
 
       const data = await response.json();
-      this.cachedModels = data.data || [];
+      this.cachedModels = data.data || defaultGLMModels;
       this.modelsCacheTime = Date.now();
       
       logger.debug('Fetched GLM models', { count: this.cachedModels?.length });
-      return this.cachedModels || [];
+      return this.cachedModels || defaultGLMModels;
     } catch (error) {
-      logger.warn('Failed to fetch GLM models, using defaults', { error: error instanceof Error ? error.message : String(error) });
-      return [];
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Log at debug level for timeout/network errors since we have defaults
+      if (errorMessage.includes('abort') || errorMessage.includes('timeout') || errorMessage.includes('fetch failed')) {
+        logger.debug('GLM model fetch timeout/network error, using defaults', { error: errorMessage });
+      } else {
+        logger.warn('Failed to fetch GLM models, using defaults', { error: errorMessage });
+      }
+      // Return defaults instead of empty array
+      return defaultGLMModels;
     }
   }
 

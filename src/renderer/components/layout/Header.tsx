@@ -18,7 +18,7 @@ import { useAgentSelector } from '../../state/AgentProvider';
 import { useUI } from '../../state/UIProvider';
 import { useLifecycleProfiler } from '../../utils/profiler';
 import { cn } from '../../utils/cn';
-import { SessionSelector } from '../../features/chat/components/SessionSelector';
+import { SessionSelector } from '../../features/chat/components/sessionSelector';
 
 // =============================================================================
 // Types
@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
 }) {
   useLifecycleProfiler('Header');
 
-  const { handleNewSession, isWorking } = useAgentStatus();
+  const { handleNewSession } = useAgentStatus();
 
   const agentHeader = useAgentSelector(
     (state) => {
@@ -142,7 +142,7 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
         {/* Session selector - CLI style */}
         {hasWorkspace && (
           <div className="ml-2 pl-2 border-l border-[var(--color-border-subtle)]">
-            <SessionSelector disabled={isWorking} />
+            <SessionSelector />
           </div>
         )}
       </div>

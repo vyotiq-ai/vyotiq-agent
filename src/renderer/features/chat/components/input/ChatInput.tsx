@@ -115,25 +115,37 @@ interface ClearButtonProps {
 }
 
 const ClearButton: React.FC<ClearButtonProps> = memo(({ onClick, visible, disabled }) => {
-  if (!visible) return null;
-  
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!disabled) {
+      onClick();
+    }
+  }, [onClick, disabled]);
+
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={handleClick}
       disabled={disabled}
       className={cn(
-        'flex items-center gap-0.5 px-1 py-0.5 rounded-sm',
+        'flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm',
         'text-[9px] text-[var(--color-text-muted)]',
+        'transition-all duration-200 ease-out',
+        visible 
+          ? 'opacity-100 translate-x-0' 
+          : 'opacity-0 translate-x-1 pointer-events-none',
         'hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]',
-        'transition-all duration-150',
+        'active:scale-95',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
-        disabled && 'opacity-50 cursor-not-allowed'
+        disabled && 'opacity-30 cursor-not-allowed'
       )}
       title="Clear input (Escape)"
       aria-label="Clear message input"
+      aria-hidden={!visible}
+      tabIndex={visible ? 0 : -1}
     >
-      <X size={9} aria-hidden="true" />
+      <X size={10} aria-hidden="true" />
     </button>
   );
 });
@@ -150,6 +162,8 @@ const PLACEHOLDER_HINTS = [
   'ask me to fix, refactor, or add features...',
   'paste code or drop files to analyze...',
   'explain the problem you are facing...',
+  'give me instructions to follow...',
+  'tell me what you need help with...',
 ] as const;
 
 const FOLLOW_UP_HINTS = [
@@ -158,6 +172,9 @@ const FOLLOW_UP_HINTS = [
   'tell me what to do next...',
   'request modifications...',
   'ask for clarification...',
+  'give additional instructions...',
+  'let me know if you need anything else...',
+  'what should we do next...',
 ] as const;
 
 const ATTACHMENT_HINTS = [
@@ -171,37 +188,39 @@ const YOLO_HINTS = [
   'auto-confirm is ON - actions will execute immediately...',
   'YOLO mode active - no confirmation prompts...',
   'running in auto-confirm mode...',
+  'caution: all actions will execute without prompts...',
 ] as const;
 
 /**
  * Get a contextual placeholder based on conversation state
+ * Uses deterministic selection based on message count to avoid flicker
  */
 function getSmartPlaceholder(
   messageCount: number,
   attachmentCount: number,
-  yoloEnabled: boolean
+  yoloEnabled: boolean,
+  _isAgentBusy: boolean
 ): string {
-  // Show YOLO warning occasionally when enabled
-  if (yoloEnabled && Math.random() < 0.3) {
-    const idx = Math.floor(Math.random() * YOLO_HINTS.length);
+  // Show YOLO warning when enabled (deterministic based on message count)
+  if (yoloEnabled && messageCount % 4 === 0) {
+    const idx = (messageCount >> 2) % YOLO_HINTS.length;
     return YOLO_HINTS[idx];
   }
 
   // If there are attachments, suggest what to do with them
   if (attachmentCount > 0) {
-    const idx = Math.floor(Math.random() * ATTACHMENT_HINTS.length);
+    const idx = attachmentCount % ATTACHMENT_HINTS.length;
     return ATTACHMENT_HINTS[idx];
   }
   
   // If it's a follow-up message, use follow-up hints
   if (messageCount > 0) {
-    const idx = Math.floor(Math.random() * FOLLOW_UP_HINTS.length);
+    const idx = messageCount % FOLLOW_UP_HINTS.length;
     return FOLLOW_UP_HINTS[idx];
   }
   
-  // Initial message hints
-  const idx = Math.floor(Math.random() * PLACEHOLDER_HINTS.length);
-  return PLACEHOLDER_HINTS[idx];
+  // Initial message hints - deterministic
+  return PLACEHOLDER_HINTS[0];
 }
 
 // =============================================================================
@@ -334,6 +353,13 @@ export const ChatInput: React.FC = memo(() => {
       actionsRef.current.pauseRun(session.id);
     }
   }, []);
+
+  // Handle realtime maxIterations changes during agent run
+  const handleMaxIterationsChange = useCallback((value: number) => {
+    const session = activeSessionRef.current;
+    if (!session) return;
+    actionsRef.current.updateSessionConfig(session.id, { maxIterations: value });
+  }, []);
   
   // Global ESC key to stop running agent
   useEffect(() => {
@@ -394,6 +420,7 @@ export const ChatInput: React.FC = memo(() => {
           onTogglePause={handlePauseResume}
           currentIteration={currentIteration}
           maxIterations={maxIterations}
+          onMaxIterationsChange={handleMaxIterationsChange}
           todos={todos}
           todoStats={todoStats}
         />
@@ -440,7 +467,7 @@ export const ChatInput: React.FC = memo(() => {
                 }}
                 disabled={agentBusy}
                 hasWorkspace={hasWorkspace}
-                placeholder={getSmartPlaceholder(messageCount, attachments.length, yoloEnabled)}
+                placeholder={getSmartPlaceholder(messageCount, attachments.length, yoloEnabled, agentBusy ?? false)}
                 className="w-full"
                 maxHeight={220}
                 ariaDescribedBy="chat-input-hints"

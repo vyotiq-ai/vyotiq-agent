@@ -30,6 +30,9 @@ import { getModelQualityTracker } from './modelQuality';
 import { getSessionHealthMonitor } from './sessionHealth';
 import { validateMessages } from './utils/messageUtils';
 import { isQuotaOrBillingError, shouldTryFallback, isToolSupportError } from './utils/errorUtils';
+import { setSessionRunning } from '../ipc/eventBatcher';
+import { getThrottleController } from './performance/BackgroundThrottleController';
+import { getThrottleEventLogger } from './performance/ThrottleEventLogger';
 
 // Execution modules
 import { ProgressTracker } from './execution/progressTracker';
@@ -43,6 +46,7 @@ import { ToolQueueProcessor } from './execution/toolQueueProcessor';
 import { SessionQueueManager } from './execution/sessionQueueManager';
 import { PauseResumeManager } from './execution/pauseResumeManager';
 import { RequestBuilder } from './execution/requestBuilder';
+import { WorkspaceResourceManager } from './execution/workspaceResourceManager';
 
 interface RunExecutorDeps {
   providers: ProviderMap;
@@ -97,6 +101,8 @@ interface RunExecutorDeps {
     collectedAt: number;
   } | null>;
   onProviderHealth?: (provider: LLMProviderName, success: boolean, latencyMs: number) => void;
+  /** Workspace resource manager for multi-workspace concurrent session support */
+  workspaceResourceManager?: WorkspaceResourceManager;
 }
 
 export class RunExecutor {
@@ -157,6 +163,9 @@ export class RunExecutor {
   // Provider health tracking (can be set after construction)
   private onProviderHealth?: (provider: LLMProviderName, success: boolean, latencyMs: number) => void;
 
+  // Workspace resource manager for multi-workspace concurrent sessions
+  private readonly workspaceResourceManager?: WorkspaceResourceManager;
+
   // Default iteration settings
   private readonly defaultMaxIterations = 20;
   private readonly defaultMaxRetries = 2;
@@ -207,6 +216,7 @@ export class RunExecutor {
     this.getEditorState = deps.getEditorState;
     this.getWorkspaceDiagnostics = deps.getWorkspaceDiagnostics;
     this.onProviderHealth = deps.onProviderHealth;
+    this.workspaceResourceManager = deps.workspaceResourceManager;
 
     // Initialize debugger
     const debugSettings = this.getDebugSettings();
@@ -308,6 +318,7 @@ export class RunExecutor {
 
   /**
    * Get iteration settings from session config
+   * This is called on each iteration to support real-time updates to maxIterations
    */
   private getIterationSettings(session: InternalSession): {
     maxIterations: number;
@@ -320,6 +331,13 @@ export class RunExecutor {
       maxRetries: config.maxRetries ?? this.defaultMaxRetries,
       retryDelayMs: config.retryDelayMs ?? this.defaultRetryDelayMs,
     };
+  }
+
+  /**
+   * Get current maxIterations from session config (for dynamic updates during run)
+   */
+  private getCurrentMaxIterations(session: InternalSession): number {
+    return session.state.config.maxIterations ?? this.defaultMaxIterations;
   }
 
   /**
@@ -422,7 +440,7 @@ export class RunExecutor {
       runId,
     });
 
-    const { maxIterations } = this.getIterationSettings(session);
+    // Note: maxIterations is read dynamically in the loop to support real-time updates
 
     try {
       let providerForContinuation: LLMProvider | null = null;
@@ -452,8 +470,11 @@ export class RunExecutor {
       const startIteration = session.agenticContext?.iteration || 1;
       let iteration = startIteration;
 
-      while (iteration < maxIterations && !controller.signal.aborted) {
+      // Use dynamic maxIterations that can be updated during run
+      while (iteration < this.getCurrentMaxIterations(session) && !controller.signal.aborted) {
         iteration++;
+        // Re-read maxIterations on each iteration to support real-time updates
+        const currentMaxIterations = this.getCurrentMaxIterations(session);
 
         await this.pauseResumeManager.waitIfPaused(session.state.id);
 
@@ -511,7 +532,7 @@ export class RunExecutor {
           session.state.id,
           runId,
           iteration,
-          maxIterations,
+          currentMaxIterations,
           'executing',
           providerForContinuation.name,
           iterationModelId ?? undefined
@@ -543,17 +564,19 @@ export class RunExecutor {
         }
       }
 
-      if (iteration >= maxIterations) {
+      // Use final maxIterations value (may have been updated during run)
+      const finalMaxIterations = this.getCurrentMaxIterations(session);
+      if (iteration >= finalMaxIterations) {
         this.logger.warn('Max iterations reached after confirmation', {
           sessionId: session.state.id,
           runId,
-          maxIterations,
+          maxIterations: finalMaxIterations,
         });
         this.emitEvent({
           type: 'agent-status',
           sessionId: session.state.id,
           status: 'error',
-          message: `Maximum iterations (${maxIterations}) reached. The agent stopped to prevent an infinite loop.`,
+          message: `Maximum iterations (${finalMaxIterations}) reached. The agent stopped to prevent an infinite loop.`,
           timestamp: Date.now(),
         });
       }
@@ -572,10 +595,42 @@ export class RunExecutor {
     const controller = new AbortController();
     this.activeControllers.set(session.state.id, controller);
 
+    // Register session with workspace resource manager for concurrent session tracking
+    if (this.workspaceResourceManager) {
+      const registration = this.workspaceResourceManager.registerSession(session);
+      if (!registration.acquired) {
+        this.logger.warn('Failed to register session with workspace resource manager', {
+          sessionId: session.state.id,
+          workspaceId: session.state.workspaceId,
+          reason: registration.reason,
+        });
+        // Emit error but continue - resource manager is advisory
+        this.emitEvent({
+          type: 'agent-status',
+          sessionId: session.state.id,
+          status: 'error',
+          message: `Resource warning: ${registration.reason || 'Workspace session limit reached'}`,
+          timestamp: Date.now(),
+        });
+      }
+    }
+
     session.state.status = 'running';
     session.state.activeRunId = runId;
     session.agenticContext = this.createAgenticContext(runId);
     this.progressTracker.startAnalysisProgress(session, runId);
+
+    // Notify IPC event batcher that agent is running to disable background throttling
+    // This ensures responsive streaming during agent execution
+    setSessionRunning(session.state.id, true);
+    
+    // Notify throttle controller for coordinated throttle bypass
+    const throttleController = getThrottleController();
+    const throttleLogger = getThrottleEventLogger();
+    if (throttleController) {
+      throttleController.setAgentRunning(session.state.id, true);
+      throttleLogger.logAgentStarted(session.state.id, throttleController.getRunningSessions().length);
+    }
 
     // Initialize compliance tracking
     const lastUserMessage = session.state.messages.filter(m => m.role === 'user').pop();
@@ -679,8 +734,11 @@ export class RunExecutor {
       let providerIndex = 0;
       let iteration = 0;
 
-      while (iteration < maxIterations && !controller.signal.aborted) {
+      // Use dynamic maxIterations that can be updated during run
+      while (iteration < this.getCurrentMaxIterations(session) && !controller.signal.aborted) {
         iteration++;
+        // Re-read maxIterations on each iteration to support real-time updates
+        const currentMaxIterations = this.getCurrentMaxIterations(session);
 
         await this.pauseResumeManager.waitIfPaused(session.state.id);
 
@@ -737,7 +795,7 @@ export class RunExecutor {
           session.state.id,
           runId,
           iteration,
-          maxIterations,
+          currentMaxIterations,
           'executing',
           currentProvider.name,
           iterationModelId ?? undefined
@@ -876,10 +934,11 @@ export class RunExecutor {
         }
       }
 
-      if (iteration >= maxIterations) {
-        this.lifecycleManager.handleMaxIterationsReached(session, runId, maxIterations);
+      // Use final maxIterations value (may have been updated during run)
+      const finalMaxIterations = this.getCurrentMaxIterations(session);
+      if (iteration >= finalMaxIterations) {
+        this.lifecycleManager.handleMaxIterationsReached(session, runId, finalMaxIterations);
       }
-
       this.completeRun(session, runId);
     } catch (error) {
       this.handleRunError(session, runId, error as Error);
@@ -892,6 +951,26 @@ export class RunExecutor {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  /**
+   * Helper to notify both event batcher and throttle controller when session stops
+   */
+  private notifySessionStopped(sessionId: string, runDurationMs?: number): void {
+    // Notify IPC event batcher
+    setSessionRunning(sessionId, false);
+    
+    // Notify throttle controller
+    const throttleController = getThrottleController();
+    const throttleLogger = getThrottleEventLogger();
+    if (throttleController) {
+      throttleController.setAgentRunning(sessionId, false);
+      throttleLogger.logAgentStopped(
+        sessionId,
+        throttleController.getRunningSessions().length,
+        runDurationMs ?? 0
+      );
+    }
+  }
+
   cancelRun(sessionId: string, session: InternalSession): void {
     this.logger.info('cancelRun: Starting cancellation', {
       sessionId,
@@ -899,6 +978,10 @@ export class RunExecutor {
       sessionStatus: session.state.status,
       activeRunId: session.state.activeRunId
     });
+
+    // Notify IPC event batcher and throttle controller that this session stopped running
+    // Re-enables background throttling when no sessions are active
+    this.notifySessionStopped(sessionId);
 
     const clearedFromQueue = this.clearSessionQueue(sessionId);
     if (clearedFromQueue > 0) {
@@ -993,7 +1076,19 @@ export class RunExecutor {
       lastMessageRole: lastMessage?.role,
     });
 
+    // Calculate run duration from metrics
     const metricsResult = agentMetrics.completeRun(runId, 'completed');
+    const runDurationMs = metricsResult?.durationMs ?? 0;
+
+    // Notify IPC event batcher and throttle controller that this session stopped running
+    // Re-enables background throttling when no sessions are active
+    this.notifySessionStopped(session.state.id, runDurationMs);
+
+    // Unregister session from workspace resource manager
+    if (this.workspaceResourceManager) {
+      this.workspaceResourceManager.unregisterSession(session);
+    }
+
     if (metricsResult) {
       this.logger.debug('Run metrics recorded', {
         runId,
@@ -1059,6 +1154,15 @@ export class RunExecutor {
   private handleRunError(session: InternalSession, runId: string, error: Error): void {
     this.progressTracker.completeAnalysisProgress(session, runId, 'error');
     this.logger.error('Run failed', { sessionId: session.state.id, runId, error: error.message });
+
+    // Notify IPC event batcher and throttle controller that this session stopped running
+    // Re-enables background throttling when no sessions are active
+    this.notifySessionStopped(session.state.id);
+
+    // Unregister session from workspace resource manager
+    if (this.workspaceResourceManager) {
+      this.workspaceResourceManager.unregisterSession(session);
+    }
 
     agentMetrics.completeRun(runId, 'error');
 
@@ -1192,6 +1296,10 @@ export class RunExecutor {
    * This should be called when a session is deleted to prevent memory leaks.
    */
   cleanupDeletedSession(sessionId: string): void {
+    // Notify IPC event batcher and throttle controller that this session stopped running
+    // Re-enables background throttling when no sessions are active
+    this.notifySessionStopped(sessionId);
+
     // Abort any active controller for this session
     const controller = this.activeControllers.get(sessionId);
     if (controller) {

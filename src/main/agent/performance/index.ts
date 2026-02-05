@@ -14,6 +14,34 @@ export { BatchProcessor, createAPIBatchProcessor, createFileBatchProcessor } fro
 export { LazyLoader } from './LazyLoader';
 export { ResourceManager } from './ResourceManager';
 
+// Export background throttle controller
+export {
+  BackgroundThrottleController,
+  initThrottleController,
+  getThrottleController,
+  isAgentRunning as isAgentRunningThrottle,
+  getEffectiveInterval,
+  shouldBypassThrottle,
+  type ThrottleState,
+  type ThrottleConfig,
+  type ThrottleEvent,
+  type ThrottleStats,
+  type ThrottleReason,
+  type ThrottleBypassReason,
+  DEFAULT_THROTTLE_CONFIG,
+} from './BackgroundThrottleController';
+
+// Export throttle event logger
+export {
+  ThrottleEventLogger,
+  getThrottleEventLogger,
+  createThrottleEventLogger,
+  type ThrottleLogCategory,
+  type ThrottleLogEntry,
+  type ThrottleLogConfig,
+  DEFAULT_THROTTLE_LOG_CONFIG,
+} from './ThrottleEventLogger';
+
 import type { PerformanceDeps } from './types';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { CachingLayer } from './CachingLayer';

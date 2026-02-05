@@ -653,6 +653,202 @@ export interface ProviderRequest {
   cache?: CacheConfig;
 }
 
+// =============================================================================
+// Message Validation Utilities
+// =============================================================================
+
+export interface MessageValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  cleanedMessages?: ProviderMessage[];
+}
+
+/**
+ * Validates a single message for required fields and content integrity.
+ */
+export function validateMessage(message: ProviderMessage, index: number): { valid: boolean; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Check role
+  if (!message.role) {
+    errors.push(`Message ${index}: Missing required 'role' field`);
+  } else if (!['system', 'user', 'assistant', 'tool'].includes(message.role)) {
+    errors.push(`Message ${index}: Invalid role '${message.role}'. Must be system, user, assistant, or tool`);
+  }
+
+  // Check content based on role
+  if (message.role === 'assistant') {
+    // Assistant messages can have content, tool calls, or thinking
+    const hasContent = message.content && message.content.trim().length > 0;
+    const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
+    const hasThinking = message.thinking && message.thinking.trim().length > 0;
+    const hasGeneratedMedia = message.generatedImages?.length || message.generatedAudio;
+    
+    if (!hasContent && !hasToolCalls && !hasThinking && !hasGeneratedMedia) {
+      errors.push(`Message ${index}: Assistant message must have content, tool calls, thinking, or generated media`);
+    }
+  } else if (message.role === 'tool') {
+    // Tool messages must have content and toolCallId
+    if (!message.toolCallId) {
+      errors.push(`Message ${index}: Tool message missing required 'toolCallId' field`);
+    }
+    // Content can be empty for tool results (e.g., void operations)
+  } else if (message.role === 'user') {
+    // User messages should have content or attachments
+    const hasContent = message.content && message.content.trim().length > 0;
+    const hasAttachments = message.attachments && message.attachments.length > 0;
+    
+    if (!hasContent && !hasAttachments) {
+      warnings.push(`Message ${index}: User message has no content or attachments`);
+    }
+  }
+
+  // Validate tool calls if present
+  if (message.toolCalls) {
+    for (let i = 0; i < message.toolCalls.length; i++) {
+      const toolCall = message.toolCalls[i];
+      if (!toolCall.callId) {
+        errors.push(`Message ${index}, ToolCall ${i}: Missing required 'callId' field`);
+      }
+      if (!toolCall.name) {
+        errors.push(`Message ${index}, ToolCall ${i}: Missing required 'name' field`);
+      }
+    }
+  }
+
+  // Validate attachments if present
+  if (message.attachments) {
+    for (let i = 0; i < message.attachments.length; i++) {
+      const attachment = message.attachments[i];
+      if (!attachment.mimeType) {
+        warnings.push(`Message ${index}, Attachment ${i}: Missing 'mimeType' field`);
+      }
+      if (!attachment.content) {
+        warnings.push(`Message ${index}, Attachment ${i}: Missing 'content' field`);
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+/**
+ * Validates an array of messages for a provider request.
+ * Checks for structural integrity, proper ordering, and required fields.
+ */
+export function validateMessages(messages: ProviderMessage[]): MessageValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!messages || !Array.isArray(messages)) {
+    return { valid: false, errors: ['Messages must be an array'], warnings: [] };
+  }
+
+  if (messages.length === 0) {
+    return { valid: false, errors: ['Messages array cannot be empty'], warnings: [] };
+  }
+
+  // Validate each message
+  for (let i = 0; i < messages.length; i++) {
+    const result = validateMessage(messages[i], i);
+    errors.push(...result.errors);
+    warnings.push(...result.warnings);
+  }
+
+  // Check message ordering: should typically alternate user/assistant
+  // (with tool messages allowed after assistant tool calls)
+  let _lastRole: string | undefined;
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    
+    // Tool messages should follow assistant messages with tool calls
+    if (msg.role === 'tool') {
+      // Find the preceding assistant message
+      let foundToolCall = false;
+      for (let j = i - 1; j >= 0; j--) {
+        if (messages[j].role === 'assistant' && messages[j].toolCalls?.length) {
+          foundToolCall = true;
+          break;
+        }
+        if (messages[j].role === 'user') {
+          break; // Went past where we'd expect the assistant
+        }
+      }
+      if (!foundToolCall) {
+        warnings.push(`Message ${i}: Tool message without preceding assistant tool call`);
+      }
+    }
+    
+    _lastRole = msg.role;
+  }
+
+  // Check that last message is not system (unusual pattern)
+  if (messages[messages.length - 1].role === 'system') {
+    warnings.push('Last message is a system message - this is unusual');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
+/**
+ * Filters out empty or invalid messages that would cause API errors.
+ * Returns cleaned messages array and any issues found.
+ */
+export function cleanMessages(messages: ProviderMessage[]): { messages: ProviderMessage[]; removed: number; issues: string[] } {
+  const issues: string[] = [];
+  let removed = 0;
+  
+  const cleaned = messages.filter((msg, idx) => {
+    // Keep all user messages (even if empty - they may have attachments processed later)
+    if (msg.role === 'user') {
+      return true;
+    }
+    
+    // Keep assistant messages with tool calls, thinking, generated media, or content
+    if (msg.role === 'assistant') {
+      const hasContent = msg.content && msg.content.trim().length > 0;
+      const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0;
+      const hasThinking = msg.thinking && msg.thinking.trim().length > 0;
+      const hasGeneratedMedia = msg.generatedImages?.length || msg.generatedAudio;
+      
+      if (!hasContent && !hasToolCalls && !hasThinking && !hasGeneratedMedia) {
+        issues.push(`Removed empty assistant message at index ${idx}`);
+        removed++;
+        return false;
+      }
+      return true;
+    }
+    
+    // Keep tool messages with toolCallId
+    if (msg.role === 'tool') {
+      if (!msg.toolCallId) {
+        issues.push(`Removed tool message without toolCallId at index ${idx}`);
+        removed++;
+        return false;
+      }
+      return true;
+    }
+    
+    // Keep system messages
+    if (msg.role === 'system') {
+      return true;
+    }
+    
+    // Unknown role - remove
+    issues.push(`Removed message with unknown role '${msg.role}' at index ${idx}`);
+    removed++;
+    return false;
+  });
+  
+  return { messages: cleaned, removed, issues };
+}
+
 export interface LLMProvider {
   readonly name: LLMProviderName;
   /** Whether this provider supports prompt caching */
@@ -674,6 +870,61 @@ export abstract class BaseLLMProvider implements LLMProvider {
       throw new Error(`${this.name} API key is not configured.`);
     }
     return this.apiKey;
+  }
+
+  /**
+   * Validates and cleans a provider request before sending to the API.
+   * Throws an error if the request is invalid.
+   * Returns the request with cleaned messages if needed.
+   */
+  protected validateRequest(request: ProviderRequest): ProviderRequest {
+    // Validate messages
+    const validation = validateMessages(request.messages);
+    
+    if (!validation.valid) {
+      logger.error('Message validation failed', { 
+        errors: validation.errors,
+        provider: this.name 
+      });
+      throw new Error(`Invalid messages: ${validation.errors.join('; ')}`);
+    }
+    
+    // Log warnings but don't fail
+    if (validation.warnings.length > 0) {
+      logger.warn('Message validation warnings', { 
+        warnings: validation.warnings,
+        provider: this.name 
+      });
+    }
+    
+    // Clean messages to remove empty entries
+    const { messages: cleanedMessages, removed, issues } = cleanMessages(request.messages);
+    
+    if (removed > 0) {
+      logger.warn('Removed invalid messages during cleanup', { 
+        removed, 
+        issues,
+        provider: this.name 
+      });
+    }
+    
+    // Validate config
+    if (request.config.temperature < 0 || request.config.temperature > 2) {
+      logger.warn('Temperature out of typical range', { 
+        temperature: request.config.temperature,
+        provider: this.name 
+      });
+    }
+    
+    if (request.config.maxOutputTokens <= 0) {
+      throw new Error('maxOutputTokens must be positive');
+    }
+    
+    // Return request with cleaned messages
+    return {
+      ...request,
+      messages: cleanedMessages,
+    };
   }
 
   abstract generate(request: ProviderRequest): Promise<ProviderResponse>;

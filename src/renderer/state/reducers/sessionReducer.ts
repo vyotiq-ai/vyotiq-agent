@@ -18,7 +18,8 @@ export type SessionAction =
   | { type: 'SESSION_RENAME'; payload: { sessionId: string; title: string } }
   | { type: 'SESSION_DELETE'; payload: string }
   | { type: 'SESSIONS_CLEAR' }
-  | { type: 'SESSIONS_CLEAR_FOR_WORKSPACE'; payload: string };
+  | { type: 'SESSIONS_CLEAR_FOR_WORKSPACE'; payload: string }
+  | { type: 'SESSIONS_CLEAR_FOR_WORKSPACE_PRESERVE_RUNNING'; payload: string };
 
 /**
  * Handle session upsert (create or update)
@@ -363,6 +364,14 @@ export function sessionReducer(
         pendingConfirmations: {},
         agentStatus: {},
         streamingSessions: new Set(),
+        // Also clear all other session-related state for complete cleanup
+        routingDecisions: {},
+        contextMetrics: {},
+        todos: {},
+        toolResults: {},
+        inlineArtifacts: {},
+        sessionCost: {},
+        terminalStreams: {},
       };
       
     case 'SESSIONS_CLEAR_FOR_WORKSPACE':

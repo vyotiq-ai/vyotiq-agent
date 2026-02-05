@@ -92,6 +92,22 @@ let toolSelectionCache: ToolSelectionCache | null = null;
 const TOOL_SELECTION_CACHE_TTL = 2000; // 2 seconds - recompute after this
 
 /**
+ * Invalidate tool selection cache for a specific session
+ */
+function invalidateToolSelectionCache(sessionId: string): void {
+  if (toolSelectionCache && toolSelectionCache.sessionId === sessionId) {
+    toolSelectionCache = null;
+  }
+}
+
+/**
+ * Clear all tool selection caches (for testing)
+ */
+export function clearToolSelectionCache(): void {
+  toolSelectionCache = null;
+}
+
+/**
  * Get or create session tool state
  */
 export function getSessionToolState(sessionId: string): SessionToolState {
@@ -128,6 +144,8 @@ export function addAgentRequestedTools(
     reason,
     timestamp: Date.now(),
   });
+  // Invalidate cache since tools changed
+  invalidateToolSelectionCache(sessionId);
   logger.debug('Agent requested tools', { sessionId, toolNames, reason });
 }
 
@@ -139,6 +157,8 @@ export function addDiscoveredTools(sessionId: string, toolNames: string[]): void
   for (const name of toolNames) {
     state.discoveredTools.add(name);
   }
+  // Invalidate cache since tools changed
+  invalidateToolSelectionCache(sessionId);
   logger.debug('Tools discovered', { sessionId, toolNames });
 }
 
@@ -485,7 +505,6 @@ const CORE_TOOLS = [
   'grep',
   'glob',
   'run',
-  'codebase_search', // Semantic search for understanding codebase structure and finding relevant code
 ];
 
 /**
@@ -816,12 +835,12 @@ function getToolsForIntent(intent: TaskIntent): string[] {
       return [...CORE_TOOLS, ...DIAGNOSTICS_TOOLS, 'check_terminal'];
 
     case 'research':
-      // Research: minimal core + semantic search + essential browser tools
-      return ['read', 'ls', 'grep', 'glob', 'codebase_search', ...ESSENTIAL_BROWSER_TOOLS, 'browser_extract'];
+      // Research: minimal core + essential browser tools
+      return ['read', 'ls', 'grep', 'glob', ...ESSENTIAL_BROWSER_TOOLS, 'browser_extract'];
 
     case 'file-exploration':
-      // File exploration: minimal set + semantic search for understanding codebase
-      return ['read', 'ls', 'glob', 'grep', 'codebase_search'];
+      // File exploration: minimal set for understanding codebase
+      return ['read', 'ls', 'glob', 'grep'];
 
     case 'terminal-operations':
       // Terminal: minimal core + terminal tools

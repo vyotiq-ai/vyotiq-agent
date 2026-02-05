@@ -27,6 +27,7 @@ import { FileTreeItem } from './FileTreeItem';
 import { FileTreeContextMenu } from './FileTreeContextMenu';
 import { NewItemInput } from './NewItemInput';
 import { FileTreeSearch } from './FileTreeSearch';
+import { useConfirm } from '../../../components/ui/ConfirmModal';
 import type { ContextMenuAction } from '../types';
 
 interface FileTreeProps {
@@ -82,6 +83,8 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
     setFocusedPath,
   } = useFileTree({ workspacePath, onFileOpen });
   
+  const { confirm, ConfirmDialog } = useConfirm();
+  
   const [newItemState, setNewItemState] = useState<{
     type: 'file' | 'folder';
     parentPath: string;
@@ -127,8 +130,20 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
         break;
         
       case 'delete':
-        if (!preferences.confirmDelete || confirm(`Delete "${targetPath.split('/').pop()}"?`)) {
+        if (!preferences.confirmDelete) {
           void deleteItem(targetPath);
+        } else {
+          void (async () => {
+            const confirmed = await confirm({
+              title: 'Delete Item',
+              message: `Are you sure you want to delete "${targetPath.split('/').pop()}"?`,
+              confirmLabel: 'Delete',
+              variant: 'destructive',
+            });
+            if (confirmed) {
+              void deleteItem(targetPath);
+            }
+          })();
         }
         break;
         
@@ -183,7 +198,7 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
         expandAll();
         break;
     }
-  }, [expandPath, startRenaming, deleteItem, cut, copy, paste, canPaste, copyPath, revealInExplorer, refresh, collapseAll, expandAll, preferences.confirmDelete]);
+  }, [expandPath, startRenaming, deleteItem, cut, copy, paste, canPaste, copyPath, revealInExplorer, refresh, collapseAll, expandAll, preferences.confirmDelete, confirm]);
   
   // Handle new item creation
   const handleNewItemSubmit = useCallback(async (name: string) => {
@@ -276,8 +291,22 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
           e.preventDefault();
           if (focusedPath) {
             const node = flatNodes.find(n => n.path === focusedPath);
-            if (node && (!preferences.confirmDelete || confirm(`Delete "${node.name}"?`))) {
-              deleteItem(focusedPath);
+            if (node) {
+              if (!preferences.confirmDelete) {
+                deleteItem(focusedPath);
+              } else {
+                void (async () => {
+                  const confirmed = await confirm({
+                    title: 'Delete Item',
+                    message: `Are you sure you want to delete "${node.name}"?`,
+                    confirmLabel: 'Delete',
+                    variant: 'destructive',
+                  });
+                  if (confirmed) {
+                    deleteItem(focusedPath);
+                  }
+                })();
+              }
             }
           }
         }
@@ -333,7 +362,7 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
         }
         break;
     }
-  }, [flatNodes, renamingPath, newItemState, focusedPath, navigateDown, navigateUp, navigateInto, navigateOut, toggleExpand, openFile, startRenaming, deleteItem, selectPath, copy, cut, paste, canPaste, showSearch, clearSearch, preferences.confirmDelete]);
+  }, [flatNodes, renamingPath, newItemState, focusedPath, navigateDown, navigateUp, navigateInto, navigateOut, toggleExpand, openFile, startRenaming, deleteItem, selectPath, copy, cut, paste, canPaste, showSearch, clearSearch, preferences.confirmDelete, confirm]);
   
   // Focus container when clicking empty area
   const handleContainerClick = useCallback(() => {
@@ -531,6 +560,7 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
         onAction={handleContextMenuAction}
         onClose={closeContextMenu}
       />
+      <ConfirmDialog />
     </div>
   );
 };

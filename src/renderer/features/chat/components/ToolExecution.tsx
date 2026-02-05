@@ -18,10 +18,11 @@
  * />
  */
 import React, { memo, useMemo, useState, useCallback, useRef } from 'react';
-import { ChevronDown, ChevronRight, FileCode, Check, Plus, Minus, Folder, Search, FileText } from 'lucide-react';
+import { ChevronDown, ChevronRight, Check, Plus, Minus } from 'lucide-react';
 import type { ChatMessage, ToolResultEvent } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
 import { useEditor } from '../../../state/EditorProvider';
+import { ToolIconDisplay, getToolIcon } from '../../../components/ui/ToolIcons';
 
 import { ToolItem } from './toolExecution/ToolItem';
 import { buildToolCalls } from '../utils/buildToolCalls';
@@ -205,9 +206,9 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
   }
 
   return (
-    <div className="font-mono text-[11px] min-w-0 w-full overflow-hidden">
+    <div className="font-mono text-[11px] min-w-0 w-full">
       {/* Tool list with grouping */}
-      <div className="space-y-0.5 min-w-0 w-full overflow-hidden">
+      <div className="space-y-0.5 min-w-0 w-full">
         {groupedTools.map((item, idx) => {
           if (item.type === 'single') {
             return (
@@ -260,13 +261,13 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
 function getToolGroupInfo(category: string): { icon: React.ElementType; label: string } {
   switch (category) {
     case 'ls':
-      return { icon: Folder, label: 'directories' };
+      return { icon: getToolIcon('ls'), label: 'directories' };
     case 'read':
-      return { icon: FileText, label: 'files' };
+      return { icon: getToolIcon('read'), label: 'files' };
     case 'search':
-      return { icon: Search, label: 'searches' };
+      return { icon: getToolIcon('search'), label: 'searches' };
     default:
-      return { icon: FileCode, label: 'operations' };
+      return { icon: getToolIcon('edit'), label: 'operations' };
   }
 }
 
@@ -286,7 +287,7 @@ const ToolOperationGroup: React.FC<{
   const hasErrors = errorCount > 0;
 
   return (
-    <div className={cn('group/toolgroup min-w-0 overflow-hidden', !isLast && 'mb-0.5')}>
+    <div className={cn('group/toolgroup min-w-0', !isLast && 'mb-0.5')}>
       {/* Group header */}
       <button
         type="button"
@@ -404,7 +405,7 @@ const FileOperationGroup: React.FC<{
   const hasErrors = stats.errors > 0;
 
   return (
-    <div className={cn('group/filegroup min-w-0 overflow-hidden', !isLast && 'mb-0.5')}>
+    <div className={cn('group/filegroup min-w-0', !isLast && 'mb-0.5')}>
       {/* Group header */}
       <button
         type="button"
@@ -428,7 +429,7 @@ const FileOperationGroup: React.FC<{
         )} />
 
         {/* File icon */}
-        <FileCode size={10} className="text-[var(--color-text-muted)] flex-shrink-0" />
+        <ToolIconDisplay toolName="edit" size={11} status="completed" />
 
         {/* Summary text */}
         <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">

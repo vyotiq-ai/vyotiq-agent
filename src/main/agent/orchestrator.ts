@@ -11,6 +11,7 @@ import type {
   LLMProviderName,
   ConversationBranch,
   SessionSummary,
+  WorkspaceResourceMetrics,
 } from '../../shared/types';
 import { DEFAULT_TOOL_CONFIG_SETTINGS } from '../../shared/types';
 import type { SettingsStore } from './settingsStore';
@@ -29,6 +30,8 @@ import { ProviderManager } from './providerManager';
 import { initRecovery, getSelfHealingAgent } from './recovery';
 import { initGitIntegration } from './git';
 import { ModelQualityTracker } from './modelQuality';
+import { WorkspaceResourceManager } from './execution/workspaceResourceManager';
+import { initMultiSessionManager, getMultiSessionManager, type MultiSessionManager } from './execution/multiSessionManager';
 
 interface OrchestratorDeps {
   settingsStore: SettingsStore;
@@ -44,6 +47,8 @@ export class AgentOrchestrator extends EventEmitter {
   private readonly toolRegistry: ToolRegistry;
   private readonly terminalManager: TerminalManager;
   private readonly modelQualityTracker: ModelQualityTracker;
+  private readonly workspaceResourceManager: WorkspaceResourceManager;
+  private multiSessionManager: MultiSessionManager | null = null;
 
   private sessionManager: SessionManager;
   private runExecutor: RunExecutor;
@@ -87,6 +92,15 @@ export class AgentOrchestrator extends EventEmitter {
     // Initialize model quality tracking
     this.modelQualityTracker = new ModelQualityTracker();
 
+    // Initialize workspace resource manager for multi-workspace concurrent session support
+    this.workspaceResourceManager = new WorkspaceResourceManager(this.logger, {
+      maxSessionsPerWorkspace: 5,
+      maxToolExecutionsPerWorkspace: 10,
+      rateLimitWindowMs: 60_000,
+      maxRequestsPerWindow: 60,
+      minRequestDelayMs: 100,
+    });
+
     const toolLogger: ToolLogger = {
       info: (message: string, meta?: Record<string, unknown>) => this.logger.info(`[tool] ${message}`, meta),
       warn: (message: string, meta?: Record<string, unknown>) => this.logger.warn(`[tool] ${message}`, meta),
@@ -126,6 +140,7 @@ export class AgentOrchestrator extends EventEmitter {
       },
       getEditorState: () => this.getEditorState(),
       getWorkspaceDiagnostics: () => this.getWorkspaceDiagnostics(),
+      workspaceResourceManager: this.workspaceResourceManager,
     });
 
     // Initialize new managers
@@ -174,6 +189,19 @@ export class AgentOrchestrator extends EventEmitter {
     // Load persisted sessions from disk into memory
     await this.sessionManager.load();
     this.providerManager.validateConfiguration();
+
+    // Initialize multi-session manager for concurrent session support across workspaces
+    this.multiSessionManager = initMultiSessionManager(
+      this.logger,
+      this.workspaceResourceManager,
+      (event) => this.emitEvent(event),
+      {
+        maxGlobalConcurrent: 10,
+        maxPerWorkspaceConcurrent: 5,
+        emitCrossWorkspaceEvents: true,
+      }
+    );
+    this.logger.info('Multi-session manager initialized for concurrent session support');
 
     // Initialize git integration components
     try {
@@ -555,11 +583,13 @@ export class AgentOrchestrator extends EventEmitter {
   }
 
   async updateConfig(payload: UpdateConfigPayload): Promise<void> {
-    // updateConfig is for per-session config updates (like yoloMode toggle)
+    // updateConfig is for per-session config updates (like yoloMode toggle, maxIterations, etc.)
     this.logger.debug('updateConfig called for session', { sessionId: payload.sessionId, config: payload.config });
 
     const session = this.sessionManager.getSession(payload.sessionId);
     if (session) {
+      const previousMaxIterations = session.state.config.maxIterations;
+      
       // Merge the new config with existing config
       const updatedConfig = { ...session.state.config, ...payload.config };
 
@@ -567,6 +597,34 @@ export class AgentOrchestrator extends EventEmitter {
       this.sessionManager.updateSessionState(payload.sessionId, {
         config: updatedConfig,
       });
+
+      // If maxIterations changed during an active run, emit real-time update
+      if (
+        payload.config.maxIterations !== undefined &&
+        payload.config.maxIterations !== previousMaxIterations &&
+        session.state.status === 'running'
+      ) {
+        this.logger.info('maxIterations updated during active run', {
+          sessionId: payload.sessionId,
+          previousMaxIterations,
+          newMaxIterations: payload.config.maxIterations,
+          currentIteration: session.agenticContext?.iteration,
+        });
+
+        // Emit agent-status with updated iteration info for real-time UI update
+        this.emitEvent({
+          type: 'agent-status',
+          sessionId: payload.sessionId,
+          status: 'executing',
+          message: `Max iterations updated to ${payload.config.maxIterations}`,
+          timestamp: Date.now(),
+          metadata: {
+            currentIteration: session.agenticContext?.iteration,
+            maxIterations: payload.config.maxIterations,
+            provider: session.agenticContext?.currentProvider,
+          },
+        });
+      }
 
       // Emit session-state update to reflect config changes
       this.emitEvent({ type: 'session-state', session: session.state });
@@ -611,8 +669,28 @@ export class AgentOrchestrator extends EventEmitter {
   deleteSession(sessionId: string): void {
     // Clean up run executor resources for this session (abort controllers, queues, etc.)
     this.runExecutor.cleanupDeletedSession(sessionId);
+    
+    // Clean up session-state emit throttle tracking to prevent memory leaks
+    this.cleanupSessionThrottleTracking(sessionId);
+    
     // Delete the session from storage and memory
     this.sessionManagementHandler.deleteSession(sessionId);
+  }
+
+  /**
+   * Clean up session-state emit throttle tracking for a deleted session.
+   * Prevents memory leaks from accumulating throttle state for deleted sessions.
+   */
+  private cleanupSessionThrottleTracking(sessionId: string): void {
+    // Clear the last emit time tracking
+    this.lastSessionStateEmitTime.delete(sessionId);
+    
+    // Cancel and clear any pending emit timer
+    const pendingTimer = this.pendingSessionStateEmits.get(sessionId);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      this.pendingSessionStateEmits.delete(sessionId);
+    }
   }
 
 
@@ -633,6 +711,130 @@ export class AgentOrchestrator extends EventEmitter {
 
   getActiveWorkspaceSessions(): AgentSessionState[] {
     return this.sessionManagementHandler.getActiveWorkspaceSessions();
+  }
+
+  // ===========================================================================
+  // Multi-Session Management
+  // ===========================================================================
+
+  /**
+   * Get all running sessions across all workspaces
+   * Used for showing global activity indicators in the UI
+   */
+  getAllRunningSessions(): AgentSessionState[] {
+    return this.sessionManager.getAllActiveSessions();
+  }
+
+  /**
+   * Get global session statistics for multi-workspace concurrent execution
+   */
+  getGlobalSessionStats(): {
+    totalRunning: number;
+    totalQueued: number;
+    runningByWorkspace: Record<string, number>;
+    canStartNew: boolean;
+  } {
+    if (!this.multiSessionManager) {
+      return {
+        totalRunning: this.sessionManager.getAllActiveSessions().length,
+        totalQueued: 0,
+        runningByWorkspace: {},
+        canStartNew: true,
+      };
+    }
+
+    const stats = this.multiSessionManager.getGlobalStats();
+    return {
+      totalRunning: stats.totalRunning,
+      totalQueued: stats.totalQueued,
+      runningByWorkspace: Object.fromEntries(stats.runningByWorkspace),
+      canStartNew: stats.totalRunning < 10, // maxGlobalConcurrent
+    };
+  }
+
+  /**
+   * Get detailed running session information for all workspaces
+   */
+  getDetailedRunningSessions(): Array<{
+    sessionId: string;
+    workspaceId: string;
+    status: string;
+    startedAt: number;
+    iteration: number;
+    maxIterations: number;
+    provider?: string;
+  }> {
+    if (!this.multiSessionManager) {
+      return this.sessionManager.getAllActiveSessions().map(s => ({
+        sessionId: s.id,
+        workspaceId: s.workspaceId ?? 'default',
+        status: s.status,
+        startedAt: s.updatedAt,
+        iteration: 0,
+        maxIterations: s.config.maxIterations ?? 20,
+        provider: s.config.preferredProvider,
+      }));
+    }
+
+    return this.multiSessionManager.getAllRunningSessions().map(info => ({
+      sessionId: info.sessionId,
+      workspaceId: info.workspaceId,
+      status: info.status,
+      startedAt: info.startedAt,
+      iteration: info.iteration,
+      maxIterations: info.maxIterations,
+      provider: info.provider,
+    }));
+  }
+
+  /**
+   * Check if a new session can be started (within concurrency limits)
+   */
+  canStartNewSession(workspaceId: string): { allowed: boolean; reason?: string } {
+    if (!this.multiSessionManager) {
+      return { allowed: true };
+    }
+    return this.multiSessionManager.canStartSession(workspaceId);
+  }
+
+  /**
+   * Notify multi-session manager when a run starts
+   * Called internally by runExecutor
+   */
+  notifyRunStarted(sessionId: string, runId: string, maxIterations: number): void {
+    const session = this.sessionManager.getSession(sessionId);
+    if (session && this.multiSessionManager) {
+      this.multiSessionManager.registerSessionStart(session, runId, maxIterations);
+    }
+  }
+
+  /**
+   * Notify multi-session manager when a run completes
+   * Called internally by runExecutor
+   */
+  notifyRunCompleted(sessionId: string): void {
+    if (this.multiSessionManager) {
+      this.multiSessionManager.registerSessionComplete(sessionId);
+    }
+  }
+
+  /**
+   * Notify multi-session manager when a run has an error
+   * Called internally by runExecutor
+   */
+  notifyRunError(sessionId: string, error: string): void {
+    if (this.multiSessionManager) {
+      this.multiSessionManager.registerSessionError(sessionId, error);
+    }
+  }
+
+  /**
+   * Update multi-session manager with run progress
+   */
+  notifyRunProgress(sessionId: string, iteration: number, provider?: string): void {
+    if (this.multiSessionManager) {
+      this.multiSessionManager.updateSessionProgress(sessionId, { iteration, provider });
+    }
   }
 
   async regenerate(sessionId: string): Promise<void> {
@@ -763,6 +965,135 @@ export class AgentOrchestrator extends EventEmitter {
       }
     }
     return result;
+  }
+
+  // ==========================================================================
+  // Workspace Resource Management Methods (Multi-workspace Concurrent Sessions)
+  // ==========================================================================
+
+  /**
+   * Get resource metrics for all active workspaces
+   */
+  getWorkspaceResourceMetrics(): Map<string, WorkspaceResourceMetrics> {
+    return this.workspaceResourceManager.getMetrics();
+  }
+
+  /**
+   * Get resource metrics for a specific workspace
+   */
+  getWorkspaceMetrics(workspaceId: string): WorkspaceResourceMetrics | null {
+    return this.workspaceResourceManager.getWorkspaceMetrics(workspaceId);
+  }
+
+  /**
+   * Check if a workspace has any active sessions
+   */
+  hasActiveWorkspaceSessions(workspaceId: string): boolean {
+    return this.workspaceResourceManager.hasActiveSessions(workspaceId);
+  }
+
+  /**
+   * Get active session count for a specific workspace
+   */
+  getActiveWorkspaceSessionCount(workspaceId: string): number {
+    return this.workspaceResourceManager.getActiveSessionCount(workspaceId);
+  }
+
+  /**
+   * Get total active sessions across all workspaces
+   */
+  getTotalActiveSessionCount(): number {
+    return this.workspaceResourceManager.getTotalActiveSessions();
+  }
+
+  /**
+   * Initialize workspace resources (called when opening a workspace tab)
+   */
+  initializeWorkspaceResources(workspaceId: string): void {
+    this.workspaceResourceManager.initializeWorkspace(workspaceId);
+  }
+
+  /**
+   * Clean up workspace resources (called when closing a workspace tab)
+   */
+  cleanupWorkspaceResources(workspaceId: string): void {
+    this.workspaceResourceManager.cleanupWorkspace(workspaceId);
+  }
+
+  /**
+   * Register callback for workspace resource metrics updates
+   */
+  onWorkspaceResourceMetricsUpdate(
+    callback: (metrics: Map<string, WorkspaceResourceMetrics>) => void
+  ): () => void {
+    return this.workspaceResourceManager.onMetricsUpdate(callback);
+  }
+
+  /**
+   * Get current resource limits configuration
+   */
+  getResourceLimits(): {
+    maxSessionsPerWorkspace: number;
+    maxToolExecutionsPerWorkspace: number;
+    rateLimitWindowMs: number;
+    maxRequestsPerWindow: number;
+  } {
+    const limits = this.workspaceResourceManager.getLimits();
+    return {
+      maxSessionsPerWorkspace: limits.maxSessionsPerWorkspace,
+      maxToolExecutionsPerWorkspace: limits.maxToolExecutionsPerWorkspace,
+      rateLimitWindowMs: limits.rateLimitWindowMs,
+      maxRequestsPerWindow: limits.maxRequestsPerWindow,
+    };
+  }
+
+  /**
+   * Update resource limits configuration
+   */
+  updateResourceLimits(limits: {
+    maxSessionsPerWorkspace?: number;
+    maxToolExecutionsPerWorkspace?: number;
+    rateLimitWindowMs?: number;
+    maxRequestsPerWindow?: number;
+  }): void {
+    this.workspaceResourceManager.updateLimits(limits);
+  }
+
+  /**
+   * Get concurrent execution statistics across all workspaces
+   * Returns aggregate metrics for multi-workspace session management
+   */
+  getConcurrentExecutionStats(): {
+    totalActiveSessions: number;
+    workspaceCount: number;
+    metricsPerWorkspace: Array<{
+      workspaceId: string;
+      sessionCount: number;
+      activeToolExecutions: number;
+    }>;
+    resourceLimits: {
+      maxSessionsPerWorkspace: number;
+      maxToolExecutionsPerWorkspace: number;
+    };
+  } {
+    const metrics = this.workspaceResourceManager.getMetrics();
+    const limits = this.workspaceResourceManager.getLimits();
+    
+    const metricsPerWorkspace = Array.from(metrics.entries()).map(([workspaceId, m]) => ({
+      workspaceId,
+      sessionCount: m.activeSessions,
+      activeToolExecutions: m.activeToolExecutions,
+    }));
+    
+    return {
+      totalActiveSessions: this.workspaceResourceManager.getTotalActiveSessions(),
+      workspaceCount: metrics.size,
+      metricsPerWorkspace,
+      resourceLimits: {
+        maxSessionsPerWorkspace: limits.maxSessionsPerWorkspace,
+        maxToolExecutionsPerWorkspace: limits.maxToolExecutionsPerWorkspace,
+      },
+    };
   }
 
   // ==========================================================================
@@ -922,20 +1253,6 @@ export class AgentOrchestrator extends EventEmitter {
         });
       }
 
-      // Shutdown Semantic Indexer
-      try {
-        const { getSemanticIndexer } = await import('./semantic');
-        const indexer = getSemanticIndexer();
-        if (indexer) {
-          await indexer.shutdown();
-          this.logger.debug('Semantic indexer shutdown complete');
-        }
-      } catch (error) {
-        this.logger.warn('Error shutting down semantic indexer', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-
       // Kill all running terminal processes
       const killedCount = await this.terminalManager.killAll();
       if (killedCount > 0) {
@@ -950,6 +1267,16 @@ export class AgentOrchestrator extends EventEmitter {
 
       // Remove terminal event listeners to prevent memory leaks
       this.terminalEventHandler.removeEventListeners();
+
+      // Dispose workspace resource manager
+      try {
+        this.workspaceResourceManager.dispose();
+        this.logger.debug('Workspace resource manager disposed');
+      } catch (error) {
+        this.logger.warn('Error disposing workspace resource manager', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       // Clear editor state log timer if pending
       if (this.editorStateLogTimer) {

@@ -6,23 +6,33 @@
 
 export * from './SettingsPanel';
 
+// Settings hooks - modular settings management
+export * from './hooks';
+
+// Settings configuration
+export * from './config';
+
 // Settings components - exported for direct use if needed
 export { SettingsAccess } from './components/SettingsAccess';
 export { SettingsAdvanced } from './components/SettingsAdvanced';
 export { SettingsAgent } from './components/SettingsAgent';
-export { SettingsAPIKeys } from './components/SettingsAPIKeys';
 export { SettingsAppearance } from './components/SettingsAppearance';
-export { SettingsBehavior } from './components/SettingsBehavior';
 export { SettingsBrowser } from './components/SettingsBrowser';
 export { SettingsCompliance } from './components/SettingsCompliance';
 export { SettingsDebugging } from './components/SettingsDebugging';
 export { SettingsEditorAI } from './components/SettingsEditorAI';
-export { SettingsIndexing } from './components/SettingsIndexing';
 export { SettingsModels } from './components/SettingsModels';
 export { SettingsPerformance } from './components/SettingsPerformance';
 export { SettingsPrompts } from './components/SettingsPrompts';
 export { SettingsProviders } from './components/SettingsProviders';
-export { SettingsRateLimits } from './components/SettingsRateLimits';
 export { SettingsRouting } from './components/SettingsRouting';
 export { SettingsSafety } from './components/SettingsSafety';
+export { SettingsAutonomous } from './components/SettingsAutonomous';
+export { SettingsMCP } from './components/SettingsMCP';
 export { MetricsDashboard } from './components/MetricsDashboard';
+
+// Layout components
+export * from './components/layout';
+
+// Re-export primitives for external use
+export * from './primitives';

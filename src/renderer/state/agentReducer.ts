@@ -274,6 +274,7 @@ export type AgentAction =
   | { type: 'SESSION_DELETE'; payload: string }
   | { type: 'SESSIONS_CLEAR' } // Clear all sessions completely
   | { type: 'SESSIONS_CLEAR_FOR_WORKSPACE'; payload: string } // Clear sessions not belonging to workspace
+  | { type: 'SESSIONS_CLEAR_FOR_WORKSPACE_PRESERVE_RUNNING'; payload: string } // Clear non-running sessions not belonging to workspace (preserves running sessions from other workspaces)
   | { type: 'PROGRESS_UPDATE'; payload: { sessionId: string; groupId: string; groupTitle: string; startedAt: number; item: ProgressItem } }
   | { type: 'ARTIFACT_ADD'; payload: { sessionId: string; artifact: ArtifactCard } }
   | { type: 'CLEAR_SESSION_TASK_STATE'; payload: string }
@@ -660,6 +661,65 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
       const removedSessionIds = new Set(
         state.sessions
           .filter(s => s.workspaceId !== workspaceId)
+          .map(s => s.id)
+      );
+
+      const progressGroups = Object.fromEntries(
+        Object.entries(state.progressGroups).filter(([id]) => !removedSessionIds.has(id))
+      );
+      const artifacts = Object.fromEntries(
+        Object.entries(state.artifacts).filter(([id]) => !removedSessionIds.has(id))
+      );
+
+      const sessionCost = Object.fromEntries(
+        Object.entries(state.sessionCost).filter(([id]) => !removedSessionIds.has(id))
+      ) as AgentUIState['sessionCost'];
+
+      // Clean up todos for removed sessions
+      const todos = Object.fromEntries(
+        Object.entries(state.todos).filter(([id]) => !removedSessionIds.has(id))
+      );
+
+      return {
+        ...state,
+        sessions,
+        activeSessionId,
+        progressGroups,
+        artifacts,
+        sessionCost,
+        todos,
+      };
+    }
+    case 'SESSIONS_CLEAR_FOR_WORKSPACE_PRESERVE_RUNNING': {
+      // Remove sessions that don't belong to the specified workspace
+      // BUT preserve running sessions from other workspaces for multi-workspace concurrent support
+      const workspaceId = action.payload;
+      
+      // Keep sessions that:
+      // 1. Belong to the target workspace, OR
+      // 2. Are running/awaiting-confirmation (even if from other workspaces)
+      const sessions = state.sessions.filter(
+        (session) => 
+          session.workspaceId === workspaceId ||
+          session.status === 'running' ||
+          session.status === 'awaiting-confirmation'
+      );
+
+      // Clear active session if it doesn't belong to the workspace
+      const activeSession = state.sessions.find(s => s.id === state.activeSessionId);
+      const workspaceSessions = sessions.filter(s => s.workspaceId === workspaceId);
+      const activeSessionId = (activeSession?.workspaceId === workspaceId)
+        ? state.activeSessionId
+        : workspaceSessions[0]?.id;
+
+      // Clean up task state for removed sessions (non-running sessions from other workspaces)
+      const removedSessionIds = new Set(
+        state.sessions
+          .filter(s => 
+            s.workspaceId !== workspaceId && 
+            s.status !== 'running' && 
+            s.status !== 'awaiting-confirmation'
+          )
           .map(s => s.id)
       );
 

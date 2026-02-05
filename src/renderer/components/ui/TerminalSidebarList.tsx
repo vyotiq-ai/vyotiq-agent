@@ -7,6 +7,7 @@ export interface ListItem {
     isActive?: boolean;
     metadata?: string | number;
     tooltip?: string;
+    badge?: string;
 }
 
 export interface ListGroup {
@@ -19,6 +20,8 @@ interface TerminalSidebarListProps {
     groups: ListGroup[];
     onSelect: (id: string) => void;
     onRemove?: (e: React.MouseEvent, id: string) => void;
+    /** Called on middle-click or Ctrl+click to open in new tab */
+    onMiddleClick?: (id: string) => void;
     isLoading?: boolean;
     typeLabel?: string;
     emptyState?: {
@@ -34,12 +37,32 @@ export const TerminalSidebarList: React.FC<TerminalSidebarListProps> = ({
     groups,
     onSelect,
     onRemove,
+    onMiddleClick,
     isLoading,
     typeLabel,
     emptyState,
     warning,
 }) => {
     const totalItems = groups.reduce((acc, g) => acc + g.items.length, 0);
+
+    // Handle click with modifier keys
+    const handleItemClick = (e: React.MouseEvent, id: string) => {
+        // Middle-click or Ctrl+click opens in new tab
+        if ((e.button === 1 || e.ctrlKey || e.metaKey) && onMiddleClick) {
+            e.preventDefault();
+            onMiddleClick(id);
+        } else if (e.button === 0) {
+            onSelect(id);
+        }
+    };
+
+    // Handle middle-click specifically
+    const handleMouseDown = (e: React.MouseEvent, id: string) => {
+        if (e.button === 1 && onMiddleClick) {
+            e.preventDefault();
+            onMiddleClick(id);
+        }
+    };
 
     return (
         <div className={collapsed ? 'mt-1' : 'mt-1 text-[10px] min-w-0 overflow-hidden'}>
@@ -101,7 +124,8 @@ export const TerminalSidebarList: React.FC<TerminalSidebarListProps> = ({
                                                 : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-2)]/50',
                                             isLoading && 'opacity-50 pointer-events-none'
                                         )}
-                                        onClick={() => onSelect(item.id)}
+                                        onClick={(e) => handleItemClick(e, item.id)}
+                                        onMouseDown={(e) => handleMouseDown(e, item.id)}
                                         title={item.tooltip || item.label}
                                     >
                                         {!collapsed && (
@@ -113,6 +137,11 @@ export const TerminalSidebarList: React.FC<TerminalSidebarListProps> = ({
                                             <span className="text-[var(--color-accent-primary)] text-[9px] flex-shrink-0">❯</span>
                                         )}
                                         <span className="truncate min-w-0 flex-1">{item.label}</span>
+                                        {!collapsed && item.badge && (
+                                            <span className="text-[9px] text-[var(--color-accent-secondary)] flex-shrink-0">
+                                                {item.badge}
+                                            </span>
+                                        )}
                                         {!collapsed && item.metadata !== undefined && (
                                             <span className="text-[9px] text-[var(--color-text-dim)] flex-shrink-0">
                                                 [{item.metadata}]

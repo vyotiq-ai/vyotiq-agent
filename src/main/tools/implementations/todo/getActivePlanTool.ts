@@ -231,6 +231,7 @@ GetActivePlan
 
   searchKeywords: ['active', 'current', 'plan', 'resume', 'progress', 'status'],
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   ui: {
     icon: 'FileSearch',

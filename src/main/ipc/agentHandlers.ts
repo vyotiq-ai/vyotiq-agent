@@ -347,4 +347,144 @@ export function registerAgentHandlers(context: IpcContext): void {
       return false;
     }
   });
+
+  // ==========================================================================
+  // Multi-Workspace Session Operations
+  // ==========================================================================
+
+  /**
+   * Get all running sessions across all workspaces
+   * Useful for showing global activity indicators
+   */
+  ipcMain.handle('agent:get-all-running-sessions', () => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) return [];
+      
+      const sessions = orchestrator.getSessions();
+      return sessions.filter(s => s.status === 'running' || s.status === 'awaiting-confirmation');
+    } catch (error) {
+      logger.error('Failed to get running sessions', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return [];
+    }
+  });
+
+  /**
+   * Get running session count per workspace
+   * Returns a map of workspaceId -> running count
+   */
+  ipcMain.handle('agent:get-running-sessions-by-workspace', () => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) return {};
+      
+      const sessions = orchestrator.getSessions();
+      const runningByWorkspace: Record<string, number> = {};
+      
+      for (const session of sessions) {
+        if (session.status === 'running' || session.status === 'awaiting-confirmation') {
+          const workspaceId = session.workspaceId ?? 'unknown';
+          runningByWorkspace[workspaceId] = (runningByWorkspace[workspaceId] ?? 0) + 1;
+        }
+      }
+      
+      return runningByWorkspace;
+    } catch (error) {
+      logger.error('Failed to get running sessions by workspace', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return {};
+    }
+  });
+
+  /**
+   * Get global session statistics for multi-workspace concurrent execution
+   */
+  ipcMain.handle('agent:get-global-session-stats', () => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) return null;
+      
+      return orchestrator.getGlobalSessionStats();
+    } catch (error) {
+      logger.error('Failed to get global session stats', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return null;
+    }
+  });
+
+  /**
+   * Get detailed running session information across all workspaces
+   */
+  ipcMain.handle('agent:get-detailed-running-sessions', () => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) return [];
+      
+      return orchestrator.getDetailedRunningSessions();
+    } catch (error) {
+      logger.error('Failed to get detailed running sessions', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return [];
+    }
+  });
+
+  /**
+   * Check if a new session can be started in a workspace
+   */
+  ipcMain.handle('agent:can-start-session', (_event, workspaceId: string) => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) return { allowed: true };
+      
+      return orchestrator.canStartNewSession(workspaceId);
+    } catch (error) {
+      logger.error('Failed to check if can start session', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return { allowed: true };
+    }
+  });
+
+  /**
+   * Get workspace resource metrics for multi-workspace management
+   */
+  ipcMain.handle('agent:get-workspace-resources', async () => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) return null;
+      
+      // Get resource metrics from the orchestrator
+      const metrics = orchestrator.getWorkspaceResourceMetrics?.();
+      return metrics ?? null;
+    } catch (error) {
+      logger.error('Failed to get workspace resources', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return null;
+    }
+  });
+
+  /**
+   * Get concurrent execution statistics
+   */
+  ipcMain.handle('agent:get-concurrent-stats', async () => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) return null;
+      
+      // Get execution stats if available
+      const stats = orchestrator.getConcurrentExecutionStats?.();
+      return stats ?? null;
+    } catch (error) {
+      logger.error('Failed to get concurrent stats', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      return null;
+    }
+  });
 }

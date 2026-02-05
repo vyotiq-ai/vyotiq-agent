@@ -14,6 +14,10 @@ const logger = createLogger('SessionList');
  * Sessions without a workspaceId (legacy sessions) are NOT shown by default to prevent
  * workspace confusion. They can be shown by setting `showLegacySessions: true`.
  * 
+ * Session switching while agent is running:
+ * - When user switches to a different session while agent is running,
+ *   the previous session's run is automatically cancelled for clean state transition.
+ * 
  * @param options.filterByWorkspace - If true (default), only shows sessions for active workspace
  * @param options.showLegacySessions - If true, shows sessions without workspaceId (default: false)
  * @returns Session list management utilities
@@ -125,7 +129,7 @@ export const useSessionList = (options?: {
     return actions.startSession();
   }, [actions, activeWorkspaceId]);
 
-  const handleSelectSession = useCallback((sessionId: string) => {
+  const handleSelectSession = useCallback(async (sessionId: string) => {
     // Prevent re-entry during selection
     if (isSelectingRef.current) return;
     
@@ -150,6 +154,22 @@ export const useSessionList = (options?: {
     
     isSelectingRef.current = true;
     try {
+      // Check if current session is running and cancel it before switching
+      const currentSession = snapshot.sessionsMeta.find(s => s.id === activeSessionId);
+      if (currentSession && activeSessionId && 
+          (currentSession.status === 'running' || currentSession.status === 'awaiting-confirmation')) {
+        logger.info('Cancelling running session before switching', {
+          fromSession: activeSessionId,
+          toSession: sessionId,
+        });
+        try {
+          await actions.cancelRun(activeSessionId);
+        } catch (cancelError) {
+          logger.warn('Failed to cancel previous session run', { error: cancelError });
+          // Continue with session switch even if cancel fails
+        }
+      }
+      
       actions.setActiveSession(sessionId);
     } finally {
       // Reset after a small delay to allow state to settle

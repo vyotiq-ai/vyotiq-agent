@@ -27,7 +27,6 @@ import {
   buildCustomPrompt,
   buildCommunicationStyle,
   buildToolCategories,
-  buildSemanticContext,
   buildMCPContext,
   buildGitContext,
   buildAgentInstructions,
@@ -73,9 +72,6 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
     buildAccessLevel(accessLevelSettings),
     buildToolsReference(context.toolDefinitions),
     buildToolCategories(),
-
-    // Semantic context - relevant code snippets
-    buildSemanticContext(context.semanticContext),
 
     // MCP context - external tool servers
     buildMCPContext(context.mcpContext),

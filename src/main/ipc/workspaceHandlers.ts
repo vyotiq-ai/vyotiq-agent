@@ -158,6 +158,254 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
   });
 
   // ==========================================================================
+  // Multi-Workspace Tab Management
+  // ==========================================================================
+
+  /**
+   * Get the current multi-workspace state including open tabs
+   */
+  ipcMain.handle('workspace:get-tabs', () => {
+    try {
+      const manager = getWorkspaceManager();
+      const state = manager.getMultiWorkspaceState();
+      const tabs = state.tabs.map(tab => {
+        const workspace = manager.list().find(w => w.id === tab.workspaceId);
+        return {
+          ...tab,
+          workspace: workspace || null,
+        };
+      });
+      return {
+        success: true,
+        tabs,
+        focusedTabId: state.focusedTabId,
+        maxTabs: state.maxTabs,
+      };
+    } catch (error) {
+      logger.error('Failed to get workspace tabs', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Open a workspace in a new tab (or focus existing)
+   */
+  ipcMain.handle('workspace:open-tab', async (_event, workspaceId: string) => {
+    try {
+      const manager = getWorkspaceManager();
+      const tabs = await manager.openTab(workspaceId);
+      const state = manager.getMultiWorkspaceState();
+      
+      // Emit tab update event
+      emitToRenderer({
+        type: 'workspace-tabs-update',
+        tabs,
+        focusedTabId: state.focusedTabId,
+      });
+
+      // Also emit workspace update for backward compatibility
+      const entries = manager.list();
+      emitToRenderer({ type: 'workspace-update', workspaces: entries });
+
+      // Initialize services for the newly opened workspace
+      const workspace = entries.find(e => e.id === workspaceId);
+      if (workspace) {
+        await initializeWorkspaceServices(workspace.path);
+      }
+
+      return { success: true, tabs, focusedTabId: state.focusedTabId };
+    } catch (error) {
+      logger.error('Failed to open workspace tab', {
+        workspaceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Close a workspace tab
+   */
+  ipcMain.handle('workspace:close-tab', async (_event, workspaceId: string) => {
+    try {
+      const manager = getWorkspaceManager();
+      const tabs = await manager.closeTab(workspaceId);
+      const state = manager.getMultiWorkspaceState();
+      
+      emitToRenderer({
+        type: 'workspace-tabs-update',
+        tabs,
+        focusedTabId: state.focusedTabId,
+      });
+
+      const entries = manager.list();
+      emitToRenderer({ type: 'workspace-update', workspaces: entries });
+
+      return { success: true, tabs, focusedTabId: state.focusedTabId };
+    } catch (error) {
+      logger.error('Failed to close workspace tab', {
+        workspaceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Focus a workspace tab
+   */
+  ipcMain.handle('workspace:focus-tab', async (_event, workspaceId: string) => {
+    try {
+      const manager = getWorkspaceManager();
+      const tabs = await manager.focusTab(workspaceId);
+      const state = manager.getMultiWorkspaceState();
+      
+      emitToRenderer({
+        type: 'workspace-tabs-update',
+        tabs,
+        focusedTabId: state.focusedTabId,
+      });
+
+      const entries = manager.list();
+      emitToRenderer({ type: 'workspace-update', workspaces: entries });
+
+      // Initialize services for the focused workspace
+      const workspace = entries.find(e => e.id === workspaceId);
+      if (workspace) {
+        await initializeWorkspaceServices(workspace.path);
+      }
+
+      return { success: true, tabs, focusedTabId: state.focusedTabId };
+    } catch (error) {
+      logger.error('Failed to focus workspace tab', {
+        workspaceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Reorder workspace tabs
+   */
+  ipcMain.handle('workspace:reorder-tabs', async (_event, workspaceId: string, newOrder: number) => {
+    try {
+      const manager = getWorkspaceManager();
+      const tabs = await manager.reorderTabs(workspaceId, newOrder);
+      const state = manager.getMultiWorkspaceState();
+      
+      emitToRenderer({
+        type: 'workspace-tabs-update',
+        tabs,
+        focusedTabId: state.focusedTabId,
+      });
+
+      return { success: true, tabs, focusedTabId: state.focusedTabId };
+    } catch (error) {
+      logger.error('Failed to reorder workspace tabs', {
+        workspaceId,
+        newOrder,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Get active workspaces (workspaces with open tabs)
+   */
+  ipcMain.handle('workspace:get-active-workspaces', () => {
+    try {
+      const manager = getWorkspaceManager();
+      const activeWorkspaces = manager.getActiveWorkspaces();
+      return { success: true, workspaces: activeWorkspaces };
+    } catch (error) {
+      logger.error('Failed to get active workspaces', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Set maximum tabs limit
+   */
+  ipcMain.handle('workspace:set-max-tabs', async (_event, maxTabs: number) => {
+    try {
+      const manager = getWorkspaceManager();
+      await manager.setMaxTabs(maxTabs);
+      return { success: true, maxTabs };
+    } catch (error) {
+      logger.error('Failed to set max tabs', {
+        maxTabs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Helper to initialize workspace services (file watcher, LSP, diagnostics)
+   */
+  const initializeWorkspaceServices = async (workspacePath: string): Promise<void> => {
+    // Initialize git service
+    await getGitService().init(workspacePath);
+
+    // Start file watcher
+    try {
+      const { watchWorkspace, setLSPChangeHandler } = await import('../workspaces/fileWatcher');
+      await watchWorkspace(workspacePath);
+
+      const { getLSPBridge } = await import('../lsp');
+      setLSPChangeHandler((filePath, changeType) => {
+        const bridge = getLSPBridge();
+        if (bridge) {
+          bridge.onFileChanged(filePath, changeType);
+        }
+      });
+      logger.debug('File watcher started for workspace', { workspacePath });
+    } catch (error) {
+      logger.warn('Failed to start file watcher', {
+        workspacePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Initialize LSP manager
+    try {
+      const { getLSPManager } = await import('../lsp');
+      const lspManager = getLSPManager();
+      if (lspManager) {
+        await lspManager.initialize(workspacePath);
+        logger.debug('LSP manager initialized for workspace', { workspacePath });
+      }
+    } catch (error) {
+      logger.warn('Failed to initialize LSP manager', {
+        workspacePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Initialize TypeScript diagnostics
+    try {
+      const existingService = getTypeScriptDiagnosticsService();
+      if (existingService) {
+        existingService.dispose();
+      }
+      const tsDiagnosticsService = initTypeScriptDiagnosticsService(logger);
+      await tsDiagnosticsService.initialize(workspacePath);
+      logger.debug('TypeScript diagnostics initialized for workspace', { workspacePath });
+    } catch (error) {
+      logger.warn('Failed to initialize TypeScript diagnostics', {
+        workspacePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  // ==========================================================================
   // Workspace Diagnostics
   // ==========================================================================
 
@@ -544,6 +792,171 @@ export function registerWorkspaceHandlers(context: IpcContext): void {
         scannedAt: Date.now(),
         errors: [{ path: '', error: error instanceof Error ? error.message : 'Unknown error' }],
       };
+    }
+  });
+
+  // ==========================================================================
+  // Workspace Resource Management (Multi-workspace Concurrent Sessions)
+  // ==========================================================================
+
+  /**
+   * Get resource metrics for all active workspaces
+   */
+  ipcMain.handle('workspace:get-resource-metrics', () => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) {
+        return { success: false, error: 'Orchestrator not initialized' };
+      }
+
+      const metricsMap = orchestrator.getWorkspaceResourceMetrics();
+      const metrics = Array.from(metricsMap.entries()).map(([id, m]) => ({
+        workspaceId: id,
+        ...m,
+      }));
+
+      return { success: true, metrics };
+    } catch (error) {
+      logger.error('Failed to get workspace resource metrics', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Get resource metrics for a specific workspace
+   */
+  ipcMain.handle('workspace:get-workspace-metrics', (_event, workspaceId: string) => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) {
+        return { success: false, error: 'Orchestrator not initialized' };
+      }
+
+      const metrics = orchestrator.getWorkspaceMetrics(workspaceId);
+      if (!metrics) {
+        return { success: true, metrics: null };
+      }
+
+      return { success: true, metrics };
+    } catch (error) {
+      logger.error('Failed to get workspace metrics', {
+        workspaceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Get total active sessions across all workspaces
+   */
+  ipcMain.handle('workspace:get-total-active-sessions', () => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) {
+        return { success: false, error: 'Orchestrator not initialized' };
+      }
+
+      const count = orchestrator.getTotalActiveSessionCount();
+      return { success: true, count };
+    } catch (error) {
+      logger.error('Failed to get total active sessions', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Get resource limits configuration
+   */
+  ipcMain.handle('workspace:get-resource-limits', () => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) {
+        return { success: false, error: 'Orchestrator not initialized' };
+      }
+
+      const limits = orchestrator.getResourceLimits();
+      return { success: true, limits };
+    } catch (error) {
+      logger.error('Failed to get resource limits', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Update resource limits configuration
+   */
+  ipcMain.handle('workspace:update-resource-limits', (_event, limits: {
+    maxSessionsPerWorkspace?: number;
+    maxToolExecutionsPerWorkspace?: number;
+    rateLimitWindowMs?: number;
+    maxRequestsPerWindow?: number;
+  }) => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) {
+        return { success: false, error: 'Orchestrator not initialized' };
+      }
+
+      orchestrator.updateResourceLimits(limits);
+      logger.info('Updated workspace resource limits', { limits });
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to update resource limits', {
+        limits,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Initialize workspace resources (for pre-warming)
+   */
+  ipcMain.handle('workspace:init-resources', (_event, workspaceId: string) => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) {
+        return { success: false, error: 'Orchestrator not initialized' };
+      }
+
+      orchestrator.initializeWorkspaceResources(workspaceId);
+      logger.debug('Initialized workspace resources', { workspaceId });
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to initialize workspace resources', {
+        workspaceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Cleanup workspace resources
+   */
+  ipcMain.handle('workspace:cleanup-resources', (_event, workspaceId: string) => {
+    try {
+      const orchestrator = getOrchestrator();
+      if (!orchestrator) {
+        return { success: false, error: 'Orchestrator not initialized' };
+      }
+
+      orchestrator.cleanupWorkspaceResources(workspaceId);
+      logger.debug('Cleaned up workspace resources', { workspaceId });
+      return { success: true };
+    } catch (error) {
+      logger.error('Failed to cleanup workspace resources', {
+        workspaceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: (error as Error).message };
     }
   });
 }

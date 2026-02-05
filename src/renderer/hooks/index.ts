@@ -119,6 +119,13 @@ export {
   type VirtualItem,
 } from './useVirtualizedList';
 
+export {
+  useThrottleControl,
+  useAdaptiveThrottle,
+  useAdaptiveRafThrottle,
+  type ThrottleControlState,
+} from './useThrottleControl';
+
 // =============================================================================
 // Search Hooks
 // =============================================================================
@@ -152,20 +159,6 @@ export { useFirstRun } from './useFirstRun';
 // =============================================================================
 
 export { useTodos } from './useTodos';
-
-// =============================================================================
-// Semantic Indexing Hooks
-// =============================================================================
-
-export {
-  useSemanticIndex,
-  type IndexingProgress,
-  type IndexerStats,
-  type SearchOptions,
-  type SearchResult,
-  type SemanticSearchResult,
-  type UseSemanticIndexReturn,
-} from './useSemanticIndex';
 
 // =============================================================================
 // MCP (Model Context Protocol) Hooks
@@ -215,3 +208,27 @@ export {
   type UseFormValidationResult,
 } from './useFormValidation';
 
+// =============================================================================
+// Multi-Workspace Session Hooks
+// =============================================================================
+
+export {
+  useWorkspaceSessions,
+  useAllRunningSessions,
+  useWorkspaceActivity,
+  type WorkspaceSessionsState,
+  type WorkspaceSessionsActions,
+} from './useWorkspaceSessions';
+
+// =============================================================================
+// UI Utility Hooks
+// =============================================================================
+
+export {
+  useResizablePanel,
+  useResizeObserver,
+  type ResizeDirection,
+  type ResizablePanelOptions,
+  type ResizablePanelResult,
+  type UseResizeObserverOptions,
+} from './useResizablePanel';

@@ -6,6 +6,7 @@
  * - Update settings
  * - Reset settings to defaults
  * - Validate settings
+ * - Safe settings access (excludes API keys)
  */
 
 import { ipcMain } from 'electron';
@@ -14,6 +15,7 @@ import type { IpcContext } from './types';
 import type { AgentSettings } from '../../shared/types';
 import { getToolResultCache, getContextCache } from '../agent/cache';
 import { withErrorGuard } from './guards';
+import { validateAllSettings } from '../agent/settingsValidation';
 
 const logger = createLogger('IPC:Settings');
 
@@ -27,46 +29,41 @@ interface ValidationError {
 }
 
 /**
- * Validate settings values for correctness
+ * Validate settings values for correctness using comprehensive validators
  */
 function validateSettings(settings: Partial<AgentSettings>): ValidationError[] {
   const errors: ValidationError[] = [];
   
-  // Validate defaultConfig
-  if (settings.defaultConfig) {
-    const config = settings.defaultConfig;
-    
-    if (config.temperature !== undefined && (config.temperature < 0 || config.temperature > 2)) {
-      errors.push({ field: 'defaultConfig.temperature', message: 'Temperature must be between 0 and 2' });
-    }
-    
-    if (config.maxOutputTokens !== undefined && (config.maxOutputTokens < 1 || config.maxOutputTokens > 200000)) {
-      errors.push({ field: 'defaultConfig.maxOutputTokens', message: 'Max output tokens must be between 1 and 200000' });
-    }
-    
-    if (config.maxIterations !== undefined && (config.maxIterations < 1 || config.maxIterations > 100)) {
-      errors.push({ field: 'defaultConfig.maxIterations', message: 'Max iterations must be between 1 and 100' });
-    }
-    
-    if (config.maxRetries !== undefined && (config.maxRetries < 0 || config.maxRetries > 10)) {
-      errors.push({ field: 'defaultConfig.maxRetries', message: 'Max retries must be between 0 and 10' });
-    }
-  }
-  
-  // Validate safetySettings
-  if (settings.safetySettings) {
-    const safety = settings.safetySettings;
-    
-    if (safety.maxFilesPerRun !== undefined && (safety.maxFilesPerRun < 1 || safety.maxFilesPerRun > 1000)) {
-      errors.push({ field: 'safetySettings.maxFilesPerRun', message: 'Max files per run must be between 1 and 1000' });
-    }
-    
-    if (safety.maxBytesPerRun !== undefined && (safety.maxBytesPerRun < 1024 || safety.maxBytesPerRun > 100 * 1024 * 1024)) {
-      errors.push({ field: 'safetySettings.maxBytesPerRun', message: 'Max bytes per run must be between 1KB and 100MB' });
+  // Use comprehensive validation from settingsValidation.ts
+  const fullValidation = validateAllSettings({
+    defaultConfig: settings.defaultConfig,
+    browserSettings: settings.browserSettings,
+    complianceSettings: settings.complianceSettings,
+    accessLevelSettings: settings.accessLevelSettings,
+    taskRoutingSettings: settings.taskRoutingSettings,
+    promptSettings: settings.promptSettings,
+    toolSettings: settings.autonomousFeatureFlags?.toolSettings,
+    safetySettings: settings.safetySettings,
+    editorAISettings: settings.editorAISettings,
+    appearanceSettings: settings.appearanceSettings,
+    debugSettings: settings.debugSettings,
+    cacheSettings: settings.cacheSettings,
+    mcpSettings: settings.mcpSettings,
+  });
+
+  // Convert full validation result to ValidationError array
+  for (const [_section, result] of Object.entries(fullValidation.sections)) {
+    if (result && result.errors) {
+      for (const error of result.errors) {
+        errors.push({
+          field: error.field,
+          message: error.message,
+        });
+      }
     }
   }
   
-  // Validate cacheSettings
+  // Validate cacheSettings (deep validation not fully covered by comprehensive validators)
   if (settings.cacheSettings) {
     const cache = settings.cacheSettings;
     
@@ -76,27 +73,6 @@ function validateSettings(settings: Partial<AgentSettings>): ValidationError[] {
     
     if (cache.contextCache?.maxSizeMb !== undefined && (cache.contextCache.maxSizeMb < 1 || cache.contextCache.maxSizeMb > 1024)) {
       errors.push({ field: 'cacheSettings.contextCache.maxSizeMb', message: 'Max cache size must be between 1MB and 1024MB' });
-    }
-  }
-  
-  // Validate semanticSettings
-  if (settings.semanticSettings) {
-    const semantic = settings.semanticSettings;
-    
-    if (semantic.targetChunkSize !== undefined && (semantic.targetChunkSize < 100 || semantic.targetChunkSize > 10000)) {
-      errors.push({ field: 'semanticSettings.targetChunkSize', message: 'Target chunk size must be between 100 and 10000' });
-    }
-    
-    if (semantic.maxFileSize !== undefined && (semantic.maxFileSize < 1024 || semantic.maxFileSize > 10 * 1024 * 1024)) {
-      errors.push({ field: 'semanticSettings.maxFileSize', message: 'Max file size must be between 1KB and 10MB' });
-    }
-    
-    if (semantic.hnswM !== undefined && (semantic.hnswM < 4 || semantic.hnswM > 64)) {
-      errors.push({ field: 'semanticSettings.hnswM', message: 'HNSW M parameter must be between 4 and 64' });
-    }
-    
-    if (semantic.minSearchScore !== undefined && (semantic.minSearchScore < 0 || semantic.minSearchScore > 1)) {
-      errors.push({ field: 'semanticSettings.minSearchScore', message: 'Min search score must be between 0 and 1' });
     }
   }
   
@@ -146,14 +122,15 @@ function applyCacheSettings(settings: AgentSettings): void {
 }
 
 export function registerSettingsHandlers(context: IpcContext): void {
-  const { getSettingsStore } = context;
+  const { getSettingsStore, emitToRenderer } = context;
 
   // ==========================================================================
   // Settings Management
   // ==========================================================================
 
   /**
-   * Get current settings
+   * Get current settings (full access, including API keys)
+   * Use settings:get-safe for non-sensitive access
    */
   ipcMain.handle('settings:get', async () => {
     return withErrorGuard('settings:get', async () => {
@@ -161,6 +138,43 @@ export function registerSettingsHandlers(context: IpcContext): void {
       const settings = settingsStore.get();
       logger.debug('Settings retrieved');
       return settings;
+    });
+  });
+
+  /**
+   * Get settings excluding sensitive data (API keys)
+   * Use this for general UI access to avoid exposing credentials
+   */
+  ipcMain.handle('settings:get-safe', async () => {
+    return withErrorGuard('settings:get-safe', async () => {
+      const settingsStore = getSettingsStore();
+      const settings = settingsStore.get();
+      
+      // Create a copy without sensitive data
+      const safeSettings: Partial<AgentSettings> = {
+        ...settings,
+        // Replace API keys with presence indicators
+        apiKeys: settings.apiKeys ? Object.fromEntries(
+          Object.entries(settings.apiKeys).map(([provider, key]) => [
+            provider,
+            key ? '••••••••' : '' // Mask but indicate presence
+          ])
+        ) : {},
+        // Mask Claude subscription tokens
+        claudeSubscription: settings.claudeSubscription ? {
+          ...settings.claudeSubscription,
+          accessToken: settings.claudeSubscription.accessToken ? '••••••••' : '',
+          refreshToken: settings.claudeSubscription.refreshToken ? '••••••••' : '',
+        } : undefined,
+        // Mask GLM subscription
+        glmSubscription: settings.glmSubscription ? {
+          ...settings.glmSubscription,
+          apiKey: settings.glmSubscription.apiKey ? '••••••••' : undefined,
+        } : undefined,
+      };
+      
+      logger.debug('Safe settings retrieved (API keys masked)');
+      return safeSettings;
     });
   });
 
@@ -194,6 +208,9 @@ export function registerSettingsHandlers(context: IpcContext): void {
         applyCacheSettings(updated);
       }
       
+      // Emit settings update to renderer for real-time application
+      emitToRenderer({ type: 'settings-update', settings: updated });
+      
       logger.info('Settings updated successfully');
       return { success: true, data: updated };
     });
@@ -218,6 +235,9 @@ export function registerSettingsHandlers(context: IpcContext): void {
       
       const updated = settingsStore.get();
       applyCacheSettings(updated);
+      
+      // Emit settings update to renderer for real-time application
+      emitToRenderer({ type: 'settings-update', settings: updated });
       
       logger.info('Settings reset successfully');
       return { success: true, data: updated };
@@ -278,6 +298,9 @@ export function registerSettingsHandlers(context: IpcContext): void {
       
       const updated = settingsStore.set(safeSettings);
       applyCacheSettings(updated);
+      
+      // Emit settings update to renderer for real-time application
+      emitToRenderer({ type: 'settings-update', settings: updated });
       
       logger.info('Settings imported successfully');
       return { success: true, data: updated };

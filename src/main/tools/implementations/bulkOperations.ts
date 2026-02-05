@@ -6,6 +6,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { resolvePath } from '../../utils/fileSystem';
+import { checkCancellation, formatCancelled } from '../types/formatUtils';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
 import { createLogger } from '../../logger';
@@ -213,6 +214,11 @@ grep("OldName") → verify no remaining references
     let failCount = 0;
 
     for (const op of args.operations) {
+      // Check for cancellation
+      if (checkCancellation(context.signal)) {
+        return formatCancelled('bulk', `Cancelled after ${successCount} successful, ${failCount} failed operations`);
+      }
+
       // Validate operation
       if (!op.type || !op.source) {
         results.push({

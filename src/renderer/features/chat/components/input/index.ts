@@ -29,6 +29,9 @@ export { MentionAutocomplete } from './MentionAutocomplete';
 export { DraftIndicator } from './DraftIndicator';
 export { TodoProgressInline } from './TodoProgressInline';
 
+// Iteration control for realtime max iterations adjustment
+export { IterationControl } from './IterationControl';
+
 // Types
 export type { InputHeaderProps } from './InputHeader';
 export type { InputTextareaProps } from './InputTextarea';

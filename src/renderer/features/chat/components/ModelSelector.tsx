@@ -204,10 +204,13 @@ export const ModelSelectorComponent: React.FC<ModelSelectorProps> = ({
         onClick={() => setIsOpen(true)}
         disabled={disabled}
         title={disabled ? disabledReason ?? tooltipText : tooltipText}
+        aria-label={`Select model: ${displayText}`}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
       >
-        <span className="text-[var(--color-accent-secondary)]">model=</span>
+        <span className="text-[var(--color-accent-secondary)]" aria-hidden="true">model=</span>
         <span className="text-[var(--color-text-secondary)]">{displayText}</span>
-        <ChevronDown size={10} className="text-[var(--color-text-placeholder)]" />
+        <ChevronDown size={10} className="text-[var(--color-text-placeholder)]" aria-hidden="true" />
       </button>
 
       {/* Model Selection Modal */}
@@ -377,20 +380,22 @@ export const ModelSelectorComponent: React.FC<ModelSelectorProps> = ({
             {/* Search and Refresh */}
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-dim)]" />
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-dim)]" aria-hidden="true" />
                 <input
                   type="text"
                   placeholder="Search models..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] pl-8 pr-8 py-1.5 text-[10px] outline-none focus-visible:border-[var(--color-accent-primary)]/30 placeholder:text-[var(--color-text-placeholder)]"
+                  aria-label="Search models"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)]"
+                    aria-label="Clear search"
                   >
-                    <X size={12} />
+                    <X size={12} aria-hidden="true" />
                   </button>
                 )}
               </div>
@@ -402,8 +407,9 @@ export const ModelSelectorComponent: React.FC<ModelSelectorProps> = ({
                   loadingProvider === selectedTab && "animate-spin"
                 )}
                 title="Refresh models"
+                aria-label="Refresh models list"
               >
-                <RefreshCw size={12} />
+                <RefreshCw size={12} aria-hidden="true" />
               </button>
             </div>
 

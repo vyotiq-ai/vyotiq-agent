@@ -162,15 +162,6 @@ const mockVyotiq = {
     discard: vi.fn(),
   },
 
-  // Semantic Search API
-  semantic: {
-    indexWorkspace: vi.fn(),
-    search: vi.fn().mockResolvedValue({ results: [] }),
-    getStatus: vi.fn().mockResolvedValue({ indexed: false, fileCount: 0 }),
-    clearIndex: vi.fn(),
-    onIndexProgress: vi.fn().mockReturnValue(() => {}),
-  },
-
   // Cache API
   cache: {
     get: vi.fn(),

@@ -25,37 +25,26 @@ const LSP_EXTENSIONS = new Set([
   '.json', '.yaml', '.yml', '.md', '.mdx',
 ]);
 
-// Semantic indexable file extensions (code files)
-const INDEXABLE_EXTENSIONS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs',
-  '.py', '.pyi', '.rs', '.go', '.java', '.cs', '.cpp', '.c', '.h', '.hpp',
-  '.rb', '.php', '.swift', '.kt', '.scala', '.sh', '.bash',
-]);
-
 let watcher: FSWatcher | null = null;
 let mainWindow: BrowserWindow | null = null;
 let currentWorkspacePath: string | null = null;
 let lspChangeHandler: ((filePath: string, changeType: 'create' | 'change' | 'delete') => void) | null = null;
-let semanticIndexChangeHandler: ((filePath: string, changeType: 'created' | 'changed' | 'deleted') => void) | null = null;
+let fileCacheChangeHandler: ((workspacePath: string, changeType: 'create' | 'write' | 'delete' | 'rename' | 'createDir', filePath: string, oldPath?: string) => void) | null = null;
 
 const isLSPRelevantFile = (filePath: string): boolean => {
   const ext = path.extname(filePath).toLowerCase();
   return LSP_EXTENSIONS.has(ext);
 };
 
-const isIndexableFile = (filePath: string): boolean => {
-  const ext = path.extname(filePath).toLowerCase();
-  return INDEXABLE_EXTENSIONS.has(ext);
-};
-
 const emitFileChange = (
   type: 'create' | 'write' | 'delete' | 'rename' | 'createDir',
-  filePath: string
+  filePath: string,
+  oldPath?: string
 ) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
 
-  mainWindow.webContents.send('files:changed', { type, path: filePath });
-  logger.debug('File change emitted', { type, path: filePath });
+  mainWindow.webContents.send('files:changed', { type, path: filePath, oldPath });
+  logger.debug('File change emitted', { type, path: filePath, oldPath });
 
   // Notify LSP of file changes for real-time diagnostics
   if (lspChangeHandler && isLSPRelevantFile(filePath)) {
@@ -63,10 +52,9 @@ const emitFileChange = (
     lspChangeHandler(filePath, lspChangeType);
   }
 
-  // Notify semantic indexer of file changes for incremental indexing
-  if (semanticIndexChangeHandler && isIndexableFile(filePath)) {
-    const semanticChangeType = type === 'create' ? 'created' : type === 'delete' ? 'deleted' : 'changed';
-    semanticIndexChangeHandler(filePath, semanticChangeType);
+  // Notify file cache for instant tree updates
+  if (fileCacheChangeHandler && currentWorkspacePath) {
+    fileCacheChangeHandler(currentWorkspacePath, type, filePath, oldPath);
   }
 };
 
@@ -88,6 +76,10 @@ export const watchWorkspace = async (workspacePath: string): Promise<void> => {
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
     depth: undefined,
+    // Use polling on Windows for better EPERM handling
+    usePolling: process.platform === 'win32' ? false : false,
+    // Atomic writes can cause temporary permission issues
+    atomic: true,
   });
 
   watcher
@@ -96,7 +88,25 @@ export const watchWorkspace = async (workspacePath: string): Promise<void> => {
     .on('unlink', (filePath) => emitFileChange('delete', path.resolve(filePath)))
     .on('addDir', (filePath) => emitFileChange('createDir', path.resolve(filePath)))
     .on('unlinkDir', (filePath) => emitFileChange('delete', path.resolve(filePath)))
-    .on('error', (error) => logger.error('File watcher error', { error: error instanceof Error ? error.message : String(error) }))
+    .on('error', (error) => {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // EPERM errors are common on Windows when files are temporarily locked
+      // (e.g., during antivirus scans, or when editors hold locks)
+      // Log at debug level for transient permission errors
+      if (errorMessage.includes('EPERM') || errorMessage.includes('EACCES')) {
+        logger.debug('File watcher permission error (transient)', { 
+          error: errorMessage,
+          info: 'This is usually caused by temporary file locks and can be safely ignored',
+        });
+      } else if (errorMessage.includes('ENOSPC')) {
+        logger.warn('File watcher limit reached', { 
+          error: errorMessage,
+          suggestion: 'Consider increasing inotify watchers limit on Linux',
+        });
+      } else {
+        logger.error('File watcher error', { error: errorMessage });
+      }
+    })
     .on('ready', () => logger.info('File watcher ready', { workspacePath }));
 };
 
@@ -125,12 +135,12 @@ export const setLSPChangeHandler = (
 };
 
 /**
- * Register a handler for semantic index file changes.
- * This enables incremental indexing when code files change on disk.
+ * Register a handler for file cache updates.
+ * This enables instant file tree updates when files change.
  */
-export const setSemanticIndexChangeHandler = (
-  handler: ((filePath: string, changeType: 'created' | 'changed' | 'deleted') => void) | null
+export const setFileCacheChangeHandler = (
+  handler: ((workspacePath: string, changeType: 'create' | 'write' | 'delete' | 'rename' | 'createDir', filePath: string, oldPath?: string) => void) | null
 ): void => {
-  semanticIndexChangeHandler = handler;
-  logger.debug('Semantic index change handler registered', { hasHandler: !!handler });
+  fileCacheChangeHandler = handler;
+  logger.debug('File cache change handler registered', { hasHandler: !!handler });
 };

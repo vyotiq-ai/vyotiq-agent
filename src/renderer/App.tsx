@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { MainLayout } from './components/layout/MainLayout';
 import { Home } from './pages/Home';
 import { useUI } from './state/UIProvider';
@@ -6,71 +6,17 @@ import { useAgentActions, useAgentSelector } from './state/AgentProvider';
 import { useEditor } from './state/EditorProvider';
 import { KeyboardShortcutsModal } from './components/ui/KeyboardShortcutsModal';
 import { CommandPalette, CommandIcons, type CommandItem } from './components/ui/CommandPalette';
+import { useConfirm } from './components/ui/ConfirmModal';
 import { useFirstRun } from './hooks/useFirstRun';
 import { useAppearanceSettings } from './hooks/useAppearanceSettings';
 import { FeatureErrorBoundary } from './components/layout/ErrorBoundary';
-import { Loader2, Code, Save, X } from 'lucide-react';
+import { Code, Save, X } from 'lucide-react';
 
-// Lazy load the Settings panel for better initial load performance
-const SettingsPanel = lazy(() =>
-  import('./features/settings').then(module => ({ default: module.SettingsPanel }))
-);
-
-// Lazy load the Browser panel
-const BrowserPanel = lazy(() =>
-  import('./features/browser/BrowserPanel').then(module => ({ default: module.default }))
-);
-
-// Lazy load the Undo History panel
-const UndoHistoryPanel = lazy(() =>
-  import('./features/undo/UndoHistoryPanel').then(module => ({ default: module.UndoHistoryPanel }))
-);
-
-// Lazy load the First Run Wizard
-const FirstRunWizard = lazy(() =>
-  import('./features/onboarding/FirstRunWizard').then(module => ({ default: module.FirstRunWizard }))
-);
-
-// Lazy load components
-const MetricsDashboard = lazy(() =>
-  import('./features/settings').then(module => ({ default: module.MetricsDashboard }))
-);
-
-const SettingsLoader: React.FC = () => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-    <div className="flex items-center gap-3 text-[var(--color-text-secondary)]">
-      <Loader2 className="animate-spin" size={24} />
-      <span className="text-xs font-medium">Loading settings...</span>
-    </div>
-  </div>
-);
-
-const BrowserLoader: React.FC = () => (
-  <div className="h-full flex items-center justify-center bg-[var(--color-surface-base)]">
-    <div className="flex items-center gap-3 text-[var(--color-text-secondary)]">
-      <Loader2 className="animate-spin" size={16} />
-      <span className="text-xs font-medium">Loading browser...</span>
-    </div>
-  </div>
-);
-
-const UndoHistoryLoader: React.FC = () => (
-  <div className="fixed right-0 top-0 bottom-0 w-80 z-40 bg-[var(--color-surface-base)] border-l border-[var(--color-border-subtle)] flex items-center justify-center">
-    <div className="flex items-center gap-3 text-[var(--color-text-secondary)]">
-      <Loader2 className="animate-spin" size={16} />
-      <span className="text-xs font-medium">Loading history...</span>
-    </div>
-  </div>
-);
-
-const MetricsLoader: React.FC = () => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-    <div className="flex items-center gap-3 text-[var(--color-text-secondary)]">
-      <Loader2 className="animate-spin" size={24} />
-      <span className="text-xs font-medium">Loading metrics...</span>
-    </div>
-  </div>
-);
+// Direct imports for instant loading - no lazy loading
+import { SettingsPanel, MetricsDashboard } from './features/settings';
+import BrowserPanel from './features/browser/BrowserPanel';
+import { UndoHistoryPanel } from './features/undo/UndoHistoryPanel';
+import { FirstRunWizard } from './features/onboarding/FirstRunWizard';
 
 const App: React.FC = () => {
   const {
@@ -129,6 +75,9 @@ const App: React.FC = () => {
   // First run detection
   const { isFirstRun, completeFirstRun } = useFirstRun();
   const [showWizard, setShowWizard] = useState(false);
+
+  // Confirmation dialog hook
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // Apply appearance settings from state
   useAppearanceSettings();
@@ -241,9 +190,17 @@ const App: React.FC = () => {
       description: 'Delete the current session',
       icon: CommandIcons.clear,
       category: 'Session',
-      action: () => {
-        if (agentSnapshot.activeSessionId && confirm('Delete this session?')) {
-          void actions.deleteSession(agentSnapshot.activeSessionId);
+      action: async () => {
+        if (agentSnapshot.activeSessionId) {
+          const confirmed = await confirm({
+            title: 'Delete Session',
+            message: 'Are you sure you want to delete this session? This action cannot be undone.',
+            confirmLabel: 'Delete',
+            variant: 'destructive',
+          });
+          if (confirmed) {
+            void actions.deleteSession(agentSnapshot.activeSessionId);
+          }
         }
       },
       disabled: !agentSnapshot.activeSessionId,
@@ -412,6 +369,7 @@ const App: React.FC = () => {
     closeTab,
     closeAllTabs,
     hasUnsavedChanges,
+    confirm,
   ]);
 
   const startBrowserResize = useCallback((e: React.MouseEvent) => {
@@ -472,35 +430,29 @@ const App: React.FC = () => {
                   role="separator"
                   aria-orientation="vertical"
                 />
-                <Suspense fallback={<BrowserLoader />}>
-                  <FeatureErrorBoundary featureName="Browser">
-                    <BrowserPanel
-                      isOpen={browserPanelOpen}
-                      onClose={closeBrowserPanel}
-                    />
-                  </FeatureErrorBoundary>
-                </Suspense>
+                <FeatureErrorBoundary featureName="Browser">
+                  <BrowserPanel
+                    isOpen={browserPanelOpen}
+                    onClose={closeBrowserPanel}
+                  />
+                </FeatureErrorBoundary>
               </div>
             )}
           </div>
         </div>
         {settingsOpen && (
-          <Suspense fallback={<SettingsLoader />}>
-            <FeatureErrorBoundary featureName="Settings">
-              <SettingsPanel open={settingsOpen} onClose={closeSettings} />
-            </FeatureErrorBoundary>
-          </Suspense>
+          <FeatureErrorBoundary featureName="Settings">
+            <SettingsPanel open={settingsOpen} onClose={closeSettings} />
+          </FeatureErrorBoundary>
         )}
         {undoHistoryOpen && (
-          <Suspense fallback={<UndoHistoryLoader />}>
-            <FeatureErrorBoundary featureName="UndoHistory">
-              <UndoHistoryPanel
-                isOpen={undoHistoryOpen}
-                onClose={closeUndoHistory}
-                sessionId={agentSnapshot.activeSessionId}
-              />
-            </FeatureErrorBoundary>
-          </Suspense>
+          <FeatureErrorBoundary featureName="UndoHistory">
+            <UndoHistoryPanel
+              isOpen={undoHistoryOpen}
+              onClose={closeUndoHistory}
+              sessionId={agentSnapshot.activeSessionId}
+            />
+          </FeatureErrorBoundary>
         )}
         <KeyboardShortcutsModal open={shortcutsOpen} onClose={closeShortcuts} />
         <CommandPalette
@@ -510,51 +462,51 @@ const App: React.FC = () => {
         />
         {/* First Run Wizard */}
         {showWizard && (
-          <Suspense fallback={<SettingsLoader />}>
-            <FirstRunWizard
-              onComplete={handleWizardComplete}
-              onSkip={handleWizardSkip}
-            />
-          </Suspense>
+          <FirstRunWizard
+            onComplete={handleWizardComplete}
+            onSkip={handleWizardSkip}
+          />
         )}
       </MainLayout>
       {/* Metrics Dashboard Modal - rendered outside MainLayout to avoid overflow issues */}
       {metricsDashboardOpen && (
-        <Suspense fallback={<MetricsLoader />}>
-          <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-scale-in"
-            onClick={(e) => {
-              // Close on backdrop click
-              if (e.target === e.currentTarget) {
-                closeMetricsDashboard();
-              }
-            }}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="metrics-dashboard-title"
-          >
-            <div className="relative w-full max-w-5xl max-h-[90vh] m-4 bg-[var(--color-surface-base)] rounded-lg border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden">
-              {/* Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
-                <span id="metrics-dashboard-title" className="text-xs font-medium text-[var(--color-text-primary)]">Metrics Dashboard</span>
-                <button
-                  onClick={closeMetricsDashboard}
-                  className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
-                  aria-label="Close metrics dashboard"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              {/* Content */}
-              <div className="overflow-y-auto max-h-[calc(90vh-60px)]">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-scale-in"
+          onClick={(e) => {
+            // Close on backdrop click
+            if (e.target === e.currentTarget) {
+              closeMetricsDashboard();
+            }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="metrics-dashboard-title"
+        >
+          <div className="relative w-full max-w-5xl max-h-[90vh] m-4 bg-[var(--color-surface-base)] rounded-lg border border-[var(--color-border-subtle)] shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
+              <span id="metrics-dashboard-title" className="text-xs font-medium text-[var(--color-text-primary)]">Metrics Dashboard</span>
+              <button
+                onClick={closeMetricsDashboard}
+                className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                aria-label="Close metrics dashboard"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Content */}
+            <div className="overflow-y-auto max-h-[calc(90vh-60px)]">
+              <FeatureErrorBoundary featureName="MetricsDashboard">
                 <MetricsDashboard period="day" />
-              </div>
+              </FeatureErrorBoundary>
             </div>
           </div>
-        </Suspense>
+        </div>
       )}
+      {/* Confirmation dialog rendered at root level */}
+      <ConfirmDialog />
     </>
   );
 };

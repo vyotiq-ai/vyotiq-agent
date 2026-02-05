@@ -829,7 +829,7 @@ export class LSPManager extends EventEmitter {
   private async detectInstalledServers(): Promise<void> {
     const isWindows = process.platform === 'win32';
     const cmd = isWindows ? 'where' : 'which';
-    const binExt = isWindows ? '.cmd' : '';
+    const _binExt = isWindows ? '.cmd' : ''; // Reserved for future use with cross-platform binary extensions
     
     // Check all servers in parallel for faster startup
     const checks = Object.entries(LANGUAGE_SERVER_CONFIGS).map(async ([language, config]) => {

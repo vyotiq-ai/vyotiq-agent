@@ -200,6 +200,170 @@ export async function withSafeHandler<T>(
 // =============================================================================
 
 /**
+ * UUID v4 regex pattern for validation
+ */
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Dangerous path patterns that indicate path traversal attempts
+ */
+const DANGEROUS_PATH_PATTERNS = [
+  /\.\./,                    // Parent directory traversal
+  /^\/etc\//,                // System config
+  /^\/var\//,                // Variable data
+  /^\/usr\//,                // User programs
+  /^\/root\//,               // Root home
+  /^\/home\/[^/]+\/\./,      // Hidden files in home
+  /^C:\\Windows/i,           // Windows system
+  /^C:\\Program Files/i,     // Windows programs
+  /^C:\\Users\\[^\\]+\\AppData/i, // Windows app data
+  /%[0-9a-f]{2}/i,           // URL encoded characters
+  // eslint-disable-next-line no-control-regex -- Intentional: detecting control characters for security
+  /[\x00-\x1f]/,             // Control characters
+];
+
+/**
+ * Validates that a value is a valid UUID v4
+ */
+export function validateUUID(
+  value: unknown,
+  fieldName: string
+): IpcResult<void> | null {
+  if (typeof value !== 'string') {
+    return {
+      success: false,
+      error: `${fieldName} must be a string`,
+      code: IpcErrorCodes.INVALID_PAYLOAD,
+    };
+  }
+  
+  if (!UUID_V4_REGEX.test(value)) {
+    return {
+      success: false,
+      error: `${fieldName} must be a valid UUID`,
+      code: IpcErrorCodes.INVALID_PAYLOAD,
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Validates that a path is safe (no path traversal)
+ */
+export function validateSafePath(
+  value: unknown,
+  fieldName: string,
+  options?: {
+    /** Allowed base paths - path must start with one of these */
+    allowedPaths?: string[];
+    /** Allow absolute paths */
+    allowAbsolute?: boolean;
+    /** Block hidden files/directories */
+    blockHidden?: boolean;
+  }
+): IpcResult<void> | null {
+  if (typeof value !== 'string') {
+    return {
+      success: false,
+      error: `${fieldName} must be a string`,
+      code: IpcErrorCodes.INVALID_PAYLOAD,
+    };
+  }
+  
+  const path = value.trim();
+  
+  // Check for empty path
+  if (path.length === 0) {
+    return {
+      success: false,
+      error: `${fieldName} cannot be empty`,
+      code: IpcErrorCodes.INVALID_PAYLOAD,
+    };
+  }
+  
+  // Check for dangerous patterns
+  for (const pattern of DANGEROUS_PATH_PATTERNS) {
+    if (pattern.test(path)) {
+      logger.warn('Potential path traversal attempt blocked', {
+        fieldName,
+        path: path.substring(0, 100), // Truncate for logging
+        pattern: pattern.source,
+      });
+      return {
+        success: false,
+        error: `${fieldName} contains invalid path pattern`,
+        code: IpcErrorCodes.INVALID_PAYLOAD,
+      };
+    }
+  }
+  
+  // Check for null bytes (common injection attack)
+  if (path.includes('\0')) {
+    return {
+      success: false,
+      error: `${fieldName} contains invalid characters`,
+      code: IpcErrorCodes.INVALID_PAYLOAD,
+    };
+  }
+  
+  // Check for hidden files if blocked
+  if (options?.blockHidden && /\/\.[^/]+|\\.[^\\]+/.test(path)) {
+    return {
+      success: false,
+      error: `${fieldName} cannot reference hidden files`,
+      code: IpcErrorCodes.INVALID_PAYLOAD,
+    };
+  }
+  
+  // Check allowed base paths
+  if (options?.allowedPaths && options.allowedPaths.length > 0) {
+    const normalizedPath = path.replace(/\\/g, '/').toLowerCase();
+    const isAllowed = options.allowedPaths.some(allowed => {
+      const normalizedAllowed = allowed.replace(/\\/g, '/').toLowerCase();
+      return normalizedPath.startsWith(normalizedAllowed);
+    });
+    
+    if (!isAllowed) {
+      return {
+        success: false,
+        error: `${fieldName} must be within allowed paths`,
+        code: IpcErrorCodes.INVALID_PAYLOAD,
+      };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Validates that a value is one of the allowed enum values
+ */
+export function validateEnum<T extends string>(
+  value: unknown,
+  allowedValues: readonly T[],
+  fieldName: string
+): IpcResult<void> | null {
+  if (typeof value !== 'string') {
+    return {
+      success: false,
+      error: `${fieldName} must be a string`,
+      code: IpcErrorCodes.INVALID_PAYLOAD,
+    };
+  }
+  
+  if (!allowedValues.includes(value as T)) {
+    return {
+      success: false,
+      error: `${fieldName} must be one of: ${allowedValues.join(', ')}`,
+      code: IpcErrorCodes.INVALID_PAYLOAD,
+    };
+  }
+  
+  return null;
+}
+
+/**
  * Validates that required fields are present in payload
  */
 export function validateRequired<T extends Record<string, unknown>>(

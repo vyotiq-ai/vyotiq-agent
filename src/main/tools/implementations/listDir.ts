@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { resolvePath } from '../../utils/fileSystem';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
+import { checkCancellation, formatCancelled } from '../types/formatUtils';
 
 // Limits to prevent context overflow
 const MAX_ENTRIES = 500;
@@ -184,6 +185,11 @@ read(files) → understand code
       
       // Helper to list directory (with recursion support)
       const listDir = async (dir: string, prefix: string, depth: number): Promise<void> => {
+        // Check for cancellation
+        if (checkCancellation(context.signal)) {
+          return;
+        }
+        
         if (allEntries.length >= MAX_ENTRIES) {
           wasTruncated = true;
           return;
@@ -229,6 +235,11 @@ read(files) → understand code
       };
       
       await listDir(dirPath, '', 0);
+
+      // Check for cancellation after listing
+      if (checkCancellation(context.signal)) {
+        return formatCancelled('ls', `Listed ${allEntries.length} entries before cancellation`, { path: targetPath });
+      }
 
       if (allEntries.length === 0) {
         return {

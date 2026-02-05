@@ -215,6 +215,7 @@ DeletePlan → clean up when done
 
   searchKeywords: ['plan', 'task', 'create', 'start', 'begin', 'requirements', 'breakdown'],
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   ui: {
     icon: 'ClipboardList',

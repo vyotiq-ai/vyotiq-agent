@@ -5,8 +5,13 @@
  * - Model selector
  * - File attach, auto-confirm toggle
  * - Stats: Cost, context usage
+ * 
+ * Performance optimizations:
+ * - Memoized sub-components
+ * - Stable callback references
+ * - Minimal re-renders through proper prop structuring
  */
-import React, { memo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { Paperclip } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 import { ModelSelector } from '../ModelSelector';
@@ -59,7 +64,7 @@ export interface InputToolbarProps {
 }
 
 // =============================================================================
-// Helper Components
+// Helper Functions
 // =============================================================================
 
 /** Format token count for display */
@@ -69,11 +74,36 @@ function formatTokenCount(tokens: number): string {
   return String(tokens);
 }
 
+/** Format model ID for display (shorten long model names) */
+function formatModelId(id: string): string {
+  // Remove provider prefix if present (e.g., "openai/gpt-4" -> "gpt-4")
+  const withoutPrefix = id.split('/').pop() || id;
+  // For long model names, take first 3 segments
+  const parts = withoutPrefix.split('-');
+  if (parts.length > 3) {
+    return parts.slice(0, 3).join('-');
+  }
+  return withoutPrefix;
+}
+
+// =============================================================================
+// Sub-Components
+// =============================================================================
+
+/** Divider component for visual separation */
+const ToolbarDivider: React.FC = memo(() => (
+  <span className="h-3 w-px bg-[var(--color-border-subtle)] flex-shrink-0" aria-hidden="true" />
+));
+ToolbarDivider.displayName = 'ToolbarDivider';
+
 /** Compact context indicator - CLI style */
 const ContextIndicator: React.FC<{
   info: NonNullable<InputToolbarProps['contextInfo']>;
 }> = memo(({ info }) => {
-  const pct = Math.min(100, Math.max(0, Math.round(info.utilization * 100)));
+  const pct = useMemo(() => 
+    Math.min(100, Math.max(0, Math.round(info.utilization * 100))),
+    [info.utilization]
+  );
   
   const valueColor = info.needsPruning
     ? 'text-[var(--color-error)]'
@@ -81,23 +111,144 @@ const ContextIndicator: React.FC<{
       ? 'text-[var(--color-warning)]'
       : 'text-[var(--color-text-secondary)]';
 
-  const tooltip = [
+  const tooltip = useMemo(() => [
     `Context: ${pct}%`,
     `${formatTokenCount(info.totalTokens)} / ${formatTokenCount(info.maxInputTokens)}`,
     info.needsPruning ? '[!] Pruning needed' : info.isWarning ? '[!] Near limit' : '',
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('\n'), [pct, info.totalTokens, info.maxInputTokens, info.needsPruning, info.isWarning]);
 
   return (
     <span 
-      className="flex items-center gap-0.5"
+      className="flex items-center gap-0.5 transition-colors duration-150"
       title={tooltip}
     >
       <span className="text-[var(--color-text-dim)]">ctx=</span>
-      <span className={valueColor}>{pct}%</span>
+      <span className={cn(valueColor, info.needsPruning && 'animate-pulse')}>{pct}%</span>
     </span>
   );
 });
 ContextIndicator.displayName = 'ContextIndicator';
+
+/** File attach button */
+interface AttachButtonProps {
+  onClick: () => void;
+  disabled: boolean;
+}
+
+const AttachButton: React.FC<AttachButtonProps> = memo(({ onClick, disabled }) => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!disabled) {
+      onClick();
+    }
+  }, [onClick, disabled]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={disabled}
+      className={cn(
+        'flex items-center gap-1 text-[10px] font-mono whitespace-nowrap',
+        'transition-all duration-150',
+        'text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)]',
+        'rounded-sm py-0.5 px-1',
+        'hover:bg-[var(--color-surface-2)]/50',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+        disabled && 'opacity-40 cursor-not-allowed pointer-events-none'
+      )}
+      title="Attach file (drag & drop or paste also supported)"
+      aria-label="Attach file"
+    >
+      <Paperclip size={10} className="text-[var(--color-text-muted)]" aria-hidden="true" />
+      <span className="hidden sm:inline text-[var(--color-text-secondary)]">file</span>
+    </button>
+  );
+});
+AttachButton.displayName = 'AttachButton';
+
+/** Auto-confirm toggle button */
+interface AutoConfirmToggleProps {
+  enabled: boolean;
+  onToggle: () => void;
+  disabled: boolean;
+}
+
+const AutoConfirmToggle: React.FC<AutoConfirmToggleProps> = memo(({ enabled, onToggle, disabled }) => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!disabled) {
+      onToggle();
+    }
+  }, [onToggle, disabled]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={disabled}
+      aria-pressed={enabled}
+      aria-label={enabled ? 'Disable auto-confirm mode' : 'Enable auto-confirm mode'}
+      className={cn(
+        'flex items-center gap-1 text-[10px] font-mono whitespace-nowrap',
+        'transition-all duration-150',
+        'rounded-sm py-0.5 px-1',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+        enabled 
+          ? 'text-[var(--color-warning)] bg-[var(--color-warning)]/5 hover:bg-[var(--color-warning)]/10' 
+          : 'text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]/50',
+        disabled && 'opacity-40 cursor-not-allowed pointer-events-none'
+      )}
+      title={enabled ? 'Auto-confirm ON (click to disable)' : 'Auto-confirm OFF (click to enable)'}
+    >
+      <span className="text-[var(--color-accent-secondary)]">--auto</span>
+      <span className={cn(
+        'transition-colors duration-150',
+        enabled ? 'text-[var(--color-warning)] font-medium' : 'text-[var(--color-text-secondary)]'
+      )}>
+        ={enabled ? 'on' : 'off'}
+      </span>
+    </button>
+  );
+});
+AutoConfirmToggle.displayName = 'AutoConfirmToggle';
+
+/** Active run indicator */
+interface ActiveRunIndicatorProps {
+  provider: string;
+  modelId?: string;
+}
+
+const ActiveRunIndicator: React.FC<ActiveRunIndicatorProps> = memo(({ provider, modelId }) => (
+  <span 
+    className="flex items-center gap-1 text-[10px] font-mono text-[var(--color-accent-primary)] whitespace-nowrap animate-in fade-in duration-200"
+    title={`Running: ${provider}${modelId ? ` / ${modelId}` : ''}`}
+  >
+    <span className="text-[var(--color-text-dim)]">run=</span>
+    <span>{provider}</span>
+    {modelId && (
+      <>
+        <span className="text-[var(--color-text-dim)]">/</span>
+        <span className="text-[var(--color-text-secondary)]">{formatModelId(modelId)}</span>
+      </>
+    )}
+  </span>
+));
+ActiveRunIndicator.displayName = 'ActiveRunIndicator';
+
+/** Cost display */
+interface CostDisplayProps {
+  formattedCost: string;
+  detailsTitle?: string;
+}
+
+const CostDisplay: React.FC<CostDisplayProps> = memo(({ formattedCost, detailsTitle }) => (
+  <span title={detailsTitle} className="flex items-center gap-0.5 transition-colors duration-150">
+    <span className="text-[var(--color-text-dim)]">cost=</span>
+    <span className="text-[var(--color-success)]">{formattedCost}</span>
+  </span>
+));
+CostDisplay.displayName = 'CostDisplay';
 
 // =============================================================================
 // Main Component
@@ -122,21 +273,17 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
   activeModelId,
   isWorking,
 }) => {
-  const isActionDisabled = disabled || !hasWorkspace;
-  const isModelDisabled = disabled || !hasSession || !hasWorkspace;
+  // Memoize disabled states
+  const isActionDisabled = useMemo(() => disabled || !hasWorkspace, [disabled, hasWorkspace]);
+  const isModelDisabled = useMemo(() => disabled || !hasSession || !hasWorkspace, [disabled, hasSession, hasWorkspace]);
   
-  // Format model ID for display (shorten long model names)
-  const formatModelId = (id: string): string => {
-    // Remove provider prefix if present (e.g., "openai/gpt-4" -> "gpt-4")
-    const withoutPrefix = id.split('/').pop() || id;
-    // For long model names, take first 3 segments
-    const parts = withoutPrefix.split('-');
-    if (parts.length > 3) {
-      return parts.slice(0, 3).join('-');
-    }
-    return withoutPrefix;
-  };
-  
+  // Memoize disabled reason
+  const disabledReason = useMemo(() => {
+    if (!hasWorkspace) return 'Select workspace first';
+    if (!hasSession) return 'Start session first';
+    return undefined;
+  }, [hasWorkspace, hasSession]);
+
   return (
     <div 
       className={cn('flex items-center gap-2 min-w-0', className)}
@@ -149,7 +296,7 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
         currentModel={modelId}
         onSelect={onProviderSelect} 
         disabled={isModelDisabled}
-        disabledReason={!hasWorkspace ? 'Select workspace first' : !hasSession ? 'Start session first' : undefined}
+        disabledReason={disabledReason}
         availableProviders={availableProviders}
         providersCooldown={providersCooldown}
       />
@@ -157,73 +304,24 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
       {/* Active provider info when running */}
       {isWorking && activeProvider && (
         <>
-          <span className="h-3 w-px bg-[var(--color-border-subtle)]" />
-          <span 
-            className="flex items-center gap-1 text-[10px] font-mono text-[var(--color-accent-primary)] whitespace-nowrap"
-            title={`Running: ${activeProvider}${activeModelId ? ` / ${activeModelId}` : ''}`}
-          >
-            <span className="text-[var(--color-text-dim)]">run=</span>
-            <span>{activeProvider}</span>
-            {activeModelId && (
-              <>
-                <span className="text-[var(--color-text-dim)]">/</span>
-                <span className="text-[var(--color-text-secondary)]">{formatModelId(activeModelId)}</span>
-              </>
-            )}
-          </span>
+          <ToolbarDivider />
+          <ActiveRunIndicator provider={activeProvider} modelId={activeModelId} />
         </>
       )}
 
       {/* Divider */}
-      <span className="h-3 w-px bg-[var(--color-border-subtle)]" />
+      <ToolbarDivider />
 
-      {/* File Attach - CLI style */}
-      <button
-        type="button"
-        onClick={onAddAttachments}
-        disabled={isActionDisabled}
-        className={cn(
-          'flex items-center gap-1 text-[10px] font-mono transition-colors whitespace-nowrap',
-          'text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)]',
-          'rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
-          isActionDisabled && 'opacity-50 cursor-not-allowed pointer-events-none'
-        )}
-        title="Attach file"
-      >
-        <Paperclip size={10} className="text-[var(--color-text-muted)]" />
-        <span className="hidden sm:inline text-[var(--color-text-secondary)]">file</span>
-      </button>
+      {/* File Attach */}
+      <AttachButton onClick={onAddAttachments} disabled={isActionDisabled} />
 
-      {/* Auto-confirm Toggle - CLI style: --auto=on/off */}
-      <button
-        type="button"
-        onClick={onToggleYolo}
-        disabled={isModelDisabled}
-        aria-pressed={yoloEnabled}
-        aria-label={yoloEnabled ? 'Disable auto-confirm mode' : 'Enable auto-confirm mode'}
-        className={cn(
-          'flex items-center gap-1 text-[10px] font-mono transition-colors whitespace-nowrap',
-          'rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
-          yoloEnabled 
-            ? 'text-[var(--color-warning)]' 
-            : 'text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)]',
-          isModelDisabled && 'opacity-50 cursor-not-allowed pointer-events-none'
-        )}
-        title={yoloEnabled ? 'Auto-confirm ON (click to disable)' : 'Auto-confirm OFF (click to enable)'}
-      >
-        <span className="text-[var(--color-accent-secondary)]">--auto</span>
-        <span className={yoloEnabled ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-secondary)]'}>
-          ={yoloEnabled ? 'on' : 'off'}
-        </span>
-      </button>
+      {/* Auto-confirm Toggle */}
+      <AutoConfirmToggle enabled={yoloEnabled} onToggle={onToggleYolo} disabled={isModelDisabled} />
 
       {/* Stats - Right aligned, CLI style */}
       <div className="hidden md:flex items-center gap-2 ml-auto text-[10px] font-mono text-[var(--color-text-muted)]">
         {costInfo?.hasUsage && (
-          <span title={costInfo.detailsTitle}>
-            <span className="text-[var(--color-text-dim)]">cost=</span>
-            <span className="text-[var(--color-success)]">{costInfo.formattedCost}</span>
-          </span>
+          <CostDisplay formattedCost={costInfo.formattedCost} detailsTitle={costInfo.detailsTitle} />
         )}
         {contextInfo && <ContextIndicator info={contextInfo} />}
       </div>

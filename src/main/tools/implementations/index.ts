@@ -10,7 +10,6 @@ import { editFileTool } from './editFile';
 import { listDirTool } from './listDir';
 import { grepTool } from './grep';
 import { globTool } from './glob';
-import { codebaseSearchTool } from './codebaseSearch';
 import { bulkOperationsTool } from './bulkOperations';
 import { runTerminalTool } from './runTerminal';
 import { checkTerminalTool } from './checkTerminal';
@@ -65,7 +64,6 @@ export { editFileTool } from './editFile';
 export { listDirTool } from './listDir';
 export { grepTool } from './grep';
 export { globTool } from './glob';
-export { codebaseSearchTool } from './codebaseSearch';
 export { bulkOperationsTool } from './bulkOperations';
 export { runTerminalTool } from './runTerminal';
 export { checkTerminalTool } from './checkTerminal';
@@ -146,7 +144,6 @@ export const ALL_TOOLS: ToolDefinition[] = [
   listDirTool,
   grepTool,
   globTool,
-  codebaseSearchTool,
   bulkOperationsTool,
   // Terminal operations
   runTerminalTool,

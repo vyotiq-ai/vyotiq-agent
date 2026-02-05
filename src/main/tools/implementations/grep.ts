@@ -8,6 +8,7 @@ import { promises as fs } from 'node:fs';
 import { join, relative } from 'node:path';
 import { resolvePath } from '../../utils/fileSystem';
 import { createLogger } from '../../logger';
+import { checkCancellation, formatCancelled } from '../types/formatUtils';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
 
@@ -331,6 +332,11 @@ edit(file, old, new) → make changes
       let totalMatches = 0;
 
       for (const file of filesToSearch) {
+        // Check for cancellation periodically
+        if (checkCancellation(context.signal)) {
+          return formatCancelled('grep', `Search cancelled after ${filesSearched} files`);
+        }
+
         if (headLimit && results.length >= headLimit) break;
 
         const fileStats = await fs.stat(file.absolute).catch((): null => null);

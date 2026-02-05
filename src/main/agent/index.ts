@@ -267,4 +267,5 @@ export type {
   SessionHealthStatus,
   SessionHealthIssue,
   SessionHealthConfig,
+  WorkspaceHealthStatus,
 } from './sessionHealth';

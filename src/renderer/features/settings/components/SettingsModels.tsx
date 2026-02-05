@@ -1,5 +1,11 @@
+/**
+ * Settings Models Component
+ * 
+ * Model selection for each configured provider.
+ * Uses dynamic API fetching with caching.
+ */
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Crown, Zap, Clock, Layers, RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, Search } from 'lucide-react';
 import type { AgentSettings, LLMProviderName } from '../../../../shared/types';
 import { 
   PROVIDERS, 
@@ -12,6 +18,7 @@ import { cn } from '../../../utils/cn';
 import { fetchProviderModels, fetchRawOpenRouterModels, apiModelToModelInfo } from '../../../utils/models';
 import type { OpenRouterApiModel } from '../../../utils/openrouterFilters';
 import { OpenRouterFilters } from '../../../components/OpenRouterFilters';
+import { SettingsSection } from '../primitives';
 
 interface SettingsModelsProps {
   providerSettings: AgentSettings['providerSettings'];
@@ -26,26 +33,10 @@ interface ModelCardProps {
 }
 
 const tierConfig = {
-  flagship: {
-    label: 'PRO',
-    color: 'text-[var(--color-warning)]',
-    icon: Crown,
-  },
-  balanced: {
-    label: 'BAL',
-    color: 'text-[var(--color-info)]',
-    icon: Layers,
-  },
-  fast: {
-    label: 'FAST',
-    color: 'text-[var(--color-accent-primary)]',
-    icon: Zap,
-  },
-  legacy: {
-    label: 'OLD',
-    color: 'text-[var(--color-text-muted)]',
-    icon: Clock,
-  },
+  flagship: { label: 'PRO', color: 'text-[var(--color-warning)]' },
+  balanced: { label: 'BAL', color: 'text-[var(--color-info)]' },
+  fast: { label: 'FAST', color: 'text-[var(--color-accent-primary)]' },
+  legacy: { label: 'OLD', color: 'text-[var(--color-text-muted)]' },
 };
 
 const ModelCard: React.FC<ModelCardProps> = ({ model, isSelected, onSelect }) => {
@@ -80,28 +71,21 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, isSelected, onSelect }) =>
           </div>
           <div className="ml-4 text-[9px] text-[var(--color-text-dim)] truncate">{model.id}</div>
         </div>
-        
         {isSelected && (
           <span className="text-[var(--color-accent-primary)] text-[9px]">[OK]</span>
         )}
       </div>
-      
       <div className="flex flex-wrap items-center gap-2 mt-1 ml-4 text-[9px] text-[var(--color-text-dim)]">
         <span>ctx={formatContextWindow(model.contextWindow)}</span>
         <span>in={formatCost(model.inputCostPer1M)}</span>
         <span>out={formatCost(model.outputCostPer1M)}</span>
-        {model.supportsVision && (
-          <span className="text-[var(--color-accent-secondary)]">+vision</span>
-        )}
-        {model.supportsTools && (
-          <span className="text-[var(--color-info)]">+tools</span>
-        )}
+        {model.supportsVision && <span className="text-[var(--color-accent-secondary)]">+vision</span>}
+        {model.supportsTools && <span className="text-[var(--color-info)]">+tools</span>}
       </div>
     </button>
   );
 };
 
-/** Dynamic model section with API fetching */
 interface DynamicModelSectionProps {
   providerId: LLMProviderName;
   selectedModelId: string;
@@ -128,9 +112,7 @@ const DynamicModelSection: React.FC<DynamicModelSectionProps> = ({
     try {
       const fetchedModels = await fetchProviderModels(providerId);
       setModels(fetchedModels);
-      if (fetchedModels.length === 0) {
-        setError('No tool-capable models found');
-      }
+      if (fetchedModels.length === 0) setError('No tool-capable models found');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch models');
     } finally {
@@ -139,30 +121,20 @@ const DynamicModelSection: React.FC<DynamicModelSectionProps> = ({
   }, [providerId]);
   
   useEffect(() => {
-    if (isConfigured && models.length === 0 && !loading && !error) {
-      loadModels();
-    }
+    if (isConfigured && models.length === 0 && !loading && !error) loadModels();
   }, [isConfigured, models.length, loading, error, loadModels]);
   
   const filteredModels = useMemo(() => {
     if (!searchQuery.trim()) return models.slice(0, 50);
     const query = searchQuery.toLowerCase();
     return models.filter(m => 
-      m.id.toLowerCase().includes(query) || 
-      m.name.toLowerCase().includes(query)
+      m.id.toLowerCase().includes(query) || m.name.toLowerCase().includes(query)
     ).slice(0, 50);
   }, [models, searchQuery]);
   
   const modelsByTier = useMemo(() => {
-    const grouped: Record<ModelInfo['tier'], ModelInfo[]> = {
-      flagship: [],
-      balanced: [],
-      fast: [],
-      legacy: [],
-    };
-    filteredModels.forEach(model => {
-      grouped[model.tier].push(model);
-    });
+    const grouped: Record<ModelInfo['tier'], ModelInfo[]> = { flagship: [], balanced: [], fast: [], legacy: [] };
+    filteredModels.forEach(model => grouped[model.tier].push(model));
     return grouped;
   }, [filteredModels]);
   
@@ -174,9 +146,7 @@ const DynamicModelSection: React.FC<DynamicModelSectionProps> = ({
           <span className={cn("text-[10px]", provider.color)}>{provider.shortName.toLowerCase()}</span>
           <span className="text-[9px] text-[var(--color-text-placeholder)]">[NOT CONFIGURED]</span>
         </div>
-        <p className="text-[9px] text-[var(--color-text-dim)] ml-4">
-          # Add API key in --providers section first
-        </p>
+        <p className="text-[9px] text-[var(--color-text-dim)] ml-4"># Add API key in --providers section first</p>
       </div>
     );
   }
@@ -186,15 +156,14 @@ const DynamicModelSection: React.FC<DynamicModelSectionProps> = ({
       <div className="flex items-center gap-2">
         <span className="text-[var(--color-text-dim)] text-[10px]">#</span>
         <span className={cn("text-[10px]", provider.color)}>{provider.shortName.toLowerCase()}</span>
-        <span className="text-[9px] text-[var(--color-text-dim)]">
-          ({models.length} tool-capable models)
-        </span>
+        <span className="text-[9px] text-[var(--color-text-dim)]">({models.length} tool-capable models)</span>
         <button
           onClick={loadModels}
           disabled={loading}
           className={cn(
             "ml-auto p-1 text-[var(--color-text-dim)] hover:text-[var(--color-accent-primary)] transition-colors",
-            loading && "animate-spin"
+            loading && "animate-spin",
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
           )}
           title="Refresh models"
         >
@@ -202,11 +171,8 @@ const DynamicModelSection: React.FC<DynamicModelSectionProps> = ({
         </button>
       </div>
       
-      {error && (
-        <p className="text-[9px] text-[var(--color-error)] ml-4"># Error: {error}</p>
-      )}
+      {error && <p className="text-[9px] text-[var(--color-error)] ml-4"># Error: {error}</p>}
       
-      {/* Search input for providers with many models */}
       {models.length > 10 && (
         <div className="relative ml-2">
           <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--color-text-dim)]" />
@@ -221,13 +187,9 @@ const DynamicModelSection: React.FC<DynamicModelSectionProps> = ({
       )}
       
       {selectedModelId ? (
-        <p className="text-[9px] text-[var(--color-accent-primary)] ml-4">
-          selected={selectedModelId}
-        </p>
+        <p className="text-[9px] text-[var(--color-accent-primary)] ml-4">selected={selectedModelId}</p>
       ) : (
-        <p className="text-[9px] text-[var(--color-warning)] ml-4">
-          # ⚠ No default model selected - click a model below to set it
-        </p>
+        <p className="text-[9px] text-[var(--color-warning)] ml-4"># No default model selected - click a model below</p>
       )}
       
       <div className="space-y-0.5 ml-2 border-l border-[var(--color-border-subtle)] pl-2 max-h-64 overflow-y-auto">
@@ -237,13 +199,8 @@ const DynamicModelSection: React.FC<DynamicModelSectionProps> = ({
           <p className="text-[9px] text-[var(--color-text-dim)] p-2"># No models found</p>
         ) : (
           (['flagship', 'balanced', 'fast', 'legacy'] as const).map(tier => 
-            modelsByTier[tier].map((model) => (
-              <ModelCard
-                key={model.id}
-                model={model}
-                isSelected={selectedModelId === model.id}
-                onSelect={() => onChange(model.id)}
-              />
+            modelsByTier[tier].map(model => (
+              <ModelCard key={model.id} model={model} isSelected={selectedModelId === model.id} onSelect={() => onChange(model.id)} />
             ))
           )
         )}
@@ -252,18 +209,13 @@ const DynamicModelSection: React.FC<DynamicModelSectionProps> = ({
   );
 };
 
-/** OpenRouter-specific section with advanced filtering */
 interface OpenRouterModelSectionProps {
   selectedModelId: string;
   isConfigured: boolean;
   onChange: (modelId: string) => void;
 }
 
-const OpenRouterModelSection: React.FC<OpenRouterModelSectionProps> = ({
-  selectedModelId,
-  isConfigured,
-  onChange,
-}) => {
+const OpenRouterModelSection: React.FC<OpenRouterModelSectionProps> = ({ selectedModelId, isConfigured, onChange }) => {
   const [rawModels, setRawModels] = useState<OpenRouterApiModel[]>([]);
   const [filteredModels, setFilteredModels] = useState<OpenRouterApiModel[]>([]);
   const [loading, setLoading] = useState(false);
@@ -277,9 +229,7 @@ const OpenRouterModelSection: React.FC<OpenRouterModelSectionProps> = ({
     try {
       const models = await fetchRawOpenRouterModels();
       setRawModels(models);
-      if (models.length === 0) {
-        setError('No models found');
-      }
+      if (models.length === 0) setError('No models found');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch models');
     } finally {
@@ -288,26 +238,13 @@ const OpenRouterModelSection: React.FC<OpenRouterModelSectionProps> = ({
   }, []);
   
   useEffect(() => {
-    if (isConfigured && rawModels.length === 0 && !loading && !error) {
-      loadModels();
-    }
+    if (isConfigured && rawModels.length === 0 && !loading && !error) loadModels();
   }, [isConfigured, rawModels.length, loading, error, loadModels]);
 
-  // Convert filtered raw models to ModelInfo for display
-  const displayModels = useMemo(() => {
-    return filteredModels.slice(0, 100).map(m => apiModelToModelInfo(m, 'openrouter'));
-  }, [filteredModels]);
-
+  const displayModels = useMemo(() => filteredModels.slice(0, 100).map(m => apiModelToModelInfo(m, 'openrouter')), [filteredModels]);
   const modelsByTier = useMemo(() => {
-    const grouped: Record<ModelInfo['tier'], ModelInfo[]> = {
-      flagship: [],
-      balanced: [],
-      fast: [],
-      legacy: [],
-    };
-    displayModels.forEach(model => {
-      grouped[model.tier].push(model);
-    });
+    const grouped: Record<ModelInfo['tier'], ModelInfo[]> = { flagship: [], balanced: [], fast: [], legacy: [] };
+    displayModels.forEach(model => grouped[model.tier].push(model));
     return grouped;
   }, [displayModels]);
   
@@ -319,9 +256,7 @@ const OpenRouterModelSection: React.FC<OpenRouterModelSectionProps> = ({
           <span className={cn("text-[10px]", provider.color)}>{provider.shortName.toLowerCase()}</span>
           <span className="text-[9px] text-[var(--color-text-placeholder)]">[NOT CONFIGURED]</span>
         </div>
-        <p className="text-[9px] text-[var(--color-text-dim)] ml-4">
-          # Add API key in --providers section first
-        </p>
+        <p className="text-[9px] text-[var(--color-text-dim)] ml-4"># Add API key in --providers section first</p>
       </div>
     );
   }
@@ -331,15 +266,14 @@ const OpenRouterModelSection: React.FC<OpenRouterModelSectionProps> = ({
       <div className="flex items-center gap-2">
         <span className="text-[var(--color-text-dim)] text-[10px]">#</span>
         <span className={cn("text-[10px]", provider.color)}>{provider.shortName.toLowerCase()}</span>
-        <span className="text-[9px] text-[var(--color-text-dim)]">
-          ({rawModels.length} models, use filters below)
-        </span>
+        <span className="text-[9px] text-[var(--color-text-dim)]">({rawModels.length} models, use filters below)</span>
         <button
           onClick={loadModels}
           disabled={loading}
           className={cn(
             "ml-auto p-1 text-[var(--color-text-dim)] hover:text-[var(--color-accent-primary)] transition-colors",
-            loading && "animate-spin"
+            loading && "animate-spin",
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
           )}
           title="Refresh models"
         >
@@ -347,28 +281,13 @@ const OpenRouterModelSection: React.FC<OpenRouterModelSectionProps> = ({
         </button>
       </div>
       
-      {error && (
-        <p className="text-[9px] text-[var(--color-error)] ml-4"># Error: {error}</p>
-      )}
-      
-      {/* Advanced filters for OpenRouter */}
-      {rawModels.length > 0 && (
-        <div className="ml-2">
-          <OpenRouterFilters 
-            models={rawModels} 
-            onFilteredModels={setFilteredModels} 
-          />
-        </div>
-      )}
+      {error && <p className="text-[9px] text-[var(--color-error)] ml-4"># Error: {error}</p>}
+      {rawModels.length > 0 && <div className="ml-2"><OpenRouterFilters models={rawModels} onFilteredModels={setFilteredModels} /></div>}
       
       {selectedModelId ? (
-        <p className="text-[9px] text-[var(--color-accent-primary)] ml-4">
-          selected={selectedModelId}
-        </p>
+        <p className="text-[9px] text-[var(--color-accent-primary)] ml-4">selected={selectedModelId}</p>
       ) : (
-        <p className="text-[9px] text-[var(--color-warning)] ml-4">
-          # ⚠ No default model selected - use filters above and click a model to set it
-        </p>
+        <p className="text-[9px] text-[var(--color-warning)] ml-4"># No default model selected - use filters and click a model</p>
       )}
       
       <div className="space-y-0.5 ml-2 border-l border-[var(--color-border-subtle)] pl-2 max-h-64 overflow-y-auto">
@@ -378,13 +297,8 @@ const OpenRouterModelSection: React.FC<OpenRouterModelSectionProps> = ({
           <p className="text-[9px] text-[var(--color-text-dim)] p-2"># No models match filters</p>
         ) : (
           (['flagship', 'balanced', 'fast', 'legacy'] as const).map(tier => 
-            modelsByTier[tier].map((model) => (
-              <ModelCard
-                key={model.id}
-                model={model}
-                isSelected={selectedModelId === model.id}
-                onSelect={() => onChange(model.id)}
-              />
+            modelsByTier[tier].map(model => (
+              <ModelCard key={model.id} model={model} isSelected={selectedModelId === model.id} onSelect={() => onChange(model.id)} />
             ))
           )
         )}
@@ -393,34 +307,16 @@ const OpenRouterModelSection: React.FC<OpenRouterModelSectionProps> = ({
   );
 };
 
-export const SettingsModels: React.FC<SettingsModelsProps> = ({
-  providerSettings,
-  apiKeys,
-  onChange,
-}) => {
+export const SettingsModels: React.FC<SettingsModelsProps> = ({ providerSettings, apiKeys, onChange }) => {
   return (
-    <section className="space-y-3 font-mono">
-      <header>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[var(--color-accent-primary)] text-[11px]">#</span>
-          <h3 className="text-[11px] text-[var(--color-text-primary)]">models</h3>
-        </div>
-        <p className="text-[10px] text-[var(--color-text-dim)]">
-          # Select default model per provider (required for each configured provider)
-        </p>
-        <p className="text-[9px] text-[var(--color-text-placeholder)]">
-          # Models are fetched dynamically from provider APIs (5min cache)
-        </p>
-        
-        {/* Tier legend */}
-        <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-[var(--color-border-subtle)]">
-          {Object.entries(tierConfig).map(([key, config]) => (
-            <span key={key} className={cn("text-[9px]", config.color)}>
-              [{config.label}]
-            </span>
-          ))}
-        </div>
-      </header>
+    <SettingsSection title="models" description="Select default model per provider (required for each configured provider)">
+      <p className="text-[9px] text-[var(--color-text-placeholder)]"># Models are fetched dynamically from provider APIs (5min cache)</p>
+      
+      <div className="flex flex-wrap gap-3 pt-2 border-t border-[var(--color-border-subtle)]">
+        {Object.entries(tierConfig).map(([key, config]) => (
+          <span key={key} className={cn("text-[9px]", config.color)}>[{config.label}]</span>
+        ))}
+      </div>
       
       <div className="space-y-4">
         {PROVIDER_ORDER.map((providerId) => {
@@ -428,29 +324,15 @@ export const SettingsModels: React.FC<SettingsModelsProps> = ({
           const apiKey = apiKeys[providerId];
           const isConfigured = !!(apiKey && apiKey.trim().length > 0);
           
-          // Use specialized OpenRouter section with advanced filters
           if (providerId === 'openrouter') {
-            return (
-              <OpenRouterModelSection
-                key={providerId}
-                selectedModelId={settings?.model?.modelId ?? ''}
-                isConfigured={isConfigured}
-                onChange={(modelId) => onChange(providerId, modelId)}
-              />
-            );
+            return <OpenRouterModelSection key={providerId} selectedModelId={settings?.model?.modelId ?? ''} isConfigured={isConfigured} onChange={(modelId) => onChange(providerId, modelId)} />;
           }
           
-          return (
-            <DynamicModelSection
-              key={providerId}
-              providerId={providerId}
-              selectedModelId={settings?.model?.modelId ?? ''}
-              isConfigured={isConfigured}
-              onChange={(modelId) => onChange(providerId, modelId)}
-            />
-          );
+          return <DynamicModelSection key={providerId} providerId={providerId} selectedModelId={settings?.model?.modelId ?? ''} isConfigured={isConfigured} onChange={(modelId) => onChange(providerId, modelId)} />;
         })}
       </div>
-    </section>
+    </SettingsSection>
   );
 };
+
+export default SettingsModels;

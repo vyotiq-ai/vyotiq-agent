@@ -392,8 +392,8 @@ export function buildCoreTools(tools?: ToolDefForPrompt[]): string {
  */
 export const DYNAMIC_TOOL_CATEGORIES: Record<string, { tools: string[]; description: string }> = {
   file: {
-    tools: ['read', 'write', 'edit', 'ls', 'grep', 'glob', 'codebase_search', 'bulk', 'read_lints', 'rename', 'delete'],
-    description: 'File operations, search, semantic search, diagnostics',
+    tools: ['read', 'write', 'edit', 'ls', 'grep', 'glob', 'bulk', 'read_lints', 'rename', 'delete'],
+    description: 'File operations, search, diagnostics',
   },
   terminal: {
     tools: ['run', 'check_terminal', 'kill_terminal', 'list_terminals'],
@@ -448,57 +448,6 @@ export function buildToolCategories(): string {
   }
   
   parts.push('</tool_categories>');
-  return parts.join('\n');
-}
-
-// =============================================================================
-// SEMANTIC CONTEXT - Relevant code snippets
-// =============================================================================
-
-import type { SemanticContextInfo } from './types';
-
-/**
- * Build semantic context section with relevant code snippets
- * This provides the agent with relevant code from the codebase
- * based on the user's query for improved contextual understanding.
- */
-export function buildSemanticContext(semanticContext?: SemanticContextInfo): string {
-  if (!semanticContext || semanticContext.snippets.length === 0) return '';
-  
-  const parts: string[] = ['<relevant_code hint="Semantically retrieved code relevant to the current query">'];
-  
-  for (const snippet of semanticContext.snippets) {
-    const attrs: string[] = [
-      `file="${escapeXml(snippet.filePath)}"`,
-      `score="${snippet.score.toFixed(2)}"`,
-    ];
-    
-    if (snippet.language) {
-      attrs.push(`lang="${snippet.language}"`);
-    }
-    if (snippet.symbolType && snippet.symbolName) {
-      attrs.push(`symbol="${snippet.symbolType}:${escapeXml(snippet.symbolName)}"`);
-    }
-    if (snippet.startLine !== undefined) {
-      const lineRange = snippet.endLine 
-        ? `${snippet.startLine}-${snippet.endLine}`
-        : `${snippet.startLine}`;
-      attrs.push(`lines="${lineRange}"`);
-    }
-    
-    parts.push(`<snippet ${attrs.join(' ')}>`);
-    // Trim and limit content length for token efficiency
-    const content = snippet.content.trim();
-    const maxContentLength = 1500;
-    if (content.length > maxContentLength) {
-      parts.push(content.substring(0, maxContentLength) + '\n... (truncated)');
-    } else {
-      parts.push(content);
-    }
-    parts.push('</snippet>');
-  }
-  
-  parts.push('</relevant_code>');
   return parts.join('\n');
 }
 

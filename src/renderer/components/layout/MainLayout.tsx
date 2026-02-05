@@ -5,6 +5,9 @@ import { MOBILE_BREAKPOINT, TABLET_BREAKPOINT } from '../../utils/constants';
 import { useActiveWorkspace } from '../../hooks/useActiveWorkspace';
 import { cn } from '../../utils/cn';
 import { useLocalStorage } from '../../hooks';
+import { WorkspaceTabBar } from '../../features/workspaces/components/WorkspaceTabBar';
+import { useWorkspaceTabsState } from '../../state/WorkspaceTabsProvider';
+import { useAllRunningSessions } from '../../hooks/useWorkspaceSessions';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -20,12 +23,28 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
   // Persisted layout preferences
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage('vyotiq-sidebar-collapsed', false);
   const [sidebarWidth, setSidebarWidth] = useLocalStorage('vyotiq-sidebar-width', DEFAULT_SIDEBAR_WIDTH);
+  const [showTabBar, _setShowTabBar] = useLocalStorage('vyotiq-show-workspace-tabs', true);
 
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
 
   const activeWorkspace = useActiveWorkspace();
+  
+  // Get workspace tabs state and running sessions
+  const tabsState = useWorkspaceTabsState();
+  const { totalRunning } = useAllRunningSessions();
+  const hasMultipleTabs = tabsState.tabs.length > 1;
+  
+  // Show tab bar when: has workspace OR multiple tabs OR running sessions
+  // Always show when there's an active workspace for session visibility
+  const shouldShowTabBar = !isMobile && (
+    showTabBar || 
+    hasMultipleTabs || 
+    tabsState.tabs.length >= 1 || 
+    totalRunning > 0 ||
+    !!activeWorkspace
+  );
 
   // Handle responsive behavior with debounced resize
   useEffect(() => {
@@ -189,7 +208,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
           )}
         </div>
 
-        {chatContent}
+        {/* Main content area with optional workspace tabs */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+          {/* Workspace Tab Bar - shown when multiple tabs or enabled */}
+          {shouldShowTabBar && (
+            <WorkspaceTabBar />
+          )}
+          
+          {/* Main content */}
+          {chatContent}
+        </div>
       </div>
     </div>
   );

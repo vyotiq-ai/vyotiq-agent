@@ -89,6 +89,7 @@ export class SessionManager {
       
       this.sessions.clear();
       let migratedCount = 0;
+      let recoveredCount = 0;
       
       for (const sessionState of sessions) {
         let needsSave = false;
@@ -104,6 +105,22 @@ export class SessionManager {
           });
         }
 
+        // Recovery: Reset orphaned "running" sessions to "idle" on startup
+        // These sessions were likely left in running state due to app crash
+        if (sessionState.status === 'running') {
+          logger.warn('Recovering orphaned running session', {
+            sessionId: sessionState.id,
+            workspaceId: sessionState.workspaceId,
+            activeRunId: sessionState.activeRunId,
+            lastUpdatedAt: new Date(sessionState.updatedAt).toISOString(),
+          });
+          sessionState.status = 'idle';
+          sessionState.activeRunId = undefined;
+          sessionState.updatedAt = Date.now();
+          recoveredCount++;
+          needsSave = true;
+        }
+
         // Rehydrate session
         this.sessions.set(sessionState.id, {
           state: sessionState,
@@ -117,6 +134,7 @@ export class SessionManager {
       logger.info('Sessions loaded successfully', {
         total: sessions.length,
         migrated: migratedCount,
+        recoveredFromCrash: recoveredCount,
       });
       
       this.initialized = true;
@@ -611,5 +629,139 @@ export class SessionManager {
     this.schedulePersist(sessionId, true);
 
     return { success: true };
+  }
+
+  // =============================================================================
+  // Multi-Workspace Session Management
+  // =============================================================================
+
+  /**
+   * Get sessions for multiple workspaces efficiently.
+   * Uses a single pass through sessions for better performance with many open workspaces.
+   */
+  getSessionsByWorkspaces(workspaceIds: string[]): Map<string, AgentSessionState[]> {
+    const workspaceIdSet = new Set(workspaceIds);
+    const result = new Map<string, AgentSessionState[]>();
+    
+    // Initialize empty arrays for each workspace
+    for (const wsId of workspaceIds) {
+      result.set(wsId, []);
+    }
+
+    // Single pass through all sessions
+    for (const session of this.sessions.values()) {
+      const wsId = session.state.workspaceId;
+      if (wsId && workspaceIdSet.has(wsId)) {
+        result.get(wsId)!.push(session.state);
+      }
+    }
+
+    // Sort each workspace's sessions by updatedAt
+    for (const [wsId, sessions] of result) {
+      result.set(wsId, sessions.sort((a, b) => b.updatedAt - a.updatedAt));
+    }
+
+    return result;
+  }
+
+  /**
+   * Get session counts per workspace.
+   * Useful for displaying session counts in workspace tabs without loading full session data.
+   */
+  getSessionCountsByWorkspace(): Map<string, { total: number; active: number }> {
+    const counts = new Map<string, { total: number; active: number }>();
+
+    for (const session of this.sessions.values()) {
+      const wsId = session.state.workspaceId ?? 'unassigned';
+      const current = counts.get(wsId) ?? { total: 0, active: 0 };
+      
+      current.total++;
+      if (session.state.status === 'running') {
+        current.active++;
+      }
+      
+      counts.set(wsId, current);
+    }
+
+    return counts;
+  }
+
+  /**
+   * Get all active (running) sessions across multiple workspaces.
+   * Used for monitoring concurrent execution across workspace tabs.
+   */
+  getActiveSessionsByWorkspaces(workspaceIds: string[]): Map<string, AgentSessionState[]> {
+    const workspaceIdSet = new Set(workspaceIds);
+    const result = new Map<string, AgentSessionState[]>();
+    
+    for (const wsId of workspaceIds) {
+      result.set(wsId, []);
+    }
+
+    for (const session of this.sessions.values()) {
+      const wsId = session.state.workspaceId;
+      if (wsId && workspaceIdSet.has(wsId) && session.state.status === 'running') {
+        result.get(wsId)!.push(session.state);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Get session summaries for multiple workspaces in a single batch operation.
+   * Much more efficient than calling getSessionSummaries for each workspace.
+   */
+  async getSessionSummariesBatch(workspaceIds: string[]): Promise<Map<string, SessionSummary[]>> {
+    const result = new Map<string, SessionSummary[]>();
+    
+    // Fetch all summaries in parallel
+    const summaryPromises = workspaceIds.map(async (wsId) => {
+      const summaries = await this.storage.getSessionSummaries(wsId);
+      return { wsId, summaries };
+    });
+
+    const results = await Promise.all(summaryPromises);
+    
+    for (const { wsId, summaries } of results) {
+      result.set(wsId, summaries);
+    }
+
+    return result;
+  }
+
+  /**
+   * Find which workspace a session belongs to.
+   * Returns workspace ID or undefined if session not found.
+   */
+  getSessionWorkspaceId(sessionId: string): string | undefined {
+    return this.sessions.get(sessionId)?.state.workspaceId;
+  }
+
+  /**
+   * Check if any sessions are running in a specific workspace.
+   * Used to determine if a workspace tab should show activity indicator.
+   */
+  hasActiveSessionsInWorkspace(workspaceId: string): boolean {
+    for (const session of this.sessions.values()) {
+      if (session.state.workspaceId === workspaceId && session.state.status === 'running') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Get total running sessions count across all workspaces.
+   * Useful for global activity monitoring and resource management.
+   */
+  getTotalActiveSessionCount(): number {
+    let count = 0;
+    for (const session of this.sessions.values()) {
+      if (session.state.status === 'running') {
+        count++;
+      }
+    }
+    return count;
   }
 }

@@ -84,7 +84,8 @@ export class MCPServerManager extends EventEmitter {
 
   registerServer(config: MCPServerConfig): void {
     if (this.servers.has(config.id)) {
-      logger.warn('Server already registered, updating config', { serverId: config.id });
+      // Silently update config when server already registered (common during settings reload)
+      logger.debug('Server already registered, updating config', { serverId: config.id });
       this.updateServerConfig(config);
       return;
     }

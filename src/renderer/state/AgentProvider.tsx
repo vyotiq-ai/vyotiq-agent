@@ -72,7 +72,8 @@ type AgentStore = {
   actions: AgentActions;
 };
 
-const AgentContext = createContext<AgentStore | undefined>(undefined);
+// Exported for internal use by hooks that need to check if they're inside the provider
+export const AgentContext = createContext<AgentStore | undefined>(undefined);
 
 const defaultIsEqual = Object.is;
 
@@ -896,12 +897,38 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 
     logger.info('Switching to workspace', { workspaceId });
 
-    // 1. Clear ALL sessions and reset state completely before switching
-    // This prevents the agent from operating on the wrong workspace
-    dispatchRef.current({ type: 'SESSIONS_CLEAR' });
+    // Get workspace path for cache prewarming
+    const targetWorkspace = store.getState().workspaces.find(w => w.id === workspaceId);
+    const workspacePath = targetWorkspace?.path;
 
-    // 2. Set the new active workspace
-    const updatedWorkspaces = await window.vyotiq.workspace.setActive(workspaceId);
+    // Parallel operations for faster switching:
+    // 1. Prewarm file cache (background, non-blocking)
+    // 2. Set active workspace
+    // 3. Load sessions
+    const prewarmPromise = workspacePath && window.vyotiq?.files?.prewarmCache
+      ? window.vyotiq.files.prewarmCache(workspacePath).catch(err => {
+          logger.debug('Cache prewarm failed (non-critical)', { error: err });
+        })
+      : Promise.resolve();
+
+    // IMPORTANT: Instead of clearing ALL sessions, we now preserve running sessions
+    // from other workspaces to support multi-workspace concurrent execution.
+    // Only clear sessions that belong to other workspaces AND are not running.
+    // Running sessions from other workspaces remain visible to show global activity.
+    const currentState = store.getState();
+    const runningSessions = currentState.sessions.filter(
+      s => (s.status === 'running' || s.status === 'awaiting-confirmation') && s.workspaceId !== workspaceId
+    );
+    
+    // Use SESSIONS_CLEAR_FOR_WORKSPACE which keeps running sessions from other workspaces
+    // Note: We clear sessions not belonging to the workspace EXCEPT for running ones
+    dispatchRef.current({ type: 'SESSIONS_CLEAR_FOR_WORKSPACE_PRESERVE_RUNNING', payload: workspaceId });
+
+    // 2. Set the new active workspace (parallel with cache prewarm)
+    const [updatedWorkspaces] = await Promise.all([
+      window.vyotiq.workspace.setActive(workspaceId),
+      prewarmPromise,
+    ]);
     dispatchRef.current({ type: 'WORKSPACES_UPDATE', payload: updatedWorkspaces });
 
     // 3. Load sessions for the new workspace
@@ -947,7 +974,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
         logger.error('Failed to load sessions for workspace', { error: error instanceof Error ? error.message : String(error) });
       }
     }
-  }, []);
+  }, [store]);
 
   const updateSessionConfig = useCallback(async (sessionId: string, config: Partial<AgentSessionState['config']>) => {
     if (!window.vyotiq?.agent) {

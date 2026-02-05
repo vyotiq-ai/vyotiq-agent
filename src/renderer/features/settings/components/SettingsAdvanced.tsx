@@ -1,8 +1,14 @@
+/**
+ * Settings Advanced Component
+ * 
+ * Expert settings for rate limits, timeouts, and custom endpoints.
+ */
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Gauge, Clock, Server, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, Server, TriangleAlert } from 'lucide-react';
 import type { AgentSettings, LLMProviderName } from '../../../../shared/types';
 import { PROVIDERS, PROVIDER_ORDER, isProviderConfigured } from '../../../../shared/providers';
 import { cn } from '../../../utils/cn';
+import { SettingsGroup } from '../primitives';
 
 interface SettingsAdvancedProps {
   rateLimits: AgentSettings['rateLimits'];
@@ -26,20 +32,19 @@ export const SettingsAdvanced: React.FC<SettingsAdvancedProps> = ({
       <button
         className={cn(
           "w-full flex items-center justify-between text-left group",
-          'rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <header>
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[var(--color-warning)] text-[11px]">!</span>
-            <h3 className="text-[11px] text-[var(--color-text-primary)] group-hover:text-[var(--color-accent-primary)] transition-colors">advanced</h3>
+            <h3 className="text-[11px] text-[var(--color-text-primary)] group-hover:text-[var(--color-accent-primary)] transition-colors">
+              advanced
+            </h3>
           </div>
-          <p className="text-[10px] text-[var(--color-text-dim)]">
-            # Rate limits, timeouts, custom endpoints
-          </p>
+          <p className="text-[10px] text-[var(--color-text-dim)]"># Rate limits, timeouts, custom endpoints</p>
         </header>
-        
         {isExpanded ? (
           <ChevronDown size={12} className="text-[var(--color-text-muted)]" />
         ) : (
@@ -56,12 +61,7 @@ export const SettingsAdvanced: React.FC<SettingsAdvancedProps> = ({
           </div>
 
           {/* Rate Limits */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-              <Gauge size={11} className="text-[var(--color-accent-secondary)]" />
-              --rate-limits
-            </div>
-            
+          <SettingsGroup title="rate limits">
             <div className="grid gap-2 sm:grid-cols-2">
               {PROVIDER_ORDER.map((providerId) => {
                 const provider = PROVIDERS[providerId];
@@ -83,9 +83,7 @@ export const SettingsAdvanced: React.FC<SettingsAdvancedProps> = ({
                         <span className="text-[var(--color-accent-primary)] text-[9px]">›</span>
                         <span className="text-[10px] text-[var(--color-text-secondary)]">{provider.shortName.toLowerCase()}</span>
                       </div>
-                      <span className="text-[9px] text-[var(--color-text-dim)]">
-                        {currentLimit ? `${currentLimit} rpm` : '---'}
-                      </span>
+                      <span className="text-[9px] text-[var(--color-text-dim)]">{currentLimit ? `${currentLimit} rpm` : '---'}</span>
                     </div>
                     <input
                       type="number"
@@ -101,18 +99,11 @@ export const SettingsAdvanced: React.FC<SettingsAdvancedProps> = ({
                 );
               })}
             </div>
-            <p className="text-[9px] text-[var(--color-text-dim)]">
-              # 0=unlimited | auto-throttle to stay within limits
-            </p>
-          </div>
+            <p className="text-[9px] text-[var(--color-text-dim)]"># 0=unlimited | auto-throttle to stay within limits</p>
+          </SettingsGroup>
 
           {/* Timeouts */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-              <Clock size={11} className="text-[var(--color-info)]" />
-              --timeouts
-            </div>
-            
+          <SettingsGroup title="timeouts">
             <div className="grid gap-2 sm:grid-cols-2">
               {PROVIDER_ORDER.map((providerId) => {
                 const provider = PROVIDERS[providerId];
@@ -150,18 +141,11 @@ export const SettingsAdvanced: React.FC<SettingsAdvancedProps> = ({
                 );
               })}
             </div>
-            <p className="text-[9px] text-[var(--color-text-dim)]">
-              # max wait time (seconds) before timeout
-            </p>
-          </div>
+            <p className="text-[9px] text-[var(--color-text-dim)]"># max wait time (seconds) before timeout</p>
+          </SettingsGroup>
 
           {/* Custom Base URLs */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-              <Server size={11} className="text-[var(--color-accent-primary)]" />
-              --endpoints
-            </div>
-            
+          <SettingsGroup title="endpoints" icon={<Server size={11} />}>
             <div className="space-y-2">
               {PROVIDER_ORDER.map((providerId) => {
                 const provider = PROVIDERS[providerId];
@@ -196,9 +180,11 @@ export const SettingsAdvanced: React.FC<SettingsAdvancedProps> = ({
             <p className="text-[9px] text-[var(--color-text-dim)]">
               # override for self-hosted/proxy setups | DeepSeek strict mode: use https://api.deepseek.com/beta
             </p>
-          </div>
+          </SettingsGroup>
         </div>
       )}
     </section>
   );
 };
+
+export default SettingsAdvanced;

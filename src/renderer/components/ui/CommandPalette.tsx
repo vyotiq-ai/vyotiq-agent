@@ -137,9 +137,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
     <div 
       className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
       onClick={onClose}
+      role="presentation"
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
       
       {/* Palette */}
       <div 
@@ -150,10 +151,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
           'animate-scale-in'
         )}
         onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
       >
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-border-subtle)]">
-          <Search size={18} className="text-[var(--color-text-muted)]" />
+          <Search size={18} className="text-[var(--color-text-muted)]" aria-hidden="true" />
           <input
             ref={inputRef}
             type="text"
@@ -168,8 +172,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
             )}
             autoComplete="off"
             spellCheck={false}
+            aria-label="Search commands"
+            aria-autocomplete="list"
+            aria-controls="command-palette-list"
+            role="combobox"
+            aria-expanded="true"
+            aria-activedescendant={flatCommands[selectedIndex] ? `cmd-${flatCommands[selectedIndex].id}` : undefined}
           />
-          <kbd className="px-2 py-0.5 text-[10px] rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)]">
+          <kbd className="px-2 py-0.5 text-[10px] rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)]" aria-hidden="true">
             ESC
           </kbd>
         </div>
@@ -177,16 +187,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
         {/* Commands list */}
         <div 
           ref={listRef}
+          id="command-palette-list"
+          role="listbox"
+          aria-label="Available commands"
           className="flex-1 overflow-y-auto py-2 scrollbar-thin"
         >
           {groupedCommands.length === 0 ? (
-            <div className="px-4 py-8 text-center text-[11px] text-[var(--color-text-muted)]">
+            <div className="px-4 py-8 text-center text-[11px] text-[var(--color-text-muted)]" role="status">
               No commands found
             </div>
           ) : (
             groupedCommands.map(group => (
-              <div key={group.category}>
-                <div className="px-4 py-1.5 text-[10px] font-medium text-[var(--color-text-dim)] uppercase tracking-wider">
+              <div key={group.category} role="group" aria-labelledby={`group-${group.category}`}>
+                <div 
+                  id={`group-${group.category}`}
+                  className="px-4 py-1.5 text-[10px] font-medium text-[var(--color-text-dim)] uppercase tracking-wider"
+                >
                   {group.category}
                 </div>
                 {group.items.map((cmd) => {
@@ -196,6 +212,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
                   return (
                     <button
                       key={cmd.id}
+                      id={`cmd-${cmd.id}`}
+                      role="option"
+                      aria-selected={isSelected}
                       data-selected={isSelected}
                       onClick={() => executeCommand(cmd)}
                       className={cn(
@@ -209,7 +228,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
                       <span className={cn(
                         'flex-shrink-0',
                         isSelected ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-muted)]'
-                      )}>
+                      )} aria-hidden="true">
                         {cmd.icon || <Command size={16} />}
                       </span>
                       <div className="flex-1 min-w-0">

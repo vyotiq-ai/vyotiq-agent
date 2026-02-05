@@ -95,6 +95,7 @@ DeletePlan(planId)
 
   searchKeywords: ['delete', 'remove', 'plan', 'cleanup', 'clear'],
   riskLevel: 'moderate',
+  allowedCallers: ['direct'],
 
   ui: {
     icon: 'Trash2',

@@ -118,18 +118,6 @@ Added comprehensive Model Context Protocol (MCP) server integration for dynamic 
 - 🔧 **Dynamic Tool Integration**: MCP tools seamlessly available in the agent
 - 📊 **Real-time Status**: Live server status monitoring and reconnection handling
 
-### Semantic Codebase Search (v1.1.0 - January 2026)
-
-Added local AI-powered semantic search capabilities using vector embeddings. Search your codebase by meaning, not just text patterns.
-
-**Features:**
-
-- 🧠 **Semantic Search**: Find code by meaning with `codebase_search` tool
-- ⚡ **Local Embeddings**: Transformers.js with ONNX runtime - no external API calls
-- 🔧 **Language-Aware Chunking**: Smart code splitting for 15+ languages
-- 📊 **Index Management**: Settings panel for configuration and statistics
-- 🎯 **GPU Support**: Optional GPU acceleration for faster indexing
-
 ---
 
 ## 🚀 Features
@@ -237,7 +225,6 @@ Supported languages: TypeScript, JavaScript, Python, Go, Rust, Java, C/C++, and 
 | Category | Tools |
 |----------|-------|
 | **File Operations** | `read`, `write`, `edit`, `ls`, `grep`, `glob`, `bulkOperations` |
-| **Semantic Search** | `codebase_search` - AI-powered semantic code search using vector embeddings |
 | **Terminal** | `run`, `checkTerminal`, `killTerminal` |
 | **Browser** | `browser_fetch`, `browser_navigate`, `browser_extract`, `browser_snapshot`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_scroll`, `browser_fill_form`, `browser_wait`, `browser_hover`, `browser_evaluate`, `browser_state`, `browser_back`, `browser_forward`, `browser_reload`, `browser_console`, `browser_network`, `browser_tabs`, `browser_security_status`, `browser_check_url` |
 | **LSP** | `lsp_hover`, `lsp_definition`, `lsp_references`, `lsp_symbols`, `lsp_diagnostics`, `lsp_completions`, `lsp_code_actions`, `lsp_rename` |
@@ -464,7 +451,6 @@ vyotiq/
 | [xterm.js](https://xtermjs.org/) | 5.5 | Terminal emulator |
 | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) | 12.5 | Local database |
 | [node-pty](https://github.com/microsoft/node-pty) | 1.1 | Terminal process management |
-| [@huggingface/transformers](https://huggingface.co/docs/transformers.js) | 3.x | Local AI embeddings for semantic search |
 
 ---
 
@@ -477,7 +463,6 @@ All settings are accessible via the Settings panel (`Ctrl + ,`):
 - **AI Providers**: Configure API keys and default models
 - **Editor**: Font size, theme, tab size, word wrap
 - **Terminal**: Shell path, font family, cursor style
-- **Indexing**: Semantic indexing, chunk size, file types, exclude patterns, GPU acceleration
 - **Safety**: Tool confirmation, file limits, protected paths, blocked commands
 - **Cache**: Prompt caching, tool result caching, context caching
 - **Debug**: Verbose logging, trace export, breakpoints

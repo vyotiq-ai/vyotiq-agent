@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, ExternalLink, Eye, EyeOff } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import type { AgentSettings, LLMProviderName } from '../../../../shared/types';
 import { PROVIDERS, PROVIDER_ORDER, type ProviderInfo } from '../../../../shared/providers';
-import { Toggle } from '../../../components/ui/Toggle';
 import { ProviderIcon } from '../../../components/ui/ProviderIcons';
 import { cn } from '../../../utils/cn';
 import { SettingsClaudeSubscription } from './SettingsClaudeSubscription';
 import { SettingsGLMSubscription } from './SettingsGLMSubscription';
+import {
+  SettingsSection,
+  SettingsInput,
+  SettingsToggleRow,
+  SettingsSelect,
+} from '../primitives';
 
 interface SettingsProvidersProps {
   apiKeys: AgentSettings['apiKeys'];
@@ -25,6 +30,13 @@ interface ProviderCardProps {
   onPriorityChange: (priority: number) => void;
 }
 
+const PRIORITY_OPTIONS = [
+  { value: '1', label: '1 - Primary' },
+  { value: '2', label: '2 - Secondary' },
+  { value: '3', label: '3 - Tertiary' },
+  { value: '4', label: '4 - Fallback' },
+];
+
 const ProviderCard: React.FC<ProviderCardProps> = ({
   provider,
   apiKey,
@@ -35,7 +47,6 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   onPriorityChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showKey, setShowKey] = useState(false);
 
   const isConfigured = apiKey && apiKey.trim().length > 0;
   const maskedKey = apiKey ? '•'.repeat(Math.min(apiKey.length, 24)) : '';
@@ -44,7 +55,9 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     <div
       className={cn(
         "border transition-all duration-150 font-mono",
-        isEnabled ? "border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]" : "border-[var(--color-border-subtle)]/50 bg-[var(--color-surface-1)] opacity-60"
+        isEnabled 
+          ? "border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]" 
+          : "border-[var(--color-border-subtle)]/50 bg-[var(--color-surface-1)] opacity-60"
       )}
     >
       {/* Header */}
@@ -55,12 +68,16 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <span className="text-[var(--color-text-dim)] text-[10px]">&gt;</span>
+        <span className="text-[var(--color-text-dim)] text-[10px] w-4 text-center select-none">
+          {isExpanded ? '[-]' : '[+]'}
+        </span>
         <ProviderIcon provider={provider.id} size={12} className={provider.color} />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[var(--color-text-primary)]">{provider.shortName.toLowerCase()}</span>
+            <span className="text-[11px] text-[var(--color-text-primary)]">
+              {provider.shortName.toLowerCase()}
+            </span>
             {isConfigured ? (
               <span className="text-[9px] text-[var(--color-accent-primary)]">[OK]</span>
             ) : (
@@ -72,97 +89,58 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] text-[var(--color-text-dim)]">p={priority}</span>
-          {isExpanded ? (
-            <ChevronDown size={12} className="text-[var(--color-text-dim)]" />
-          ) : (
-            <ChevronRight size={12} className="text-[var(--color-text-dim)]" />
-          )}
-        </div>
+        <span className="text-[9px] text-[var(--color-text-dim)]">p={priority}</span>
       </button>
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="px-2.5 pb-2.5 pt-0 space-y-3 animate-in slide-in-from-top-1 duration-100">
+        <div className="px-2.5 pb-2.5 pt-0 space-y-2 animate-in slide-in-from-top-1 duration-100">
           <div className="h-px bg-[var(--color-border-default)]" />
 
-          {/* API Key input */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--api-key</label>
+          {/* API Key input with get key link */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-end">
               <a
                 href={provider.docsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={cn(
-                  "flex items-center gap-1 text-[9px] text-[var(--color-text-dim)] hover:text-[var(--color-accent-primary)] transition-colors",
+                  "flex items-center gap-1 text-[9px] text-[var(--color-text-dim)]",
+                  "hover:text-[var(--color-accent-primary)] transition-colors",
                   'rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
                 )}
               >
                 get key <ExternalLink size={9} />
               </a>
             </div>
-            <div className="relative">
-              <input
-                type={showKey ? "text" : "password"}
-                className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 pr-8 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30 placeholder:text-[var(--color-text-placeholder)]"
-                placeholder={`sk-...`}
-                value={apiKey}
-                onChange={(e) => onApiKeyChange(e.target.value)}
-              />
-              <button
-                type="button"
-                className={cn(
-                  "absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] transition-colors",
-                  'rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
-                )}
-                onClick={() => setShowKey(!showKey)}
-                aria-label={showKey ? `Hide ${provider.shortName} API key` : `Show ${provider.shortName} API key`}
-              >
-                {showKey ? <EyeOff size={12} /> : <Eye size={12} />}
-              </button>
-            </div>
-          </div>
-
-          {/* Enable/Disable toggle */}
-          <div className="flex items-center justify-between py-1">
-            <div>
-              <p className="text-[10px] text-[var(--color-text-secondary)]">--enabled</p>
-              <p className="text-[9px] text-[var(--color-text-dim)]"># Include in auto-routing</p>
-            </div>
-            <Toggle
-              checked={isEnabled}
-              onToggle={onToggleEnabled}
-              size="md"
-              showState={false}
+            <SettingsInput
+              label="api-key"
+              value={apiKey}
+              onChange={onApiKeyChange}
+              type="password"
+              placeholder="sk-..."
+              className="py-0"
             />
           </div>
 
+          {/* Enable/Disable toggle */}
+          <SettingsToggleRow
+            label="enabled"
+            description="Include in auto-routing"
+            checked={isEnabled}
+            onToggle={onToggleEnabled}
+            showState={false}
+          />
+
           {/* Priority selector */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-[var(--color-text-muted)]">--priority</label>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4].map((p) => (
-                <button
-                  key={p}
-                  className={cn(
-                    "flex-1 py-1 text-[10px] transition-all border",
-                    priority === p
-                      ? "bg-[var(--color-surface-2)] text-[var(--color-accent-primary)] border-[var(--color-accent-primary)]/30"
-                      : "bg-transparent text-[var(--color-text-dim)] border-[var(--color-border-subtle)] hover:border-[var(--color-border-default)]",
-                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
-                  )}
-                  onClick={() => onPriorityChange(p)}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-            <p className="text-[9px] text-[var(--color-text-dim)]">
-              # 1=primary, 4=fallback
-            </p>
-          </div>
+          <SettingsSelect
+            label="priority"
+            description="1=primary, 4=fallback"
+            value={String(priority)}
+            onChange={(value) => onPriorityChange(Number(value))}
+            options={PRIORITY_OPTIONS}
+            className="py-1"
+          />
         </div>
       )}
     </div>
@@ -187,17 +165,10 @@ export const SettingsProviders: React.FC<SettingsProvidersProps> = ({
       <div className="h-px bg-[var(--color-border-subtle)]" />
 
       {/* API Key Providers Section */}
-      <section className="space-y-3 font-mono">
-        <header>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[var(--color-accent-primary)] text-[11px]">#</span>
-            <h3 className="text-[11px] text-[var(--color-text-primary)]">providers</h3>
-          </div>
-          <p className="text-[10px] text-[var(--color-text-dim)]">
-            # Configure LLM providers. Keys encrypted locally.
-          </p>
-        </header>
-
+      <SettingsSection
+        title="providers"
+        description="Configure LLM providers. Keys encrypted locally."
+      >
         <div className="space-y-1.5">
           {PROVIDER_ORDER.map((providerId) => {
             const provider = PROVIDERS[providerId];
@@ -217,7 +188,7 @@ export const SettingsProviders: React.FC<SettingsProvidersProps> = ({
             );
           })}
         </div>
-      </section>
+      </SettingsSection>
     </div>
   );
 };

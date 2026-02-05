@@ -1,8 +1,8 @@
 /**
  * Feature Toggle Component
- * 
+ *
  * A shared component for feature toggle switches with icon, title, and description.
- * Extracted from SettingsEditorAI.tsx and SettingsIndexing.tsx to avoid duplication.
+ * Used across settings panels for consistent toggle UI.
  */
 import React, { memo } from 'react';
 import { cn } from '../../utils/cn';

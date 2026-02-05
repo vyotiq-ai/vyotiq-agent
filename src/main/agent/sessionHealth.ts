@@ -539,6 +539,122 @@ export class SessionHealthMonitor {
       });
     }
   }
+
+  // ===========================================================================
+  // Multi-Session Workspace Health Aggregation
+  // ===========================================================================
+
+  /**
+   * Get aggregated health status for all sessions in a workspace.
+   * Useful for workspace-level resource monitoring when multiple sessions run concurrently.
+   */
+  getWorkspaceHealth(workspaceId: string, workspaceSessionIds: string[]): WorkspaceHealthStatus {
+    const sessionHealthStatuses: SessionHealthStatus[] = [];
+    let aggregateIssueCount = 0;
+    let aggregateHealthScore = 0;
+    let totalTokensUsed = 0;
+    let totalCost = 0;
+    let activeSessions = 0;
+
+    for (const sessionId of workspaceSessionIds) {
+      const status = this.getHealthStatus(sessionId);
+      if (status.status !== 'unknown') {
+        sessionHealthStatuses.push(status);
+        aggregateIssueCount += status.issues.length;
+        aggregateHealthScore += status.healthScore;
+        totalTokensUsed += status.tokenUsage.totalInput + status.tokenUsage.totalOutput;
+        totalCost += status.tokenUsage.estimatedCost;
+        activeSessions++;
+      }
+    }
+
+    // Calculate average health score (or 100 if no active sessions)
+    const averageHealthScore = activeSessions > 0 
+      ? Math.round(aggregateHealthScore / activeSessions)
+      : 100;
+
+    // Determine overall workspace status based on session statuses
+    let workspaceStatus: 'healthy' | 'warning' | 'critical' | 'unknown' = 'healthy';
+    const criticalCount = sessionHealthStatuses.filter(s => s.status === 'critical').length;
+    const warningCount = sessionHealthStatuses.filter(s => s.status === 'warning').length;
+
+    if (criticalCount > 0) {
+      workspaceStatus = 'critical';
+    } else if (warningCount > 0 || averageHealthScore < 70) {
+      workspaceStatus = 'warning';
+    } else if (activeSessions === 0) {
+      workspaceStatus = 'unknown';
+    }
+
+    // Collect all unique recommendations across sessions
+    const allRecommendations = new Set<string>();
+    for (const status of sessionHealthStatuses) {
+      for (const rec of status.recommendations) {
+        allRecommendations.add(rec);
+      }
+    }
+
+    return {
+      workspaceId,
+      status: workspaceStatus,
+      averageHealthScore,
+      activeSessions,
+      totalSessions: workspaceSessionIds.length,
+      totalIssues: aggregateIssueCount,
+      totalTokensUsed,
+      estimatedTotalCost: Math.round(totalCost * 10000) / 10000,
+      sessionStatuses: sessionHealthStatuses,
+      recommendations: Array.from(allRecommendations).slice(0, 5), // Top 5 recommendations
+      lastUpdated: Date.now(),
+    };
+  }
+
+  /**
+   * Check all active sessions for stalls and return session IDs that have stalled.
+   * This can be called periodically by the orchestrator for proactive health monitoring.
+   */
+  getStallingSessions(): Array<{ sessionId: string; stalledDuration: number }> {
+    const stalling: Array<{ sessionId: string; stalledDuration: number }> = [];
+    const now = Date.now();
+
+    for (const [sessionId, state] of this.sessions) {
+      const stalledDuration = now - state.lastActivityAt;
+      if (stalledDuration > this.config.stallTimeoutMs) {
+        stalling.push({ sessionId, stalledDuration });
+      }
+    }
+
+    return stalling;
+  }
+}
+
+// =============================================================================
+// Workspace Health Status Type
+// =============================================================================
+
+export interface WorkspaceHealthStatus {
+  /** Workspace ID */
+  workspaceId: string;
+  /** Overall workspace health status */
+  status: 'healthy' | 'warning' | 'critical' | 'unknown';
+  /** Average health score across all sessions (0-100) */
+  averageHealthScore: number;
+  /** Number of currently active/monitored sessions */
+  activeSessions: number;
+  /** Total number of sessions in workspace */
+  totalSessions: number;
+  /** Total issues across all sessions */
+  totalIssues: number;
+  /** Total tokens used across all sessions */
+  totalTokensUsed: number;
+  /** Estimated total cost across all sessions */
+  estimatedTotalCost: number;
+  /** Individual session health statuses */
+  sessionStatuses: SessionHealthStatus[];
+  /** Combined recommendations across sessions */
+  recommendations: string[];
+  /** Last update timestamp */
+  lastUpdated: number;
 }
 
 // =============================================================================

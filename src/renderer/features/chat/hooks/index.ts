@@ -30,3 +30,20 @@ export {
   type UseWorkspaceFilesOptions,
   type UseWorkspaceFilesReturn,
 } from './useWorkspaceFiles';
+
+// Chat area state management hooks
+export {
+  useChatAreaState,
+  useSearchRunExpansion,
+  groupMessagesByRun,
+  type UseChatAreaStateOptions,
+  type BranchState,
+  type CollapseState,
+  type ChatAreaStateResult,
+} from './useChatAreaState';
+
+export {
+  useChatScrollManager,
+  type UseChatScrollManagerOptions,
+  type ChatScrollManagerResult,
+} from './useChatScrollManager';

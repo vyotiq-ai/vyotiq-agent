@@ -107,7 +107,7 @@ describe('parseToolArguments', () => {
   it('returns error info for completely invalid JSON', () => {
     const result = parseToolArguments('completely invalid', 'test');
     expect(result._parseError).toBe(true);
-    expect(result._errorMessage).toContain('Failed to parse arguments');
+    expect(result._errorMessage).toContain('malformed JSON');
     expect(result._rawPreview).toBe('completely invalid');
   });
 });

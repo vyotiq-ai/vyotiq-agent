@@ -18,11 +18,11 @@ import type { AgentStatusInfo } from '../../../../state/agentReducer';
 import { cn } from '../../../../utils/cn';
 import { getStatusDisplayMessage } from '../../../../utils';
 import type { TodoItem, TodoStats } from '../../../../../shared/types/todo';
+import { IterationControl } from './IterationControl';
 
 // =============================================================================
 // Types
 // =============================================================================
-
 export interface InputHeaderProps {
   /** Whether the agent is currently working */
   isWorking: boolean;
@@ -42,6 +42,8 @@ export interface InputHeaderProps {
   currentIteration?: number;
   /** Maximum iterations when processing */
   maxIterations?: number;
+  /** Callback when max iterations is changed (for realtime updates) */
+  onMaxIterationsChange?: (value: number) => void;
   /** Todo items for progress display */
   todos?: TodoItem[];
   /** Pre-calculated todo stats */
@@ -54,7 +56,7 @@ export interface InputHeaderProps {
 // Sub-Components
 // =============================================================================
 
-/** Status indicator dot with glow effect */
+/** Status indicator dot - simple and clean */
 const StatusDot: React.FC<{ status: InputHeaderProps['statusPhase'] }> = memo(({ status }) => {
   const isActive = status === 'executing'
     || status === 'planning'
@@ -64,6 +66,7 @@ const StatusDot: React.FC<{ status: InputHeaderProps['statusPhase'] }> = memo(({
 
   const dotClass = cn(
     'terminal-status-dot flex-shrink-0',
+    'transition-colors duration-200',
     status === 'error' && 'error',
     (status === 'recovering' || status === 'paused') && 'warning',
     isActive && 'active',
@@ -74,7 +77,7 @@ const StatusDot: React.FC<{ status: InputHeaderProps['statusPhase'] }> = memo(({
 });
 StatusDot.displayName = 'StatusDot';
 
-/** Typewriter status display with context-aware messages */
+/** Typewriter status display with context-aware messages and smooth transitions */
 const TypewriterStatus: React.FC<{ 
   message?: string; 
   phase?: InputHeaderProps['statusPhase'];
@@ -96,11 +99,24 @@ const TypewriterStatus: React.FC<{
     return displayMessage || 'Agent is processing';
   };
 
+  // Get phase-specific styling class
+  const getPhaseClass = () => {
+    switch (phase) {
+      case 'executing': return 'phase-executing';
+      case 'planning':
+      case 'analyzing':
+      case 'reasoning': return 'phase-thinking';
+      default: return '';
+    }
+  };
+
   if ((isWorking || isPaused) && displayMessage) {
     return (
       <div className="vyotiq-typewriter min-w-0 flex-1">
         <span className={cn(
           'vyotiq-typewriter-text truncate block',
+          'transition-all duration-300 ease-out',
+          getPhaseClass(),
           phase === 'error' && '!text-[var(--color-error)]',
           phase === 'recovering' && '!text-[var(--color-warning)]',
           phase === 'paused' && '!text-[var(--color-warning)]'
@@ -118,7 +134,7 @@ const TypewriterStatus: React.FC<{
   if (isWorking || isPaused) {
     return (
       <div className="vyotiq-typewriter">
-        <span className="vyotiq-typewriter-text">vyotiq</span>
+        <span className="vyotiq-typewriter-text transition-opacity duration-300">vyotiq</span>
         <span className="typewriter-dots" aria-hidden="true">
           <span className="typewriter-dot">.</span>
           <span className="typewriter-dot">.</span>
@@ -130,7 +146,10 @@ const TypewriterStatus: React.FC<{
   }
   
   return (
-    <span className="text-[10px] text-[var(--color-text-muted)] opacity-80 tracking-wide">
+    <span className={cn(
+      'text-[10px] text-[var(--color-text-muted)] opacity-80 tracking-wide',
+      'transition-all duration-300 ease-out'
+    )}>
       vyotiq
     </span>
   );
@@ -172,32 +191,26 @@ const TodoStatusIcon: React.FC<{ status: 'completed' | 'in_progress' | 'pending'
 });
 TodoStatusIcon.displayName = 'TodoStatusIcon';
 
-/** Enhanced progress bar with glow effect */
+/** Simple progress bar */
 const TodoProgressBar: React.FC<{ 
   percentage: number; 
   isComplete: boolean;
   showGlow?: boolean;
-}> = memo(({ percentage, isComplete, showGlow = true }) => (
-  <div className="h-1 w-16 bg-[var(--color-surface-2)] rounded-full overflow-hidden flex-shrink-0 relative">
+}> = memo(({ percentage, isComplete, showGlow }) => (
+  <div className="h-1 w-16 bg-[var(--color-surface-2)] rounded-full overflow-hidden flex-shrink-0">
     <div 
       className={cn(
-        "h-full rounded-full transition-all duration-500 ease-out",
-        isComplete 
-          ? "bg-[var(--color-success)]" 
-          : "bg-gradient-to-r from-[var(--color-accent-primary)] to-[var(--color-accent-primary)]/80"
+        "h-full rounded-full transition-all duration-300",
+        isComplete ? "bg-[var(--color-success)]" : "bg-[var(--color-accent-primary)]",
+        showGlow && !isComplete && "shadow-[0_0_4px_var(--color-accent-primary)]"
       )}
-      style={{ 
-        width: `${percentage}%`,
-        boxShadow: showGlow && !isComplete && percentage > 0 
-          ? '0 0 6px var(--color-accent-primary)' 
-          : 'none'
-      }}
+      style={{ width: `${percentage}%` }}
     />
   </div>
 ));
 TodoProgressBar.displayName = 'TodoProgressBar';
 
-/** Individual task row in expanded view with enhanced styling */
+/** Individual task row in expanded view */
 const TaskRow: React.FC<{ task: TodoItem; index: number; total: number }> = memo(({ task, index, total }) => {
   const isCompleted = task.status === 'completed';
   const isActive = task.status === 'in_progress';
@@ -205,32 +218,26 @@ const TaskRow: React.FC<{ task: TodoItem; index: number; total: number }> = memo
   return (
     <div 
       className={cn(
-        'group flex items-start gap-2.5 py-2 px-3',
-        'transition-all duration-150',
-        isActive && 'bg-[var(--color-accent-primary)]/8 border-l-2 border-l-[var(--color-accent-primary)]',
-        !isActive && 'border-l-2 border-l-transparent',
+        'flex items-start gap-2 py-1.5 px-3',
+        isActive && 'bg-[var(--color-accent-primary)]/5',
         !isCompleted && !isActive && 'hover:bg-[var(--color-surface-2)]/30'
       )}
     >
-      {/* Task number with visual weight */}
+      {/* Task number */}
       <span className={cn(
-        'text-[9px] tabular-nums w-4 text-right flex-shrink-0 pt-0.5',
-        isActive && 'text-[var(--color-accent-primary)] font-medium',
-        isCompleted && 'text-[var(--color-text-dim)]',
-        !isCompleted && !isActive && 'text-[var(--color-text-muted)]'
+        'text-[9px] tabular-nums w-4 text-right flex-shrink-0',
+        isCompleted ? 'text-[var(--color-text-dim)]' : 'text-[var(--color-text-muted)]'
       )}>
-        {index + 1}/{total}
+        {index + 1}
       </span>
       
       {/* Status icon */}
-      <div className="flex-shrink-0 pt-0.5">
-        <TodoStatusIcon status={task.status} size={11} />
-      </div>
+      <TodoStatusIcon status={task.status} size={10} />
       
       {/* Task content with better wrapping */}
       <div className="flex-1 min-w-0">
         <span className={cn(
-          'text-[10px] leading-relaxed block',
+          'text-[10px] leading-relaxed block transition-all duration-200',
           isCompleted && 'text-[var(--color-text-dim)] line-through decoration-[var(--color-text-dim)]/40',
           isActive && 'text-[var(--color-text-primary)] font-medium',
           !isCompleted && !isActive && 'text-[var(--color-text-secondary)]'
@@ -344,12 +351,13 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
   onTogglePause,
   currentIteration,
   maxIterations,
+  onMaxIterationsChange,
   todos = [],
   todoStats: providedTodoStats,
   className,
 }) => {
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
-  const hasIterationInfo = isWorking && currentIteration && maxIterations;
+  const _hasIterationInfo = isWorking && currentIteration && maxIterations;
   
   // Calculate todo stats
   const todoStats = useMemo(() => providedTodoStats ?? calculateTodoStats(todos), [providedTodoStats, todos]);
@@ -445,15 +453,13 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
 
         {/* Right: Iteration + Time + controls */}
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-          {/* Iteration progress */}
-          {hasIterationInfo && (
-            <span className="flex items-center gap-0.5 text-[var(--color-text-muted)]">
-              <span className="text-[var(--color-text-dim)]">iter</span>
-              <span className="text-[var(--color-accent-primary)]">{currentIteration}</span>
-              <span className="text-[var(--color-text-dim)]">/</span>
-              <span>{maxIterations}</span>
-            </span>
-          )}
+          {/* Iteration progress - interactive control for realtime updates */}
+          <IterationControl
+            currentIteration={currentIteration}
+            maxIterations={maxIterations}
+            onMaxIterationsChange={onMaxIterationsChange}
+            isWorking={isWorking}
+          />
           {workspaceWarning && (
             <span 
               className="text-[8px] text-[var(--color-warning)] hidden lg:inline"
@@ -463,7 +469,11 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
             </span>
           )}
           {(isWorking || statusPhase === 'paused' || isPaused) && (
-            <span className={cn('terminal-elapsed', (isWorking || statusPhase === 'paused' || isPaused) && 'active')}>
+            <span className={cn(
+              'terminal-elapsed tabular-nums',
+              'transition-all duration-300 ease-out',
+              (isWorking || statusPhase === 'paused' || isPaused) && 'active'
+            )}>
               {elapsedTime ?? '--:--'}
             </span>
           )}

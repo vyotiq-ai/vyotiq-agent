@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
-import { Edit3, FileEdit, FileText, FolderOpen, Play, Search, Terminal, Trash2 } from 'lucide-react';
+import React from 'react';
+import { getToolIcon, getToolConfig } from '../../../components/ui/ToolIcons';
 
 export function safeJsonStringify(value: unknown, space = 2): string {
   try {
@@ -12,17 +13,10 @@ export function safeJsonStringify(value: unknown, space = 2): string {
 /**
  * Get icon component for a tool name.
  * Returns a lucide icon component (not an element) so callers can style/size.
+ * @deprecated Use getToolIcon from ToolIcons module directly
  */
 export function getToolIconComponent(toolName: string) {
-  const name = toolName.toLowerCase();
-  if (name.includes('read') || name.includes('cat')) return FileText;
-  if (name.includes('write') || name.includes('create')) return Edit3;
-  if (name.includes('edit') || name.includes('replace') || name.includes('patch')) return Edit3;
-  if (name.includes('ls') || name.includes('list') || name.includes('dir')) return FolderOpen;
-  if (name.includes('grep') || name.includes('search') || name.includes('find')) return Search;
-  if (name.includes('terminal') || name.includes('exec') || name.includes('run') || name.includes('shell') || name.includes('bash')) return Terminal;
-  if (name.includes('delete') || name.includes('remove') || name.includes('rm')) return Trash2;
-  return Terminal;
+  return getToolIcon(toolName);
 }
 
 /**
@@ -30,17 +24,19 @@ export function getToolIconComponent(toolName: string) {
  * Keeps existing UX for confirmations while sharing logic.
  */
 export function getToolIconElement(toolName: string, size = 12): ReactElement {
-  const name = toolName.toLowerCase();
-  if (name.includes('terminal') || name.includes('run')) {
-    return <Terminal size={size} className="text-[var(--color-warning)]" />;
-  }
-  if (name.includes('delete') || name.includes('remove')) {
-    return <Trash2 size={size} className="text-[var(--color-error)]" />;
-  }
-  if (name.includes('edit') || name.includes('write') || name.includes('create')) {
-    return <FileEdit size={size} className="text-[var(--color-info)]" />;
-  }
-  return <Play size={size} className="text-[var(--color-accent-primary)]" />;
+  const config = getToolConfig(toolName);
+  const Icon = config.icon;
+  
+  // Map category to color for confirmation panels
+  const colorClass = config.category === 'terminal' 
+    ? 'text-[var(--color-warning)]'
+    : config.category === 'file' && toolName.toLowerCase().includes('delete')
+      ? 'text-[var(--color-error)]'
+      : config.category === 'edit'
+        ? 'text-[var(--color-info)]'
+        : 'text-[var(--color-accent-primary)]';
+  
+  return <Icon size={size} className={colorClass} />;
 }
 
 /** Extract line range info for read operations */

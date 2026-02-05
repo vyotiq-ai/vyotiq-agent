@@ -443,4 +443,28 @@ export function registerDebugHandlers(context: IpcContext): void {
       return { success: false };
     }
   });
+
+  // ==========================================================================
+  // Throttle Control Status (for debugging background throttling behavior)
+  // ==========================================================================
+
+  ipcMain.handle('debug:get-throttle-status', () => {
+    try {
+      const { getThrottleStatus } = require('./eventBatcher');
+      return getThrottleStatus();
+    } catch (error) {
+      logger.error('Failed to get throttle status', { error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  });
+
+  ipcMain.handle('debug:get-batcher-stats', () => {
+    try {
+      const { getBatcherStats } = require('./eventBatcher');
+      return getBatcherStats();
+    } catch (error) {
+      logger.error('Failed to get batcher stats', { error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  });
 }

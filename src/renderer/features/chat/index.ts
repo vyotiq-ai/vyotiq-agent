@@ -35,5 +35,5 @@ export { TodoProgress } from './components/TodoProgress';
 
 // UI Components (reused from other features)
 export { ModelSelector } from './components/ModelSelector';
-export { SessionSelector } from './components/SessionSelector';
+export { SessionSelector } from './components/sessionSelector';
 export { ChatAttachmentList } from './components/ChatAttachmentList';

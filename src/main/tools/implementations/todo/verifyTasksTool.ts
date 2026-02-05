@@ -210,6 +210,7 @@ VerifyTasks → CHECK if all requirements met
 
   searchKeywords: ['verify', 'check', 'validate', 'complete', 'done', 'requirements'],
   riskLevel: 'safe',
+  allowedCallers: ['direct', 'code_execution'],
 
   ui: {
     icon: 'CheckCircle',

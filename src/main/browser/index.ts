@@ -29,3 +29,14 @@ export {
   type SecurityStats,
   DEFAULT_SECURITY_CONFIG,
 } from './BrowserSecurity';
+
+// Browser instance pool for multi-session concurrent support
+export {
+  BrowserInstancePool,
+  getBrowserInstancePool,
+  initBrowserInstancePool,
+  disposeBrowserInstancePool,
+  type PooledBrowserInstance,
+  type BrowserPoolConfig,
+  type BrowserPoolStats,
+} from './BrowserInstancePool';

@@ -1,6 +1,8 @@
 // UI Components barrel export
 export { Button } from './Button';
 export { Card, CardHeader, CardContent, CardFooter } from './Card';
+export { ConfirmModal, useConfirm } from './ConfirmModal';
+export type { ConfirmModalProps, ConfirmVariant, UseConfirmOptions } from './ConfirmModal';
 export { ElapsedTime } from './ElapsedTime';
 export { Input, Textarea } from './Input';
 export { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -28,6 +30,16 @@ export {
   OpenRouterIcon,
   AutoIcon,
 } from './ProviderIcons';
+
+// Tool Icons
+export {
+  ToolIconDisplay,
+  getToolIcon,
+  getToolConfig,
+  getToolColorClass,
+  TOOL_ICON_MAP,
+} from './ToolIcons';
+export type { ToolIconProps, ToolIconConfig } from './ToolIcons';
 
 // Tabs
 export {

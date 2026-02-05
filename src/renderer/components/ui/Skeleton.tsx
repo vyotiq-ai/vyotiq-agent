@@ -12,7 +12,7 @@ import { cn } from '../../utils/cn';
 // =============================================================================
 
 export type SkeletonVariant = 'text' | 'circular' | 'rectangular' | 'rounded';
-export type SkeletonAnimation = 'pulse' | 'wave' | 'none';
+export type SkeletonAnimation = 'pulse' | 'wave' | 'shimmer' | 'none';
 
 export interface SkeletonProps {
   /** Shape variant of the skeleton */
@@ -95,6 +95,8 @@ export const Skeleton: React.FC<SkeletonProps> = memo(({
         return 'animate-pulse';
       case 'wave':
         return 'skeleton-wave';
+      case 'shimmer':
+        return 'skeleton-shimmer';
       case 'none':
         return '';
       default:

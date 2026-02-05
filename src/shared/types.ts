@@ -270,6 +270,64 @@ export interface AgentConfig {
   keepRecentMessages?: number;
 }
 
+// =============================================================================
+// Settings Validation Constraints
+// =============================================================================
+
+/**
+ * Centralized validation constraints for settings across UI and backend.
+ * Used by both settingsValidation.ts and UI components to ensure consistent limits.
+ * All min/max values are inclusive.
+ */
+export const SETTINGS_CONSTRAINTS = {
+  // AgentConfig constraints
+  temperature: { min: 0, max: 2, default: 0.7 },
+  maxOutputTokens: { min: 1, max: 200000, default: 8192 },
+  maxIterations: { min: 1, max: Infinity, default: 20 }, // No upper limit - fully configurable
+  maxRetries: { min: 0, max: 10, default: 2 },
+  retryDelayMs: { min: 100, max: 10000, default: 1500 },
+  summarizationThreshold: { min: 10, max: 500, default: 100 },
+  keepRecentMessages: { min: 5, max: 100, default: 40 },
+  anthropicThinkingBudget: { min: 1024, max: 65536, default: 10000 },
+
+  // SafetySettings constraints
+  maxFilesPerRun: { min: 1, max: 500, default: 50 },
+  maxBytesPerRun: { min: 1024, max: 100 * 1024 * 1024, default: 10 * 1024 * 1024 }, // 1KB - 100MB
+  backupRetentionCount: { min: 0, max: 50, default: 5 },
+
+  // CacheSettings constraints
+  cacheMaxAge: { min: 60000, max: 86400000, default: 3600000 }, // 1min - 24hours
+  maxCacheSize: { min: 10, max: 10000, default: 1000 },
+
+  // ComplianceSettings constraints
+  auditRetentionDays: { min: 1, max: 365, default: 90 },
+  maxTokensPerMessage: { min: 100, max: 200000, default: 100000 },
+
+  // BrowserSettings constraints
+  maxPageLoadTimeout: { min: 1000, max: 120000, default: 30000 },
+  maxConcurrentPages: { min: 1, max: 20, default: 5 },
+  maxScreenshotSize: { min: 100, max: 4096, default: 1920 },
+
+  // EditorAI constraints
+  inlineCompletionDebounceMs: { min: 50, max: 2000, default: 300 },
+  inlineCompletionMaxTokens: { min: 16, max: 1024, default: 128 },
+  contextLinesBefore: { min: 5, max: 200, default: 50 },
+  contextLinesAfter: { min: 5, max: 100, default: 10 },
+
+  // PromptSettings constraints
+  maxMessageLength: { min: 100, max: 1000000, default: 100000 },
+  maxToolResultLength: { min: 1000, max: 500000, default: 50000 },
+
+  // Appearance constraints
+  fontSize: { min: 8, max: 24, default: 14 },
+  lineHeight: { min: 1, max: 3, default: 1.5 },
+} as const;
+
+/**
+ * Type-safe accessor for constraint values
+ */
+export type SettingsConstraintKey = keyof typeof SETTINGS_CONSTRAINTS;
+
 /**
  * Represents a conversation branch for exploring alternatives
  */
@@ -617,6 +675,76 @@ export interface WorkspaceEntry {
   label: string;
   lastOpenedAt: number;
   isActive: boolean;
+}
+
+// =============================================================================
+// Multi-Workspace Types
+// =============================================================================
+
+/**
+ * Represents an open workspace tab in the multi-workspace view.
+ * Each tab corresponds to a workspace that the user has explicitly opened.
+ */
+export interface WorkspaceTab {
+  /** Unique workspace ID (matches WorkspaceEntry.id) */
+  workspaceId: string;
+  /** Order index for tab positioning (lower = more left) */
+  order: number;
+  /** Whether this tab is currently focused/active in the view */
+  isFocused: boolean;
+  /** Timestamp when this tab was opened */
+  openedAt: number;
+  /** Timestamp when this tab was last focused */
+  lastFocusedAt: number;
+  /** Whether this tab has unsaved changes or pending operations */
+  hasUnsavedChanges?: boolean;
+  /** Whether an agent run is active in this workspace */
+  isRunning?: boolean;
+  /** Optional custom label override (defaults to workspace label) */
+  customLabel?: string;
+}
+
+/**
+ * State for managing multiple open workspace tabs.
+ * Supports concurrent workspace sessions with tab-based navigation.
+ */
+export interface MultiWorkspaceState {
+  /** Array of currently open workspace tabs */
+  tabs: WorkspaceTab[];
+  /** ID of the currently focused workspace tab (null if no tabs open) */
+  focusedTabId: string | null;
+  /** Maximum number of tabs allowed to be open simultaneously */
+  maxTabs: number;
+  /** Whether to persist tab state across app restarts */
+  persistTabs: boolean;
+  /** Tab order strategy: 'chronological' | 'manual' */
+  orderStrategy: 'chronological' | 'manual';
+}
+
+/**
+ * Event emitted when workspace tabs change
+ */
+export interface WorkspaceTabsEvent {
+  type: 'workspace-tabs-update';
+  tabs: WorkspaceTab[];
+  focusedTabId: string | null;
+}
+
+/**
+ * Workspace resource metrics for monitoring concurrent workspace performance
+ */
+export interface WorkspaceResourceMetrics {
+  workspaceId: string;
+  /** Number of active sessions in this workspace */
+  activeSessions: number;
+  /** Number of active tool executions in this workspace */
+  activeToolExecutions: number;
+  /** Estimated memory usage in bytes for this workspace */
+  memoryEstimateBytes: number;
+  /** Last activity timestamp */
+  lastActivityAt: number;
+  /** Provider request counts in the current rate limit window */
+  requestCounts: Record<string, number>;
 }
 
 export interface WorkspaceEvent {
@@ -1341,7 +1469,7 @@ export const BUILT_IN_AGENT_INSTRUCTIONS: AgentInstruction[] = [
     description: 'Focused on gathering information, searching documentation, and web research',
     instructions: `When acting as a researcher:
 - Use browser tools to search for up-to-date documentation and information
-- Use codebase_search to find relevant code patterns and implementations
+- Use grep and glob to find relevant code patterns and implementations
 - Gather comprehensive context before providing answers
 - Cite sources and provide links to documentation when relevant
 - Focus on accuracy and completeness of information
@@ -2335,8 +2463,6 @@ export interface AgentSettings {
   claudeSubscription?: ClaudeSubscription;
   /** GLM Coding Plan subscription (API key-based) */
   glmSubscription?: GLMSubscription;
-  /** Semantic indexing settings */
-  semanticSettings?: SemanticSettings;
   /** MCP (Model Context Protocol) settings */
   mcpSettings?: import('./types/mcp').MCPSettings;
   /** Configured MCP servers */
@@ -2381,82 +2507,6 @@ export const DEFAULT_EDITOR_AI_SETTINGS: EditorAISettings = {
   contextLinesBefore: 50,
   contextLinesAfter: 10,
   preferredProvider: 'auto',
-};
-
-/**
- * Embedding model quality preset
- */
-export type EmbeddingModelQuality = 'fast' | 'balanced' | 'quality';
-
-/**
- * Semantic Indexing Settings
- * Configuration for local codebase vector embeddings and semantic search
- */
-export interface SemanticSettings {
-  /** Enable semantic indexing */
-  enabled: boolean;
-  /** Auto-index workspace on startup */
-  autoIndexOnStartup: boolean;
-  /** Watch for file changes and auto re-index */
-  watchForChanges: boolean;
-  /** Target chunk size for code chunking (characters) */
-  targetChunkSize: number;
-  /** Minimum chunk size (characters) */
-  minChunkSize: number;
-  /** Maximum chunk size (characters) */
-  maxChunkSize: number;
-  /** File types to index (extensions without dot, empty = all supported) */
-  indexFileTypes: string[];
-  /** Patterns to exclude from indexing */
-  excludePatterns: string[];
-  /** Maximum file size to index (bytes) */
-  maxFileSize: number;
-  /** Enable embedding cache for faster repeated queries */
-  enableEmbeddingCache: boolean;
-  /** Maximum cache entries for embeddings */
-  maxCacheEntries: number;
-  /** Use GPU for embeddings if available */
-  useGpu: boolean;
-  /** Embedding model quality preset */
-  embeddingQuality: EmbeddingModelQuality;
-  /** HNSW index M parameter (connections per node, higher = more accurate but slower) */
-  hnswM: number;
-  /** HNSW efSearch parameter (query accuracy, higher = more accurate but slower) */
-  hnswEfSearch: number;
-  /** Minimum similarity score for search results (0-1) */
-  minSearchScore: number;
-  /** Auto-optimize index after N files indexed */
-  autoOptimizeAfter: number;
-}
-
-/**
- * Default semantic settings
- */
-export const DEFAULT_SEMANTIC_SETTINGS: SemanticSettings = {
-  enabled: true,
-  autoIndexOnStartup: true,
-  watchForChanges: true,
-  targetChunkSize: 1500,
-  minChunkSize: 200,
-  maxChunkSize: 3000,
-  indexFileTypes: [], // Empty = all supported file types
-  excludePatterns: [
-    '**/node_modules/**',
-    '**/.git/**',
-    '**/dist/**',
-    '**/build/**',
-    '**/.next/**',
-    '**/.cache/**',
-  ],
-  maxFileSize: 1048576, // 1MB
-  enableEmbeddingCache: true,
-  maxCacheEntries: 10000,
-  useGpu: false,
-  embeddingQuality: 'balanced',
-  hnswM: 16,
-  hnswEfSearch: 50,
-  minSearchScore: 0.3,
-  autoOptimizeAfter: 500,
 };
 
 // =============================================================================
@@ -3337,55 +3387,6 @@ import type { TodoUpdateEvent as TodoUpdateEventType } from './types/todo';
 export type TodoUpdateEvent = TodoUpdateEventType;
 
 /**
- * Semantic indexing progress event
- */
-export interface SemanticIndexProgressEvent {
-  type: 'semantic:indexProgress';
-  totalFiles: number;
-  indexedFiles: number;
-  currentFile: string | null;
-  isIndexing: boolean;
-  status: 'idle' | 'scanning' | 'analyzing' | 'indexing' | 'complete' | 'error' | 'downloading-model';
-  error?: string;
-  startTime?: number;
-  estimatedTimeRemaining?: number;
-  /** Files processed per second */
-  filesPerSecond?: number;
-  /** Total chunks created */
-  totalChunks?: number;
-  /** Current phase description */
-  phase?: string;
-  /** Model download progress (0-100) */
-  modelDownloadProgress?: number;
-  /** Model file being downloaded */
-  modelDownloadFile?: string;
-}
-
-/**
- * Semantic model status event - emitted on startup to indicate model availability
- */
-export interface SemanticModelStatusEvent {
-  type: 'semantic:modelStatus';
-  modelId: string;
-  isCached: boolean;
-  isLoaded: boolean;
-  status: 'cached' | 'needs-download' | 'loading' | 'ready' | 'error';
-}
-
-/**
- * Semantic model download progress event - emitted during model download
- */
-export interface SemanticModelProgressEvent {
-  type: 'semantic:modelProgress';
-  status: 'downloading' | 'loading' | 'ready' | 'error';
-  file?: string;
-  progress?: number;
-  loaded?: number;
-  total?: number;
-  error?: string;
-}
-
-/**
  * Session health update event - emitted when session health status changes
  */
 export interface SessionHealthUpdateEvent {
@@ -3394,7 +3395,63 @@ export interface SessionHealthUpdateEvent {
   data: unknown;
 }
 
-export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent | SemanticIndexProgressEvent | SemanticModelStatusEvent | SemanticModelProgressEvent | SessionHealthUpdateEvent;
+/**
+ * Global sessions event types - emitted by MultiSessionManager
+ */
+export type GlobalSessionEventType = 
+  | 'global-session-started'
+  | 'global-session-completed'
+  | 'global-session-error'
+  | 'global-session-progress'
+  | 'global-stats-updated'
+  | 'global-sessions-update';
+
+/**
+ * Global session event - emitted when session states change across workspaces
+ */
+export interface GlobalSessionEvent {
+  type: GlobalSessionEventType;
+  sessionId?: string;
+  workspaceId?: string;
+  runId?: string;
+  stats?: GlobalSessionStats;
+  error?: string;
+  timestamp: number;
+}
+
+/**
+ * Global sessions update event - periodic update of all running sessions
+ */
+export interface GlobalSessionsUpdateEvent {
+  type: 'global-sessions-update';
+  totalRunning: number;
+  totalQueued: number;
+  runningByWorkspace: Record<string, number>;
+  sessions: Array<{
+    sessionId: string;
+    workspaceId: string;
+    status: AgentRunStatus;
+    startedAt: number;
+    iteration: number;
+    maxIterations: number;
+    provider: string;
+  }>;
+  timestamp: number;
+}
+
+/**
+ * Stats for running sessions across all workspaces
+ */
+export interface GlobalSessionStats {
+  totalRunning: number;
+  totalQueued: number;
+  runningByWorkspace: Record<string, number>;
+  canStartNew: boolean;
+  maxGlobal: number;
+  maxPerWorkspace: number;
+}
+
+export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent | SessionHealthUpdateEvent | GlobalSessionEvent | GlobalSessionsUpdateEvent;
 
 
 export interface StartSessionPayload {

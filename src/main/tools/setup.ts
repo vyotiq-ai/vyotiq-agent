@@ -73,15 +73,10 @@ export function buildToolingSystem(config: ToolingConfig): ToolingSystem {
   registry.registerAlias('tasks', 'TodoWrite');
   registry.registerAlias('checklist', 'TodoWrite');
 
-  // Web search aliases
-  registry.registerAlias('google', 'web_search');
-  registry.registerAlias('search_web', 'web_search');
-  registry.registerAlias('research', 'deep_research');
-
-  // New tool aliases
-  registry.registerAlias('fetch', 'live_fetch');
-  registry.registerAlias('fetch_url', 'live_fetch');
-  registry.registerAlias('get_page', 'live_fetch');
+  // Browser fetch aliases (for web content retrieval)
+  registry.registerAlias('fetch', 'browser_fetch');
+  registry.registerAlias('fetch_url', 'browser_fetch');
+  registry.registerAlias('get_page', 'browser_fetch');
 
   return {
     registry,

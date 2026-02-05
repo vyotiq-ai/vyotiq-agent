@@ -33,6 +33,23 @@ const agentAPI = {
 	getAvailableProviders: () => ipcRenderer.invoke('agent:get-available-providers'),
 	hasAvailableProviders: () => ipcRenderer.invoke('agent:has-available-providers'),
 	getProvidersCooldown: () => ipcRenderer.invoke('agent:get-providers-cooldown'),
+	
+	// Multi-workspace session operations
+	/** Get all running sessions across all workspaces */
+	getAllRunningSessions: () => ipcRenderer.invoke('agent:get-all-running-sessions'),
+	/** Get running session count per workspace */
+	getRunningSessionsByWorkspace: () => ipcRenderer.invoke('agent:get-running-sessions-by-workspace'),
+	/** Get workspace resource metrics */
+	getWorkspaceResources: () => ipcRenderer.invoke('agent:get-workspace-resources'),
+	/** Get concurrent execution statistics */
+	getConcurrentStats: () => ipcRenderer.invoke('agent:get-concurrent-stats'),
+	/** Get global session statistics for multi-workspace concurrent execution */
+	getGlobalSessionStats: () => ipcRenderer.invoke('agent:get-global-session-stats'),
+	/** Get detailed running session information across all workspaces */
+	getDetailedRunningSessions: () => ipcRenderer.invoke('agent:get-detailed-running-sessions'),
+	/** Check if a new session can be started in a workspace */
+	canStartSession: (workspaceId: string) => ipcRenderer.invoke('agent:can-start-session', workspaceId),
+	
 	editMessage: (sessionId: string, messageIndex: number, newContent: string) =>
 		ipcRenderer.invoke('agent:edit-message', sessionId, messageIndex, newContent),
 	createBranch: (sessionId: string, messageId: string, name?: string) =>
@@ -105,6 +122,92 @@ const workspaceAPI = {
 	add: () => ipcRenderer.invoke('workspace:add'),
 	setActive: (workspaceId: string) => ipcRenderer.invoke('workspace:set-active', workspaceId),
 	remove: (workspaceId: string) => ipcRenderer.invoke('workspace:remove', workspaceId),
+	
+	// ==========================================================================
+	// Multi-Workspace Tab Management
+	// ==========================================================================
+	
+	/**
+	 * Get all open workspace tabs with their state.
+	 */
+	getTabs: () => ipcRenderer.invoke('workspace:get-tabs'),
+	
+	/**
+	 * Open a workspace in a new tab (or focus existing tab).
+	 */
+	openTab: (workspaceId: string) => ipcRenderer.invoke('workspace:open-tab', workspaceId),
+	
+	/**
+	 * Close a workspace tab.
+	 */
+	closeTab: (workspaceId: string) => ipcRenderer.invoke('workspace:close-tab', workspaceId),
+	
+	/**
+	 * Focus a specific workspace tab.
+	 */
+	focusTab: (workspaceId: string) => ipcRenderer.invoke('workspace:focus-tab', workspaceId),
+	
+	/**
+	 * Reorder workspace tabs.
+	 */
+	reorderTabs: (workspaceId: string, newOrder: number) => 
+		ipcRenderer.invoke('workspace:reorder-tabs', workspaceId, newOrder),
+	
+	/**
+	 * Get workspaces that have open tabs.
+	 */
+	getActiveWorkspaces: () => ipcRenderer.invoke('workspace:get-active-workspaces'),
+	
+	/**
+	 * Set maximum number of tabs allowed.
+	 */
+	setMaxTabs: (maxTabs: number) => ipcRenderer.invoke('workspace:set-max-tabs', maxTabs),
+
+	// ==========================================================================
+	// Workspace Resource Management (Multi-workspace Concurrent Sessions)
+	// ==========================================================================
+
+	/**
+	 * Get resource metrics for all active workspaces.
+	 */
+	getResourceMetrics: () => ipcRenderer.invoke('workspace:get-resource-metrics'),
+
+	/**
+	 * Get resource metrics for a specific workspace.
+	 */
+	getWorkspaceMetrics: (workspaceId: string) =>
+		ipcRenderer.invoke('workspace:get-workspace-metrics', workspaceId),
+
+	/**
+	 * Get total active sessions across all workspaces.
+	 */
+	getTotalActiveSessions: () => ipcRenderer.invoke('workspace:get-total-active-sessions'),
+
+	/**
+	 * Get resource limits configuration.
+	 */
+	getResourceLimits: () => ipcRenderer.invoke('workspace:get-resource-limits'),
+
+	/**
+	 * Update resource limits configuration.
+	 */
+	updateResourceLimits: (limits: {
+		maxSessionsPerWorkspace?: number;
+		maxToolExecutionsPerWorkspace?: number;
+		rateLimitWindowMs?: number;
+		maxRequestsPerWindow?: number;
+	}) => ipcRenderer.invoke('workspace:update-resource-limits', limits),
+
+	/**
+	 * Initialize workspace resources (for pre-warming).
+	 */
+	initResources: (workspaceId: string) => ipcRenderer.invoke('workspace:init-resources', workspaceId),
+
+	/**
+	 * Cleanup workspace resources.
+	 */
+	cleanupResources: (workspaceId: string) => ipcRenderer.invoke('workspace:cleanup-resources', workspaceId),
+	
 	/**
 	 * Get all TypeScript diagnostics from the entire workspace codebase.
 	 * Returns errors and warnings from all files, not just open ones.
@@ -237,9 +340,24 @@ const workspaceAPI = {
 // ==========================================================================
 
 const settingsAPI = {
+	/** Get full settings (includes API keys - use getSafe for non-sensitive access) */
 	get: (): Promise<AgentSettings> => ipcRenderer.invoke('settings:get'),
+	/** Get settings with sensitive data masked (API keys replaced with •••) */
+	getSafe: (): Promise<Partial<AgentSettings>> => ipcRenderer.invoke('settings:get-safe'),
 	update: (payload: Partial<AgentSettings>): Promise<AgentSettings> =>
 		ipcRenderer.invoke('settings:update', { settings: payload }),
+	/** Reset settings to defaults (optionally for a specific section only) */
+	reset: (section?: keyof AgentSettings): Promise<{ success: boolean; data?: AgentSettings; error?: string }> =>
+		ipcRenderer.invoke('settings:reset', { section }),
+	/** Validate settings without applying them */
+	validate: (settings: Partial<AgentSettings>): Promise<{ valid: boolean; errors: Array<{ field: string; message: string }> }> =>
+		ipcRenderer.invoke('settings:validate', { settings }),
+	/** Export settings for backup (API keys excluded for security) */
+	export: (): Promise<{ success: boolean; data?: Partial<AgentSettings>; error?: string }> =>
+		ipcRenderer.invoke('settings:export'),
+	/** Import settings from backup (API keys excluded for security) */
+	import: (settings: Partial<AgentSettings>): Promise<{ success: boolean; data?: AgentSettings; error?: string }> =>
+		ipcRenderer.invoke('settings:import', { settings }),
 };
 
 // ==========================================================================
@@ -442,12 +560,26 @@ interface FileChangeEvent {
 	oldPath?: string; // For rename operations
 }
 
+/** Result type for listDir operation */
+interface ListDirResult {
+	success: boolean;
+	files?: Array<{
+		name: string;
+		path: string;
+		type: 'file' | 'directory';
+		language?: string;
+		children?: unknown[];
+	}>;
+	error?: string;
+	cached?: boolean;
+}
+
 const fileAPI = {
 	select: (): Promise<AttachmentPayload[]> => ipcRenderer.invoke('files:select'),
 	read: (paths: string[]): Promise<AttachmentPayload[]> => ipcRenderer.invoke('files:read', paths),
 	open: (path: string) => ipcRenderer.invoke('files:open', path),
 	reveal: (path: string) => ipcRenderer.invoke('files:reveal', path),
-	listDir: (dirPath: string, options?: { showHidden?: boolean; recursive?: boolean; maxDepth?: number }) =>
+	listDir: (dirPath: string, options?: { showHidden?: boolean; recursive?: boolean; maxDepth?: number; useCache?: boolean }): Promise<ListDirResult> =>
 		ipcRenderer.invoke('files:list-dir', dirPath, options),
 	saveAs: (content: string, options?: { defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }>; title?: string }) =>
 		ipcRenderer.invoke('files:saveAs', content, options),
@@ -463,6 +595,11 @@ const fileAPI = {
 		ipcRenderer.invoke('files:rename', oldPath, newPath),
 	stat: (filePath: string): Promise<FileStatResult> =>
 		ipcRenderer.invoke('files:stat', filePath),
+	// Cache operations for instant file tree loading
+	prewarmCache: (workspacePath: string): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('files:prewarm-cache', workspacePath),
+	invalidateCache: (workspacePath: string): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('files:invalidate-cache', workspacePath),
 	// File change event subscription - subscribe to file system changes
 	onFileChange: (handler: (event: FileChangeEvent) => void) => {
 		const listener = (_event: IpcRendererEvent, data: FileChangeEvent) => handler(data);
@@ -622,7 +759,7 @@ const debugAPI = {
 		exportOnError: boolean;
 		exportFormat: 'json' | 'markdown';
 	} | null> =>
-		ipcRenderer.invoke('debug:get-config'),
+		ipcRenderer.invoke('debug:get-debug-config'),
 
 	// ==========================================================================
 	// Breakpoint Management
@@ -708,6 +845,34 @@ const debugAPI = {
 		trigger: 'manual' | 'breakpoint' | 'periodic' | 'error';
 	}>> =>
 		ipcRenderer.invoke('debug:get-state-snapshots', sessionId),
+
+	// ==========================================================================
+	// Throttle Control Status (for debugging background throttling behavior)
+	// ==========================================================================
+
+	// Get current throttle control status - shows if background throttling is bypassed
+	getThrottleStatus: (): Promise<{
+		agentRunning: boolean;
+		activeSessionCount: number;
+		activeSessions: string[];
+		effectiveBackgroundInterval: number;
+		normalBackgroundInterval: number;
+		throttlingBypassed: boolean;
+	} | null> =>
+		ipcRenderer.invoke('debug:get-throttle-status'),
+
+	// Get IPC event batcher statistics including agent running mode stats
+	getBatcherStats: (): Promise<{
+		eventsReceived: number;
+		eventsSent: number;
+		batchesSent: number;
+		eventsOptimized: number;
+		eventsDropped: number;
+		agentRunningModeActivations: number;
+		eventsWhileAgentRunning: number;
+		backgroundQueueBypassed: number;
+	} | null> =>
+		ipcRenderer.invoke('debug:get-batcher-stats'),
 };
 
 /// ==========================================================================
@@ -1295,6 +1460,24 @@ const lspAPI = {
 	}> => ipcRenderer.invoke('lsp:definition', filePath, line, column),
 
 	/**
+	 * Get type definition location(s)
+	 */
+	typeDefinition: (filePath: string, line: number, column: number): Promise<{
+		success: boolean;
+		locations?: LSPLocation[];
+		error?: string;
+	}> => ipcRenderer.invoke('lsp:type-definition', filePath, line, column),
+
+	/**
+	 * Get implementation location(s) for interfaces/abstract methods
+	 */
+	implementations: (filePath: string, line: number, column: number): Promise<{
+		success: boolean;
+		locations?: LSPLocation[];
+		error?: string;
+	}> => ipcRenderer.invoke('lsp:implementations', filePath, line, column),
+
+	/**
 	 * Get references to a symbol
 	 */
 	references: (filePath: string, line: number, column: number, includeDeclaration?: boolean): Promise<{
@@ -1743,170 +1926,6 @@ const terminalAPI = {
 };
 
 // ==========================================================================
-// Semantic Indexing API
-// ==========================================================================
-
-interface IndexingProgress {
-	totalFiles: number;
-	indexedFiles: number;
-	currentFile: string | null;
-	isIndexing: boolean;
-	status: 'idle' | 'scanning' | 'indexing' | 'complete' | 'error';
-	error?: string;
-	startTime?: number;
-	estimatedTimeRemaining?: number;
-}
-
-interface IndexerStats {
-	indexedFiles: number;
-	totalChunks: number;
-	lastIndexTime: number | null;
-	indexSizeBytes: number;
-	indexHealth: 'healthy' | 'degraded' | 'needs-rebuild' | 'empty';
-}
-
-interface SearchOptions {
-	limit?: number;
-	minScore?: number;
-	filePathPattern?: string;
-	fileTypes?: string[];
-	languages?: string[];
-	symbolTypes?: string[];
-	includeContent?: boolean;
-}
-
-interface SemanticSearchResult {
-	results: Array<{
-		document: {
-			id: string;
-			filePath: string;
-			chunkIndex: number;
-			content: string;
-			metadata: {
-				fileType: string;
-				language?: string;
-				symbolType?: string;
-				symbolName?: string;
-				startLine?: number;
-				endLine?: number;
-			};
-		};
-		score: number;
-		distance: number;
-	}>;
-	queryTimeMs: number;
-	totalDocumentsSearched: number;
-}
-
-interface IndexingProgressEvent {
-	type: 'semantic:indexProgress';
-	totalFiles: number;
-	indexedFiles: number;
-	currentFile: string | null;
-	isIndexing: boolean;
-	status: string;
-}
-
-interface ModelStatusEvent {
-	type: 'semantic:modelStatus';
-	modelId: string;
-	isCached: boolean;
-	isLoaded: boolean;
-	status: 'cached' | 'needs-download' | 'loading' | 'ready' | 'error';
-}
-
-interface ModelProgressEvent {
-	type: 'semantic:modelProgress';
-	status: 'downloading' | 'loading' | 'ready' | 'error';
-	file?: string;
-	progress?: number;
-	loaded?: number;
-	total?: number;
-	error?: string;
-}
-
-const semanticAPI = {
-	/**
-	 * Index the current workspace
-	 */
-	indexWorkspace: (options?: {
-		forceReindex?: boolean;
-		fileTypes?: string[];
-		excludePatterns?: string[];
-	}): Promise<{ success: boolean; error?: string }> =>
-		ipcRenderer.invoke('semantic:indexWorkspace', options),
-
-	/**
-	 * Perform semantic search
-	 */
-	search: (query: string, options?: SearchOptions): Promise<SemanticSearchResult | { success: false; error: string }> =>
-		ipcRenderer.invoke('semantic:search', query, options),
-
-	/**
-	 * Get indexing progress
-	 */
-	getProgress: (): Promise<IndexingProgress> =>
-		ipcRenderer.invoke('semantic:getProgress'),
-
-	/**
-	 * Get index statistics
-	 */
-	getStats: (): Promise<IndexerStats> =>
-		ipcRenderer.invoke('semantic:getStats'),
-
-	/**
-	 * Clear the index
-	 */
-	clearIndex: (): Promise<{ success: boolean; error?: string }> =>
-		ipcRenderer.invoke('semantic:clearIndex'),
-
-	/**
-	 * Abort current indexing
-	 */
-	abortIndexing: (): Promise<{ success: boolean }> =>
-		ipcRenderer.invoke('semantic:abortIndexing'),
-
-	/**
-	 * Get indexed files
-	 */
-	getIndexedFiles: (): Promise<string[]> =>
-		ipcRenderer.invoke('semantic:getIndexedFiles'),
-
-	/**
-	 * Check if indexer is ready
-	 */
-	isReady: (): Promise<boolean> =>
-		ipcRenderer.invoke('semantic:isReady'),
-
-	/**
-	 * Subscribe to indexing progress events
-	 */
-	onProgress: (handler: (progress: IndexingProgressEvent) => void) => {
-		const listener = (_event: IpcRendererEvent, data: IndexingProgressEvent) => handler(data);
-		ipcRenderer.on('semantic:indexProgress', listener);
-		return () => ipcRenderer.removeListener('semantic:indexProgress', listener);
-	},
-
-	/**
-	 * Subscribe to model status events (emitted when model loading state changes)
-	 */
-	onModelStatus: (handler: (status: ModelStatusEvent) => void) => {
-		const listener = (_event: IpcRendererEvent, data: ModelStatusEvent) => handler(data);
-		ipcRenderer.on('semantic:modelStatus', listener);
-		return () => ipcRenderer.removeListener('semantic:modelStatus', listener);
-	},
-
-	/**
-	 * Subscribe to model download progress events
-	 */
-	onModelProgress: (handler: (progress: ModelProgressEvent) => void) => {
-		const listener = (_event: IpcRendererEvent, data: ModelProgressEvent) => handler(data);
-		ipcRenderer.on('semantic:modelProgress', listener);
-		return () => ipcRenderer.removeListener('semantic:modelProgress', listener);
-	},
-};
-
-// ==========================================================================
 // MCP (Model Context Protocol) API
 // ==========================================================================
 
@@ -2026,6 +2045,87 @@ const mcpAPI = {
 	},
 };
 
+// ==========================================================================
+// Throttle API - Background throttling control and monitoring
+// ==========================================================================
+
+interface ThrottleStateResponse {
+	isThrottled: boolean;
+	agentRunning: boolean;
+	windowVisible: boolean;
+	windowFocused: boolean;
+	systemPowerState: 'active' | 'suspended' | 'resuming';
+	effectiveInterval: number;
+	throttleReasons: string[];
+	bypassReasons: string[];
+	runningSessions: string[];
+}
+
+interface ThrottleStatsResponse {
+	totalStateChanges: number;
+	throttleActivations: number;
+	throttleBypasses: number;
+	timingAnomalies: number;
+	agentRunningActivations: number;
+	suspendEvents: number;
+	resumeEvents: number;
+	windowBlurEvents: number;
+	windowFocusEvents: number;
+	averageThrottleDurationMs: number;
+	longestThrottleDurationMs: number;
+}
+
+interface ThrottleStateChangedEvent {
+	isThrottled: boolean;
+	agentRunning: boolean;
+	windowVisible: boolean;
+	windowFocused: boolean;
+	effectiveInterval: number;
+}
+
+const throttleAPI = {
+	/** Get current throttle state */
+	getState: (): Promise<ThrottleStateResponse | null> => ipcRenderer.invoke('throttle:get-state'),
+	
+	/** Get throttle statistics */
+	getStats: (): Promise<ThrottleStatsResponse | null> => ipcRenderer.invoke('throttle:get-stats'),
+	
+	/** Get throttle logs for debugging */
+	getLogs: (options?: { count?: number; category?: string }) =>
+		ipcRenderer.invoke('throttle:get-logs', options),
+	
+	/** Get timing anomalies */
+	getAnomalies: () => ipcRenderer.invoke('throttle:get-anomalies'),
+	
+	/** Start a critical operation (bypasses throttle) */
+	startCriticalOperation: (operationId: string): Promise<boolean> =>
+		ipcRenderer.invoke('throttle:start-critical-operation', operationId),
+	
+	/** End a critical operation */
+	endCriticalOperation: (operationId: string): Promise<boolean> =>
+		ipcRenderer.invoke('throttle:end-critical-operation', operationId),
+	
+	/** Get effective interval for current state */
+	getEffectiveInterval: (): Promise<number> => ipcRenderer.invoke('throttle:get-effective-interval'),
+	
+	/** Check if throttling should be bypassed */
+	shouldBypass: (): Promise<boolean> => ipcRenderer.invoke('throttle:should-bypass'),
+	
+	/** Export logs for debugging */
+	exportLogs: (): Promise<string> => ipcRenderer.invoke('throttle:export-logs'),
+	
+	/** Subscribe to throttle state changes */
+	onStateChanged: (handler: (event: ThrottleStateChangedEvent) => void) => {
+		const listener = (_event: IpcRendererEvent, data: { type: string; state: ThrottleStateChangedEvent }) => {
+			if (data.type === 'throttle-state-changed' && data.state) {
+				handler(data.state);
+			}
+		};
+		ipcRenderer.on('agent:event', listener);
+		return () => ipcRenderer.removeListener('agent:event', listener);
+	},
+};
+
 
 contextBridge.exposeInMainWorld('vyotiq', {
 	agent: agentAPI,
@@ -2065,9 +2165,9 @@ contextBridge.exposeInMainWorld('vyotiq', {
 	// Integrated Terminal API
 	terminal: terminalAPI,
 
-	// Semantic Indexing API
-	semantic: semanticAPI,
-
 	// MCP (Model Context Protocol) API
 	mcp: mcpAPI,
+
+	// Background Throttle Control API
+	throttle: throttleAPI,
 });

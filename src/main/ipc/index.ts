@@ -26,8 +26,8 @@ import { registerTerminalHandlers, cleanupTerminalSessions } from './terminalHan
 import { registerGLMHandlers } from './glmHandlers';
 import { registerProviderHandlers } from './providerHandlers';
 import { registerCacheHandlers } from './cacheHandlers';
-import { registerSemanticHandlers } from './semanticHandlers';
 import { registerMCPHandlers } from './mcpHandlers';
+import { registerThrottleHandlers } from './throttleHandlers';
 
 // Re-export types
 export type { IpcContext } from './types';
@@ -43,8 +43,21 @@ export {
   sendBatchedEvent,
   getEventPriority,
   EventPriority,
+  setAgentRunning,
+  setSessionRunning,
+  isAgentRunning,
+  getThrottleStatus,
+  getBatcherStats,
   type EventPriority as EventPriorityType,
 } from './eventBatcher';
+
+// Re-export request coalescer for deduplication
+export {
+  RequestCoalescer,
+  initRequestCoalescer,
+  getRequestCoalescer,
+  coalesceRequest,
+} from './requestCoalescer';
 
 // Re-export guards and utilities
 export {
@@ -100,8 +113,8 @@ export function registerAllHandlers(
   registerGLMHandlers(context);
   registerProviderHandlers(context);
   registerCacheHandlers(context);
-  registerSemanticHandlers(context);
   registerMCPHandlers(context);
+  registerThrottleHandlers();
 }
 
 // Export individual handler registration functions for testing/selective use
@@ -120,6 +133,7 @@ export {
   registerGLMHandlers,
   registerProviderHandlers,
   registerCacheHandlers,
-  registerSemanticHandlers,
   registerMCPHandlers,
+  registerThrottleHandlers,
 };
+

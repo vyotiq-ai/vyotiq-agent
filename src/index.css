@@ -699,6 +699,149 @@ html.reduce-motion .loading-indicator-animated {
   to { width: 0%; }
 }
 
+/* ========== Enhanced Loading Animations ========== */
+
+/* Loading dot bounce animation */
+@keyframes loading-dot-bounce {
+  0%, 80%, 100% {
+    transform: scale(0.6) translateY(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1) translateY(-2px);
+    opacity: 1;
+  }
+}
+
+.animate-loading-dot {
+  animation: loading-dot-bounce 1.2s ease-in-out infinite;
+}
+
+/* Orbital spinner animation */
+@keyframes orbital {
+  from { transform: rotate(0deg) translateX(50%) rotate(0deg); }
+  to { transform: rotate(360deg) translateX(50%) rotate(-360deg); }
+}
+
+@keyframes orbital-reverse {
+  from { transform: rotate(360deg) translateX(50%) rotate(-360deg); }
+  to { transform: rotate(0deg) translateX(50%) rotate(0deg); }
+}
+
+.animate-orbital {
+  animation: orbital 1.5s linear infinite;
+  transform-origin: center center;
+}
+
+.animate-orbital-reverse {
+  animation: orbital-reverse 2s linear infinite;
+  transform-origin: center center;
+}
+
+/* Fade in animation */
+@keyframes fade-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+/* Slow pulse animation */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 2s ease-in-out infinite;
+}
+
+/* Slow ping animation */
+@keyframes ping-slow {
+  75%, 100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.animate-ping-slow {
+  animation: ping-slow 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* State transition animation */
+@keyframes state-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-state-enter {
+  animation: state-enter 0.25s ease-out forwards;
+}
+
+/* Progress bar fill animation */
+@keyframes progress-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.animate-progress-fill {
+  animation: progress-fill 0.5s ease-out forwards;
+  transform-origin: left center;
+}
+
+/* ========== Skeleton Loading Animations ========== */
+
+/* Skeleton wave animation for loading placeholders */
+@keyframes skeleton-wave {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-wave {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 25%,
+    var(--color-surface-3) 50%,
+    var(--color-surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-wave 1.5s ease-in-out infinite;
+}
+
+/* Skeleton shimmer with subtle glow */
+@keyframes skeleton-shimmer {
+  0% { 
+    background-position: -200% 0;
+    opacity: 0.7;
+  }
+  50% { opacity: 1; }
+  100% { 
+    background-position: 200% 0;
+    opacity: 0.7;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 0%,
+    var(--color-surface-3) 25%,
+    var(--color-accent-primary)/10 50%,
+    var(--color-surface-3) 75%,
+    var(--color-surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 2s ease-in-out infinite;
+}
+
 /* Focus underline animation */
 @keyframes focus-underline {
   from { transform: scaleX(0); }
@@ -714,6 +857,53 @@ html.reduce-motion .loading-indicator-animated {
 .animate-subtle-bounce {
   animation: subtle-bounce 0.5s ease-in-out;
 }
+
+/* Fade-in-up animation for scroll button */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.2s ease-out forwards;
+}
+
+/* Streaming cursor animation - softer pulse */
+@keyframes streaming-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.95);
+  }
+}
+
+.animate-streaming {
+  animation: streaming-pulse 1.5s ease-in-out infinite;
+}
+
+/* Thinking dots animation */
+@keyframes thinking-dots {
+  0%, 20% { opacity: 0.3; }
+  40% { opacity: 1; }
+  60%, 100% { opacity: 0.3; }
+}
+
+.thinking-dot {
+  animation: thinking-dots 1.4s infinite ease-in-out;
+}
+
+.thinking-dot:nth-child(1) { animation-delay: 0s; }
+.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
 
 /* Slide-in animations for panels */
 @keyframes slide-in-bottom {
@@ -846,17 +1036,50 @@ html.light .terminal-container:focus-within {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.terminal-status-dot::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .terminal-status-dot.active {
   background-color: var(--color-accent-primary);
-  box-shadow: 0 0 6px var(--color-accent-primary);
+  box-shadow: 0 0 8px var(--color-accent-primary);
+  animation: status-dot-pulse 1.5s ease-in-out infinite;
+}
+
+.terminal-status-dot.active::after {
+  opacity: 0.3;
+  animation: status-dot-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes status-dot-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+@keyframes status-dot-glow {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.8); opacity: 0; }
 }
 
 .terminal-status-dot.warning {
   background-color: var(--color-warning);
   box-shadow: 0 0 6px var(--color-warning);
+  animation: status-dot-warning 1s ease-in-out infinite;
+}
+
+@keyframes status-dot-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .terminal-status-dot.error {
@@ -866,6 +1089,7 @@ html.light .terminal-container:focus-within {
 
 .terminal-status-dot.idle {
   background-color: var(--color-border-strong);
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 /* CLI-style flag */
@@ -1018,12 +1242,27 @@ html.light .terminal-prompt.focused {
   color: var(--color-accent-primary);
   letter-spacing: 0.3px;
   animation: typewriter-reveal 0.4s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+  transition: color 0.2s ease;
+}
+
+/* Phase-specific text colors */
+.vyotiq-typewriter-text.phase-executing {
+  color: var(--color-accent-primary);
+}
+
+.vyotiq-typewriter-text.phase-thinking {
+  color: var(--color-info);
+}
+
+.vyotiq-typewriter-text.phase-analyzing {
+  color: var(--color-accent-secondary);
 }
 
 /* Blinking dots that cycle */
 @keyframes blink-dot {
-  0%, 25% { opacity: 1; }
-  26%, 100% { opacity: 0.3; }
+  0%, 25% { opacity: 1; transform: translateY(0); }
+  12.5% { transform: translateY(-1px); }
+  26%, 100% { opacity: 0.3; transform: translateY(0); }
 }
 
 .typewriter-dots {

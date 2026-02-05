@@ -12,12 +12,12 @@ import {
 import { cn } from '../../../../utils/cn';
 import { cleanTerminalOutput } from '../../../../utils/ansi';
 import { useTerminalStream } from '../../../../hooks';
+import { ToolIconDisplay } from '../../../../components/ui/ToolIcons';
 import {
   formatDurationMs,
   formatElapsed,
   getDurationMsFromMetadata,
   getReadMetadataInfo,
-  getToolIconComponent,
   getToolTarget,
 } from '../../utils/toolDisplay';
 
@@ -52,11 +52,13 @@ export const ToolItem: React.FC<{
   isLast: boolean;
   onOpenFile?: (path: string) => void;
 }> = memo(({ tool, isExpanded, onToggle, isLast, onOpenFile }) => {
-  const Icon = getToolIconComponent(tool.name);
   const target = getToolTarget(tool.arguments, tool.name, tool._argsJson);
   const isActive = tool.status === 'running';
   const hasError = tool.status === 'error';
   const isSuccess = tool.status === 'completed';
+  
+  // Determine tool status for icon coloring
+  const toolStatus = isActive ? 'running' : hasError ? 'error' : 'completed';
 
   // Check if this is a file operation tool
   const isFileOperation = tool.name === 'write' || tool.name === 'edit' || tool.name === 'create_file';
@@ -163,7 +165,7 @@ export const ToolItem: React.FC<{
   }, [fileOpMeta]);
 
   return (
-    <div className={cn('group/tool min-w-0 overflow-hidden', !isLast && 'mb-px')}>
+    <div className={cn('group/tool min-w-0', !isLast && 'mb-px')}>
       {/* Tool header row - hidden for file operations with diff data (DiffViewer has its own header) */}
       {!(hasDiffData && isFileOperation) && (
         <div
@@ -202,28 +204,13 @@ export const ToolItem: React.FC<{
             )}
           </span>
 
-          {/* Tool icon */}
-          <Icon
-            size={12}
-            className={cn(
-              'flex-shrink-0',
-              isActive && 'text-[var(--color-warning)]',
-              hasError && 'text-[var(--color-error)]',
-              isSuccess && 'text-[var(--color-text-muted)]',
-            )}
+          {/* Tool icon with tooltip showing tool name */}
+          <ToolIconDisplay
+            toolName={tool.name}
+            size={13}
+            status={toolStatus}
+            showTooltip={true}
           />
-
-          {/* Tool name */}
-          <span
-            className={cn(
-              'text-[11px] font-medium flex-shrink-0',
-              isActive && 'text-[var(--color-warning)]',
-              hasError && 'text-[var(--color-error)]',
-              isSuccess && 'text-[var(--color-text-secondary)]',
-            )}
-          >
-            {tool.name}
-          </span>
 
           {/* Dynamic tool indicator */}
           {tool.isDynamic && (

@@ -5,6 +5,7 @@ import App from './App';
 import { AgentProvider } from './state/AgentProvider';
 import { UIProvider } from './state/UIProvider';
 import { WorkspaceContextProvider } from './state/WorkspaceContextProvider';
+import { WorkspaceTabsProvider } from './state/WorkspaceTabsProvider';
 import { EditorProvider } from './state/EditorProvider';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { ThemeProvider } from './utils/themeMode.tsx';
@@ -57,11 +58,13 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
       <ThemeProvider defaultMode="dark">
         <AgentProvider>
           <WorkspaceContextProvider>
-            <EditorProvider>
-              <UIProvider>
-                <App />
-              </UIProvider>
-            </EditorProvider>
+            <WorkspaceTabsProvider>
+              <EditorProvider>
+                <UIProvider>
+                  <App />
+                </UIProvider>
+              </EditorProvider>
+            </WorkspaceTabsProvider>
           </WorkspaceContextProvider>
         </AgentProvider>
       </ThemeProvider>

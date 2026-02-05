@@ -3,8 +3,9 @@
  *
  * Controls the rate of operations to prevent abuse and ensure fair resource usage.
  * Supports configurable limits, cooldowns, and different response strategies.
+ * Includes per-provider LLM API rate limiting.
  */
-import type { RateLimitConfig, RateLimitState } from '../../../shared/types';
+import type { RateLimitConfig, RateLimitState, LLMProviderName } from '../../../shared/types';
 import { createLogger } from '../../logger';
 
 const logger = createLogger('RateLimiter');
@@ -16,7 +17,22 @@ export type RateLimitBucket =
   | 'tool_creation'
   | 'tool_execution'
   | 'file_write'
-  | 'terminal_command';
+  | 'terminal_command'
+  | 'llm_api_call';  // Added for LLM API tracking
+
+/**
+ * Provider-specific rate limit tracking
+ */
+export interface ProviderRateLimitState extends RateLimitState {
+  /** Token usage in current window */
+  tokenCount?: number;
+  /** Max tokens allowed in window */
+  maxTokens?: number;
+  /** Last API error (429, 529) timestamp */
+  lastApiError?: number;
+  /** Backoff multiplier for exponential backoff */
+  backoffMultiplier?: number;
+}
 
 /**
  * Default rate limit configurations
@@ -43,6 +59,27 @@ export const DEFAULT_RATE_LIMITS: Record<RateLimitBucket, RateLimitConfig> = {
     windowMs: 60 * 1000, // 20 per minute
     onExceeded: 'throttle',
   },
+  llm_api_call: {
+    maxOperations: 60,
+    windowMs: 60 * 1000, // 60 per minute default
+    onExceeded: 'throttle',
+    cooldownMs: 10 * 1000,
+  },
+};
+
+/**
+ * Default per-provider rate limits (requests per minute)
+ * Based on typical API limits
+ */
+export const DEFAULT_PROVIDER_RATE_LIMITS: Record<LLMProviderName, { rpm: number; tpm?: number }> = {
+  anthropic: { rpm: 60, tpm: 100000 },
+  openai: { rpm: 60, tpm: 150000 },
+  deepseek: { rpm: 100, tpm: 200000 },
+  gemini: { rpm: 60, tpm: 100000 },
+  openrouter: { rpm: 60 },
+  xai: { rpm: 60 },
+  mistral: { rpm: 60, tpm: 100000 },
+  glm: { rpm: 60, tpm: 100000 },
 };
 
 /**
@@ -72,6 +109,10 @@ export class RateLimiter {
   private buckets = new Map<string, RateLimitState>();
   private configs = new Map<RateLimitBucket, RateLimitConfig>();
   private throttleQueues = new Map<string, Array<() => void>>();
+  /** Provider-specific rate limit states */
+  private providerStates = new Map<LLMProviderName, ProviderRateLimitState>();
+  /** Custom provider rate limits (overrides defaults) */
+  private providerLimits = new Map<LLMProviderName, { rpm: number; tpm?: number }>();
 
   constructor(customConfigs?: Partial<Record<RateLimitBucket, Partial<RateLimitConfig>>>) {
     // Initialize with defaults, overriding with custom configs
@@ -347,6 +388,192 @@ export class RateLimiter {
     const existing = this.configs.get(bucket) || DEFAULT_RATE_LIMITS[bucket];
     this.configs.set(bucket, { ...existing, ...updates });
     logger.info('Rate limit config updated', { bucket, updates });
+  }
+
+  // =============================================================================
+  // Provider-Specific Rate Limiting
+  // =============================================================================
+
+  /**
+   * Set custom rate limits for a provider
+   */
+  setProviderLimit(provider: LLMProviderName, limits: { rpm: number; tpm?: number }): void {
+    this.providerLimits.set(provider, limits);
+    logger.info('Provider rate limit set', { provider, limits });
+  }
+
+  /**
+   * Get rate limits for a provider
+   */
+  getProviderLimit(provider: LLMProviderName): { rpm: number; tpm?: number } {
+    return this.providerLimits.get(provider) || DEFAULT_PROVIDER_RATE_LIMITS[provider];
+  }
+
+  /**
+   * Get or create provider rate limit state
+   */
+  private getOrCreateProviderState(provider: LLMProviderName): ProviderRateLimitState {
+    let state = this.providerStates.get(provider);
+    if (!state) {
+      state = {
+        count: 0,
+        windowStart: Date.now(),
+        inCooldown: false,
+        tokenCount: 0,
+        backoffMultiplier: 1,
+      };
+      this.providerStates.set(provider, state);
+    }
+    return state;
+  }
+
+  /**
+   * Check if a provider API call is allowed
+   */
+  checkProvider(provider: LLMProviderName, estimatedTokens?: number): RateLimitCheckResult {
+    const limits = this.getProviderLimit(provider);
+    const state = this.getOrCreateProviderState(provider);
+    const now = Date.now();
+    const windowMs = 60 * 1000; // 1 minute window
+
+    // Reset window if expired
+    if (now - state.windowStart >= windowMs) {
+      state.count = 0;
+      state.tokenCount = 0;
+      state.windowStart = now;
+      state.backoffMultiplier = Math.max(1, (state.backoffMultiplier || 1) * 0.9); // Decay backoff
+    }
+
+    // Check cooldown (from API errors)
+    if (state.inCooldown && state.cooldownEndsAt && now < state.cooldownEndsAt) {
+      return {
+        allowed: false,
+        currentCount: state.count,
+        maxAllowed: limits.rpm,
+        remaining: 0,
+        resetsAt: state.cooldownEndsAt,
+        retryAfterMs: state.cooldownEndsAt - now,
+        action: 'rejected',
+      };
+    } else if (state.inCooldown) {
+      state.inCooldown = false;
+      state.cooldownEndsAt = undefined;
+    }
+
+    const resetsAt = state.windowStart + windowMs;
+    const remaining = Math.max(0, limits.rpm - state.count);
+
+    // Check RPM limit
+    if (state.count >= limits.rpm) {
+      logger.debug('Provider RPM limit exceeded', { provider, count: state.count, max: limits.rpm });
+      return {
+        allowed: false,
+        currentCount: state.count,
+        maxAllowed: limits.rpm,
+        remaining: 0,
+        resetsAt,
+        retryAfterMs: resetsAt - now,
+        action: 'throttled',
+      };
+    }
+
+    // Check TPM limit if configured
+    if (limits.tpm && estimatedTokens) {
+      const currentTokens = state.tokenCount || 0;
+      if (currentTokens + estimatedTokens > limits.tpm) {
+        logger.debug('Provider TPM limit would be exceeded', {
+          provider,
+          currentTokens,
+          estimatedTokens,
+          max: limits.tpm,
+        });
+        return {
+          allowed: false,
+          currentCount: state.count,
+          maxAllowed: limits.rpm,
+          remaining,
+          resetsAt,
+          retryAfterMs: resetsAt - now,
+          action: 'throttled',
+        };
+      }
+    }
+
+    return {
+      allowed: true,
+      currentCount: state.count,
+      maxAllowed: limits.rpm,
+      remaining,
+      resetsAt,
+      action: 'allowed',
+    };
+  }
+
+  /**
+   * Record a provider API call
+   */
+  recordProviderCall(provider: LLMProviderName, tokensUsed?: number): void {
+    const state = this.getOrCreateProviderState(provider);
+    state.count++;
+    if (tokensUsed) {
+      state.tokenCount = (state.tokenCount || 0) + tokensUsed;
+    }
+    logger.debug('Provider API call recorded', {
+      provider,
+      count: state.count,
+      tokenCount: state.tokenCount,
+    });
+  }
+
+  /**
+   * Record a provider API error (429, 529, etc.)
+   * Triggers exponential backoff
+   */
+  recordProviderError(provider: LLMProviderName, retryAfterMs?: number): void {
+    const state = this.getOrCreateProviderState(provider);
+    state.lastApiError = Date.now();
+    state.backoffMultiplier = Math.min(16, (state.backoffMultiplier || 1) * 2); // Max 16x backoff
+    
+    // Calculate cooldown with exponential backoff
+    const baseBackoff = retryAfterMs || 10000;
+    const cooldownMs = baseBackoff * state.backoffMultiplier;
+    
+    state.inCooldown = true;
+    state.cooldownEndsAt = Date.now() + cooldownMs;
+    
+    logger.warn('Provider API error recorded, entering cooldown', {
+      provider,
+      cooldownMs,
+      backoffMultiplier: state.backoffMultiplier,
+    });
+  }
+
+  /**
+   * Get provider rate limit status for all providers
+   */
+  getProviderStatuses(): Record<LLMProviderName, RateLimitCheckResult> {
+    const providers: LLMProviderName[] = ['anthropic', 'openai', 'deepseek', 'gemini', 'openrouter', 'xai', 'mistral', 'glm'];
+    const result = {} as Record<LLMProviderName, RateLimitCheckResult>;
+    for (const provider of providers) {
+      result[provider] = this.checkProvider(provider);
+    }
+    return result;
+  }
+
+  /**
+   * Reset rate limits for a specific provider
+   */
+  resetProvider(provider: LLMProviderName): void {
+    this.providerStates.delete(provider);
+    logger.debug('Provider rate limits reset', { provider });
+  }
+
+  /**
+   * Reset all provider rate limits
+   */
+  resetAllProviders(): void {
+    this.providerStates.clear();
+    logger.debug('All provider rate limits reset');
   }
 }
 

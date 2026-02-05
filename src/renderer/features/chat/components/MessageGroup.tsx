@@ -3,6 +3,12 @@
  * 
  * Renders a single run group with all its messages.
  * Extracted from ChatArea to reduce re-renders by memoizing message groups.
+ * 
+ * Features:
+ * - Collapsible run groups with smooth animation
+ * - Streaming indicator for active runs
+ * - Efficient memoization for performance
+ * - Search match highlighting support
  */
 import React, { memo, useMemo, useCallback } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -12,6 +18,7 @@ import { cn } from '../../../utils/cn';
 import { MessageLine } from './MessageLine';
 import { ToolExecution } from './ToolExecution';
 import { RunGroupHeader } from './RunGroupHeader';
+import { StreamingIndicator } from './StreamingIndicator';
 
 /** Message reaction type */
 type MessageReaction = 'up' | 'down' | null;
@@ -198,6 +205,14 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
   const runKey = runId ?? `group-${groupIdx}`;
   const isGroupRunning = isLastGroup && isRunning;
   
+  // Check if group has content yet (for initial streaming state)
+  const hasContent = useMemo(() => {
+    return messages.some(m => m.content && m.content.length > 0);
+  }, [messages]);
+  
+  // Show streaming indicator when running but no content yet
+  const showStreamingIndicator = isGroupRunning && !hasContent && messages.length > 0;
+  
   // Pre-compute assistant messages with tool calls
   const assistantMessagesWithTools = useAssistantToolCallMap(messages);
 
@@ -209,7 +224,7 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
   return (
     <div
       className={cn(
-        'rounded-lg overflow-hidden transition-all duration-200',
+        'rounded-lg transition-all duration-200',
         'min-w-0 max-w-full w-full', // Prevent horizontal overflow
         isGroupRunning
           ? 'border border-[var(--color-warning)]/30 shadow-sm shadow-[var(--color-warning)]/5'
@@ -223,23 +238,25 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
         type="button"
         onClick={handleToggle}
         className={cn(
-          "w-full min-w-0 text-left transition-colors overflow-hidden",
+          "w-full min-w-0 text-left transition-colors",
           "hover:bg-[var(--color-surface-2)]/20",
           "focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30"
         )}
+        aria-expanded={!collapsed}
+        aria-controls={`message-group-content-${runKey}`}
       >
-        <div className="flex items-center min-w-0 w-full overflow-hidden">
+        <div className="flex items-center min-w-0 w-full">
           <div className={cn(
             "flex items-center justify-center w-7 flex-shrink-0 self-stretch",
             "border-r border-[var(--color-border-subtle)]/30"
           )}>
             {collapsed ? (
-              <ChevronRight size={12} className="text-[var(--color-text-dim)] transition-transform" />
+              <ChevronRight size={12} className="text-[var(--color-text-dim)] transition-transform duration-150" />
             ) : (
-              <ChevronDown size={12} className="text-[var(--color-text-dim)] transition-transform" />
+              <ChevronDown size={12} className="text-[var(--color-text-dim)] transition-transform duration-150" />
             )}
           </div>
-          <div className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex-1 min-w-0">
             <RunGroupHeader
               runId={runId}
               messages={messages}
@@ -250,25 +267,39 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
         </div>
       </button>
 
-      {/* Collapsible content */}
+      {/* Collapsible content with smooth animation */}
       {!collapsed && (
-        <MessageGroupContent
-          messages={messages}
-          isLastGroup={isLastGroup}
-          isGroupRunning={isGroupRunning}
-          assistantMessagesWithTools={assistantMessagesWithTools}
-          toolResults={toolResults}
-          sessionId={sessionId}
-          matchingMessageIds={matchingMessageIds}
-          currentMatchMessageId={currentMatchMessageId}
-          routingInfo={routingInfo}
-          onEditMessage={onEditMessage}
-          onForkMessage={onForkMessage}
-          onRunCode={onRunCode}
-          onInsertCode={onInsertCode}
-          onReaction={onReaction}
-          onRegenerate={onRegenerate}
-        />
+        <div id={`message-group-content-${runKey}`}>
+          {/* Streaming indicator - shows when waiting for first content */}
+          {showStreamingIndicator && (
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[var(--color-border-subtle)]/20">
+              <StreamingIndicator 
+                isStreaming={true} 
+                message="thinking" 
+                size="sm" 
+                variant="pulse" 
+              />
+            </div>
+          )}
+          
+          <MessageGroupContent
+            messages={messages}
+            isLastGroup={isLastGroup}
+            isGroupRunning={isGroupRunning}
+            assistantMessagesWithTools={assistantMessagesWithTools}
+            toolResults={toolResults}
+            sessionId={sessionId}
+            matchingMessageIds={matchingMessageIds}
+            currentMatchMessageId={currentMatchMessageId}
+            routingInfo={routingInfo}
+            onEditMessage={onEditMessage}
+            onForkMessage={onForkMessage}
+            onRunCode={onRunCode}
+            onInsertCode={onInsertCode}
+            onReaction={onReaction}
+            onRegenerate={onRegenerate}
+          />
+        </div>
       )}
     </div>
   );
@@ -316,7 +347,7 @@ const MessageGroupContent: React.FC<MessageGroupContentProps> = memo(({
   onRegenerate,
 }) => {
   return (
-    <div className="px-3 sm:px-4 py-2 sm:py-3 space-y-1 border-t border-[var(--color-border-subtle)]/20 min-w-0 w-full overflow-hidden">
+    <div className="px-2 sm:px-3 md:px-4 lg:px-5 py-2 sm:py-2.5 md:py-3 space-y-1 border-t border-[var(--color-border-subtle)]/20 min-w-0 w-full">
       {messages.map((message, msgIdx) => {
         const isLastMsg = msgIdx === messages.length - 1 && isLastGroup;
         const isStreaming = isLastMsg && message.role === 'assistant' && isGroupRunning;

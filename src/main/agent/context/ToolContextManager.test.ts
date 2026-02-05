@@ -16,6 +16,7 @@ import {
   getLoadedToolsInfo,
   clearSessionToolState,
   clearAllSessionToolStates,
+  clearToolSelectionCache,
   cleanupSession,
   cleanupAllSessions,
   getActiveSessionCount,
@@ -77,10 +78,12 @@ describe('ToolContextManager', () => {
   beforeEach(() => {
     clearWorkspaceTypeCache();
     clearAllSessionToolStates();
+    clearToolSelectionCache();
   });
 
   afterEach(() => {
     clearAllSessionToolStates();
+    clearToolSelectionCache();
   });
 
   describe('selectToolsForContext', () => {

@@ -126,11 +126,10 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
 
   return (
     <div className={cn(
-      'px-3 sm:px-4 py-2 min-w-0 w-full',
-      'bg-[var(--color-surface-1)]/30',
-      'overflow-hidden'
+      'px-2 sm:px-3 md:px-4 lg:px-5 py-1.5 sm:py-2 min-w-0 w-full',
+      'bg-[var(--color-surface-1)]/30'
     )}>
-      <div className="flex items-center justify-between gap-2 min-w-0 w-full overflow-hidden">
+      <div className="flex items-center justify-between gap-2 min-w-0 w-full">
         {/* Left: Status + Request preview */}
         <div className="min-w-0 flex-1 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0 overflow-hidden">

@@ -322,30 +322,30 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
               <h4 className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
                 Statistics
               </h4>
-              <div className="grid grid-cols-4 gap-2">
-                <div className="p-2 rounded bg-[var(--color-surface-base)] border border-[var(--color-border)] text-center">
-                  <div className="text-sm font-mono text-[var(--color-text-primary)]">
+              <div className="grid grid-cols-2 xs:grid-cols-4 gap-2">
+                <div className="p-1.5 sm:p-2 rounded bg-[var(--color-surface-base)] border border-[var(--color-border)] text-center">
+                  <div className="text-xs sm:text-sm font-mono text-[var(--color-text-primary)]">
                     {state.stats.totalCalls}
                   </div>
-                  <div className="text-[9px] text-[var(--color-text-muted)]">Total Calls</div>
+                  <div className="text-[8px] sm:text-[9px] text-[var(--color-text-muted)]">Total Calls</div>
                 </div>
-                <div className="p-2 rounded bg-[var(--color-surface-base)] border border-[var(--color-border)] text-center">
-                  <div className="text-sm font-mono text-[var(--color-success)]">
+                <div className="p-1.5 sm:p-2 rounded bg-[var(--color-surface-base)] border border-[var(--color-border)] text-center">
+                  <div className="text-xs sm:text-sm font-mono text-[var(--color-success)]">
                     {state.stats.successfulCalls}
                   </div>
-                  <div className="text-[9px] text-[var(--color-text-muted)]">Success</div>
+                  <div className="text-[8px] sm:text-[9px] text-[var(--color-text-muted)]">Success</div>
                 </div>
-                <div className="p-2 rounded bg-[var(--color-surface-base)] border border-[var(--color-border)] text-center">
-                  <div className="text-sm font-mono text-[var(--color-error)]">
+                <div className="p-1.5 sm:p-2 rounded bg-[var(--color-surface-base)] border border-[var(--color-border)] text-center">
+                  <div className="text-xs sm:text-sm font-mono text-[var(--color-error)]">
                     {state.stats.failedCalls}
                   </div>
-                  <div className="text-[9px] text-[var(--color-text-muted)]">Failed</div>
+                  <div className="text-[8px] sm:text-[9px] text-[var(--color-text-muted)]">Failed</div>
                 </div>
-                <div className="p-2 rounded bg-[var(--color-surface-base)] border border-[var(--color-border)] text-center">
-                  <div className="text-sm font-mono text-[var(--color-text-primary)]">
+                <div className="p-1.5 sm:p-2 rounded bg-[var(--color-surface-base)] border border-[var(--color-border)] text-center">
+                  <div className="text-xs sm:text-sm font-mono text-[var(--color-text-primary)]">
                     {state.stats.averageLatencyMs.toFixed(0)}ms
                   </div>
-                  <div className="text-[9px] text-[var(--color-text-muted)]">Avg Latency</div>
+                  <div className="text-[8px] sm:text-[9px] text-[var(--color-text-muted)]">Avg Latency</div>
                 </div>
               </div>
             </div>

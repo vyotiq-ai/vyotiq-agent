@@ -2,6 +2,12 @@
  * useChatSubmit Hook
  * 
  * Handles sending messages and related actions.
+ * 
+ * Features:
+ * - Optimistic UI updates with proper state management
+ * - Debounced state transitions to avoid flickering
+ * - Proper cleanup on unmount
+ * - Error recovery with state rollback
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
@@ -39,6 +45,9 @@ interface ChatSubmitOptions {
 /** Timeout for waiting for agent to start running (ms) */
 const AGENT_START_TIMEOUT = 5000;
 
+/** Minimum time to show sending state to avoid flickering (ms) */
+const MIN_SENDING_DURATION = 200;
+
 /**
  * Hook for handling message submission
  */
@@ -62,14 +71,45 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
   // Track if we're waiting for the agent to start after sending
   const waitingForAgentRef = useRef(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const sendStartTimeRef = useRef<number>(0);
+  const isMountedRef = useRef(true);
+
+  // Track mounted state for safe async updates
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Safe state setter that checks mounted state
+  const safeSetIsSending = useCallback((value: boolean) => {
+    if (isMountedRef.current) {
+      setIsSending(value);
+    }
+  }, []);
 
   // Clear isSending when agent becomes busy (message successfully started processing)
   useEffect(() => {
     if (waitingForAgentRef.current && agentBusy) {
       // Agent has started processing - clear the sending state
+      // but ensure minimum duration to avoid flickering
+      const elapsed = Date.now() - sendStartTimeRef.current;
+      const remainingDelay = Math.max(0, MIN_SENDING_DURATION - elapsed);
+      
+      if (remainingDelay > 0) {
+        const delayTimeout = setTimeout(() => {
+          logger.info('Agent started, clearing sending state after delay');
+          waitingForAgentRef.current = false;
+          safeSetIsSending(false);
+        }, remainingDelay);
+        
+        return () => clearTimeout(delayTimeout);
+      }
+      
       logger.info('Agent started, clearing sending state');
       waitingForAgentRef.current = false;
-      setIsSending(false);
+      safeSetIsSending(false);
       
       // Clear any pending timeout
       if (timeoutRef.current) {
@@ -77,7 +117,7 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
         timeoutRef.current = null;
       }
     }
-  }, [agentBusy]);
+  }, [agentBusy, safeSetIsSending]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -88,18 +128,18 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
     };
   }, []);
 
+  // Memoize canSend to avoid unnecessary recalculations
   const canSend = useMemo(() => {
-    return (message.trim().length > 0 || attachments.length > 0) && 
-           !agentBusy && 
-           !!activeWorkspace && 
-           sessionWorkspaceValid;
-  }, [message, attachments, agentBusy, activeWorkspace, sessionWorkspaceValid]);
+    const hasContent = message.trim().length > 0 || attachments.length > 0;
+    return hasContent && !agentBusy && !!activeWorkspace && sessionWorkspaceValid;
+  }, [message, attachments.length, agentBusy, activeWorkspace, sessionWorkspaceValid]);
 
   const handleSendMessage = useCallback(async () => {
     if (!canSend || isSending) return;
 
     try {
-      setIsSending(true);
+      sendStartTimeRef.current = Date.now();
+      safeSetIsSending(true);
       waitingForAgentRef.current = true;
       
       const finalMessage = message.trim();
@@ -107,6 +147,7 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
       logger.info('Sending message', {
         messageLength: finalMessage.length,
         attachmentCount: attachments.length,
+        provider: selectedProvider,
       });
 
       await sendMessage(finalMessage, attachments, {
@@ -119,10 +160,10 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
       
       // Set a timeout in case agent never starts (safety fallback)
       timeoutRef.current = setTimeout(() => {
-        if (waitingForAgentRef.current) {
+        if (waitingForAgentRef.current && isMountedRef.current) {
           logger.warn('Agent did not start within timeout, clearing sending state');
           waitingForAgentRef.current = false;
-          setIsSending(false);
+          safeSetIsSending(false);
         }
       }, AGENT_START_TIMEOUT);
       
@@ -130,10 +171,10 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
       logger.error('Failed to send message', { error });
       // Clear states on error
       waitingForAgentRef.current = false;
-      setIsSending(false);
+      safeSetIsSending(false);
       // Don't clear the message on error - let the user try again
     }
-  }, [message, attachments, isSending, canSend, sendMessage, selectedProvider, selectedModelId, manualModel, clearMessage]);
+  }, [message, attachments, isSending, canSend, sendMessage, selectedProvider, selectedModelId, manualModel, clearMessage, safeSetIsSending]);
 
   const handleToggleYolo = useCallback(() => {
     if (!activeSession) {

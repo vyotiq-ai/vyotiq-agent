@@ -83,7 +83,6 @@ export type {
   TaskAnalysisContext,
   WorkspaceStructureContext,
   InternalTerminalSettings,
-  SemanticContextInfo,
   MCPContextInfo,
   GitContextInfo,
 } from './types';
@@ -106,7 +105,6 @@ export {
   buildAdditionalInstructions,
   buildCommunicationStyle,
   buildToolCategories,
-  buildSemanticContext,
   buildMCPContext,
   buildAgentsMdContext,
   buildInstructionFilesContext,

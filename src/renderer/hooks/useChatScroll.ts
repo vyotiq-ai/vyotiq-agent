@@ -7,19 +7,28 @@ interface UseChatScrollOptions {
   threshold?: number;
   /** Enable streaming mode for continuous content updates */
   streamingMode?: boolean;
+  /** Smooth scroll speed factor (0-1, lower = smoother but slower) */
+  smoothFactor?: number;
 }
 
 /**
  * Chat scroll hook with automatic smooth scrolling during streaming
  * 
  * Automatically keeps the view focused on the latest content as it streams in.
- * Uses RAF for smooth 60fps scrolling performance.
+ * Uses RAF for smooth 60fps scrolling performance with adaptive smoothing.
+ * 
+ * Features:
+ * - User scroll intent detection (won't auto-scroll if user scrolled up)
+ * - Smooth scrolling with configurable speed
+ * - Respects reduced motion preferences
+ * - Memory-efficient with cleanup
  */
 export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) => {
   const { 
     enabled = true, 
     threshold = 150, 
     streamingMode = false,
+    smoothFactor = 0.3,
   } = options;
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -29,6 +38,22 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
   // Track if user manually scrolled away from bottom
   const userScrolledAwayRef = useRef(false);
   const lastUserScrollTimeRef = useRef(0);
+  
+  // Track if reduced motion is preferred
+  const prefersReducedMotion = useRef(false);
+  
+  // Check reduced motion preference on mount
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    prefersReducedMotion.current = mediaQuery.matches;
+    
+    const handleChange = (e: MediaQueryListEvent) => {
+      prefersReducedMotion.current = e.matches;
+    };
+    
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   // Check if near bottom
   const isNearBottom = useCallback(() => {
@@ -138,8 +163,15 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
       if (distanceFromBottom <= threshold) {
         const diff = scrollHeight - clientHeight - scrollTop;
         if (diff > 2) {
-          // Gentle scroll: 30% of remaining distance
-          element.scrollTop = scrollTop + Math.max(2, diff * 0.3);
+          // Use reduced motion setting or smooth scrolling
+          if (prefersReducedMotion.current) {
+            // Instant scroll for reduced motion preference
+            element.scrollTop = scrollHeight - clientHeight;
+          } else {
+            // Gentle scroll: adaptive percentage of remaining distance
+            const scrollAmount = Math.max(2, diff * smoothFactor);
+            element.scrollTop = scrollTop + scrollAmount;
+          }
         }
       }
       
@@ -163,7 +195,7 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
         cancelAnimationFrame(animationId);
       }
     };
-  }, [streamingMode, enabled, threshold]);
+  }, [streamingMode, enabled, threshold, smoothFactor]);
 
   // Initialize scroll height tracking
   useEffect(() => {

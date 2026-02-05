@@ -24,6 +24,7 @@ import { cn } from '../../utils/cn';
 import { formatRelativeTimeWithSuffix, formatFullDateTime } from '../../utils/timeFormatting';
 import { useUndoHistory } from './useUndoHistory';
 import { ContentPreview } from './components/ContentPreview';
+import { useConfirm } from '../../components/ui/ConfirmModal';
 import type { FileChange, RunChangeGroup } from './types';
 
 interface UndoHistoryPanelProps {
@@ -174,6 +175,7 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const { groupedHistory, undoableCount, isLoading, error, refresh, undoChange, redoChange, undoRun, clearHistory, undoLastChange, undoAllSession } = useUndoHistory({ sessionId, refreshInterval: 5000 });
 
@@ -182,8 +184,28 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
   const handleUndoChange = useCallback(async (changeId: string) => { setIsProcessing(true); try { const r = await undoChange(changeId); showStatus(r.success ? 'success' : 'error', r.message); } finally { setIsProcessing(false); } }, [undoChange, showStatus]);
   const handleRedoChange = useCallback(async (changeId: string) => { setIsProcessing(true); try { const r = await redoChange(changeId); showStatus(r.success ? 'success' : 'error', r.message); } finally { setIsProcessing(false); } }, [redoChange, showStatus]);
   const handleUndoRun = useCallback(async (runId: string) => { setIsProcessing(true); try { const r = await undoRun(runId); showStatus(r.success ? 'success' : 'error', r.message); } finally { setIsProcessing(false); } }, [undoRun, showStatus]);
-  const handleUndoAllSession = useCallback(async () => { if (!confirm(`Undo all ${undoableCount} changes?`)) return; setIsProcessing(true); try { const r = await undoAllSession(); showStatus(r.success ? 'success' : 'error', r.message); } finally { setIsProcessing(false); } }, [undoAllSession, undoableCount, showStatus]);
-  const handleClearHistory = useCallback(async () => { if (!confirm('Clear all history?')) return; setIsProcessing(true); try { await clearHistory(); showStatus('success', 'Cleared'); } catch { showStatus('error', 'Failed'); } finally { setIsProcessing(false); } }, [clearHistory, showStatus]);
+  const handleUndoAllSession = useCallback(async () => {
+    const confirmed = await confirm({
+      title: 'Undo All Changes',
+      message: `Are you sure you want to undo all ${undoableCount} changes? This will revert all file modifications.`,
+      confirmLabel: 'Undo All',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
+    setIsProcessing(true);
+    try { const r = await undoAllSession(); showStatus(r.success ? 'success' : 'error', r.message); } finally { setIsProcessing(false); }
+  }, [undoAllSession, undoableCount, showStatus, confirm]);
+  const handleClearHistory = useCallback(async () => {
+    const confirmed = await confirm({
+      title: 'Clear History',
+      message: 'Are you sure you want to clear all undo history? This action cannot be undone.',
+      confirmLabel: 'Clear',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
+    setIsProcessing(true);
+    try { await clearHistory(); showStatus('success', 'Cleared'); } catch { showStatus('error', 'Failed'); } finally { setIsProcessing(false); }
+  }, [clearHistory, showStatus, confirm]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -210,26 +232,31 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
   if (!isOpen) return null;
 
   return (
-    <div className={cn('fixed right-0 top-0 bottom-0 w-80 z-40 bg-[var(--color-surface-base)] border-l border-[var(--color-border-subtle)] flex flex-col shadow-xl animate-slide-in-right')}>
+    <div 
+      className={cn('fixed right-0 top-0 bottom-0 w-80 z-40 bg-[var(--color-surface-base)] border-l border-[var(--color-border-subtle)] flex flex-col shadow-xl animate-slide-in-right')}
+      role="complementary"
+      aria-label="Undo History Panel"
+    >
         <div className="h-10 flex items-center justify-between px-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
-          <div className="flex items-center gap-2"><History size={14} className="text-[var(--color-accent-primary)]" /><span className="text-xs font-medium">Undo History</span>{undoableCount > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]">{undoableCount}</span>}</div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => void refresh()} disabled={isLoading} className={cn('p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)]', isLoading && 'opacity-50')} title="Refresh"><RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} /></button>
-            <button onClick={() => void handleClearHistory()} disabled={isLoading || groupedHistory.length === 0} className={cn('p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-error)]', (isLoading || groupedHistory.length === 0) && 'opacity-50')} title="Clear"><Trash2 size={12} /></button>
-            <button onClick={onClose} className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)]" title="Close"><X size={12} /></button>
+          <div className="flex items-center gap-2"><History size={14} className="text-[var(--color-accent-primary)]" aria-hidden="true" /><span className="text-xs font-medium">Undo History</span>{undoableCount > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]" aria-label={`${undoableCount} undoable changes`}>{undoableCount}</span>}</div>
+          <div className="flex items-center gap-1" role="toolbar" aria-label="History actions">
+            <button onClick={() => void refresh()} disabled={isLoading} className={cn('p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)]', isLoading && 'opacity-50')} title="Refresh" aria-label="Refresh history"><RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} aria-hidden="true" /></button>
+            <button onClick={() => void handleClearHistory()} disabled={isLoading || groupedHistory.length === 0} className={cn('p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-error)]', (isLoading || groupedHistory.length === 0) && 'opacity-50')} title="Clear" aria-label="Clear all history"><Trash2 size={12} aria-hidden="true" /></button>
+            <button onClick={onClose} className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)]" title="Close" aria-label="Close undo history panel"><X size={12} aria-hidden="true" /></button>
           </div>
         </div>
-        {groupedHistory.length > 0 && <div className="px-2 py-2 border-b border-[var(--color-border-subtle)]"><div className="relative"><Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" /><input ref={searchInputRef} type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search... (Ctrl+F)" className="w-full pl-7 pr-2 py-1.5 text-[11px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] rounded-sm focus-visible:border-[var(--color-accent-primary)] focus-visible:outline-none" />{searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]"><X size={10} /></button>}</div></div>}
-        {undoableCount > 1 && <div className="px-2 py-2 border-b border-[var(--color-border-subtle)]"><button onClick={() => void handleUndoAllSession()} disabled={isProcessing} className={cn('w-full flex items-center justify-center gap-2 px-3 py-2 rounded bg-[var(--color-warning)]/10 text-[var(--color-warning)] hover:bg-[var(--color-warning)]/20 text-[11px] font-medium', isProcessing && 'opacity-50')}><RotateCcw size={14} />Undo All ({undoableCount})</button></div>}
-        {statusMessage && <div className={cn('px-3 py-2 text-[10px] border-b', statusMessage.type === 'success' ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]' : 'bg-[var(--color-error)]/10 text-[var(--color-error)]')}>{statusMessage.text}</div>}
-        <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin">
-          {!sessionId ? <div className="flex flex-col items-center justify-center h-full text-center p-4"><History size={32} className="text-[var(--color-text-dim)] mb-2" /><p className="text-xs text-[var(--color-text-muted)]">No session</p></div>
-          : isLoading && groupedHistory.length === 0 ? <div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-[var(--color-text-muted)]" /></div>
-          : error ? <div className="flex flex-col items-center justify-center h-full p-4"><p className="text-xs text-[var(--color-error)]">{error}</p><button onClick={() => void refresh()} className="mt-2 text-[10px] text-[var(--color-accent-primary)] hover:underline">Retry</button></div>
-          : filteredHistory.length === 0 ? <div className="flex flex-col items-center justify-center h-full p-4"><History size={32} className="text-[var(--color-text-dim)] mb-2" /><p className="text-xs text-[var(--color-text-muted)]">{searchQuery ? 'No matches' : 'No changes'}</p></div>
+        {groupedHistory.length > 0 && <div className="px-2 py-2 border-b border-[var(--color-border-subtle)]"><div className="relative"><Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" aria-hidden="true" /><input ref={searchInputRef} type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search... (Ctrl+F)" aria-label="Search history" className="w-full pl-7 pr-2 py-1.5 text-[11px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] rounded-sm focus-visible:border-[var(--color-accent-primary)] focus-visible:outline-none" />{searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" aria-label="Clear search"><X size={10} aria-hidden="true" /></button>}</div></div>}
+        {undoableCount > 1 && <div className="px-2 py-2 border-b border-[var(--color-border-subtle)]"><button onClick={() => void handleUndoAllSession()} disabled={isProcessing} className={cn('w-full flex items-center justify-center gap-2 px-3 py-2 rounded bg-[var(--color-warning)]/10 text-[var(--color-warning)] hover:bg-[var(--color-warning)]/20 text-[11px] font-medium', isProcessing && 'opacity-50')} aria-label={`Undo all ${undoableCount} changes`}><RotateCcw size={14} aria-hidden="true" />Undo All ({undoableCount})</button></div>}
+        {statusMessage && <div className={cn('px-3 py-2 text-[10px] border-b', statusMessage.type === 'success' ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]' : 'bg-[var(--color-error)]/10 text-[var(--color-error)]')} role="status" aria-live="polite">{statusMessage.text}</div>}
+        <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin" role="list" aria-label="Change history">
+          {!sessionId ? <div className="flex flex-col items-center justify-center h-full text-center p-4"><History size={32} className="text-[var(--color-text-dim)] mb-2" aria-hidden="true" /><p className="text-xs text-[var(--color-text-muted)]">No session</p></div>
+          : isLoading && groupedHistory.length === 0 ? <div className="flex items-center justify-center h-full" role="status" aria-label="Loading"><Loader2 size={20} className="animate-spin text-[var(--color-text-muted)]" aria-hidden="true" /></div>
+          : error ? <div className="flex flex-col items-center justify-center h-full p-4" role="alert"><p className="text-xs text-[var(--color-error)]">{error}</p><button onClick={() => void refresh()} className="mt-2 text-[10px] text-[var(--color-accent-primary)] hover:underline" aria-label="Retry loading history">Retry</button></div>
+          : filteredHistory.length === 0 ? <div className="flex flex-col items-center justify-center h-full p-4"><History size={32} className="text-[var(--color-text-dim)] mb-2" aria-hidden="true" /><p className="text-xs text-[var(--color-text-muted)]">{searchQuery ? 'No matches' : 'No changes'}</p></div>
           : filteredHistory.map(g => <RunGroup key={g.runId} group={g} onUndoChange={handleUndoChange} onRedoChange={handleRedoChange} onUndoRun={handleUndoRun} isProcessing={isProcessing} searchQuery={searchQuery} />)}
         </div>
-        {groupedHistory.length > 0 && <div className="px-3 py-2 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"><p className="text-[9px] text-[var(--color-text-dim)]">{groupedHistory.length} runs • {undoableCount} undoable • Ctrl+Z quick undo</p></div>}
+        {groupedHistory.length > 0 && <div className="px-3 py-2 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"><p className="text-[9px] text-[var(--color-text-dim)]" aria-live="polite">{groupedHistory.length} runs • {undoableCount} undoable • Ctrl+Z quick undo</p></div>}
+        <ConfirmDialog />
     </div>
   );
 });

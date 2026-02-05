@@ -80,12 +80,82 @@ const MAX_TIMEOUT_MS = 1200000; // 20 minutes (increased from 15)
 const MAX_OUTPUT_SIZE = 1024 * 1024; // 1MB max output per process
 const TIMEOUT_WARNING_THRESHOLD_MS = 90000; // Warn after 1.5 minutes (increased from 1)
 
+// Terminal session limits for multi-session concurrent execution safety
+const MAX_CONCURRENT_TERMINALS = 20; // Maximum concurrent terminal processes globally
+const MAX_TERMINALS_PER_WORKSPACE = 5; // Maximum terminals per workspace
+
 /**
  * Process Terminal Manager implementation using node-pty
  */
 export class ProcessTerminalManager extends EventEmitter implements TerminalManager {
   private processes = new Map<number, ProcessInfo>();
   private pidCounter = 1;
+  // Track terminals per workspace for limit enforcement
+  private workspaceTerminalCounts = new Map<string, number>();
+
+  /**
+   * Get statistics about terminal usage for multi-session monitoring.
+   */
+  getTerminalStats(): {
+    totalProcesses: number;
+    runningProcesses: number;
+    perWorkspace: Map<string, { total: number; running: number }>;
+    limits: { maxGlobal: number; maxPerWorkspace: number };
+  } {
+    const perWorkspace = new Map<string, { total: number; running: number }>();
+    let runningProcesses = 0;
+
+    for (const [, info] of this.processes) {
+      if (info.isRunning) runningProcesses++;
+      
+      const wsId = (info as ProcessInfo & { workspaceId?: string }).workspaceId ?? 'default';
+      const current = perWorkspace.get(wsId) ?? { total: 0, running: 0 };
+      current.total++;
+      if (info.isRunning) current.running++;
+      perWorkspace.set(wsId, current);
+    }
+
+    return {
+      totalProcesses: this.processes.size,
+      runningProcesses,
+      perWorkspace,
+      limits: {
+        maxGlobal: MAX_CONCURRENT_TERMINALS,
+        maxPerWorkspace: MAX_TERMINALS_PER_WORKSPACE,
+      },
+    };
+  }
+
+  /**
+   * Check if a new terminal can be started (enforces limits).
+   */
+  canStartTerminal(workspaceId?: string): { allowed: boolean; reason?: string } {
+    // Count running processes globally
+    let runningCount = 0;
+    for (const [, info] of this.processes) {
+      if (info.isRunning) runningCount++;
+    }
+
+    if (runningCount >= MAX_CONCURRENT_TERMINALS) {
+      return {
+        allowed: false,
+        reason: `Maximum concurrent terminal limit reached (${MAX_CONCURRENT_TERMINALS})`,
+      };
+    }
+
+    // Check workspace-specific limit
+    if (workspaceId) {
+      const workspaceCount = this.workspaceTerminalCounts.get(workspaceId) ?? 0;
+      if (workspaceCount >= MAX_TERMINALS_PER_WORKSPACE) {
+        return {
+          allowed: false,
+          reason: `Maximum terminals per workspace limit reached (${MAX_TERMINALS_PER_WORKSPACE})`,
+        };
+      }
+    }
+
+    return { allowed: true };
+  }
 
   /**
    * Run a command in a pseudo-terminal
@@ -96,11 +166,29 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
       waitForExit = true,
       timeout = DEFAULT_TIMEOUT_MS,
       description,
-    } = options;
+      workspaceId,
+    } = options as TerminalRunOptions & { workspaceId?: string };
+
+    // Enforce terminal limits for multi-session safety
+    const limitCheck = this.canStartTerminal(workspaceId);
+    if (!limitCheck.allowed) {
+      logger.warn('Terminal limit reached', {
+        reason: limitCheck.reason,
+        workspaceId,
+        command: command.slice(0, 100),
+      });
+      throw new Error(`Cannot start terminal: ${limitCheck.reason}`);
+    }
 
     const effectiveTimeout = Math.min(timeout, MAX_TIMEOUT_MS);
     const pid = this.pidCounter++;
     const startedAt = Date.now();
+
+    // Track workspace terminal count
+    if (workspaceId) {
+      const currentCount = this.workspaceTerminalCounts.get(workspaceId) ?? 0;
+      this.workspaceTerminalCounts.set(workspaceId, currentCount + 1);
+    }
 
     // Determine shell based on platform
     const isWindows = os.platform() === 'win32';
@@ -141,7 +229,7 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
           env: { ...process.env } as Record<string, string>,
         });
 
-        const processInfo: ProcessInfo = {
+        const processInfo: ProcessInfo & { workspaceId?: string } = {
           pty: ptyProcess,
           command,
           description,
@@ -151,6 +239,7 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
           exitCode: null,
           isRunning: true,
           lastReadIndex: 0,
+          workspaceId, // Track workspace for limit management
         };
 
         this.processes.set(pid, processInfo);
@@ -174,6 +263,14 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
           processInfo.isRunning = false;
           processInfo.exitCode = exitCode;
           processInfo.finishedAt = Date.now();
+
+          // Decrement workspace terminal count
+          if (processInfo.workspaceId) {
+            const currentCount = this.workspaceTerminalCounts.get(processInfo.workspaceId) ?? 0;
+            if (currentCount > 0) {
+              this.workspaceTerminalCounts.set(processInfo.workspaceId, currentCount - 1);
+            }
+          }
 
           // Clear timeout if set
           if (processInfo.timeout) {
@@ -316,7 +413,7 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
    * Kill a process
    */
   async kill(pid: number): Promise<boolean> {
-    const processInfo = this.processes.get(pid);
+    const processInfo = this.processes.get(pid) as (ProcessInfo & { workspaceId?: string }) | undefined;
     if (!processInfo || !processInfo.isRunning) return false;
 
     try {
@@ -324,6 +421,14 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
       processInfo.isRunning = false;
       processInfo.exitCode = -1;
       processInfo.finishedAt = Date.now();
+      
+      // Decrement workspace terminal count
+      if (processInfo.workspaceId) {
+        const currentCount = this.workspaceTerminalCounts.get(processInfo.workspaceId) ?? 0;
+        if (currentCount > 0) {
+          this.workspaceTerminalCounts.set(processInfo.workspaceId, currentCount - 1);
+        }
+      }
       
       if (processInfo.timeout) {
         clearTimeout(processInfo.timeout);

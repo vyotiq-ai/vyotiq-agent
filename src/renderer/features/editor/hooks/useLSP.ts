@@ -187,45 +187,111 @@ export function useLSP(options: UseLSPOptions): UseLSPReturn {
     };
   }, [filePath]);
 
-  // Fetch diagnostics periodically
+  // Subscribe to real-time diagnostics updates + initial fetch
   useEffect(() => {
     if (!isRunning || !filePath || !enabled) return;
 
+    // Normalize path for comparison
+    const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
+
+    // Apply diagnostics to Monaco model
+    const applyDiagnostics = (diagList: LSPDiagnostic[]) => {
+      setDiagnostics(diagList);
+      
+      if (editor) {
+        const model = editor.getModel();
+        if (model) {
+          const markers = diagList.map((d: LSPDiagnostic) => ({
+            severity: toMonacoSeverity(d.severity),
+            message: d.message,
+            startLineNumber: d.line,
+            startColumn: d.column,
+            endLineNumber: d.endLine || d.line,
+            endColumn: d.endColumn || d.column + 1,
+            source: d.source,
+            code: d.code?.toString(),
+          }));
+          monaco.editor.setModelMarkers(model, 'lsp', markers);
+        }
+      }
+    };
+
+    // Fetch initial diagnostics
     const fetchDiagnostics = async () => {
       try {
         const result = await window.vyotiq?.lsp?.diagnostics?.(filePath);
         if (result?.success && result.diagnostics) {
-          setDiagnostics(result.diagnostics);
-          
-          // Update Monaco markers
-          if (editor) {
-            const model = editor.getModel();
-            if (model) {
-              const markers = result.diagnostics.map((d: LSPDiagnostic) => ({
-                severity: toMonacoSeverity(d.severity),
-                message: d.message,
-                startLineNumber: d.line,
-                startColumn: d.column,
-                endLineNumber: d.endLine || d.line,
-                endColumn: d.endColumn || d.column + 1,
-                source: d.source,
-                code: d.code?.toString(),
-              }));
-              monaco.editor.setModelMarkers(model, 'lsp', markers);
-            }
-          }
+          applyDiagnostics(result.diagnostics);
         }
       } catch {
         // Ignore errors
       }
     };
 
-    // Initial fetch
     fetchDiagnostics();
 
-    // Poll every 2 seconds
-    const interval = setInterval(fetchDiagnostics, 2000);
-    return () => clearInterval(interval);
+    // Subscribe to real-time LSP diagnostics updates
+    const unsubscribeLsp = window.vyotiq?.lsp?.onDiagnosticsUpdated?.((event) => {
+      // Check if this update is for our file
+      const eventPath = event.filePath.replace(/\\/g, '/').toLowerCase();
+      if (eventPath === normalizedPath || eventPath.endsWith(normalizedPath)) {
+        // Convert to LSPDiagnostic format (ensure filePath is always set)
+        const lspDiags: LSPDiagnostic[] = event.diagnostics.map(d => ({
+          filePath: d.filePath || event.filePath,
+          fileName: d.fileName,
+          line: d.line,
+          column: d.column,
+          endLine: d.endLine,
+          endColumn: d.endColumn,
+          message: d.message,
+          severity: d.severity,
+          source: d.source,
+          code: d.code,
+        }));
+        applyDiagnostics(lspDiags);
+      }
+    });
+
+    // Subscribe to workspace file diagnostics
+    const unsubscribeWorkspace = window.vyotiq?.workspace?.onFileDiagnosticsChange?.((event) => {
+      const eventPath = event.filePath.replace(/\\/g, '/').toLowerCase();
+      if (eventPath === normalizedPath || eventPath.endsWith(normalizedPath)) {
+        // Convert workspace diagnostic format to LSP format
+        const lspDiags: LSPDiagnostic[] = event.diagnostics.map((d: {
+          filePath: string;
+          fileName?: string;
+          line: number;
+          column: number;
+          endLine?: number;
+          endColumn?: number;
+          message: string;
+          severity: 'error' | 'warning' | 'info' | 'hint';
+          source: string;
+          code?: string | number;
+        }) => ({
+          filePath: d.filePath,
+          fileName: d.fileName,
+          line: d.line,
+          column: d.column,
+          endLine: d.endLine,
+          endColumn: d.endColumn,
+          message: d.message,
+          severity: d.severity,
+          source: d.source,
+          code: d.code,
+        }));
+        applyDiagnostics(lspDiags);
+      }
+    });
+
+    // Fallback: poll every 5 seconds as backup (much less frequent)
+    const interval = setInterval(fetchDiagnostics, 5000);
+
+    return () => {
+      unsubscribeLsp?.();
+      unsubscribeWorkspace?.();
+      clearInterval(interval);
+    };
   }, [isRunning, filePath, editor, enabled]);
 
   // Get hover information

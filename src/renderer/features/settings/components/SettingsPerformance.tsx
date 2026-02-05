@@ -1,10 +1,15 @@
+/**
+ * Settings Performance Component
+ * 
+ * Configure caching and performance optimizations.
+ */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, Zap, HardDrive, RefreshCw, Trash2, Activity, Layers } from 'lucide-react';
-import { Toggle } from '../../../components/ui/Toggle';
+import { Database, RefreshCw, Trash2, Plus, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import type { CacheSettings, LLMProviderName } from '../../../../shared/types';
 import { createLogger } from '../../../utils/logger';
 import { cn } from '../../../utils/cn';
+import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider } from '../primitives';
 
 const logger = createLogger('SettingsPerformance');
 
@@ -13,80 +18,40 @@ interface SettingsPerformanceProps {
   onChange: (field: keyof CacheSettings, value: CacheSettings[keyof CacheSettings]) => void;
 }
 
-// Format bytes for display
 const formatBytes = (bytes: number): string => {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  }
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-  }
-  if (bytes >= 1024) {
-    return `${(bytes / 1024).toFixed(0)} KB`;
-  }
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${bytes} B`;
 };
 
-// Format milliseconds as a human-readable duration
 const formatDuration = (ms: number): string => {
-  if (ms >= 60000) {
-    return `${(ms / 60000).toFixed(0)} min`;
-  }
-  if (ms >= 1000) {
-    return `${(ms / 1000).toFixed(0)} sec`;
-  }
+  if (ms >= 60000) return `${(ms / 60000).toFixed(0)} min`;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(0)} sec`;
   return `${ms} ms`;
 };
 
-// Format cost for display
 const formatCost = (cost: number): string => {
-  if (cost >= 1) {
-    return `$${cost.toFixed(2)}`;
-  }
-  if (cost >= 0.01) {
-    return `$${cost.toFixed(3)}`;
-  }
-  if (cost > 0) {
-    return `$${cost.toFixed(4)}`;
-  }
+  if (cost >= 1) return `$${cost.toFixed(2)}`;
+  if (cost >= 0.01) return `$${cost.toFixed(3)}`;
+  if (cost > 0) return `$${cost.toFixed(4)}`;
   return '$0.00';
 };
 
-// Cache statistics type - matches the API response from preload
 interface CacheStats {
-  promptCache: {
-    hits: number;
-    misses: number;
-    hitRate: number;
-    tokensSaved: number;
-    costSaved: number;
-  };
-  toolCache: {
-    size: number;
-    maxSize: number;
-    hits: number;
-    misses: number;
-    hitRate: number;
-    evictions: number;
-    expirations: number;
-  };
+  promptCache: { hits: number; misses: number; hitRate: number; tokensSaved: number; costSaved: number };
+  toolCache: { size: number; maxSize: number; hits: number; misses: number; hitRate: number; evictions: number; expirations: number };
 }
 
 const PROVIDER_NAMES: Record<LLMProviderName, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  deepseek: 'DeepSeek',
-  gemini: 'Gemini',
-  openrouter: 'OpenRouter',
-  xai: 'xAI',
-  mistral: 'Mistral',
-  glm: 'GLM (Z.AI)',
+  anthropic: 'Anthropic', openai: 'OpenAI', deepseek: 'DeepSeek', gemini: 'Gemini',
+  openrouter: 'OpenRouter', xai: 'xAI', mistral: 'Mistral', glm: 'GLM (Z.AI)',
 };
 
-const CACHE_STRATEGIES: Array<{ value: CacheSettings['promptCacheStrategy']; label: string; description: string }> = [
-  { value: 'default', label: 'Default', description: 'Balanced caching for most use cases' },
-  { value: 'aggressive', label: 'Aggressive', description: 'Maximize cache hits for cost savings' },
-  { value: 'conservative', label: 'Conservative', description: 'Minimal caching, fresher responses' },
+const CACHE_STRATEGIES = [
+  { value: 'default' as const, label: 'Default' },
+  { value: 'aggressive' as const, label: 'Aggressive' },
+  { value: 'conservative' as const, label: 'Conservative' },
 ];
 
 export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settings, onChange }) => {
@@ -94,8 +59,9 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [isClearing, setIsClearing] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [showToolTtlsSection, setShowToolTtlsSection] = useState(false);
+  const [newToolTtl, setNewToolTtl] = useState({ toolName: '', ttl: 60 });
 
-  // Fetch cache statistics
   const fetchStats = useCallback(async () => {
     setIsLoadingStats(true);
     try {
@@ -109,12 +75,8 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
     }
   }, []);
 
-  // Load stats on mount
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
-  // Handle clearing cache
   const handleClearCache = async (type: 'prompt' | 'tool' | 'context' | 'all') => {
     setIsClearing(type);
     try {
@@ -127,49 +89,55 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
     }
   };
 
-  // Handle per-provider prompt cache toggle
   const handleProviderPromptCacheToggle = (provider: LLMProviderName) => {
     const currentSettings = settings.enablePromptCache ?? {};
     const currentValue = currentSettings[provider] ?? true;
     onChange('enablePromptCache', { ...currentSettings, [provider]: !currentValue });
   };
 
-  // Handle tool cache setting changes
   const handleToolCacheChange = (field: keyof CacheSettings['toolCache'], value: boolean | number) => {
     onChange('toolCache', { ...settings.toolCache, [field]: value });
   };
 
-  // Handle context cache setting changes  
   const handleContextCacheChange = (field: keyof CacheSettings['contextCache'], value: boolean | number) => {
     onChange('contextCache', { ...settings.contextCache, [field]: value });
   };
 
-  return (
-    <section className="space-y-4 font-mono">
-      <header>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[var(--color-accent-primary)] text-[11px]">#</span>
-          <h3 className="text-[11px] text-[var(--color-text-primary)]">performance</h3>
-        </div>
-        <p className="text-[10px] text-[var(--color-text-dim)]">
-          # Configure caching and performance optimizations
-        </p>
-      </header>
+  const handleAddToolTtl = () => {
+    if (!newToolTtl.toolName.trim()) return;
+    const toolName = newToolTtl.toolName.trim();
+    const currentTtls = settings.toolCache.toolTtls || {};
+    onChange('toolCache', { 
+      ...settings.toolCache, 
+      toolTtls: { ...currentTtls, [toolName]: newToolTtl.ttl * 1000 } 
+    });
+    setNewToolTtl({ toolName: '', ttl: 60 });
+  };
 
-      {/* Cache Statistics Overview */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1 flex-1">
-            <Activity size={11} className="text-[var(--color-success)]" />
-            cache statistics
-          </div>
+  const handleRemoveToolTtl = (toolName: string) => {
+    const currentTtls = { ...(settings.toolCache.toolTtls || {}) };
+    delete currentTtls[toolName];
+    onChange('toolCache', { ...settings.toolCache, toolTtls: currentTtls });
+  };
+
+  const handleUpdateToolTtl = (toolName: string, ttlMs: number) => {
+    const currentTtls = settings.toolCache.toolTtls || {};
+    onChange('toolCache', { 
+      ...settings.toolCache, 
+      toolTtls: { ...currentTtls, [toolName]: ttlMs } 
+    });
+  };
+
+  return (
+    <SettingsSection title="performance" description="Configure caching and performance optimizations">
+      {/* Cache Statistics */}
+      <SettingsGroup title="cache statistics">
+        <div className="flex items-center justify-between mb-2">
+          {lastRefresh && <p className="text-[9px] text-[var(--color-text-dim)]"># last updated: {lastRefresh.toLocaleTimeString()}</p>}
           <button
             onClick={fetchStats}
             disabled={isLoadingStats}
-            className={cn(
-              "flex items-center gap-1 px-2 py-1 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)] transition-colors disabled:opacity-50",
-              'rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
-            )}
+            className="flex items-center gap-1 px-2 py-1 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)] transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
             title="Refresh statistics"
           >
             <RefreshCw size={10} className={isLoadingStats ? 'animate-spin' : ''} />
@@ -177,81 +145,34 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
           </button>
         </div>
 
-        {lastRefresh && (
-          <p className="text-[9px] text-[var(--color-text-dim)]">
-            # last updated: {lastRefresh.toLocaleTimeString()}
-          </p>
-        )}
-
         {stats ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            {/* Prompt Cache Stats */}
             <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-3 space-y-2">
-              <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)]">
-                <Zap size={11} className="text-[var(--color-warning)]" />
-                Prompt Cache
-              </div>
+              <div className="text-[10px] text-[var(--color-text-secondary)]"># Prompt Cache</div>
               <div className="space-y-1 text-[9px]">
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">hit rate</span>
-                  <span className="text-[var(--color-accent-primary)]">{(stats.promptCache.hitRate * 100).toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">hits / misses</span>
-                  <span className="text-[var(--color-text-secondary)]">{stats.promptCache.hits} / {stats.promptCache.misses}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">tokens saved</span>
-                  <span className="text-[var(--color-success)]">{stats.promptCache.tokensSaved.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">cost saved</span>
-                  <span className="text-[var(--color-success)]">{formatCost(stats.promptCache.costSaved)}</span>
-                </div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">hit rate</span><span className="text-[var(--color-accent-primary)]">{(stats.promptCache.hitRate * 100).toFixed(1)}%</span></div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">hits / misses</span><span className="text-[var(--color-text-secondary)]">{stats.promptCache.hits} / {stats.promptCache.misses}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">tokens saved</span><span className="text-[var(--color-success)]">{stats.promptCache.tokensSaved.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">cost saved</span><span className="text-[var(--color-success)]">{formatCost(stats.promptCache.costSaved)}</span></div>
               </div>
             </div>
-
-            {/* Tool Result Cache Stats */}
             <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-3 space-y-2">
-              <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)]">
-                <Database size={11} className="text-[var(--color-info)]" />
-                Tool Cache
-              </div>
+              <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)]"><Database size={11} /># Tool Cache</div>
               <div className="space-y-1 text-[9px]">
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">hit rate</span>
-                  <span className="text-[var(--color-accent-primary)]">{stats.toolCache.hitRate.toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">hits / misses</span>
-                  <span className="text-[var(--color-text-secondary)]">{stats.toolCache.hits} / {stats.toolCache.misses}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">entries</span>
-                  <span className="text-[var(--color-text-secondary)]">{stats.toolCache.size} / {stats.toolCache.maxSize}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-text-muted)]">est. memory</span>
-                  <span className="text-[var(--color-text-secondary)]">{formatBytes(stats.toolCache.size * 2048)}</span>
-                </div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">hit rate</span><span className="text-[var(--color-accent-primary)]">{stats.toolCache.hitRate.toFixed(1)}%</span></div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">hits / misses</span><span className="text-[var(--color-text-secondary)]">{stats.toolCache.hits} / {stats.toolCache.misses}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">entries</span><span className="text-[var(--color-text-secondary)]">{stats.toolCache.size} / {stats.toolCache.maxSize}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">est. memory</span><span className="text-[var(--color-text-secondary)]">{formatBytes(stats.toolCache.size * 2048)}</span></div>
               </div>
             </div>
-
           </div>
         ) : (
-          <div className="text-[10px] text-[var(--color-text-muted)] py-4 text-center">
-            {isLoadingStats ? '# loading statistics...' : '# no statistics available'}
-          </div>
+          <div className="text-[10px] text-[var(--color-text-muted)] py-4 text-center">{isLoadingStats ? '# loading statistics...' : '# no statistics available'}</div>
         )}
-      </div>
+      </SettingsGroup>
 
       {/* Cache Strategy */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Layers size={11} className="text-[var(--color-info)]" />
-          prompt cache strategy
-        </div>
-
+      <SettingsGroup title="prompt cache strategy">
         <div className="grid gap-2 sm:grid-cols-3">
           {CACHE_STRATEGIES.map((strategy) => (
             <button
@@ -263,242 +184,142 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
                   : 'border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] hover:border-[var(--color-border-default)]'
               }`}
             >
-              <div className="text-[10px] text-[var(--color-text-secondary)] mb-1">{strategy.label}</div>
-              <div className="text-[9px] text-[var(--color-text-dim)]">{strategy.description}</div>
+              <div className="text-[10px] text-[var(--color-text-secondary)]">{strategy.label}</div>
             </button>
           ))}
         </div>
-      </div>
+      </SettingsGroup>
 
       {/* Tool Cache Settings */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Database size={11} className="text-[var(--color-info)]" />
-          tool cache
+      <SettingsGroup title="tool cache" icon={<Database size={11} />}>
+        <SettingsToggleRow label="enable-tool-cache" description="cache read-only tool results (read, ls, grep)" checked={settings.toolCache.enabled} onToggle={() => handleToolCacheChange('enabled', !settings.toolCache.enabled)} />
+        <SettingsToggleRow label="lru-eviction" description="use LRU eviction when cache is full" checked={settings.enableLruEviction} onToggle={() => onChange('enableLruEviction', !settings.enableLruEviction)} />
+        <SettingsSlider label="tool-cache-ttl" description="time before cached tool results expire" value={settings.toolCache.defaultTtlMs} onChange={(v) => handleToolCacheChange('defaultTtlMs', v)} min={10000} max={300000} step={10000} format={formatDuration} />
+        <SettingsSlider label="tool-cache-size" description="max entries before eviction" value={settings.toolCache.maxEntries} onChange={(v) => handleToolCacheChange('maxEntries', v)} min={50} max={500} step={25} format={(v) => `${v} entries`} />
+        
+        {/* Per-Tool TTL Overrides */}
+        <div className="mt-2 pt-2 border-t border-[var(--color-border-subtle)]">
+          <button
+            type="button"
+            onClick={() => setShowToolTtlsSection(!showToolTtlsSection)}
+            className="w-full flex items-center justify-between py-1 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[var(--color-text-secondary)]">per-tool TTL overrides</span>
+              <span className="text-[9px] text-[var(--color-text-dim)]">({Object.keys(settings.toolCache.toolTtls || {}).length})</span>
+            </div>
+            {showToolTtlsSection ? (
+              <ChevronDown size={12} className="text-[var(--color-text-muted)]" />
+            ) : (
+              <ChevronRight size={12} className="text-[var(--color-text-muted)]" />
+            )}
+          </button>
+          
+          {showToolTtlsSection && (
+            <div className="space-y-2 mt-2 animate-in slide-in-from-top-1 duration-150">
+              <p className="text-[9px] text-[var(--color-text-dim)]"># custom TTL for specific tools (overrides default)</p>
+              
+              {/* Existing tool TTLs */}
+              {Object.entries(settings.toolCache.toolTtls || {}).length > 0 && (
+                <div className="space-y-1.5">
+                  {Object.entries(settings.toolCache.toolTtls || {}).map(([toolName, ttlMs]) => (
+                    <div key={toolName} className="flex items-center gap-2 p-2 bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]">
+                      <span className="text-[10px] text-[var(--color-text-secondary)] flex-1 truncate">{toolName}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={600}
+                        value={Math.round((ttlMs as number) / 1000)}
+                        onChange={(e) => handleUpdateToolTtl(toolName, parseInt(e.target.value) * 1000)}
+                        className="w-16 px-2 py-1 text-[9px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] text-right focus-visible:outline-none focus-visible:border-[var(--color-accent-primary)]/30"
+                      />
+                      <span className="text-[9px] text-[var(--color-text-dim)] w-4">s</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveToolTtl(toolName)}
+                        className="p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-error)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+                        aria-label={`Remove ${toolName} TTL override`}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Add new tool TTL */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newToolTtl.toolName}
+                  onChange={(e) => setNewToolTtl({ ...newToolTtl, toolName: e.target.value })}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddToolTtl()}
+                  placeholder="tool_name"
+                  className="flex-1 px-2 py-1.5 text-[10px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] focus-visible:outline-none focus-visible:border-[var(--color-accent-primary)]/30"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={600}
+                  value={newToolTtl.ttl}
+                  onChange={(e) => setNewToolTtl({ ...newToolTtl, ttl: parseInt(e.target.value) || 60 })}
+                  className="w-16 px-2 py-1.5 text-[10px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] text-right focus-visible:outline-none focus-visible:border-[var(--color-accent-primary)]/30"
+                />
+                <span className="text-[9px] text-[var(--color-text-dim)] w-4">s</span>
+                <button
+                  type="button"
+                  onClick={handleAddToolTtl}
+                  disabled={!newToolTtl.toolName.trim()}
+                  className={cn(
+                    "p-1.5 border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40",
+                    newToolTtl.toolName.trim()
+                      ? "border-[var(--color-accent-primary)]/30 text-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary)]/10"
+                      : "border-[var(--color-border-subtle)] text-[var(--color-text-dim)] cursor-not-allowed"
+                  )}
+                  aria-label="Add tool TTL override"
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-
-        <div className="space-y-3">
-          {/* Enable Tool Cache */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--enable-tool-cache</label>
-              <p className="text-[9px] text-[var(--color-text-dim)]"># cache read-only tool results (read, ls, grep)</p>
-            </div>
-            <Toggle
-              checked={settings.toolCache.enabled}
-              onToggle={() => handleToolCacheChange('enabled', !settings.toolCache.enabled)}
-            />
-          </div>
-
-          {/* LRU Eviction */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--lru-eviction</label>
-              <p className="text-[9px] text-[var(--color-text-dim)]"># use LRU eviction when cache is full</p>
-            </div>
-            <Toggle
-              checked={settings.enableLruEviction}
-              onToggle={() => onChange('enableLruEviction', !settings.enableLruEviction)}
-            />
-          </div>
-
-          {/* Tool Cache TTL */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--tool-cache-ttl</label>
-              <span className="text-[10px] text-[var(--color-accent-primary)]">{formatDuration(settings.toolCache.defaultTtlMs)}</span>
-            </div>
-            <input
-              type="range"
-              min={10000}
-              max={300000}
-              step={10000}
-              className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-              value={settings.toolCache.defaultTtlMs}
-              onChange={(e) => handleToolCacheChange('defaultTtlMs', Number(e.target.value))}
-            />
-            <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-              <span>10s</span>
-              <span>2.5min</span>
-              <span>5min</span>
-            </div>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># time before cached tool results expire</p>
-          </div>
-
-          {/* Tool Cache Max Entries */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--tool-cache-size</label>
-              <span className="text-[10px] text-[var(--color-accent-primary)]">{settings.toolCache.maxEntries} entries</span>
-            </div>
-            <input
-              type="range"
-              min={50}
-              max={500}
-              step={25}
-              className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-              value={settings.toolCache.maxEntries}
-              onChange={(e) => handleToolCacheChange('maxEntries', Number(e.target.value))}
-            />
-            <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-              <span>50</span>
-              <span>250</span>
-              <span>500</span>
-            </div>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># max entries before eviction</p>
-          </div>
-        </div>
-      </div>
+      </SettingsGroup>
 
       {/* Context Cache Settings */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <HardDrive size={11} className="text-[var(--color-accent-secondary)]" />
-          context cache
-        </div>
-
-        <div className="space-y-3">
-          {/* Enable Context Cache */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--enable-context-cache</label>
-              <p className="text-[9px] text-[var(--color-text-dim)]"># cache file content and symbols</p>
-            </div>
-            <Toggle
-              checked={settings.contextCache.enabled}
-              onToggle={() => handleContextCacheChange('enabled', !settings.contextCache.enabled)}
-            />
-          </div>
-
-          {/* Context Cache TTL */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--context-cache-ttl</label>
-              <span className="text-[10px] text-[var(--color-accent-primary)]">{formatDuration(settings.contextCache.defaultTtlMs)}</span>
-            </div>
-            <input
-              type="range"
-              min={60000}
-              max={600000}
-              step={30000}
-              className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-              value={settings.contextCache.defaultTtlMs}
-              onChange={(e) => handleContextCacheChange('defaultTtlMs', Number(e.target.value))}
-            />
-            <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-              <span>1min</span>
-              <span>5min</span>
-              <span>10min</span>
-            </div>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># time before cached file content expires</p>
-          </div>
-
-          {/* Context Cache Max Size */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[var(--color-text-muted)]">--context-cache-size</label>
-              <span className="text-[10px] text-[var(--color-accent-primary)]">{settings.contextCache.maxSizeMb} MB</span>
-            </div>
-            <input
-              type="range"
-              min={10}
-              max={100}
-              step={5}
-              className="w-full accent-[var(--color-accent-primary)] h-1 bg-[var(--color-surface-2)] appearance-none cursor-pointer"
-              value={settings.contextCache.maxSizeMb}
-              onChange={(e) => handleContextCacheChange('maxSizeMb', Number(e.target.value))}
-            />
-            <div className="flex justify-between text-[9px] text-[var(--color-text-dim)]">
-              <span>10 MB</span>
-              <span>50 MB</span>
-              <span>100 MB</span>
-            </div>
-            <p className="text-[9px] text-[var(--color-text-dim)]"># max memory for context cache</p>
-          </div>
-        </div>
-      </div>
+      <SettingsGroup title="context cache">
+        <SettingsToggleRow label="enable-context-cache" description="cache file content and symbols" checked={settings.contextCache.enabled} onToggle={() => handleContextCacheChange('enabled', !settings.contextCache.enabled)} />
+        <SettingsSlider label="context-cache-ttl" description="time before cached file content expires" value={settings.contextCache.defaultTtlMs} onChange={(v) => handleContextCacheChange('defaultTtlMs', v)} min={60000} max={600000} step={30000} format={formatDuration} />
+        <SettingsSlider label="context-cache-size" description="max memory for context cache" value={settings.contextCache.maxSizeMb} onChange={(v) => handleContextCacheChange('maxSizeMb', v)} min={10} max={100} step={5} format={(v) => `${v} MB`} />
+      </SettingsGroup>
 
       {/* Per-Provider Prompt Cache Settings */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Zap size={11} className="text-[var(--color-warning)]" />
-          per-provider prompt cache
-        </div>
-
-        <p className="text-[9px] text-[var(--color-text-dim)]">
-          # enable/disable prompt caching per LLM provider
-        </p>
-
+      <SettingsGroup title="per-provider prompt cache">
+        <p className="text-[9px] text-[var(--color-text-dim)]"># enable/disable prompt caching per LLM provider</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {(Object.keys(PROVIDER_NAMES) as LLMProviderName[]).map((provider) => (
-            <div
+            <SettingsToggleRow
               key={provider}
-              className="flex items-center justify-between bg-[var(--color-surface-2)] px-3 py-2 border border-[var(--color-border-subtle)]"
-            >
-              <span className="text-[10px] text-[var(--color-text-secondary)]">{PROVIDER_NAMES[provider]}</span>
-              <Toggle
-                checked={settings.enablePromptCache?.[provider] ?? true}
-                onToggle={() => handleProviderPromptCacheToggle(provider)}
-              />
-            </div>
+              label={PROVIDER_NAMES[provider]}
+              checked={settings.enablePromptCache?.[provider] ?? true}
+              onToggle={() => handleProviderPromptCacheToggle(provider)}
+            />
           ))}
         </div>
-      </div>
+      </SettingsGroup>
 
       {/* Clear Cache Actions */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)] pb-1">
-          <Trash2 size={11} className="text-[var(--color-error)]" />
-          clear cache
-        </div>
-
-        <p className="text-[9px] text-[var(--color-text-dim)]">
-          # clear cached data to free memory or force fresh fetches
-        </p>
-
+      <SettingsGroup title="clear cache" icon={<Trash2 size={11} />}>
+        <p className="text-[9px] text-[var(--color-text-dim)]"># clear cached data to free memory or force fresh fetches</p>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => handleClearCache('prompt')}
-            disabled={isClearing !== null}
-            isLoading={isClearing === 'prompt'}
-            className="text-[10px]"
-          >
-            Clear Prompt Cache
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => handleClearCache('tool')}
-            disabled={isClearing !== null}
-            isLoading={isClearing === 'tool'}
-            className="text-[10px]"
-          >
-            Clear Tool Cache
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => handleClearCache('context')}
-            disabled={isClearing !== null}
-            isLoading={isClearing === 'context'}
-            className="text-[10px]"
-          >
-            Clear Context Cache
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => handleClearCache('all')}
-            disabled={isClearing !== null}
-            isLoading={isClearing === 'all'}
-            className="text-[10px]"
-          >
-            Clear All Caches
-          </Button>
+          <Button variant="secondary" size="sm" onClick={() => handleClearCache('prompt')} disabled={isClearing !== null} isLoading={isClearing === 'prompt'} className="text-[10px]">Clear Prompt</Button>
+          <Button variant="secondary" size="sm" onClick={() => handleClearCache('tool')} disabled={isClearing !== null} isLoading={isClearing === 'tool'} className="text-[10px]">Clear Tool</Button>
+          <Button variant="secondary" size="sm" onClick={() => handleClearCache('context')} disabled={isClearing !== null} isLoading={isClearing === 'context'} className="text-[10px]">Clear Context</Button>
+          <Button variant="danger" size="sm" onClick={() => handleClearCache('all')} disabled={isClearing !== null} isLoading={isClearing === 'all'} className="text-[10px]">Clear All</Button>
         </div>
-      </div>
-    </section>
+      </SettingsGroup>
+    </SettingsSection>
   );
 };
+
+export default SettingsPerformance;
