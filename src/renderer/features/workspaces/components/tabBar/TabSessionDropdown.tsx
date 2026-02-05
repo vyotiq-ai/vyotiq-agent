@@ -6,8 +6,9 @@
  */
 import React, { memo, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, MessageSquare, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, MessageSquare, RefreshCw } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { useAgentSelector, useAgentActions } from '../../../../state/AgentProvider';
 import { isSessionRunning, formatRelativeTime, truncateTitle } from '../../../sessions/utils';
 import type { TabSessionDropdownProps, TabSessionItem } from './types';
@@ -36,7 +37,7 @@ const SessionItem = memo<{
     >
       {/* Running indicator */}
       {isRunning && (
-        <Loader2 size={10} className="text-[var(--color-success)] animate-spin flex-shrink-0" />
+        <Spinner size="sm" colorVariant="success" className="w-2.5 h-2.5 flex-shrink-0" />
       )}
       
       {/* Session info */}
@@ -240,7 +241,7 @@ export const TabSessionDropdown = memo<TabSessionDropdownProps>(({
           "bg-[var(--color-surface-base)]",
           "flex items-center gap-1 text-[8px] text-[var(--color-success)]"
         )}>
-          <Loader2 size={8} className="animate-spin" />
+          <Spinner size="sm" className="w-2 h-2" colorVariant="success" />
           <span>{runningCount} running</span>
         </div>
       )}

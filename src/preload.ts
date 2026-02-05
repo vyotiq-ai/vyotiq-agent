@@ -1578,6 +1578,23 @@ const lspAPI = {
 	}> => ipcRenderer.invoke('lsp:rename', filePath, line, column, newName),
 
 	/**
+	 * Prepare rename - check if symbol can be renamed and get placeholder text
+	 */
+	prepareRename: (filePath: string, line: number, column: number): Promise<{
+		success: boolean;
+		result?: {
+			range: {
+				startLine: number;
+				startColumn: number;
+				endLine: number;
+				endColumn: number;
+			};
+			placeholder?: string;
+		} | null;
+		error?: string;
+	}> => ipcRenderer.invoke('lsp:prepare-rename', filePath, line, column),
+
+	/**
 	 * Open a document in the language server
 	 */
 	openDocument: (filePath: string, content?: string): Promise<{

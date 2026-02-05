@@ -324,6 +324,107 @@ function handleSessionsClearForWorkspace(
 }
 
 /**
+ * Handle clearing sessions for workspace while preserving running sessions.
+ * This keeps sessions that are currently executing (not idle).
+ */
+function handleSessionsClearForWorkspacePreserveRunning(
+  state: AgentUIState,
+  workspaceId: string
+): AgentUIState {
+  // Keep sessions that: 1) belong to the workspace OR 2) are currently running
+  const sessions = state.sessions.filter(
+    (session) => session.workspaceId === workspaceId || session.status !== 'idle'
+  );
+  
+  // Clear active session if it doesn't belong to the workspace and isn't running
+  const activeSession = state.sessions.find(s => s.id === state.activeSessionId);
+  const shouldKeepActive = activeSession && 
+    (activeSession.workspaceId === workspaceId || activeSession.status !== 'idle');
+  const activeSessionId = shouldKeepActive
+    ? state.activeSessionId
+    : sessions[0]?.id;
+  
+  // Get removed sessions and their runIds
+  const removedSessions = state.sessions.filter(
+    s => s.workspaceId !== workspaceId && s.status === 'idle'
+  );
+  const removedSessionIds = new Set(removedSessions.map(s => s.id));
+  
+  // If no sessions were removed, return early
+  if (removedSessionIds.size === 0) {
+    return state;
+  }
+  
+  // Extract runIds from removed sessions for cleanup of run-keyed state
+  const runIdsToClean = new Set<string>();
+  for (const session of removedSessions) {
+    if (session.messages) {
+      for (const message of session.messages) {
+        if (message.runId) {
+          runIdsToClean.add(message.runId);
+        }
+      }
+    }
+  }
+  
+  // Clean up session-keyed state (same as handleSessionsClearForWorkspace)
+  const progressGroups = Object.fromEntries(
+    Object.entries(state.progressGroups).filter(([id]) => !removedSessionIds.has(id))
+  );
+  const artifacts = Object.fromEntries(
+    Object.entries(state.artifacts).filter(([id]) => !removedSessionIds.has(id))
+  );
+  const agentStatus = Object.fromEntries(
+    Object.entries(state.agentStatus).filter(([id]) => !removedSessionIds.has(id))
+  );
+  const routingDecisions = Object.fromEntries(
+    Object.entries(state.routingDecisions ?? {}).filter(([id]) => !removedSessionIds.has(id))
+  );
+  const contextMetrics = Object.fromEntries(
+    Object.entries(state.contextMetrics ?? {}).filter(([id]) => !removedSessionIds.has(id))
+  );
+  const todos = Object.fromEntries(
+    Object.entries(state.todos ?? {}).filter(([id]) => !removedSessionIds.has(id))
+  );
+  
+  // Clean up run-keyed state
+  const toolResults = runIdsToClean.size > 0
+    ? Object.fromEntries(Object.entries(state.toolResults).filter(([runId]) => !runIdsToClean.has(runId)))
+    : state.toolResults;
+  const inlineArtifacts = runIdsToClean.size > 0
+    ? Object.fromEntries(Object.entries(state.inlineArtifacts).filter(([runId]) => !runIdsToClean.has(runId)))
+    : state.inlineArtifacts;
+  
+  // Also clean up pending confirmations and execution state for removed sessions
+  const pendingConfirmations = Object.fromEntries(
+    Object.entries(state.pendingConfirmations).filter(([runId]) => !runIdsToClean.has(runId))
+  );
+  const executingTools = Object.fromEntries(
+    Object.entries(state.executingTools ?? {}).filter(([runId]) => !runIdsToClean.has(runId))
+  );
+  const queuedTools = Object.fromEntries(
+    Object.entries(state.queuedTools ?? {}).filter(([runId]) => !runIdsToClean.has(runId))
+  );
+  
+  return {
+    ...state,
+    sessions,
+    activeSessionId,
+    progressGroups,
+    artifacts,
+    agentStatus,
+    routingDecisions,
+    contextMetrics,
+    todos,
+    toolResults,
+    inlineArtifacts,
+    pendingConfirmations,
+    executingTools,
+    queuedTools,
+  };
+}
+
+/**
  * Session reducer
  */
 export function sessionReducer(
@@ -376,6 +477,9 @@ export function sessionReducer(
       
     case 'SESSIONS_CLEAR_FOR_WORKSPACE':
       return handleSessionsClearForWorkspace(state, action.payload);
+      
+    case 'SESSIONS_CLEAR_FOR_WORKSPACE_PRESERVE_RUNNING':
+      return handleSessionsClearForWorkspacePreserveRunning(state, action.payload);
       
     default:
       return state;

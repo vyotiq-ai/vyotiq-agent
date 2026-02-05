@@ -8,7 +8,7 @@ import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { ChatArea, ChatInput } from '../features/chat';
 import { useEditor } from '../state/EditorProvider';
 import { cn } from '../utils/cn';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '../components/ui/LoadingState';
 import { FeatureErrorBoundary } from '../components/layout/ErrorBoundary';
 import { MOBILE_BREAKPOINT } from '../utils/constants';
 
@@ -22,7 +22,7 @@ const EditorView = lazy(() =>
 const EditorLoader: React.FC = () => (
   <div className="h-full flex items-center justify-center bg-[var(--color-surface-base)]">
     <div className="flex items-center gap-3 text-[var(--color-text-secondary)]">
-      <Loader2 className="animate-spin" size={16} />
+      <Spinner size="sm" />
       <span className="text-xs font-medium">Loading editor...</span>
     </div>
   </div>

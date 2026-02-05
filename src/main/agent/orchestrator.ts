@@ -244,8 +244,9 @@ export class AgentOrchestrator extends EventEmitter {
           // Prompt cache (stats only; provider-side caching is external)
           try {
             getCacheManager().resetStats();
-          } catch {
-            // ignore
+          } catch (err) {
+            // Cache reset is non-critical; log for debugging
+            this.logger.debug('Failed to reset cache manager stats', { error: err instanceof Error ? err.message : String(err) });
           }
 
           // Tool result + context caches
@@ -253,23 +254,26 @@ export class AgentOrchestrator extends EventEmitter {
             const toolCache = getToolResultCache();
             toolCache.invalidateAll();
             toolCache.resetStats();
-          } catch {
-            // ignore
+          } catch (err) {
+            // Tool cache reset is non-critical; log for debugging
+            this.logger.debug('Failed to reset tool cache', { error: err instanceof Error ? err.message : String(err) });
           }
 
           try {
             const contextCache = getContextCache();
             contextCache.clear();
             contextCache.resetStats();
-          } catch {
-            // ignore
+          } catch (err) {
+            // Context cache reset is non-critical; log for debugging
+            this.logger.debug('Failed to reset context cache', { error: err instanceof Error ? err.message : String(err) });
           }
 
           // Editor AI cache
           try {
             getEditorAIService()?.clearCache();
-          } catch {
-            // ignore
+          } catch (err) {
+            // Editor AI cache reset is non-critical; log for debugging
+            this.logger.debug('Failed to clear editor AI cache', { error: err instanceof Error ? err.message : String(err) });
           }
         },
       });

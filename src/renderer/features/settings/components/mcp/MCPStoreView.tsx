@@ -13,10 +13,10 @@ import {
   Search,
   Download,
   RefreshCw,
-  Loader2,
 } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 import { Button } from '../../../../components/ui/Button';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { Input } from '../../../../components/ui/Input';
 import type {
   MCPStoreListing,
@@ -291,7 +291,7 @@ export const MCPStoreView: React.FC<MCPStoreViewProps> = memo(
         {/* Listings */}
         {loading && displayListings.length === 0 ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin text-[var(--color-text-muted)]" />
+            <Spinner size="md" colorVariant="secondary" />
           </div>
         ) : displayListings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">

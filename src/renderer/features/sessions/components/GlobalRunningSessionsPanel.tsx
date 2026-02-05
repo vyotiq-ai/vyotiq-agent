@@ -12,8 +12,9 @@
  * - Provides quick navigation to running sessions
  */
 import React, { memo, useCallback, useEffect, useState } from 'react';
-import { Loader2, ChevronDown, ChevronRight, ExternalLink, Square } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, Square } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { useAgentSelector, useAgentActions } from '../../../state/AgentProvider';
 import type { AgentSessionState } from '../../../../shared/types';
 
@@ -94,7 +95,7 @@ const RunningSessionItem = memo<RunningSessionItemProps>(({
         {session.status === 'awaiting-confirmation' ? (
           <div className="w-2 h-2 rounded-full bg-[var(--color-warning)] animate-pulse" />
         ) : (
-          <Loader2 size={12} className="text-[var(--color-success)] animate-spin" />
+          <Spinner size="sm" colorVariant="success" className="w-3 h-3" />
         )}
       </div>
 
@@ -273,7 +274,7 @@ export const GlobalRunningSessionsPanel = memo<GlobalRunningSessionsPanelProps>(
         )}
       >
         {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-        <Loader2 size={10} className="text-[var(--color-success)] animate-spin" />
+        <Spinner size="sm" colorVariant="success" className="w-2.5 h-2.5" />
         <span className="flex-1 text-left">
           {totalRunning} {totalRunning === 1 ? 'session' : 'sessions'} running
           {otherWorkspaceSessions.length > 0 && (
@@ -361,7 +362,7 @@ export const GlobalRunningIndicator = memo<GlobalRunningIndicatorProps>(({
       "text-[var(--color-success)]",
       className
     )}>
-      <Loader2 size={10} className="animate-spin" />
+      <Spinner size="sm" className="w-2.5 h-2.5" colorVariant="success" />
       {showCount && <span>{totalRunning}</span>}
     </div>
   );

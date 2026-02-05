@@ -12,6 +12,7 @@ import type { ProviderResponse, ToolCallPayload, ProviderResponseChunk } from '.
 import { createLogger } from '../../logger';
 import { DEFAULT_MODELS } from './registry';
 import { registerOpenRouterPricing, clearDynamicPricingCache } from './CostManager';
+import { parseToolArguments } from '../../utils';
 
 const logger = createLogger('OpenRouterProvider');
 
@@ -196,6 +197,87 @@ export class OpenRouterProvider extends BaseLLMProvider {
     clearDynamicPricingCache();
   }
 
+  /**
+   * Validate messages - filter out invalid assistant messages.
+   * Assistant messages must have either content or tool calls.
+   */
+  private validateMessages(messages: ProviderMessage[]): ProviderMessage[] {
+    return messages.filter(msg => {
+      if (msg.role === 'assistant') {
+        const hasContent = msg.content !== null && msg.content !== undefined && 
+                           (typeof msg.content !== 'string' || msg.content.trim().length > 0);
+        const hasToolCalls = Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0;
+        if (!hasContent && !hasToolCalls) {
+          logger.warn('Filtering out invalid assistant message without content or tool calls');
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Ensure tool call sequences are complete.
+   * For each assistant message with tool calls, ensure there's a corresponding tool response.
+   */
+  private ensureCompleteToolCallSequences(messages: ProviderMessage[]): ProviderMessage[] {
+    const result: ProviderMessage[] = [];
+    let pendingToolCallIds: Set<string> | null = null;
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+
+      if (msg.role === 'assistant' && Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0) {
+        // Collect tool call IDs from this assistant message
+        pendingToolCallIds = new Set(
+          msg.toolCalls.map(tc => tc.callId).filter(Boolean) as string[]
+        );
+        result.push(msg);
+
+        // Look ahead for tool responses
+        let j = i + 1;
+        while (j < messages.length && messages[j].role === 'tool') {
+          const toolMsg = messages[j];
+          if (toolMsg.toolCallId) {
+            pendingToolCallIds.delete(toolMsg.toolCallId);
+          }
+          j++;
+        }
+
+        // Add placeholder responses for any missing tool calls
+        if (pendingToolCallIds.size > 0) {
+          for (const toolCallId of pendingToolCallIds) {
+            result.push({
+              role: 'tool',
+              content: 'Tool execution was cancelled or failed.',
+              toolCallId,
+            });
+          }
+        }
+        // Reset for next iteration
+        pendingToolCallIds = new Set(
+          msg.toolCalls.map(tc => tc.callId).filter(Boolean) as string[]
+        );
+      } else if (msg.role === 'tool') {
+        const toolCallId = msg.toolCallId;
+        if (pendingToolCallIds && toolCallId && pendingToolCallIds.has(toolCallId)) {
+          pendingToolCallIds.delete(toolCallId);
+          result.push(msg);
+          if (pendingToolCallIds.size === 0) {
+            pendingToolCallIds = null;
+          }
+        } else if (!pendingToolCallIds) {
+          logger.warn('Skipping orphan tool message without matching assistant tool call', { toolCallId });
+        }
+      } else {
+        pendingToolCallIds = null;
+        result.push(msg);
+      }
+    }
+
+    return result;
+  }
+
   async generate(request: ProviderRequest): Promise<ProviderResponse> {
     return withRetry(async () => {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -347,8 +429,12 @@ export class OpenRouterProvider extends BaseLLMProvider {
   private buildBody(request: ProviderRequest, stream: boolean): Record<string, unknown> {
     const model = request.config.model || this.defaultModel;
     
+    // Validate and sanitize messages before building
+    let validatedMessages = this.validateMessages(request.messages);
+    validatedMessages = this.ensureCompleteToolCallSequences(validatedMessages);
+    
     // Build messages array
-    const messages = this.buildMessages(request.systemPrompt, request.messages);
+    const messages = this.buildMessages(request.systemPrompt, validatedMessages);
     
     // Build tools array if present
     const tools = request.tools.length > 0 ? request.tools.map(tool => ({
@@ -472,21 +558,16 @@ export class OpenRouterProvider extends BaseLLMProvider {
     
     const content = (message?.content as string) ?? '';
     
-    // Parse tool calls
+    // Parse tool calls using safe argument parsing
     let toolCalls: ToolCallPayload[] | undefined;
     const rawToolCalls = message?.tool_calls as Array<Record<string, unknown>> | undefined;
     if (rawToolCalls?.length) {
       toolCalls = rawToolCalls.map(tc => {
         const fn = tc.function as Record<string, unknown>;
-        let args: Record<string, unknown> = {};
-        try {
-          args = JSON.parse((fn?.arguments as string) || '{}');
-        } catch {
-          logger.warn('Failed to parse tool call arguments', { raw: fn?.arguments });
-        }
+        const toolName = (fn?.name as string) || 'unknown_tool';
         return {
-          name: (fn?.name as string) || '',
-          arguments: args,
+          name: toolName,
+          arguments: parseToolArguments(fn?.arguments as string, toolName),
           callId: (tc.id as string) || '',
         };
       });

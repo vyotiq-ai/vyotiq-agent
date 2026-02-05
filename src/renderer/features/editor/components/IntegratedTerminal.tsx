@@ -183,7 +183,7 @@ export const IntegratedTerminal: React.FC<IntegratedTerminalProps> = memo(({
     const terminal = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
-      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace',
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace",
       fontSize: 13,
       fontWeight: 'normal',
       lineHeight: 1.4,

@@ -48,8 +48,12 @@ export const ContextRulesSection: React.FC<ContextRulesSectionProps> = ({
       r.id === ruleId ? { ...r, ...updates } : r
     );
     onChange('contextInjectionRules', newRules);
-    setEditingRuleId(null);
+    // Note: Don't close edit mode here - let the caller decide via onSave/onCancel
   }, [onChange, settings.contextInjectionRules]);
+  
+  const handleSaveEdit = useCallback(() => {
+    setEditingRuleId(null);
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -97,7 +101,7 @@ export const ContextRulesSection: React.FC<ContextRulesSectionProps> = ({
               <ContextRuleForm
                 key={rule.id}
                 rule={rule}
-                onSave={() => {}}
+                onSave={handleSaveEdit}
                 onCancel={() => setEditingRuleId(null)}
                 onChange={(updates) => handleUpdateRule(rule.id, updates as ContextInjectionRule)}
                 isNew={false}

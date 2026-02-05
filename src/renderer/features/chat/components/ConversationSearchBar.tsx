@@ -72,9 +72,8 @@ const ConversationSearchBarComponent: React.FC<ConversationSearchBarProps> = ({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 px-3 py-2',
-        'bg-[var(--color-surface-2)] border-b border-[var(--color-border-subtle)]',
-        'shadow-sm',
+        'flex items-center gap-2 px-2 py-1',
+        'bg-[var(--color-surface-base)] border-b border-[var(--color-border-subtle)]/40',
         className
       )}
     >
@@ -104,7 +103,7 @@ const ConversationSearchBarComponent: React.FC<ConversationSearchBarProps> = ({
         placeholder="Search messages..."
         className={cn(
           'flex-1 min-w-0 bg-transparent',
-          'text-xs text-[var(--color-text-primary)]',
+          'text-[10px] text-[var(--color-text-primary)]',
           'placeholder:text-[var(--color-text-muted)]',
           'focus:outline-none',
           'font-mono'
@@ -116,7 +115,7 @@ const ConversationSearchBarComponent: React.FC<ConversationSearchBarProps> = ({
       {searchQuery.length > 0 && (
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Match Count */}
-          <span className="text-xs text-[var(--color-text-muted)] font-mono tabular-nums">
+          <span className="text-[10px] text-[var(--color-text-muted)] font-mono tabular-nums">
             {isSearchActive ? (
               matchCount > 0 ? (
                 `${currentMatchIndex + 1}/${matchCount}`

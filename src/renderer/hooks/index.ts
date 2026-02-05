@@ -149,6 +149,18 @@ export {
 } from './useTerminalStream';
 
 // =============================================================================
+// Tool Queue Hooks
+// =============================================================================
+
+export {
+  useQueuedTools,
+  useAllQueuedTools,
+  useQueuedToolsCount,
+  useHasQueuedTools,
+  useNextQueuedTool,
+} from './useQueuedTools';
+
+// =============================================================================
 // Onboarding Hooks
 // =============================================================================
 
@@ -232,3 +244,12 @@ export {
   type ResizablePanelResult,
   type UseResizeObserverOptions,
 } from './useResizablePanel';
+
+// =============================================================================
+// Loading State Hooks
+// =============================================================================
+
+export {
+  useLoading,
+  useLoadingOperation,
+} from '../state/LoadingProvider';

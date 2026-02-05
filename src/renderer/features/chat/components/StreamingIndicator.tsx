@@ -3,9 +3,10 @@
  * 
  * Visual feedback components for agent running/streaming states.
  * Provides smooth transitions and clear visual hierarchy.
+ * 
+ * Minimalist design - icons removed for cleaner interface.
  */
-import React, { memo, useEffect, useState } from 'react';
-import { Loader2, Sparkles, Brain, Zap } from 'lucide-react';
+import React, { memo } from 'react';
 import { cn } from '../../../utils/cn';
 
 export interface StreamingIndicatorProps {
@@ -18,27 +19,6 @@ export interface StreamingIndicatorProps {
   /** Visual style variant */
   variant?: 'default' | 'minimal' | 'pulse';
 }
-
-/**
- * Animated dots for "thinking..." effect
- */
-const ThinkingDots: React.FC<{ className?: string }> = memo(({ className }) => {
-  const [dots, setDots] = useState(1);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setDots(d => (d % 3) + 1);
-    }, 400);
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <span className={cn('inline-block min-w-[1.5em]', className)}>
-      {'.'.repeat(dots)}
-    </span>
-  );
-});
-ThinkingDots.displayName = 'ThinkingDots';
 
 /**
  * Streaming indicator for inline message display
@@ -57,12 +37,6 @@ export const StreamingIndicator: React.FC<StreamingIndicatorProps> = memo(({
     lg: 'text-sm',
   };
 
-  const iconSizes = {
-    sm: 10,
-    md: 12,
-    lg: 14,
-  };
-
   if (variant === 'minimal') {
     return (
       <span className={cn(
@@ -70,7 +44,7 @@ export const StreamingIndicator: React.FC<StreamingIndicatorProps> = memo(({
         sizeClasses[size],
         'text-[var(--color-accent-primary)]'
       )}>
-        <Loader2 size={iconSizes[size]} className="animate-spin" />
+        <span>{message}</span>
       </span>
     );
   }
@@ -82,21 +56,19 @@ export const StreamingIndicator: React.FC<StreamingIndicatorProps> = memo(({
         sizeClasses[size],
         'text-[var(--color-text-muted)]'
       )}>
-        <span className="h-2 w-2 rounded-full bg-[var(--color-accent-primary)]" />
-        <span>{message}<ThinkingDots /></span>
+        <span>{message}</span>
       </span>
     );
   }
 
-  // Default variant
+  // Default variant - static indicator
   return (
     <span className={cn(
       'inline-flex items-center gap-1.5 font-mono',
       sizeClasses[size],
       'text-[var(--color-text-muted)]'
     )}>
-      <Loader2 size={iconSizes[size]} className="animate-spin text-[var(--color-accent-primary)]" />
-      <span>{message}<ThinkingDots /></span>
+      <span>{message}</span>
     </span>
   );
 });
@@ -120,54 +92,42 @@ export const AgentStatusIndicator: React.FC<AgentStatusIndicatorProps> = memo(({
 }) => {
   const statusConfig = {
     idle: {
-      icon: Sparkles,
       text: 'Ready',
       color: 'text-[var(--color-success)]',
-      bgColor: 'bg-[var(--color-success)]/10',
+      bgColor: 'bg-[var(--color-success)]',
     },
     running: {
-      icon: Zap,
       text: 'Running',
       color: 'text-[var(--color-warning)]',
-      bgColor: 'bg-[var(--color-warning)]/10',
+      bgColor: 'bg-[var(--color-warning)]',
     },
     thinking: {
-      icon: Brain,
       text: 'Thinking',
       color: 'text-[var(--color-accent-primary)]',
-      bgColor: 'bg-[var(--color-accent-primary)]/10',
+      bgColor: 'bg-[var(--color-accent-primary)]',
     },
     processing: {
-      icon: Loader2,
       text: 'Processing',
       color: 'text-[var(--color-info)]',
-      bgColor: 'bg-[var(--color-info)]/10',
+      bgColor: 'bg-[var(--color-info)]',
     },
     error: {
-      icon: Sparkles,
       text: 'Error',
       color: 'text-[var(--color-error)]',
-      bgColor: 'bg-[var(--color-error)]/10',
+      bgColor: 'bg-[var(--color-error)]',
     },
-  };
+  } as const;
 
   const config = statusConfig[status];
-  const Icon = config.icon;
-  const isAnimated = status === 'running' || status === 'thinking' || status === 'processing';
 
   return (
     <div className={cn(
       'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full',
-      config.bgColor,
+      `${config.bgColor}/10`,
       className
     )}>
-      <Icon 
-        size={12} 
-        className={cn(
-          config.color,
-          isAnimated && 'animate-spin'
-        )} 
-      />
+      {/* Minimal status dot */}
+      <span className={cn('w-1.5 h-1.5 rounded-full', config.bgColor)} />
       <span className={cn('text-[10px] font-mono', config.color)}>
         {config.text}
         {iteration !== undefined && maxIterations !== undefined && (
@@ -211,25 +171,14 @@ export const MessageSkeleton: React.FC<MessageSkeletonProps> = memo(({
 MessageSkeleton.displayName = 'MessageSkeleton';
 
 /**
- * Blinking cursor for streaming text effect
+ * Static cursor for streaming text effect (no blinking)
  */
 export const StreamingCursor: React.FC<{ className?: string }> = memo(({ className }) => {
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setVisible(v => !v);
-    }, 530);
-    return () => clearInterval(interval);
-  }, []);
-
   return (
     <span 
       className={cn(
         'inline-block w-[2px] h-[1em] ml-0.5 align-middle',
-        'bg-[var(--color-accent-primary)]',
-        visible ? 'opacity-100' : 'opacity-0',
-        'transition-opacity duration-100',
+        'bg-[var(--color-accent-primary)] opacity-80',
         className
       )}
       aria-hidden="true"

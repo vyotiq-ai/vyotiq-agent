@@ -6,8 +6,9 @@
  */
 
 import React, { memo } from 'react';
-import { FileCode, AlertCircle, CheckCircle, RotateCcw, Loader2 } from 'lucide-react';
+import { FileCode, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { getLanguageDisplayName } from '../utils/languageUtils';
 import type { EditorTab, EditorSettings } from '../types';
 
@@ -55,7 +56,7 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = memo(({
         {/* Loading indicator */}
         {isLoading && (
           <div className="flex items-center gap-1 text-[var(--color-accent-primary)]">
-            <Loader2 size={10} className="animate-spin" />
+            <Spinner size="sm" colorVariant="primary" className="w-2.5 h-2.5" />
             <span>Loading...</span>
           </div>
         )}

@@ -1,539 +1,288 @@
-/**
- * Tool Icons
+﻿/**
+ * Tool Descriptions
  * 
- * Comprehensive icon mapping for all agent tools.
- * Uses Lucide icons with consistent styling for the terminal aesthetic.
- * 
- * Icons are organized by tool category for easy maintenance and extension.
+ * Minimal module providing human-readable descriptions for tools.
+ * Icons have been removed for a cleaner, minimalist interface.
  */
-import React, { memo } from 'react';
-import type { LucideIcon } from 'lucide-react';
-import {
-  // File operations
-  FileText,
-  FilePlus,
-  FileEdit,
-  FileSearch,
-  FileX,
-  FolderOpen,
-  FolderTree,
-  
-  // Terminal operations
-  Terminal,
-  SquareTerminal,
-  
-  // Search operations
-  Search,
-  Code2,
-  TextSearch,
-  
-  // Web/Network operations
-  Globe,
-  Link,
-  ExternalLink,
-  Download,
-  
-  // Edit operations
-  PenLine,
-  Replace,
-  Trash2,
-  
-  // Analysis/Research
-  Microscope,
-  Brain,
-  Lightbulb,
-  
-  // Git operations
-  GitBranch,
-  GitCommit,
-  GitPullRequest,
-  
-  // Notebook/Code
-  NotebookPen,
-  Braces,
-  
-  // System/Misc
-  Settings,
-  Cog,
-  ListTodo,
-  MessageSquare,
-  Image,
-  
-  // Default fallback
-  Circle,
-} from 'lucide-react';
-
-import { cn } from '../../utils/cn';
 
 // =============================================================================
-// Types
+// Types (minimal, for backwards compatibility)
 // =============================================================================
 
 export interface ToolIconProps {
+  /** Tool name */
+  toolName?: string;
   /** Size in pixels */
   size?: number;
   /** Additional className */
   className?: string;
-  /** Whether the tool is currently running */
-  isActive?: boolean;
-  /** Whether the tool has an error */
-  hasError?: boolean;
-  /** Whether the tool completed successfully */
-  isSuccess?: boolean;
 }
 
 export type ToolIconConfig = {
-  icon: LucideIcon;
-  /** Color class when active (running) */
-  activeColor: string;
-  /** Color class when error */
-  errorColor: string;
-  /** Color class when success/completed */
-  successColor: string;
   /** Category label for grouping */
   category: 'file' | 'terminal' | 'search' | 'web' | 'edit' | 'git' | 'analysis' | 'system';
 };
 
 // =============================================================================
-// Tool Icon Configuration Map
+// Tool Categories (minimal map for type checking)
 // =============================================================================
 
-/**
- * Comprehensive mapping of tool names to their icon configurations.
- * Supports exact matches and pattern matching for flexible tool naming.
- */
-const TOOL_ICON_MAP: Record<string, ToolIconConfig> = {
-  // === File Read Operations ===
-  read: {
-    icon: FileText,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'file',
-  },
-  read_file: {
-    icon: FileText,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'file',
-  },
-  cat: {
-    icon: FileText,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'file',
-  },
+const TOOL_CATEGORIES: Record<string, ToolIconConfig['category']> = {
+  // File operations
+  read: 'file',
+  read_file: 'file',
+  cat: 'file',
+  write: 'file',
+  write_file: 'file',
+  create_file: 'file',
+  edit: 'edit',
+  edit_file: 'edit',
+  replace: 'edit',
+  patch: 'edit',
+  delete: 'file',
+  delete_file: 'file',
+  remove: 'file',
+  rm: 'file',
+  ls: 'file',
+  list_directory: 'file',
+  list_dir: 'file',
+  tree: 'file',
+  bulk_operations: 'file',
   
-  // === File Write/Create Operations ===
-  write: {
-    icon: FilePlus,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-success)]',
-    category: 'file',
-  },
-  write_file: {
-    icon: FilePlus,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-success)]',
-    category: 'file',
-  },
-  create_file: {
-    icon: FilePlus,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-success)]',
-    category: 'file',
-  },
+  // Terminal operations
+  run: 'terminal',
+  run_terminal: 'terminal',
+  exec: 'terminal',
+  shell: 'terminal',
+  bash: 'terminal',
+  check_terminal: 'terminal',
+  kill_terminal: 'terminal',
   
-  // === File Edit Operations ===
-  edit: {
-    icon: FileEdit,
-    activeColor: 'text-[var(--color-warning)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-warning)]',
-    category: 'edit',
-  },
-  edit_file: {
-    icon: FileEdit,
-    activeColor: 'text-[var(--color-warning)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-warning)]',
-    category: 'edit',
-  },
-  replace: {
-    icon: Replace,
-    activeColor: 'text-[var(--color-warning)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-warning)]',
-    category: 'edit',
-  },
-  patch: {
-    icon: PenLine,
-    activeColor: 'text-[var(--color-warning)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-warning)]',
-    category: 'edit',
-  },
+  // Search operations
+  grep: 'search',
+  search: 'search',
+  find: 'search',
+  code_search: 'search',
   
-  // === File Delete Operations ===
-  delete: {
-    icon: FileX,
-    activeColor: 'text-[var(--color-error)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-error)]/70',
-    category: 'file',
-  },
-  delete_file: {
-    icon: FileX,
-    activeColor: 'text-[var(--color-error)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-error)]/70',
-    category: 'file',
-  },
-  remove: {
-    icon: Trash2,
-    activeColor: 'text-[var(--color-error)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-error)]/70',
-    category: 'file',
-  },
-  rm: {
-    icon: Trash2,
-    activeColor: 'text-[var(--color-error)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-error)]/70',
-    category: 'file',
-  },
+  // Web operations
+  fetch: 'web',
+  web_fetch: 'web',
+  browse: 'web',
+  download: 'web',
+  url: 'web',
+  browser_fetch: 'web',
+  browser_navigate: 'web',
+  browser_extract: 'web',
+  browser_snapshot: 'web',
+  browser_screenshot: 'web',
+  browser_click: 'web',
+  browser_type: 'web',
+  browser_scroll: 'web',
+  browser_wait: 'web',
+  browser_console: 'web',
+  browser_check_url: 'web',
+  browser_fill_form: 'web',
+  browser_hover: 'web',
+  browser_evaluate: 'web',
+  browser_state: 'web',
+  browser_back: 'web',
+  browser_forward: 'web',
+  browser_reload: 'web',
+  browser_network: 'web',
+  browser_tabs: 'web',
+  browser_security_status: 'web',
   
-  // === Directory Operations ===
-  ls: {
-    icon: FolderOpen,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'file',
-  },
-  list_directory: {
-    icon: FolderOpen,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'file',
-  },
-  list_dir: {
-    icon: FolderOpen,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'file',
-  },
-  tree: {
-    icon: FolderTree,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'file',
-  },
+  // Research/Analysis
+  research: 'analysis',
+  analyze: 'analysis',
+  think: 'analysis',
+  lsp_hover: 'analysis',
+  lsp_definition: 'analysis',
+  lsp_references: 'analysis',
+  lsp_symbols: 'analysis',
+  lsp_diagnostics: 'analysis',
+  lsp_completions: 'analysis',
+  lsp_code_actions: 'analysis',
+  lsp_rename: 'edit',
+  read_lints: 'analysis',
   
-  // === Terminal/Shell Operations ===
-  run: {
-    icon: Terminal,
-    activeColor: 'text-[var(--color-warning)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'terminal',
-  },
-  run_terminal: {
-    icon: Terminal,
-    activeColor: 'text-[var(--color-warning)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'terminal',
-  },
-  exec: {
-    icon: SquareTerminal,
-    activeColor: 'text-[var(--color-warning)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'terminal',
-  },
-  shell: {
-    icon: Terminal,
-    activeColor: 'text-[var(--color-warning)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'terminal',
-  },
-  bash: {
-    icon: Terminal,
-    activeColor: 'text-[var(--color-warning)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'terminal',
-  },
+  // Git operations
+  git: 'git',
+  commit: 'git',
+  pr: 'git',
   
-  // === Search Operations ===
-  grep: {
-    icon: TextSearch,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'search',
-  },
-  search: {
-    icon: Search,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'search',
-  },
-  find: {
-    icon: FileSearch,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'search',
-  },
-  code_search: {
-    icon: Code2,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'search',
-  },
-  
-  // === Web/Network Operations ===
-  fetch: {
-    icon: Globe,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'web',
-  },
-  web_fetch: {
-    icon: Globe,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'web',
-  },
-  browse: {
-    icon: ExternalLink,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'web',
-  },
-  download: {
-    icon: Download,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'web',
-  },
-  url: {
-    icon: Link,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'web',
-  },
-  
-  // === Research/Analysis Operations ===
-  research: {
-    icon: Microscope,
-    activeColor: 'text-[var(--color-accent-primary)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'analysis',
-  },
-  analyze: {
-    icon: Brain,
-    activeColor: 'text-[var(--color-accent-primary)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'analysis',
-  },
-  think: {
-    icon: Lightbulb,
-    activeColor: 'text-[var(--color-accent-primary)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'analysis',
-  },
-  
-  // === Git Operations ===
-  git: {
-    icon: GitBranch,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'git',
-  },
-  commit: {
-    icon: GitCommit,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-success)]',
-    category: 'git',
-  },
-  pr: {
-    icon: GitPullRequest,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-success)]',
-    category: 'git',
-  },
-  
-  // === Notebook Operations ===
-  notebook: {
-    icon: NotebookPen,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'file',
-  },
-  
-  // === Code Operations ===
-  code: {
-    icon: Braces,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'file',
-  },
-  
-  // === System Operations ===
-  config: {
-    icon: Settings,
-    activeColor: 'text-[var(--color-text-secondary)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'system',
-  },
-  settings: {
-    icon: Cog,
-    activeColor: 'text-[var(--color-text-secondary)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'system',
-  },
-  todo: {
-    icon: ListTodo,
-    activeColor: 'text-[var(--color-accent-primary)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-success)]',
-    category: 'system',
-  },
-  message: {
-    icon: MessageSquare,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'system',
-  },
-  image: {
-    icon: Image,
-    activeColor: 'text-[var(--color-info)]',
-    errorColor: 'text-[var(--color-error)]',
-    successColor: 'text-[var(--color-text-muted)]',
-    category: 'system',
-  },
+  // System operations
+  todo_write: 'system',
+  create_plan: 'system',
+  verify_tasks: 'system',
+  get_active_plan: 'system',
+  list_plans: 'system',
+  delete_plan: 'system',
+  create_tool: 'system',
+  request_tools: 'system',
+  config: 'system',
+  settings: 'system',
+  todo: 'system',
+  message: 'system',
+  image: 'system',
+  notebook: 'file',
+  code: 'file',
 };
 
-// Default configuration for unknown tools
-const DEFAULT_TOOL_CONFIG: ToolIconConfig = {
-  icon: Circle,
-  activeColor: 'text-[var(--color-warning)]',
-  errorColor: 'text-[var(--color-error)]',
-  successColor: 'text-[var(--color-text-muted)]',
-  category: 'system',
+// =============================================================================
+// Tool Descriptions
+// =============================================================================
+
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  read: 'Read file contents',
+  read_file: 'Read file contents',
+  cat: 'Display file contents',
+  write: 'Create new file',
+  write_file: 'Create new file',
+  create_file: 'Create new file',
+  edit: 'Edit existing file',
+  edit_file: 'Edit existing file',
+  replace: 'Replace text in file',
+  patch: 'Apply patch to file',
+  delete: 'Delete file',
+  delete_file: 'Delete file',
+  remove: 'Remove file',
+  rm: 'Remove file',
+  ls: 'List directory contents',
+  list_directory: 'List directory contents',
+  list_dir: 'List directory contents',
+  tree: 'Show directory tree',
+  bulk_operations: 'Bulk file operations',
+  run: 'Execute shell command',
+  run_terminal: 'Execute in terminal',
+  exec: 'Execute command',
+  shell: 'Run shell command',
+  bash: 'Run bash command',
+  check_terminal: 'Check terminal status',
+  kill_terminal: 'Kill terminal process',
+  grep: 'Search text in files',
+  search: 'Search files',
+  find: 'Find files',
+  code_search: 'Search code',
+  fetch: 'Fetch web content',
+  web_fetch: 'Fetch from web',
+  browse: 'Open URL',
+  download: 'Download file',
+  url: 'Access URL',
+  browser_fetch: 'Fetch page content',
+  browser_navigate: 'Navigate to URL',
+  browser_extract: 'Extract page data',
+  browser_snapshot: 'Get page HTML',
+  browser_screenshot: 'Take screenshot',
+  browser_click: 'Click element',
+  browser_type: 'Type text',
+  browser_scroll: 'Scroll page',
+  browser_wait: 'Wait for element',
+  browser_console: 'Get console logs',
+  browser_check_url: 'Verify URL',
+  browser_fill_form: 'Fill form fields',
+  browser_hover: 'Hover over element',
+  browser_evaluate: 'Run JavaScript',
+  browser_state: 'Get browser state',
+  browser_back: 'Navigate back',
+  browser_forward: 'Navigate forward',
+  browser_reload: 'Reload page',
+  browser_network: 'Monitor network',
+  browser_tabs: 'Manage tabs',
+  browser_security_status: 'Check security',
+  research: 'Research topic',
+  analyze: 'Analyze content',
+  think: 'Think step by step',
+  git: 'Git operation',
+  commit: 'Create commit',
+  pr: 'Pull request action',
+  lsp_hover: 'Get hover info',
+  lsp_definition: 'Go to definition',
+  lsp_references: 'Find references',
+  lsp_symbols: 'List symbols',
+  lsp_diagnostics: 'Get diagnostics',
+  lsp_completions: 'Get completions',
+  lsp_code_actions: 'Get code actions',
+  lsp_rename: 'Rename symbol',
+  read_lints: 'Check lint errors',
+  todo_write: 'Update todo list',
+  create_plan: 'Create task plan',
+  verify_tasks: 'Verify tasks',
+  get_active_plan: 'Get active plan',
+  list_plans: 'List all plans',
+  delete_plan: 'Delete plan',
+  create_tool: 'Create dynamic tool',
+  request_tools: 'Request tools',
+  config: 'Update config',
+  settings: 'Modify settings',
+  todo: 'Manage todos',
+  message: 'Send message',
+  image: 'Process image',
+  notebook: 'Notebook operation',
+  code: 'Code operation',
 };
 
 // =============================================================================
 // Helper Functions
 // =============================================================================
 
-/**
- * Get tool configuration by tool name.
- * Supports exact matches and pattern-based fallbacks.
- */
-export function getToolConfig(toolName: string): ToolIconConfig {
+export function getToolCategory(toolName: string): ToolIconConfig['category'] {
   const name = toolName.toLowerCase();
   
-  // Exact match first
-  if (TOOL_ICON_MAP[name]) {
-    return TOOL_ICON_MAP[name];
+  if (TOOL_CATEGORIES[name]) {
+    return TOOL_CATEGORIES[name];
   }
   
-  // Pattern-based matching for compound tool names
-  // e.g., "read_file_async" should match "read"
-  for (const [key, config] of Object.entries(TOOL_ICON_MAP)) {
-    if (name.includes(key) || name.startsWith(key)) {
-      return config;
-    }
-  }
+  if (name.startsWith('browser_') || name.startsWith('browser-')) return 'web';
+  if (name.startsWith('lsp_') || name.startsWith('lsp-')) return 'analysis';
+  if (name.includes('terminal') || name.includes('exec') || name.includes('run') || name.includes('shell')) return 'terminal';
+  if (name.includes('search') || name.includes('find') || name.includes('grep')) return 'search';
+  if (name.includes('git') || name.includes('branch') || name.includes('commit')) return 'git';
+  if (name.includes('read') || name.includes('write') || name.includes('file') || name.includes('dir')) return 'file';
+  if (name.includes('edit') || name.includes('modify') || name.includes('update')) return 'edit';
+  if (name.includes('fetch') || name.includes('web') || name.includes('http') || name.includes('url')) return 'web';
   
-  // Fallback heuristics for unknown tools
-  if (name.includes('read') || name.includes('cat') || name.includes('view')) {
-    return TOOL_ICON_MAP.read;
-  }
-  if (name.includes('write') || name.includes('create') || name.includes('new')) {
-    return TOOL_ICON_MAP.write;
-  }
-  if (name.includes('edit') || name.includes('modify') || name.includes('update')) {
-    return TOOL_ICON_MAP.edit;
-  }
-  if (name.includes('delete') || name.includes('remove') || name.includes('rm')) {
-    return TOOL_ICON_MAP.delete;
-  }
-  if (name.includes('terminal') || name.includes('exec') || name.includes('run') || name.includes('shell')) {
-    return TOOL_ICON_MAP.run;
-  }
-  if (name.includes('search') || name.includes('find') || name.includes('grep')) {
-    return TOOL_ICON_MAP.search;
-  }
-  if (name.includes('fetch') || name.includes('web') || name.includes('http') || name.includes('url')) {
-    return TOOL_ICON_MAP.fetch;
-  }
-  if (name.includes('git') || name.includes('branch') || name.includes('commit')) {
-    return TOOL_ICON_MAP.git;
-  }
-  if (name.includes('list') || name.includes('ls') || name.includes('dir')) {
-    return TOOL_ICON_MAP.ls;
-  }
-  
-  return DEFAULT_TOOL_CONFIG;
+  return 'system';
 }
 
-/**
- * Get the icon component for a tool name.
- * Returns the LucideIcon component for custom rendering.
- */
-export function getToolIcon(toolName: string): LucideIcon {
-  return getToolConfig(toolName).icon;
+/** @deprecated Use getToolCategory and getToolDescription instead */
+export function getToolConfig(toolName: string): ToolIconConfig {
+  return { category: getToolCategory(toolName) };
 }
 
-/**
- * Get the color class for a tool based on its current state.
- */
+export function getToolDescription(toolName: string): string {
+  const name = toolName.toLowerCase();
+  
+  if (TOOL_DESCRIPTIONS[name]) {
+    return TOOL_DESCRIPTIONS[name];
+  }
+  
+  if (name.startsWith('browser_')) {
+    return `Browser: ${name.replace('browser_', '').replace(/_/g, ' ')}`;
+  }
+  if (name.startsWith('lsp_')) {
+    return `LSP: ${name.replace('lsp_', '').replace(/_/g, ' ')}`;
+  }
+  if (name.startsWith('mcp_')) {
+    return `MCP: ${name.replace('mcp_', '').replace(/_/g, ' ')}`;
+  }
+  
+  return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export function getToolColorClass(
-  toolName: string,
-  status: 'running' | 'error' | 'completed' | 'pending'
+  _toolName: string,
+  status: 'running' | 'error' | 'completed' | 'pending' | 'queued'
 ): string {
-  const config = getToolConfig(toolName);
-  
   switch (status) {
     case 'running':
-      return config.activeColor;
+      return 'text-[var(--color-warning)]';
     case 'error':
-      return config.errorColor;
+      return 'text-[var(--color-error)]';
     case 'completed':
-      return config.successColor;
+      return 'text-[var(--color-text-muted)]';
+    case 'queued':
+      return 'text-[var(--color-info)]';
     case 'pending':
     default:
       return 'text-[var(--color-text-dim)]';
@@ -541,60 +290,24 @@ export function getToolColorClass(
 }
 
 // =============================================================================
-// Tool Icon Component
+// Backwards Compatibility Stubs
 // =============================================================================
 
-interface ToolIconDisplayProps extends ToolIconProps {
-  /** Tool name to get icon for */
-  toolName: string;
-  /** Tool status for color */
-  status?: 'running' | 'error' | 'completed' | 'pending';
-  /** Show tooltip with tool name on hover */
-  showTooltip?: boolean;
+/** @deprecated Icons have been removed for minimalist UI */
+export function getToolIcon(_toolName: string): null {
+  return null;
 }
 
-/**
- * Renders an icon for a tool with proper styling based on status.
- * Use this component for consistent tool icon display across the app.
- */
-export const ToolIconDisplay: React.FC<ToolIconDisplayProps> = memo(({
-  toolName,
-  size = 12,
-  className,
-  status = 'completed',
-  showTooltip = false,
-}) => {
-  const config = getToolConfig(toolName);
-  const Icon = config.icon;
-  const colorClass = getToolColorClass(toolName, status);
-  
-  const iconElement = (
-    <Icon
-      size={size}
-      className={cn(
-        'flex-shrink-0 transition-colors duration-150',
-        colorClass,
-        className
-      )}
-      aria-hidden="true"
-    />
-  );
-  
-  if (showTooltip) {
-    return (
-      <span title={toolName} className="inline-flex">
-        {iconElement}
-      </span>
-    );
-  }
-  
-  return iconElement;
+/** @deprecated Icons have been removed for minimalist UI */
+export const ToolIconDisplay: React.FC<ToolIconProps & { toolName: string; status?: string; showTooltip?: boolean }> = () => null;
+
+/** @deprecated Use getToolCategory instead */
+export const TOOL_ICON_MAP: Record<string, ToolIconConfig> = new Proxy({} as Record<string, ToolIconConfig>, {
+  get(_target, prop: string | symbol) {
+    // Only handle string properties, return undefined for symbols and special properties
+    if (typeof prop !== 'string') {
+      return undefined;
+    }
+    return { category: getToolCategory(prop) };
+  },
 });
-
-ToolIconDisplay.displayName = 'ToolIconDisplay';
-
-// =============================================================================
-// Exports
-// =============================================================================
-
-export { TOOL_ICON_MAP };

@@ -18,8 +18,8 @@ import {
   ChevronDown,
   X,
   RefreshCw,
-  Loader2,
 } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { cn } from '../../../utils/cn';
 import { getFileIcon } from '../../fileTree/utils/fileIcons';
 import { useWorkspaceContext } from '../../../state/WorkspaceContextProvider';
@@ -350,7 +350,7 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = memo(({
         <div className="flex items-center gap-1">
           {/* Loading indicator */}
           {(isRefreshing || diagnosticsLoading) && (
-            <Loader2 size={12} className="text-[var(--color-text-muted)] animate-spin" />
+            <Spinner size="sm" className="w-3 h-3 text-[var(--color-text-muted)]" />
           )}
           
           {/* Filter dropdown */}

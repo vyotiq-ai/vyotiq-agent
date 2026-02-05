@@ -10,8 +10,8 @@
  */
 
 import React, { useCallback, useState, useEffect, memo } from 'react';
-import { Loader2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { Spinner } from '../../components/ui/LoadingState';
 import { useEditorTabs, useEditorAI } from './hooks';
 import {
   EditorTabBar,
@@ -231,7 +231,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = memo(({
         {isLoading && (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--color-surface-base)]/80 backdrop-blur-sm">
             <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
-              <Loader2 size={16} className="animate-spin" />
+              <Spinner size="sm" />
               <span className="text-[11px] font-mono">Loading...</span>
             </div>
           </div>

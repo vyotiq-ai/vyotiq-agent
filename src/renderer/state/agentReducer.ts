@@ -188,6 +188,35 @@ export interface AgentUIState {
     runId?: string;
     createdAt: number;
   }>;
+  /** 
+   * Real-time executing tools tracking
+   * Structure: runId -> callId -> executing tool info
+   * Used for immediate UI feedback when tool execution starts
+   */
+  executingTools: Record<string, Record<string, {
+    callId: string;
+    name: string;
+    arguments?: Record<string, unknown>;
+    startedAt: number;
+  }>>;
+
+  /**
+   * Queued tools waiting to be executed
+   * Structure: runId -> array of queued tools in order
+   * Used to show users what tools are pending execution
+   */
+  queuedTools: Record<string, QueuedTool[]>;
+}
+
+/**
+ * Represents a tool waiting in the execution queue
+ */
+export interface QueuedTool {
+  callId: string;
+  name: string;
+  arguments?: Record<string, unknown>;
+  queuePosition: number;
+  queuedAt: number;
 }
 
 export const initialState: AgentUIState = {
@@ -209,6 +238,10 @@ export const initialState: AgentUIState = {
   pendingQuestions: [],
   pendingDecisions: [],
   communicationProgress: [],
+  // Real-time executing tools tracking
+  executingTools: {},
+  // Queued tools waiting to be executed
+  queuedTools: {},
 };
 
 /**
@@ -1118,3 +1151,8 @@ export const agentReducer = (state: AgentUIState, action: AgentAction): AgentUIS
       return state;
   }
 };
+
+/**
+ * Type alias for AgentUIState for simpler imports
+ */
+export type AgentState = AgentUIState;

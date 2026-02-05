@@ -1,5 +1,5 @@
 import React, { memo, useMemo } from 'react';
-import { CheckCircle2, XCircle, Loader2, Wrench, Clock, Cpu } from 'lucide-react';
+import { Clock } from 'lucide-react';
 
 import type { ChatMessage, ToolResultEvent } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
@@ -126,28 +126,19 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
 
   return (
     <div className={cn(
-      'px-2 sm:px-3 md:px-4 lg:px-5 py-1.5 sm:py-2 min-w-0 w-full',
-      'bg-[var(--color-surface-1)]/30'
+      'px-2 sm:px-3 md:px-4 lg:px-5 py-1 min-w-0 w-full'
     )}>
       <div className="flex items-center justify-between gap-2 min-w-0 w-full">
         {/* Left: Status + Request preview */}
         <div className="min-w-0 flex-1 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-            {/* Status indicator */}
+            {/* Minimal status dot */}
             <span className={cn(
-              'flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0',
-              isRunning && 'bg-[var(--color-warning)]/10',
-              !isRunning && toolOutcome.error > 0 && 'bg-[var(--color-error)]/10',
-              !isRunning && toolOutcome.error === 0 && 'bg-[var(--color-success)]/10',
-            )}>
-              {isRunning ? (
-                <Loader2 size={12} className="animate-spin text-[var(--color-warning)]" />
-              ) : toolOutcome.error > 0 ? (
-                <XCircle size={11} className="text-[var(--color-error)]" />
-              ) : (
-                <CheckCircle2 size={11} className="text-[var(--color-success)]" />
-              )}
-            </span>
+              'w-2 h-2 rounded-full flex-shrink-0',
+              isRunning && 'bg-[var(--color-warning)]',
+              !isRunning && toolOutcome.error > 0 && 'bg-[var(--color-error)]',
+              !isRunning && toolOutcome.error === 0 && 'bg-[var(--color-text-muted)]',
+            )} />
 
             {/* Request text */}
             <div className="min-w-0 flex-1 overflow-hidden">
@@ -175,7 +166,7 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
         </div>
 
         {/* Right: Stats badges */}
-        <div className="flex items-center gap-1.5 flex-shrink-0 overflow-hidden flex-wrap justify-end max-w-[50%]">
+        <div className="flex items-center gap-1.5 flex-shrink-0 overflow-hidden flex-wrap justify-end max-w-[55%]">
           {/* Time */}
           {typeof startAt === 'number' && (
             <span className="text-[9px] font-mono text-[var(--color-text-dim)] tabular-nums">
@@ -187,14 +178,12 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
           {modelInfo?.provider && (
             <span 
               className={cn(
-                'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
-                'bg-[var(--color-surface-2)]/60',
-                'text-[9px] font-mono text-[var(--color-text-muted)]',
+                'inline-flex items-center gap-1',
+                'text-[9px] font-mono text-[var(--color-text-dim)]',
                 'max-w-[180px] overflow-hidden'
               )}
               title={modelInfo.modelId ? `${modelInfo.provider}/${modelInfo.modelId}` : modelInfo.provider}
             >
-              <Cpu size={9} className="text-[var(--color-accent-secondary)] flex-shrink-0" />
               <span className="text-[var(--color-text-secondary)] truncate">{modelInfo.provider}</span>
               {modelInfo.modelId && (
                 <>
@@ -208,12 +197,10 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
           {/* Tools count */}
           {toolCallCount > 0 && (
             <span className={cn(
-              'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
-              'bg-[var(--color-surface-2)]/60',
-              'text-[9px] font-mono text-[var(--color-text-muted)]'
+              'inline-flex items-center gap-1',
+              'text-[9px] font-mono text-[var(--color-text-dim)]'
             )}>
-              <Wrench size={9} className="text-[var(--color-text-dim)]" />
-              <span>{toolCallCount}</span>
+              <span>{toolCallCount} tools</span>
               {toolOutcome.error > 0 && (
                 <span className="text-[var(--color-error)]">({toolOutcome.error} err)</span>
               )}
@@ -224,9 +211,8 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
           {costSummary.hasUsage && (
             <span 
               className={cn(
-                'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
-                'bg-[var(--color-surface-2)]/60',
-                'text-[9px] font-mono text-[var(--color-text-muted)]'
+                'inline-flex items-center gap-1',
+                'text-[9px] font-mono text-[var(--color-text-dim)]'
               )}
               title={`Input: ${formatTokenCount(costSummary.totalInputTokens)} • Output: ${formatTokenCount(costSummary.totalOutputTokens)}`}
             >
@@ -238,9 +224,8 @@ export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
           {/* Duration */}
           {typeof aggregate.durationMsTotal === 'number' && (
             <span className={cn(
-              'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
-              'bg-[var(--color-surface-2)]/60',
-              'text-[9px] font-mono text-[var(--color-text-muted)]'
+              'inline-flex items-center gap-1',
+              'text-[9px] font-mono text-[var(--color-text-dim)]'
             )}>
               <Clock size={9} className="text-[var(--color-text-dim)]" />
               {formatDurationMs(aggregate.durationMsTotal)}

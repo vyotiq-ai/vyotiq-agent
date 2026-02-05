@@ -11,8 +11,8 @@ import React, { memo } from 'react';
 import {
   Server,
   RefreshCw,
-  Loader2,
 } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { Button } from '../../../../components/ui/Button';
 import {
   SettingsSection,
@@ -56,7 +56,7 @@ export const MCPSettingsView: React.FC<MCPSettingsViewProps> = memo(
     if (loading || !settings) {
       return (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="w-5 h-5 animate-spin text-[var(--color-text-muted)]" />
+          <Spinner size="md" className="w-5 h-5 text-[var(--color-text-muted)]" />
         </div>
       );
     }
@@ -115,7 +115,7 @@ export const MCPSettingsView: React.FC<MCPSettingsViewProps> = memo(
                 variant="ghost"
                 onClick={() => store.refreshRegistry()}
                 disabled={store.loading}
-                leftIcon={store.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                leftIcon={store.loading ? <Spinner size="sm" className="w-3 h-3" /> : <RefreshCw className="w-3 h-3" />}
               >
                 Refresh
               </Button>

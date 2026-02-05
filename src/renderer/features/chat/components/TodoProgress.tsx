@@ -17,8 +17,7 @@ import {
   ChevronDown, 
   ChevronUp,
   Circle, 
-  CheckCircle, 
-  Loader2, 
+  CheckCircle,
   ListTodo,
   ClipboardList,
   FolderOpen,
@@ -26,6 +25,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { Spinner } from '../../../components/ui/LoadingState';
 import type { TodoItem } from '../../../../shared/types/todo';
 import type { TaskSession, TaskItem } from '../../../../shared/types/todoTask';
 import { calculateTodoStats } from '../../../../shared/types/todo';
@@ -59,7 +59,7 @@ const StatusIcon: React.FC<{ status: TodoItem['status']; size?: number }> = memo
     case 'completed':
       return <CheckCircle size={size} className="text-[var(--color-success)] flex-shrink-0" />;
     case 'in_progress':
-      return <Loader2 size={size} className="text-[var(--color-accent-primary)] flex-shrink-0 animate-spin" />;
+      return <Spinner size="sm" colorVariant="primary" className="w-3.5 h-3.5 flex-shrink-0" />;
     case 'pending':
     default:
       return <Circle size={size} className="text-[var(--color-text-muted)] flex-shrink-0" />;

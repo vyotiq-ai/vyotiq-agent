@@ -31,12 +31,14 @@ export {
   AutoIcon,
 } from './ProviderIcons';
 
-// Tool Icons
+// Tool Descriptions (icons removed for minimalist UI)
 export {
-  ToolIconDisplay,
-  getToolIcon,
+  getToolDescription,
+  getToolCategory,
   getToolConfig,
   getToolColorClass,
+  getToolIcon,
+  ToolIconDisplay,
   TOOL_ICON_MAP,
 } from './ToolIcons';
 export type { ToolIconProps, ToolIconConfig } from './ToolIcons';
@@ -87,8 +89,17 @@ export {
   Spinner,
   InlineLoading,
   LoadingOverlay,
+  AgentLoading,
+  GlobalLoadingIndicator,
+  ConnectedLoadingIndicator,
 } from './LoadingState';
-export type { LoadingStateProps, InlineLoadingProps, LoadingOverlayProps } from './LoadingState';
+export type { 
+  LoadingStateProps, 
+  InlineLoadingProps, 
+  LoadingOverlayProps,
+  SpinnerVariant,
+  AgentPhase,
+} from './LoadingState';
 
 // Error State components
 export {

@@ -7,7 +7,8 @@
  * - Conditional breakpoints
  */
 import React, { useState, useCallback, useEffect } from 'react';
-import { Plus, Trash2, Pause, AlertTriangle, Wrench, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Pause, AlertTriangle, Wrench } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { cn } from '../../../utils/cn';
 
 interface BreakpointConfigProps {
@@ -130,7 +131,7 @@ export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center text-[var(--color-text-dim)]">
-        <Loader2 size={16} className="animate-spin" />
+        <Spinner size="sm" />
       </div>
     );
   }
@@ -164,7 +165,7 @@ export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
                   : 'bg-[var(--color-surface-2)] text-[var(--color-text-dim)] cursor-not-allowed'
               )}
             >
-              {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+              {isSaving ? <Spinner size="sm" className="w-3 h-3" /> : <Plus size={12} />}
             </button>
           </div>
 

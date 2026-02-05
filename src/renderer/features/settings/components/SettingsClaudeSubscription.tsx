@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, Download, LogOut, CheckCircle, AlertCircle, Crown, RefreshCw, Clock, Terminal, Zap } from 'lucide-react';
+import { Download, LogOut, CheckCircle, AlertCircle, Crown, RefreshCw, Clock, Terminal, Zap } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { Button } from '../../../components/ui/Button';
 import { cn } from '../../../utils/cn';
 
@@ -262,7 +263,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
       <div className="border border-[var(--color-border-subtle)] bg-[var(--color-surface-header)] p-3 space-y-3">
         {isChecking ? (
           <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
-            <Loader2 size={12} className="animate-spin" />
+            <Spinner size="sm" className="w-3 h-3" />
             <span>checking status...</span>
           </div>
         ) : status.connected ? (
@@ -303,7 +304,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
                 size="sm"
                 onClick={handleRefreshToken}
                 disabled={isRefreshing}
-                leftIcon={isRefreshing ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                leftIcon={isRefreshing ? <Spinner size="sm" className="w-2.5 h-2.5" /> : <RefreshCw size={10} />}
               >
                 refresh
               </Button>
@@ -312,7 +313,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
                 size="sm"
                 onClick={handleDisconnect}
                 disabled={isLoading}
-                leftIcon={isLoading ? <Loader2 size={10} className="animate-spin" /> : <LogOut size={10} />}
+                leftIcon={isLoading ? <Spinner size="sm" className="w-2.5 h-2.5" /> : <LogOut size={10} />}
               >
                 disconnect
               </Button>
@@ -323,7 +324,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
             {/* Disconnected state */}
             <div className="flex items-start gap-3">
               {isAuthenticating ? (
-                <Loader2 size={14} className="text-[var(--color-accent-primary)] mt-0.5 flex-shrink-0 animate-spin" />
+                <Spinner size="sm" className="w-3.5 h-3.5 text-[var(--color-accent-primary)] mt-0.5 flex-shrink-0" />
               ) : installStatus.cliAvailable ? (
                 installStatus.hasCredentials ? (
                   <CheckCircle size={14} className="text-[var(--color-success)] mt-0.5 flex-shrink-0" />
@@ -363,7 +364,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
                 size="sm"
                 onClick={handleImport}
                 disabled={isLoading}
-                leftIcon={isLoading ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
+                leftIcon={isLoading ? <Spinner size="sm" className="w-2.5 h-2.5" /> : <Download size={10} />}
               >
                 {isLoading ? 'importing...' : 'import credentials'}
               </Button>
@@ -373,7 +374,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
                 size="sm"
                 onClick={handleLaunchAuth}
                 disabled={isAuthenticating}
-                leftIcon={isAuthenticating ? <Loader2 size={10} className="animate-spin" /> : <Terminal size={10} />}
+                leftIcon={isAuthenticating ? <Spinner size="sm" className="w-2.5 h-2.5" /> : <Terminal size={10} />}
               >
                 {isAuthenticating ? 'authenticating...' : 'authenticate'}
               </Button>

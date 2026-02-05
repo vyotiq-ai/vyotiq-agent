@@ -15,8 +15,8 @@ import {
   FileText,
   Zap,
   X,
-  Loader2,
 } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { cn } from '../../../utils/cn';
 import type { EditorAIAction } from '../hooks/useEditorAI';
 
@@ -134,7 +134,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = memo(({
       {/* AI indicator */}
       <div className="flex items-center gap-1 px-1.5 py-0.5 mr-1 rounded bg-[var(--color-accent-primary)]/10">
         {isLoading ? (
-          <Loader2 size={10} className="animate-spin text-[var(--color-accent-primary)]" />
+          <Spinner size="sm" className="w-2.5 h-2.5 text-[var(--color-accent-primary)]" />
         ) : (
           <Sparkles size={10} className="text-[var(--color-accent-primary)]" />
         )}

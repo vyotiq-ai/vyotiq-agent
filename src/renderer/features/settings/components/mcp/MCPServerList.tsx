@@ -14,9 +14,9 @@ import {
   Play,
   Pause,
   RefreshCw,
-  Loader2,
 } from 'lucide-react';
 import { Button } from '../../../../components/ui/Button';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { useConfirm } from '../../../../components/ui/ConfirmModal';
 import { MCPServerCard } from './MCPServerCard';
 import type { MCPServerSummary } from '../../../../../shared/types/mcp';
@@ -154,7 +154,7 @@ export const MCPServerList: React.FC<MCPServerListProps> = memo(
         {/* Server List */}
         {loading && servers.length === 0 ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin text-[var(--color-text-muted)]" />
+            <Spinner size="md" colorVariant="secondary" />
           </div>
         ) : servers.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">

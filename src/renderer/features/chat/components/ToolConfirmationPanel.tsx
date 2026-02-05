@@ -12,27 +12,10 @@
  * - Visual feedback for all interactions
  */
 import React, { memo, useCallback, useState, useMemo, useEffect } from 'react';
-import { 
-  Check, 
-  X, 
-  AlertTriangle, 
-  MessageSquare, 
-  Send, 
-  ChevronDown, 
-  ChevronRight,
-  Copy,
-  Zap,
-  SkipForward,
-  RefreshCw,
-  FileEdit,
-  FileCode2,
-  Plus,
-  Expand,
-} from 'lucide-react';
 import { useAgentActions, useAgentSelector } from '../../../state/AgentProvider';
 import { cn } from '../../../utils/cn';
 import type { ToolCallEvent } from '../../../../shared/types';
-import { getToolIconComponent, getToolTarget } from '../utils/toolDisplay';
+import { getToolActionDescription } from '../utils/toolActionDescriptions';
 import { Button } from '../../../components/ui/Button';
 import { computeDiffStats, computeDiffHunks, computeInlineDiff } from './toolExecution/diffUtils';
 
@@ -50,22 +33,22 @@ function safeJsonStringify(obj: unknown, indent = 2): string {
 }
 
 // Quick suggestion templates based on tool type
-const QUICK_SUGGESTIONS: Record<string, Array<{ label: string; text: string; icon: React.ElementType }>> = {
+const QUICK_SUGGESTIONS: Record<string, Array<{ label: string; text: string }>> = {
   default: [
-    { label: 'skip', text: 'Skip this step and continue with the next action', icon: SkipForward },
-    { label: 'retry', text: 'Try a different approach to accomplish this', icon: RefreshCw },
+    { label: 'skip', text: 'Skip this step and continue with the next action' },
+    { label: 'retry', text: 'Try a different approach to accomplish this' },
   ],
   write_file: [
-    { label: 'different path', text: 'Use a different file path instead', icon: FileEdit },
-    { label: 'skip', text: 'Skip this file and continue', icon: SkipForward },
+    { label: 'different path', text: 'Use a different file path instead' },
+    { label: 'skip', text: 'Skip this file and continue' },
   ],
   run_command: [
-    { label: 'modify', text: 'Modify the command before running', icon: FileEdit },
-    { label: 'skip', text: 'Skip this command and continue', icon: SkipForward },
+    { label: 'modify', text: 'Modify the command before running' },
+    { label: 'skip', text: 'Skip this command and continue' },
   ],
   delete_file: [
-    { label: 'keep file', text: 'Do not delete this file, keep it', icon: X },
-    { label: 'backup first', text: 'Create a backup before deleting', icon: Copy },
+    { label: 'keep file', text: 'Do not delete this file, keep it' },
+    { label: 'backup first', text: 'Create a backup before deleting' },
   ],
 };
 
@@ -313,38 +296,33 @@ const InlineDiffPreview: React.FC<InlineDiffPreviewProps> = memo(({
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
 
   return (
-    <div className="mt-2 rounded-xl overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)] shadow-[0_6px_18px_rgba(0,0,0,0.16)]">
+    <div className="mt-2 rounded-sm overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)]">
       {/* Header - clean, modern design matching DiffViewer */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          'w-full flex items-center gap-2.5 px-3.5 py-2.5',
-          'bg-gradient-to-r from-[var(--color-surface-1)]/70 via-[var(--color-surface-1)]/60 to-[var(--color-surface-1)]/50',
+          'w-full flex items-center gap-2 px-3 py-2',
+          'bg-[var(--color-surface-1)]/40',
           'border-b border-[var(--color-border-subtle)]/30',
-          'font-mono cursor-pointer transition-all duration-150',
-          'hover:from-[var(--color-surface-1)]/90 hover:via-[var(--color-surface-1)]/80 hover:to-[var(--color-surface-1)]/70',
+          'font-mono cursor-pointer transition-colors duration-150',
+          'hover:bg-[var(--color-surface-1)]/60',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30'
         )}
         aria-expanded={isExpanded}
         aria-label={`${isNewFile ? 'New file' : 'Modified file'}: ${fileName}`}
       >
-        <span className={cn(
-          'text-[var(--color-text-dim)] flex-shrink-0 transition-transform duration-200',
-          isExpanded && 'rotate-0',
-          !isExpanded && '-rotate-90'
-        )}>
-          <ChevronDown size={12} />
+        <span className="text-[9px] text-[var(--color-text-dim)] flex-shrink-0">
+          {isExpanded ? 'hide' : 'show'}
         </span>
-        <FileCode2 size={13} className={isNewFile ? 'text-[var(--color-diff-added-text)]' : 'text-[var(--color-diff-expand-text)]'} />
         <span className="text-[11px] font-medium text-[var(--color-text-primary)] truncate flex-1 min-w-0 text-left" title={filePath}>
           {fileName}
         </span>
         <span className={cn(
-          'text-[8px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ring-1 ring-inset',
+          'text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm font-semibold flex-shrink-0',
           isNewFile 
-            ? 'bg-[var(--color-diff-added-text)]/12 text-[var(--color-diff-added-text)] ring-[var(--color-diff-added-text)]/25' 
-            : 'bg-[var(--color-diff-expand-text)]/12 text-[var(--color-diff-expand-text)] ring-[var(--color-diff-expand-text)]/25'
+            ? 'text-[var(--color-diff-added-text)]' 
+            : 'text-[var(--color-diff-expand-text)]'
         )}>
           {isNewFile ? 'new' : 'modified'}
         </span>
@@ -381,17 +359,15 @@ const InlineDiffPreview: React.FC<InlineDiffPreviewProps> = memo(({
                     className={cn(
                       'w-full flex items-center justify-center gap-2 py-1.5 px-3',
                       'text-[8px] font-mono text-[var(--color-text-muted)] font-medium',
-                      'bg-gradient-to-r from-[var(--color-surface-1)]/40 via-[var(--color-surface-1)]/50 to-[var(--color-surface-1)]/40',
-                      'hover:from-[var(--color-surface-2)]/60 hover:via-[var(--color-surface-2)]/70 hover:to-[var(--color-surface-2)]/60',
+                      'bg-[var(--color-surface-1)]/40',
+                      'hover:bg-[var(--color-surface-2)]/60',
                       'border-y border-[var(--color-border-subtle)]/20 transition-all duration-150',
                       'hover:text-[var(--color-text-secondary)]',
                       'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30'
                     )}
                     aria-label={`Expand ${line.content}`}
                   >
-                    <Expand size={9} className="opacity-60" />
                     <span className="uppercase tracking-wider">{line.content}</span>
-                    <Expand size={9} className="opacity-60" />
                   </button>
                 );
               }
@@ -410,32 +386,16 @@ const InlineDiffPreview: React.FC<InlineDiffPreviewProps> = memo(({
                     isContext && 'hover:bg-[var(--color-surface-2)]/30'
                   )}
                 >
-                  {/* Line numbers - enhanced styling */}
-                  <div className="flex-shrink-0 w-[56px] flex text-[8px] text-[var(--color-text-dim)]/50 select-none border-r border-[var(--color-border-subtle)]/15 tabular-nums font-medium">
-                    <span className={cn(
-                      'w-[28px] text-right pr-1 py-px',
-                      isRemoved && 'text-[var(--color-diff-removed-gutter)] bg-[var(--color-diff-removed-gutter)]/20'
-                    )}>
-                      {line.oldLineNum || ''}
-                    </span>
-                    <span className={cn(
-                      'w-[28px] text-right pr-1 py-px',
-                      isAdded && 'text-[var(--color-diff-added-gutter)] bg-[var(--color-diff-added-gutter)]/20'
-                    )}>
-                      {line.newLineNum || ''}
-                    </span>
-                  </div>
-
-                  {/* Change indicator bar - wider, more visible */}
                   <div className={cn(
-                    'flex-shrink-0 w-[4px]',
-                    isRemoved && 'bg-[var(--color-diff-removed-indicator)]',
-                    isAdded && 'bg-[var(--color-diff-added-indicator)]'
-                  )} />
+                    'flex-shrink-0 w-9 px-1 py-px text-[8px] uppercase tracking-wider',
+                    'text-[var(--color-text-dim)]/70'
+                  )}>
+                    {isRemoved ? 'del' : isAdded ? 'add' : 'ctx'}
+                  </div>
 
                   {/* Line content with enhanced colors */}
                   <div className={cn(
-                    'flex-1 px-2.5 py-px whitespace-pre overflow-x-auto leading-[1.65]',
+                    'flex-1 px-2 py-px whitespace-pre overflow-x-auto leading-[1.65]',
                     isRemoved && 'text-[var(--color-diff-removed-text)]',
                     isAdded && 'text-[var(--color-diff-added-text)]',
                     isContext && 'text-[var(--color-text-secondary)]/65'
@@ -494,31 +454,26 @@ const EditDiffPreview: React.FC<EditDiffPreviewProps> = memo(({
 
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
 
-  return (
-      <div className="mt-2 rounded-xl overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)] shadow-[0_6px_18px_rgba(0,0,0,0.16)]">
+    return (
+      <div className="mt-2 rounded-sm overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)]">
       {/* Header - refined design matching other diff previews */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          'w-full flex items-center gap-2.5 px-3.5 py-2.5',
-          'bg-gradient-to-r from-[var(--color-surface-1)]/70 via-[var(--color-surface-1)]/60 to-[var(--color-surface-1)]/50',
+          'w-full flex items-center gap-2 px-3 py-2',
+          'bg-[var(--color-surface-1)]/40',
           'border-b border-[var(--color-border-subtle)]/30',
-          'font-mono cursor-pointer transition-all duration-150',
-          'hover:from-[var(--color-surface-1)]/90 hover:via-[var(--color-surface-1)]/80 hover:to-[var(--color-surface-1)]/70',
+          'font-mono cursor-pointer transition-colors duration-150',
+          'hover:bg-[var(--color-surface-1)]/60',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30'
         )}
         aria-expanded={isExpanded}
         aria-label={`Edit file: ${fileName}`}
       >
-        <span className={cn(
-          'text-[var(--color-text-dim)] flex-shrink-0 transition-transform duration-200',
-          isExpanded && 'rotate-0',
-          !isExpanded && '-rotate-90'
-        )}>
-          <ChevronDown size={12} />
+        <span className="text-[9px] text-[var(--color-text-dim)] flex-shrink-0">
+          {isExpanded ? 'hide' : 'show'}
         </span>
-        <FileEdit size={13} className="text-[var(--color-diff-modified-text)]" />
         <span className="text-[11px] font-medium text-[var(--color-text-primary)] truncate flex-1 min-w-0 text-left" title={filePath}>
           {fileName}
         </span>
@@ -547,8 +502,7 @@ const EditDiffPreview: React.FC<EditDiffPreviewProps> = memo(({
         >
           {/* Removed section */}
           <div className="border-b border-[var(--color-border-subtle)]/20">
-            <div className="px-3 py-1.5 text-[8px] text-[var(--color-text-dim)]/80 bg-[var(--color-diff-removed-bg)] uppercase tracking-wider font-semibold flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-diff-removed-indicator)]/60" />
+            <div className="px-3 py-1.5 text-[8px] text-[var(--color-text-dim)]/80 bg-[var(--color-diff-removed-bg)] uppercase tracking-wider font-semibold">
               before
             </div>
             {oldString.split('\n').map((line, idx) => (
@@ -556,11 +510,10 @@ const EditDiffPreview: React.FC<EditDiffPreviewProps> = memo(({
                 key={`old-${idx}`}
                 className="flex items-stretch bg-[var(--color-diff-removed-bg)] hover:bg-[var(--color-diff-removed-bg-hover)] transition-colors duration-75 border-b border-[var(--color-border-subtle)]/10"
               >
-                <div className="flex-shrink-0 w-[32px] text-right pr-2 py-px text-[9px] text-[var(--color-diff-removed-gutter)] select-none border-r border-[var(--color-border-subtle)]/15 bg-[var(--color-diff-removed-gutter-bg)] tabular-nums font-medium">
-                  {idx + 1}
+                <div className="flex-shrink-0 w-9 px-1 py-px text-[8px] uppercase tracking-wider text-[var(--color-text-dim)]/70">
+                  del
                 </div>
-                <div className="flex-shrink-0 w-[4px] bg-[var(--color-diff-removed-indicator)]" />
-                <div className="flex-1 px-3 py-px whitespace-pre overflow-x-auto text-[var(--color-diff-removed-text)]">
+                <div className="flex-1 px-2 py-px whitespace-pre overflow-x-auto text-[var(--color-diff-removed-text)]">
                   {line || '\u00A0'}
                 </div>
               </div>
@@ -569,8 +522,7 @@ const EditDiffPreview: React.FC<EditDiffPreviewProps> = memo(({
 
           {/* Added section */}
           <div>
-            <div className="px-3 py-1.5 text-[8px] text-[var(--color-text-dim)]/80 bg-[var(--color-diff-added-bg)] uppercase tracking-wider font-semibold flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-diff-added-indicator)]/60" />
+            <div className="px-3 py-1.5 text-[8px] text-[var(--color-text-dim)]/80 bg-[var(--color-diff-added-bg)] uppercase tracking-wider font-semibold">
               after
             </div>
             {newString.split('\n').map((line, idx) => (
@@ -578,11 +530,10 @@ const EditDiffPreview: React.FC<EditDiffPreviewProps> = memo(({
                 key={`new-${idx}`}
                 className="flex items-stretch bg-[var(--color-diff-added-bg)] hover:bg-[var(--color-diff-added-bg-hover)] transition-colors duration-75 border-b border-[var(--color-border-subtle)]/10"
               >
-                <div className="flex-shrink-0 w-[32px] text-right pr-2 py-px text-[9px] text-[var(--color-diff-added-gutter)] select-none border-r border-[var(--color-border-subtle)]/15 bg-[var(--color-diff-added-gutter-bg)] tabular-nums font-medium">
-                  {idx + 1}
+                <div className="flex-shrink-0 w-9 px-1 py-px text-[8px] uppercase tracking-wider text-[var(--color-text-dim)]/70">
+                  add
                 </div>
-                <div className="flex-shrink-0 w-[4px] bg-[var(--color-diff-added-indicator)]" />
-                <div className="flex-1 px-3 py-px whitespace-pre overflow-x-auto text-[var(--color-diff-added-text)]">
+                <div className="flex-1 px-2 py-px whitespace-pre overflow-x-auto text-[var(--color-diff-added-text)]">
                   {line || '\u00A0'}
                 </div>
               </div>
@@ -610,8 +561,11 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
   onFeedback,
 }) => {
   const { toolCall } = confirmation;
-  const Icon = getToolIconComponent(toolCall.name);
-  const target = getToolTarget(toolCall.arguments, toolCall.name) ?? '';
+  // Generate descriptive action text for the pending tool
+  const actionDescription = useMemo(() => 
+    getToolActionDescription(toolCall.name, 'pending', toolCall.arguments || {}), 
+    [toolCall.name, toolCall.arguments]
+  );
   const run = shortRunId(confirmation.runId);
   
   const [showFeedback, setShowFeedback] = useState(false);
@@ -687,14 +641,7 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
         'border-b border-[var(--color-border-subtle)]'
       )}>
         <div className="min-w-0 flex items-center gap-2">
-          <span className={cn(
-            'w-1.5 h-1.5 rounded-full flex-shrink-0',
-            'bg-[var(--color-warning)]',
-            'shadow-[0_0_6px_var(--color-warning)]'
-          )} />
-          <span className="text-[10px] text-[var(--color-warning)] font-medium">
-            confirm
-          </span>
+          <span className="text-[10px] text-[var(--color-warning)] font-medium">pending</span>
           {run && (
             <span className="text-[9px] text-[var(--color-text-dim)]">
               #{run}
@@ -708,13 +655,11 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
             size="xs"
             onClick={() => setShowFeedback(!showFeedback)}
             className={cn(
-              'gap-1',
               showFeedback && 'bg-[var(--color-accent-primary)]/15 text-[var(--color-accent-primary)]'
             )}
             aria-label="Provide alternative instructions"
             title="Tell the agent to do something different"
           >
-            <MessageSquare size={10} />
             suggest
           </Button>
           <Button
@@ -722,7 +667,6 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
             size="xs"
             onClick={onApprove}
             aria-label="Approve tool execution"
-            leftIcon={<Check size={10} />}
           >
             approve
           </Button>
@@ -731,26 +675,18 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
             size="xs"
             onClick={onDeny}
             aria-label="Deny and stop execution"
-            leftIcon={<X size={10} />}
           >
             deny
           </Button>
         </div>
       </div>
 
-      {/* Tool info */}
+      {/* Tool info - descriptive action text */}
       <div className="px-3 py-2">
         <div className="flex items-center gap-2">
-          <Icon size={12} className="text-[var(--color-text-muted)] flex-shrink-0" />
-          <span className="text-[11px] text-[var(--color-text-secondary)] font-medium">{toolCall.name}</span>
-          {target && (
-            <>
-              <span className="text-[var(--color-text-dim)] opacity-40">→</span>
-              <span className="text-[10px] text-[var(--color-text-muted)] truncate max-w-[300px]" title={target}>
-                {target}
-              </span>
-            </>
-          )}
+          <span className="text-[11px] text-[var(--color-text-secondary)] font-medium">
+            {actionDescription}
+          </span>
         </div>
 
         {/* Diff preview for file operations */}
@@ -793,8 +729,8 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
                 'outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/25'
               )}
             >
-              <span className="text-[var(--color-text-dim)] opacity-50 w-2.5">
-                {isArgsExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              <span className="text-[9px] text-[var(--color-text-dim)] w-8">
+                {isArgsExpanded ? 'hide' : 'show'}
               </span>
               <span className="text-[9px] text-[var(--color-text-muted)]">arguments</span>
               <span className="text-[9px] text-[var(--color-text-dim)]">
@@ -814,18 +750,13 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
                   <button
                     onClick={handleCopyArgs}
                     className={cn(
-                      'p-0.5 rounded transition-colors',
+                      'px-1 py-0.5 rounded transition-colors text-[9px]',
                       'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
-                      'hover:bg-[var(--color-surface-2)]',
                       'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
                     )}
                     title="Copy arguments"
                   >
-                    {copiedArgs ? (
-                      <Check size={10} className="text-[var(--color-success)]" />
-                    ) : (
-                      <Copy size={10} />
-                    )}
+                    {copiedArgs ? 'copied' : 'copy'}
                   </button>
                 </div>
                 <div className="max-h-[120px] overflow-y-auto scrollbar-thin p-2">
@@ -847,10 +778,8 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
         )}>
           {/* Quick suggestions */}
           <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-            <Zap size={10} className="text-[var(--color-accent-primary)]" />
             <span className="text-[9px] text-[var(--color-text-muted)]">quick:</span>
             {quickSuggestions.map((suggestion, idx) => {
-              const SugIcon = suggestion.icon;
               return (
                 <button
                   key={idx}
@@ -866,7 +795,6 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
                   )}
                   title={suggestion.text}
                 >
-                  <SugIcon size={9} />
                   {suggestion.label}
                 </button>
               );
@@ -884,7 +812,6 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
               )}
               title="Add custom instruction"
             >
-              <Plus size={9} />
               custom
             </button>
           </div>
@@ -922,7 +849,6 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
               isLoading={isSubmitting}
               className="self-end"
               aria-label="Send feedback to agent"
-              leftIcon={<Send size={10} />}
             >
               send
             </Button>
@@ -1010,7 +936,6 @@ export const ToolConfirmationPanel: React.FC = memo(() => {
         )}>
           <div className="flex items-center justify-between gap-2 font-mono">
             <div className="flex items-center gap-2">
-              <AlertTriangle size={11} className="text-[var(--color-warning)]" />
               <span className="text-[10px] text-[var(--color-text-secondary)] font-medium">
                 pending confirmation{pendingConfirmations.length > 1 ? 's' : ''}
               </span>

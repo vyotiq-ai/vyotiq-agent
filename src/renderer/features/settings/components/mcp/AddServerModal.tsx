@@ -17,11 +17,11 @@ import {
   Folder,
   Terminal,
   Server,
-  Loader2,
   CheckCircle,
   AlertCircle,
   ChevronRight,
 } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import type { LucideProps } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 import { Modal } from '../../../../components/ui/Modal';
@@ -325,7 +325,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = memo(
       <div className="space-y-4">
         <div className="flex items-center justify-center py-8">
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-accent)]" />
+            <Spinner size="lg" className="w-8 h-8 text-[var(--color-accent)]" />
             <p className="text-xs text-[var(--color-text-secondary)]">Installing server...</p>
           </div>
         </div>

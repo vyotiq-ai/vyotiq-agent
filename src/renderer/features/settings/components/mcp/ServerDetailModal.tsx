@@ -20,7 +20,6 @@ import {
   Settings2,
   CheckCircle,
   AlertCircle,
-  Loader2,
   Clock,
   Tag,
   Package,
@@ -29,6 +28,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
 import { Modal } from '../../../../components/ui/Modal';
 import { Button } from '../../../../components/ui/Button';
@@ -258,7 +258,7 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
             ) : state.status === 'error' ? (
               <AlertCircle className="w-5 h-5 text-[var(--color-error)]" />
             ) : state.status === 'connecting' ? (
-              <Loader2 className="w-5 h-5 animate-spin text-[var(--color-warning)]" />
+              <Spinner size="md" className="w-5 h-5 text-[var(--color-warning)]" />
             ) : (
               <Server className="w-5 h-5 text-[var(--color-text-muted)]" />
             )}
@@ -512,7 +512,7 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
       >
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-[var(--color-text-muted)]" />
+            <Spinner size="lg" className="w-6 h-6 text-[var(--color-text-muted)]" />
           </div>
         ) : !config ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">

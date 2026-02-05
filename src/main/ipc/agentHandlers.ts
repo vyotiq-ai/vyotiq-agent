@@ -114,19 +114,33 @@ export function registerAgentHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle('agent:get-active-workspace-sessions', () => {
-    return getOrchestrator()?.getActiveWorkspaceSessions();
+    return getOrchestrator()?.getActiveWorkspaceSessions() ?? [];
   });
 
-  ipcMain.handle('agent:delete-session', async (_event, sessionId: string) => 
-    getOrchestrator()?.deleteSession(sessionId)
-  );
+  ipcMain.handle('agent:delete-session', async (_event, sessionId: string) => {
+    const orchestrator = getOrchestrator();
+    if (!orchestrator) {
+      logger.warn('agent:delete-session called but orchestrator not initialized');
+      return { success: false, error: 'Orchestrator not initialized' };
+    }
+    return orchestrator.deleteSession(sessionId);
+  });
 
-  ipcMain.handle('agent:regenerate', async (_event, sessionId: string) => 
-    getOrchestrator()?.regenerate(sessionId)
-  );
+  ipcMain.handle('agent:regenerate', async (_event, sessionId: string) => {
+    const orchestrator = getOrchestrator();
+    if (!orchestrator) {
+      logger.warn('agent:regenerate called but orchestrator not initialized');
+      return { success: false, error: 'Orchestrator not initialized' };
+    }
+    return orchestrator.regenerate(sessionId);
+  });
 
   ipcMain.handle('agent:rename-session', async (_event, sessionId: string, title: string) => {
-    return getOrchestrator()?.renameSession(sessionId, title);
+    const orchestrator = getOrchestrator();
+    if (!orchestrator) {
+      return { success: false, error: 'Orchestrator not initialized' };
+    }
+    return orchestrator.renameSession(sessionId, title);
   });
 
   ipcMain.handle('agent:update-editor-state', (_event, state) => {

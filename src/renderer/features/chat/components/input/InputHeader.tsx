@@ -13,7 +13,8 @@
  * />
  */
 import React, { memo, useMemo, useState, useCallback } from 'react';
-import { Pause, Play, Loader2, CheckCircle, Circle, ChevronDown } from 'lucide-react';
+import { Pause, Play, CheckCircle, Circle, ChevronDown } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import type { AgentStatusInfo } from '../../../../state/agentReducer';
 import { cn } from '../../../../utils/cn';
 import { getStatusDisplayMessage } from '../../../../utils';
@@ -183,7 +184,7 @@ const TodoStatusIcon: React.FC<{ status: 'completed' | 'in_progress' | 'pending'
     case 'completed':
       return <CheckCircle size={size} className="text-[var(--color-success)] flex-shrink-0" />;
     case 'in_progress':
-      return <Loader2 size={size} className="text-[var(--color-accent-primary)] flex-shrink-0 animate-spin" />;
+      return <Spinner size="sm" colorVariant="primary" className="w-2.5 h-2.5 flex-shrink-0" />;
     case 'pending':
     default:
       return <Circle size={size} className="text-[var(--color-text-dim)] flex-shrink-0" />;
@@ -310,7 +311,7 @@ const TaskListPanel: React.FC<{
               count={todoStats.inProgress} 
               label="active" 
               colorClass="text-[var(--color-accent-primary)]"
-              icon={<Loader2 size={9} className="animate-spin" />}
+              icon={<Spinner size="sm" className="w-2.5 h-2.5" colorVariant="primary" />}
             />
           )}
           {todoStats.pending > 0 && (
@@ -375,10 +376,10 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
       {/* Main header row */}
       <div 
         className={cn(
-          'flex items-center justify-between px-3 py-1',
-          'border-b border-[var(--color-border-subtle)]',
-          'bg-[var(--color-surface-header)]',
-          'font-mono transition-all duration-200 text-[10px]'
+          'flex items-center justify-between px-2 py-0.5',
+          'border-b border-[var(--color-border-subtle)]/40',
+          'bg-transparent',
+          'font-mono transition-all duration-200 text-[9px]'
         )}
         role="status"
         aria-live="polite"
@@ -402,12 +403,12 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
             type="button"
             onClick={toggleTasksExpanded}
             className={cn(
-              'flex items-center gap-1.5 flex-shrink-0 mx-2 min-w-0 py-0.5 px-2 rounded-sm',
+              'flex items-center gap-1 flex-shrink-0 mx-2 min-w-0 py-0.5 px-1.5 rounded-sm',
               'border border-transparent',
-              'hover:bg-[var(--color-surface-2)]/60 hover:border-[var(--color-border-subtle)]/50',
+              'hover:border-[var(--color-border-subtle)]/50',
               'transition-all duration-150',
               'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
-              isTasksExpanded && 'bg-[var(--color-surface-2)]/40 border-[var(--color-border-subtle)]/30'
+              isTasksExpanded && 'border-[var(--color-border-subtle)]/30'
             )}
             title={isTasksExpanded ? 'Collapse tasks' : `View all ${todos.length} tasks`}
             aria-expanded={isTasksExpanded}
@@ -419,7 +420,7 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
             />
             {/* Active task name - truncated */}
             {activeTodo && (
-              <span className="hidden lg:inline truncate max-w-[140px] text-[var(--color-text-secondary)]">
+              <span className="hidden xl:inline truncate max-w-[140px] text-[var(--color-text-secondary)]">
                 {activeTodo.content}
               </span>
             )}
@@ -435,7 +436,7 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
               {todoStats.completed}/{todoStats.total}
             </span>
             <span className={cn(
-              'hidden sm:inline tabular-nums',
+              'hidden xl:inline tabular-nums',
               isComplete ? 'text-[var(--color-success)]' : 'text-[var(--color-text-dim)]'
             )}>
               ({todoStats.completionPercentage}%)

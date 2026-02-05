@@ -1,6 +1,5 @@
 import type { ReactElement } from 'react';
-import React from 'react';
-import { getToolIcon, getToolConfig } from '../../../components/ui/ToolIcons';
+import { getToolCategory } from '../../../components/ui/ToolIcons';
 
 export function safeJsonStringify(value: unknown, space = 2): string {
   try {
@@ -12,31 +11,31 @@ export function safeJsonStringify(value: unknown, space = 2): string {
 
 /**
  * Get icon component for a tool name.
- * Returns a lucide icon component (not an element) so callers can style/size.
- * @deprecated Use getToolIcon from ToolIcons module directly
+ * @deprecated Icons have been removed for minimalist UI
  */
-export function getToolIconComponent(toolName: string) {
-  return getToolIcon(toolName);
+export function getToolIconComponent(_toolName: string): null {
+  return null;
 }
 
 /**
  * Confirmation-panel style icon element (colored by tool category).
- * Keeps existing UX for confirmations while sharing logic.
+ * @deprecated Icons have been removed for minimalist UI - returns null
  */
-export function getToolIconElement(toolName: string, size = 12): ReactElement {
-  const config = getToolConfig(toolName);
-  const Icon = config.icon;
+export function getToolIconElement(_toolName: string, _size = 12): ReactElement | null {
+  return null;
+}
+
+/**
+ * Get color class for a tool based on its category
+ */
+export function getToolCategoryColor(toolName: string): string {
+  const category = getToolCategory(toolName);
   
-  // Map category to color for confirmation panels
-  const colorClass = config.category === 'terminal' 
-    ? 'text-[var(--color-warning)]'
-    : config.category === 'file' && toolName.toLowerCase().includes('delete')
-      ? 'text-[var(--color-error)]'
-      : config.category === 'edit'
-        ? 'text-[var(--color-info)]'
-        : 'text-[var(--color-accent-primary)]';
+  if (category === 'terminal') return 'text-[var(--color-warning)]';
+  if (category === 'file' && toolName.toLowerCase().includes('delete')) return 'text-[var(--color-error)]';
+  if (category === 'edit') return 'text-[var(--color-info)]';
   
-  return <Icon size={size} className={colorClass} />;
+  return 'text-[var(--color-accent-primary)]';
 }
 
 /** Extract line range info for read operations */

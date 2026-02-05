@@ -399,7 +399,7 @@ export const ChatInput: React.FC = memo(() => {
         className={cn(
           'terminal-container relative w-full overflow-visible',
           'bg-[var(--color-surface-editor)]',
-          'border-t border-[var(--color-border-subtle)]',
+          'border-t border-[var(--color-border-subtle)]/60',
           'font-mono',
           'transition-all duration-200'
         )}
@@ -436,7 +436,7 @@ export const ChatInput: React.FC = memo(() => {
         
         {/* Attachments */}
         {attachments.length > 0 && (
-          <div className="px-3 py-0.5 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-editor)]">
+          <div className="px-2 py-0.5 border-b border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)]">
             <ChatAttachmentList 
               attachments={attachments} 
               onRemove={handleRemoveAttachment} 
@@ -446,7 +446,7 @@ export const ChatInput: React.FC = memo(() => {
         )}
 
         {/* Composer */}
-        <div className="px-3 py-1.5">
+        <div className="px-2 py-1">
           <div className="flex items-start gap-2">
             <div className="flex-1 min-w-0 relative">
               <InputTextarea
@@ -501,7 +501,7 @@ export const ChatInput: React.FC = memo(() => {
         {/* Footer - clean and minimal */}
         <div 
           id="chat-input-hints"
-          className="flex items-center gap-3 text-[9px] font-mono text-[var(--color-text-muted)] border-t border-[var(--color-border-subtle)] px-3 py-1.5 min-w-0"
+          className="flex items-center gap-3 text-[9px] font-mono text-[var(--color-text-muted)] border-t border-[var(--color-border-subtle)]/40 px-2 py-1 min-w-0"
           aria-label="Message options and shortcuts"
         >
           {/* Toolbar */}

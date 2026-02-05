@@ -21,8 +21,11 @@ export interface ToolCall {
   result?: ChatMessage;
   fullOutput?: string;
   resultMetadata?: Record<string, unknown>;
-  status: 'running' | 'completed' | 'error' | 'pending';
+  /** Status of the tool execution */
+  status: 'queued' | 'running' | 'completed' | 'error' | 'pending';
   startTime?: number;
+  /** Queue position for queued tools (1-based) */
+  queuePosition?: number;
   // Phase 7: Dynamic tool support
   isDynamic?: boolean;
   dynamicToolInfo?: DynamicToolMetadata;

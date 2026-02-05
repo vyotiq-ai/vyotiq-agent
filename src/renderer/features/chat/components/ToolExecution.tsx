@@ -18,11 +18,9 @@
  * />
  */
 import React, { memo, useMemo, useState, useCallback, useRef } from 'react';
-import { ChevronDown, ChevronRight, Check, Plus, Minus } from 'lucide-react';
 import type { ChatMessage, ToolResultEvent } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
 import { useEditor } from '../../../state/EditorProvider';
-import { ToolIconDisplay, getToolIcon } from '../../../components/ui/ToolIcons';
 
 import { ToolItem } from './toolExecution/ToolItem';
 import { buildToolCalls } from '../utils/buildToolCalls';
@@ -37,6 +35,12 @@ interface ToolExecutionProps {
   toolResults?: Map<string, ToolResultEvent>;
   sessionId?: string;
   onStop?: () => void;
+  /** Real-time executing tools from state (keyed by callId) */
+  executingTools?: Record<string, { callId: string; name: string; arguments?: Record<string, unknown>; startedAt: number }>;
+  /** Queued tools waiting to execute */
+  queuedTools?: Array<{ callId: string; name: string; arguments?: Record<string, unknown>; queuePosition: number; queuedAt: number }>;
+  /** Tools awaiting approval */
+  pendingTools?: Array<{ callId: string; name: string; arguments?: Record<string, unknown> }>;
 }
 
 /** Check if a tool is a file operation */
@@ -59,13 +63,40 @@ type ToolGroup =
   | { type: 'fileGroup'; tools: ToolCall[] }
   | { type: 'toolGroup'; category: string; tools: ToolCall[] };
 
+/**
+ * Sort tools to show running/queued first, then completed
+ */
+function sortToolsByStatus(tools: ToolCall[]): ToolCall[] {
+  const statusOrder: Record<string, number> = {
+    'running': 0,
+    'queued': 1,
+    'pending': 2,
+    'error': 3,
+    'completed': 4,
+  };
+  
+  return [...tools].sort((a, b) => {
+    const orderA = statusOrder[a.status] ?? 5;
+    const orderB = statusOrder[b.status] ?? 5;
+    if (orderA !== orderB) return orderA - orderB;
+    // For same status, sort by start time (newest first for running, oldest first for completed)
+    if (a.status === 'running' || a.status === 'queued') {
+      return (b.startTime ?? 0) - (a.startTime ?? 0);
+    }
+    return (a.startTime ?? 0) - (b.startTime ?? 0);
+  });
+}
+
 /** Group similar operations together (non-consecutive grouping) */
 function groupToolCalls(tools: ToolCall[]): ToolGroup[] {
+  // Sort tools to show running/queued first
+  const sortedTools = sortToolsByStatus(tools);
+  
   // Collect tools by category
   const categoryTools = new Map<string, ToolCall[]>();
   const ungroupedTools: ToolCall[] = [];
   
-  for (const tool of tools) {
+  for (const tool of sortedTools) {
     const category = getToolGroupCategory(tool.name);
     const isCompleted = tool.status === 'completed';
     
@@ -81,7 +112,12 @@ function groupToolCalls(tools: ToolCall[]): ToolGroup[] {
 
   const result: ToolGroup[] = [];
   
-  // Add grouped tools first (categories with 2+ tools)
+  // Add ungrouped tools first (includes running, queued, pending, single completed)
+  for (const tool of ungroupedTools) {
+    result.push({ type: 'single', tool });
+  }
+  
+  // Add grouped tools after (completed categories with 2+ tools)
   for (const [category, categoryToolList] of categoryTools) {
     if (categoryToolList.length >= 2) {
       if (category === 'file_ops') {
@@ -91,13 +127,10 @@ function groupToolCalls(tools: ToolCall[]): ToolGroup[] {
       }
     } else {
       // Single tool in category, add as ungrouped
-      ungroupedTools.push(...categoryToolList);
+      for (const tool of categoryToolList) {
+        result.push({ type: 'single', tool });
+      }
     }
-  }
-  
-  // Add ungrouped tools
-  for (const tool of ungroupedTools) {
-    result.push({ type: 'single', tool });
   }
 
   return result;
@@ -107,6 +140,9 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
   messages,
   isRunning = false,
   toolResults,
+  executingTools,
+  queuedTools,
+  pendingTools,
   onStop: _onStop, // Reserved for future stop functionality
 }) => {
   // Track manually collapsed tools - file ops default to expanded
@@ -124,8 +160,11 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
       toolResults,
       isRunning,
       runningStartTimes: runningStartTimesRef.current,
+      executingTools,
+      queuedTools,
+      pendingTools,
     });
-  }, [messages, isRunning, toolResults]);
+  }, [messages, isRunning, toolResults, executingTools, queuedTools, pendingTools]);
 
   // Compute the effective expanded tools set (for passing to child components)
   const expandedTools = useMemo(() => {
@@ -206,7 +245,7 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
   }
 
   return (
-    <div className="font-mono text-[11px] min-w-0 w-full">
+    <div className="font-mono text-[10px] min-w-0 w-full">
       {/* Tool list with grouping */}
       <div className="space-y-0.5 min-w-0 w-full">
         {groupedTools.map((item, idx) => {
@@ -257,17 +296,17 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
   );
 };
 
-/** Get icon and label for tool group category */
-function getToolGroupInfo(category: string): { icon: React.ElementType; label: string } {
+/** Get label for tool group category */
+function getToolGroupLabel(category: string): string {
   switch (category) {
     case 'ls':
-      return { icon: getToolIcon('ls'), label: 'directories' };
+      return 'Listed directories';
     case 'read':
-      return { icon: getToolIcon('read'), label: 'files' };
+      return 'Read files';
     case 'search':
-      return { icon: getToolIcon('search'), label: 'searches' };
+      return 'Searched codebase';
     default:
-      return { icon: getToolIcon('edit'), label: 'operations' };
+      return 'Completed operations';
   }
 }
 
@@ -281,7 +320,7 @@ const ToolOperationGroup: React.FC<{
   onToggleTool: (callId: string) => void;
   isLast: boolean;
 }> = memo(({ category, tools, isExpanded, onToggle, expandedTools, onToggleTool, isLast }) => {
-  const { icon: GroupIcon, label } = getToolGroupInfo(category);
+  const label = getToolGroupLabel(category);
   const successCount = tools.filter(t => t.status === 'completed').length;
   const errorCount = tools.filter(t => t.status === 'error').length;
   const hasErrors = errorCount > 0;
@@ -299,23 +338,13 @@ const ToolOperationGroup: React.FC<{
         )}
         onClick={onToggle}
       >
-        {/* Expand/collapse indicator */}
-        <span className="text-[var(--color-text-dim)] opacity-40 w-2.5">
-          {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        <span className="text-[9px] text-[var(--color-text-dim)] w-8">
+          {isExpanded ? 'hide' : 'show'}
         </span>
 
-        {/* Status indicator - show error if any failed */}
-        <Check size={10} className={cn(
-          'flex-shrink-0',
-          hasErrors ? 'text-[var(--color-warning)]' : 'text-[var(--color-success)]'
-        )} />
-
-        {/* Category icon */}
-        <GroupIcon size={10} className="text-[var(--color-text-muted)] flex-shrink-0" />
-
-        {/* Summary text */}
-        <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
-          {tools.length} {label}
+        {/* Descriptive summary text */}
+        <span className="text-[10px] font-medium text-[var(--color-text-secondary)]">
+          {label} ({tools.length})
         </span>
 
         {/* Status breakdown */}
@@ -418,48 +447,33 @@ const FileOperationGroup: React.FC<{
         onClick={onToggle}
       >
         {/* Expand/collapse indicator */}
-        <span className="text-[var(--color-text-dim)] opacity-40 w-2.5">
-          {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        <span className="text-[9px] text-[var(--color-text-dim)] w-8">
+          {isExpanded ? 'hide' : 'show'}
         </span>
 
-        {/* Status indicator - show warning if any failed */}
-        <Check size={10} className={cn(
-          'flex-shrink-0',
-          hasErrors ? 'text-[var(--color-warning)]' : 'text-[var(--color-success)]'
-        )} />
-
-        {/* File icon */}
-        <ToolIconDisplay toolName="edit" size={11} status="completed" />
-
-        {/* Summary text */}
-        <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
-          {stats.total} files
+        {/* Descriptive summary text */}
+        <span className="text-[10px] font-medium text-[var(--color-text-secondary)]">
+          Modified {stats.total} files
         </span>
         
         {/* Breakdown */}
         <span className="text-[10px] text-[var(--color-text-dim)]">
           {stats.created > 0 && stats.modified > 0 
-            ? `(${stats.created} created, ${stats.modified} modified)`
+            ? `(${stats.created} created, ${stats.modified} edited)`
             : stats.created > 0 
-              ? `(${stats.created} created)`
-              : `(${stats.modified} modified)`
+              ? `(all created)`
+              : `(all edited)`
           }
           {hasErrors && <span className="text-[var(--color-error)] ml-1">{stats.errors} failed</span>}
         </span>
 
         {/* Aggregate diff stats */}
-        <span className="ml-auto flex items-center gap-1 text-[9px] font-mono">
+        <span className="ml-auto flex items-center gap-2 text-[9px] font-mono">
           {stats.added > 0 && (
-            <span className="flex items-center gap-0.5 text-[var(--color-success)]">
-              <Plus size={8} />
-              {stats.added}
-            </span>
+            <span className="text-[var(--color-success)]">+{stats.added}</span>
           )}
           {stats.removed > 0 && (
-            <span className="flex items-center gap-0.5 text-[var(--color-error)]">
-              <Minus size={8} />
-              {stats.removed}
-            </span>
+            <span className="text-[var(--color-error)]">-{stats.removed}</span>
           )}
         </span>
       </button>

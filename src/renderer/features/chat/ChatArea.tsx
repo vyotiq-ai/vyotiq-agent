@@ -111,6 +111,44 @@ export const ChatArea: React.FC = () => {
       return true;
     }
   );
+  
+  // OPTIMIZATION: Executing tools selector - for real-time tool status display
+  const executingToolsByRun = useAgentSelector(
+    (state) => state.executingTools,
+    (a, b) => {
+      if (a === b) return true;
+      const keysA = Object.keys(a);
+      const keysB = Object.keys(b);
+      if (keysA.length !== keysB.length) return false;
+      for (const key of keysA) {
+        if (!b[key]) return false;
+        if (Object.keys(a[key]).length !== Object.keys(b[key]).length) return false;
+      }
+      return true;
+    }
+  );
+
+  // OPTIMIZATION: Queued tools selector - for showing tools waiting to execute
+  const queuedToolsByRun = useAgentSelector(
+    (state) => state.queuedTools,
+    (a, b) => {
+      if (a === b) return true;
+      const keysA = Object.keys(a);
+      const keysB = Object.keys(b);
+      if (keysA.length !== keysB.length) return false;
+      for (const key of keysA) {
+        if (!b[key]) return false;
+        if (a[key].length !== b[key].length) return false;
+      }
+      return true;
+    }
+  );
+
+  // Pending tool confirmations (awaiting approval)
+  const pendingConfirmationsByRun = useAgentSelector(
+    (state) => state.pendingConfirmations,
+    (a, b) => a === b
+  );
 
   // Log session changes for debugging (only on session ID change)
   useEffect(() => {
@@ -196,6 +234,14 @@ export const ChatArea: React.FC = () => {
     setIsSearchOpen(false);
     clearSearch();
   }, [clearSearch]);
+
+  const toggleSearch = useCallback(() => {
+    if (isSearchOpen) {
+      handleCloseSearch();
+      return;
+    }
+    setIsSearchOpen(true);
+  }, [handleCloseSearch, isSearchOpen]);
 
   // Group messages by run - defined early so other effects can reference it
   const messageGroups = useMemo(() => {
@@ -371,6 +417,37 @@ export const ChatArea: React.FC = () => {
       });
     }
     return resultsMap;
+  }, []);
+
+  const getPendingToolsForRun = useCallback((runId: string | undefined) => {
+    if (!runId) return undefined;
+    const pending = pendingConfirmationsByRun[runId];
+    if (!pending?.toolCall) return undefined;
+    return [
+      {
+        callId: pending.toolCall.callId,
+        name: pending.toolCall.name,
+        arguments: pending.toolCall.arguments as Record<string, unknown> | undefined,
+      },
+    ];
+  }, [pendingConfirmationsByRun]);
+
+  // Helper to get executing tools for a specific runId (stable reference)
+  const executingToolsByRunRef = useRef(executingToolsByRun);
+  executingToolsByRunRef.current = executingToolsByRun;
+  
+  const getExecutingToolsForRun = useCallback((runId: string | undefined) => {
+    if (!runId) return undefined;
+    return executingToolsByRunRef.current[runId];
+  }, []);
+
+  // Helper to get queued tools for a specific runId (stable reference)
+  const queuedToolsByRunRef = useRef(queuedToolsByRun);
+  queuedToolsByRunRef.current = queuedToolsByRun;
+  
+  const getQueuedToolsForRun = useCallback((runId: string | undefined) => {
+    if (!runId) return undefined;
+    return queuedToolsByRunRef.current[runId];
   }, []);
 
 
@@ -623,6 +700,59 @@ export const ChatArea: React.FC = () => {
 
   return (
     <div className="flex-1 min-h-0 min-w-0 w-full relative overflow-hidden flex flex-col">
+      {/* Minimal controls bar */}
+      {(hasMessages || branches.length > 0) && (
+        <div
+          className={cn(
+            'flex items-center justify-between gap-2 px-2 sm:px-3 py-1',
+            'border-b border-[var(--color-border-subtle)]/40',
+            'bg-[var(--color-surface-base)]',
+            'text-[10px] font-mono text-[var(--color-text-muted)]'
+          )}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={toggleSearch}
+              className={cn(
+                'px-1.5 py-0.5 rounded-sm',
+                'border border-transparent',
+                'hover:border-[var(--color-border-subtle)]/60',
+                'hover:text-[var(--color-text-secondary)]',
+                isSearchOpen && 'text-[var(--color-accent-primary)]'
+              )}
+              title={isSearchOpen ? 'Close search' : 'Search messages'}
+              aria-pressed={isSearchOpen}
+            >
+              search
+            </button>
+            {messageGroups.length > 1 && (
+              <button
+                onClick={allExpanded ? collapseAllRuns : expandAllRuns}
+                className={cn(
+                  'flex items-center gap-1 px-1.5 py-0.5 rounded-sm',
+                  'border border-transparent',
+                  'hover:border-[var(--color-border-subtle)]/60',
+                  'hover:text-[var(--color-text-secondary)]'
+                )}
+                title={allExpanded ? 'Collapse all runs' : 'Expand all runs'}
+              >
+                <ChevronsUpDown size={10} />
+                <span>{allExpanded ? 'collapse' : 'expand'}</span>
+              </button>
+            )}
+          </div>
+          {branches.length > 0 && (
+            <BranchNavigation
+              branches={branches}
+              activeBranchId={activeBranchId}
+              onSwitchBranch={handleSwitchBranch}
+              onDeleteBranch={handleDeleteBranch}
+            />
+          )}
+        </div>
+      )}
+
       {/* Conversation Search Bar */}
       {isSearchOpen && (
         <ConversationSearchBar
@@ -639,20 +769,6 @@ export const ChatArea: React.FC = () => {
 
       {/* Main chat area */}
       <div className="flex-1 min-h-0 min-w-0 w-full relative overflow-hidden">
-        {/* Branch navigation - show when there are branches */}
-        {branches.length > 0 && (
-          <div className="absolute top-2 right-4 z-20">
-            <BranchNavigation
-              branches={branches}
-              activeBranchId={activeBranchId}
-              onSwitchBranch={handleSwitchBranch}
-              onDeleteBranch={handleDeleteBranch}
-            />
-          </div>
-        )}
-
-
-
         {/* Bottom fade gradient - smooth edge transition */}
         <div
           className="absolute bottom-0 left-0 right-0 h-8 z-10 pointer-events-none"
@@ -701,25 +817,6 @@ export const ChatArea: React.FC = () => {
           {/* Virtualized rendering for large histories */}
           {shouldVirtualize ? (
             <div className="w-full max-w-[1800px] 2xl:max-w-[2000px] mx-auto px-2 sm:px-3 md:px-4 lg:px-6 xl:px-8 2xl:px-10 pt-3 sm:pt-4 md:pt-5 lg:pt-6 pb-6 sm:pb-8 md:pb-10 min-w-0">
-              {/* Expand/Collapse all - fixed at top when multiple runs */}
-              {messageGroups.length > 1 && (
-                <div className="flex justify-end pb-2">
-                  <button
-                    onClick={allExpanded ? collapseAllRuns : expandAllRuns}
-                    className={cn(
-                      'flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono',
-                      'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
-                      'bg-[var(--color-surface-base)]/90 backdrop-blur-sm rounded',
-                      'transition-colors'
-                    )}
-                    title={allExpanded ? 'Collapse all runs' : 'Expand all runs'}
-                  >
-                    <ChevronsUpDown size={10} />
-                    <span>{allExpanded ? 'collapse all' : 'expand all'}</span>
-                  </button>
-                </div>
-              )}
-              
               {/* Virtualized items container */}
               <div style={{ height: totalHeight, position: 'relative' }}>
                 {/* Render only visible virtualized items */}
@@ -760,6 +857,9 @@ export const ChatArea: React.FC = () => {
                       collapsed={collapsed}
                       onToggleCollapse={toggleRunCollapse}
                       toolResults={getToolResultsForRun(group.runId)}
+                      executingTools={getExecutingToolsForRun(group.runId)}
+                      queuedTools={getQueuedToolsForRun(group.runId)}
+                      pendingTools={getPendingToolsForRun(group.runId)}
                       sessionId={activeSession?.id}
                       matchingMessageIds={matchingMessageIds}
                       currentMatchMessageId={currentMatchMessageId}
@@ -782,24 +882,6 @@ export const ChatArea: React.FC = () => {
           ) : (
             /* Standard rendering for smaller histories */
             <div className="w-full max-w-[1800px] 2xl:max-w-[2000px] mx-auto flex flex-col gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 lg:px-6 xl:px-8 2xl:px-10 pt-3 sm:pt-4 md:pt-5 lg:pt-6 pb-6 sm:pb-8 md:pb-10 min-w-0">
-              {/* Expand/Collapse all - inline at top when multiple runs */}
-              {messageGroups.length > 1 && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={allExpanded ? collapseAllRuns : expandAllRuns}
-                    className={cn(
-                      'flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono',
-                      'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
-                      'transition-colors'
-                    )}
-                    title={allExpanded ? 'Collapse all runs' : 'Expand all runs'}
-                  >
-                    <ChevronsUpDown size={10} />
-                    <span>{allExpanded ? 'collapse all' : 'expand all'}</span>
-                  </button>
-                </div>
-              )}
-
               {renderGroups.map((group, groupIdx) => {
                 const isLastGroup = groupIdx === renderGroups.length - 1;
                 const runKey = group.runId ?? `group-${groupIdx}`;
@@ -817,10 +899,13 @@ export const ChatArea: React.FC = () => {
                     collapsed={collapsed}
                     onToggleCollapse={toggleRunCollapse}
                     toolResults={getToolResultsForRun(group.runId)}
+                    executingTools={getExecutingToolsForRun(group.runId)}
+                    queuedTools={getQueuedToolsForRun(group.runId)}
                     sessionId={activeSession?.id}
                     matchingMessageIds={matchingMessageIds}
                     currentMatchMessageId={currentMatchMessageId}
                     routingInfo={routingInfo}
+                    pendingTools={getPendingToolsForRun(group.runId)}
                     onEditMessage={handleEditMessage}
                     onForkMessage={handleForkMessage}
                     onRunCode={handleRunCode}

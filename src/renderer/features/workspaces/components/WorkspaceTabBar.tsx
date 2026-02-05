@@ -8,7 +8,8 @@
  * Refactored to use modular sub-components from ./tabBar/
  */
 import React, { useCallback, useState, useRef, useMemo, memo } from 'react';
-import { Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { cn } from '../../../utils/cn';
 import { useWorkspaceTabs, useWorkspaceTabsActions } from '../../../state/WorkspaceTabsProvider';
 import { useAgentActions, useAgentSelector } from '../../../state/AgentProvider';
@@ -57,7 +58,7 @@ const RunningIndicator = memo<RunningIndicatorProps>(({ totalRunning, isExpanded
     >
       {totalRunning > 0 ? (
         <>
-          <Loader2 size={10} className="animate-spin" />
+          <Spinner size="sm" className="w-2.5 h-2.5" />
           <span>{totalRunning} running</span>
           {isExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
         </>

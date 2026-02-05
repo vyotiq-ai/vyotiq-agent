@@ -19,7 +19,8 @@
  * />
  */
 import React, { memo } from 'react';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
 import { SessionDropdown } from './SessionDropdown';
 import { useSessionDropdown } from './useSessionDropdown';
@@ -103,9 +104,9 @@ export const SessionSelector: React.FC<SessionSelectorProps> = memo(function Ses
         
         {/* Running indicator */}
         {isActiveRunning && (
-          <Loader2 
-            size={8} 
-            className="text-[var(--color-success)] animate-spin" 
+          <Spinner 
+            size="sm" 
+            className="w-2 h-2 text-[var(--color-success)]" 
           />
         )}
         

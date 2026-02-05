@@ -8,7 +8,8 @@
  * <DraftIndicator status="saved" lastSavedAt={Date.now()} />
  */
 import React, { memo, useMemo } from 'react';
-import { Save, Check, AlertCircle, RotateCcw, Loader2 } from 'lucide-react';
+import { Save, Check, AlertCircle, RotateCcw } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
 import { formatRelativeTime } from '../../../../utils/timeFormatting';
 import type { DraftStatus } from '../../hooks/useDraftMessage';
@@ -33,10 +34,10 @@ export interface DraftIndicatorProps {
 // =============================================================================
 
 interface StatusConfig {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ComponentType<{ size?: number; className?: string }> | null;
   label: string;
   color: string;
-  animate?: boolean;
+  useSpinner?: boolean;
 }
 
 const STATUS_CONFIG: Record<DraftStatus, StatusConfig> = {
@@ -46,10 +47,10 @@ const STATUS_CONFIG: Record<DraftStatus, StatusConfig> = {
     color: 'text-[var(--color-text-muted)]',
   },
   saving: {
-    icon: Loader2,
+    icon: null,
     label: 'saving...',
     color: 'text-[var(--color-info)]',
-    animate: true,
+    useSpinner: true,
   },
   saved: {
     icon: Check,
@@ -104,14 +105,18 @@ export const DraftIndicator: React.FC<DraftIndicatorProps> = memo(({
       aria-live="polite"
       aria-label={`Draft ${config.label}${timeDisplay ? `, ${timeDisplay}` : ''}`}
     >
-      <Icon
-        size={9}
-        className={cn(
-          'flex-shrink-0',
-          config.animate && 'animate-spin'
-        )}
-        aria-hidden="true"
-      />
+      {config.useSpinner ? (
+        <Spinner
+          size="sm"
+          className="w-[9px] h-[9px] flex-shrink-0"
+        />
+      ) : Icon && (
+        <Icon
+          size={9}
+          className="flex-shrink-0"
+          aria-hidden="true"
+        />
+      )}
       
       <span className="hidden sm:inline">
         {config.label}

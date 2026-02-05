@@ -21,8 +21,9 @@ import * as monaco from 'monaco-editor';
 import { 
   Check, X, Pencil, Columns2, AlignLeft,
   ChevronDown, ChevronUp, ChevronRight, Copy, ExternalLink,
-  RotateCcw, FileCode2, Loader2
+  RotateCcw, FileCode2
 } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
 import { useEditor } from '../../../../state/EditorProvider';
 import { getLanguageFromPath } from '../../../editor/utils/languageUtils';
@@ -380,7 +381,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
         horizontalScrollbarSize: 6,
       },
       fontSize: 11,
-      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace",
       padding: { top: 8, bottom: 8 },
       diffWordWrap: 'on',
       renderWhitespace: 'none',
@@ -749,7 +750,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
         >
           {isPending && isLargeFile && (
             <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-[var(--color-text-muted)]">
-              <Loader2 size={12} className="animate-spin" />
+              <Spinner size="sm" className="w-3 h-3" />
               <span>Computing diff...</span>
             </div>
           )}

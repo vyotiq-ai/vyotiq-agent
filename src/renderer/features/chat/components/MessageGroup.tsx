@@ -81,6 +81,12 @@ export interface MessageGroupProps {
   onToggleCollapse: (runKey: string) => void;
   /** Tool results for this run */
   toolResults?: Map<string, ToolResultEvent>;
+  /** Real-time executing tools for this run (keyed by callId) */
+  executingTools?: Record<string, { callId: string; name: string; arguments?: Record<string, unknown>; startedAt: number }>;
+  /** Queued tools waiting to execute */
+  queuedTools?: Array<{ callId: string; name: string; arguments?: Record<string, unknown>; queuePosition: number; queuedAt: number }>;
+  /** Tools awaiting approval */
+  pendingTools?: Array<{ callId: string; name: string; arguments?: Record<string, unknown> }>;
   /** Session ID */
   sessionId?: string;
   /** Set of message IDs that match the search query */
@@ -171,6 +177,16 @@ function areMessageGroupPropsEqual(
   
   // Tool results: check Map size
   if (prev.toolResults?.size !== next.toolResults?.size) return false;
+
+  // Pending tools: check length and callIds
+  const prevPending = prev.pendingTools;
+  const nextPending = next.pendingTools;
+  if ((prevPending?.length ?? 0) !== (nextPending?.length ?? 0)) return false;
+  if (prevPending && nextPending) {
+    for (let i = 0; i < prevPending.length; i += 1) {
+      if (prevPending[i]?.callId !== nextPending[i]?.callId) return false;
+    }
+  }
   
   // Routing info: shallow compare if both exist
   if (prev.routingInfo !== next.routingInfo) {
@@ -191,6 +207,9 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
   collapsed,
   onToggleCollapse,
   toolResults,
+  executingTools,
+  queuedTools,
+  pendingTools,
   sessionId,
   matchingMessageIds,
   currentMatchMessageId,
@@ -224,12 +243,11 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
   return (
     <div
       className={cn(
-        'rounded-lg transition-all duration-200',
-        'min-w-0 max-w-full w-full', // Prevent horizontal overflow
+        'transition-colors duration-150',
+        'min-w-0 max-w-full w-full',
         isGroupRunning
-          ? 'border border-[var(--color-warning)]/30 shadow-sm shadow-[var(--color-warning)]/5'
-          : 'border border-[var(--color-border-subtle)]/60',
-        'bg-[var(--color-surface-1)]/10'
+          ? 'border-b border-[var(--color-warning)]/40'
+          : 'border-b border-[var(--color-border-subtle)]/50'
       )}
     >
       
@@ -238,17 +256,16 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
         type="button"
         onClick={handleToggle}
         className={cn(
-          "w-full min-w-0 text-left transition-colors",
-          "hover:bg-[var(--color-surface-2)]/20",
-          "focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30"
+          'w-full min-w-0 text-left',
+          'focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-accent-primary)]/30'
         )}
         aria-expanded={!collapsed}
         aria-controls={`message-group-content-${runKey}`}
       >
         <div className="flex items-center min-w-0 w-full">
           <div className={cn(
-            "flex items-center justify-center w-7 flex-shrink-0 self-stretch",
-            "border-r border-[var(--color-border-subtle)]/30"
+            'flex items-center justify-center w-6 flex-shrink-0 self-stretch',
+            'border-r border-[var(--color-border-subtle)]/20'
           )}>
             {collapsed ? (
               <ChevronRight size={12} className="text-[var(--color-text-dim)] transition-transform duration-150" />
@@ -272,7 +289,7 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
         <div id={`message-group-content-${runKey}`}>
           {/* Streaming indicator - shows when waiting for first content */}
           {showStreamingIndicator && (
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[var(--color-border-subtle)]/20">
+            <div className="flex items-center gap-2 px-3 py-2 border-t border-[var(--color-border-subtle)]/20">
               <StreamingIndicator 
                 isStreaming={true} 
                 message="thinking" 
@@ -288,6 +305,9 @@ export const MessageGroup: React.FC<MessageGroupProps> = memo(({
             isGroupRunning={isGroupRunning}
             assistantMessagesWithTools={assistantMessagesWithTools}
             toolResults={toolResults}
+            executingTools={executingTools}
+            queuedTools={queuedTools}
+            pendingTools={pendingTools}
             sessionId={sessionId}
             matchingMessageIds={matchingMessageIds}
             currentMatchMessageId={currentMatchMessageId}
@@ -317,6 +337,9 @@ interface MessageGroupContentProps {
   isGroupRunning: boolean;
   assistantMessagesWithTools: Set<string>;
   toolResults?: Map<string, ToolResultEvent>;
+  executingTools?: Record<string, { callId: string; name: string; arguments?: Record<string, unknown>; startedAt: number }>;
+  queuedTools?: Array<{ callId: string; name: string; arguments?: Record<string, unknown>; queuePosition: number; queuedAt: number }>;
+  pendingTools?: Array<{ callId: string; name: string; arguments?: Record<string, unknown> }>;
   sessionId?: string;
   matchingMessageIds: Set<string>;
   currentMatchMessageId?: string;
@@ -335,6 +358,9 @@ const MessageGroupContent: React.FC<MessageGroupContentProps> = memo(({
   isGroupRunning,
   assistantMessagesWithTools,
   toolResults,
+  executingTools,
+  queuedTools,
+  pendingTools,
   sessionId,
   matchingMessageIds,
   currentMatchMessageId,
@@ -347,7 +373,7 @@ const MessageGroupContent: React.FC<MessageGroupContentProps> = memo(({
   onRegenerate,
 }) => {
   return (
-    <div className="px-2 sm:px-3 md:px-4 lg:px-5 py-2 sm:py-2.5 md:py-3 space-y-1 border-t border-[var(--color-border-subtle)]/20 min-w-0 w-full">
+    <div className="px-2 sm:px-3 md:px-4 lg:px-5 py-1.5 sm:py-2 space-y-1 border-t border-[var(--color-border-subtle)]/20 min-w-0 w-full">
       {messages.map((message, msgIdx) => {
         const isLastMsg = msgIdx === messages.length - 1 && isLastGroup;
         const isStreaming = isLastMsg && message.role === 'assistant' && isGroupRunning;
@@ -405,6 +431,9 @@ const MessageGroupContent: React.FC<MessageGroupContentProps> = memo(({
                   messages={messagesForToolExecution}
                   isRunning={isGroupRunning && isLastAssistantInGroup}
                   toolResults={toolResults}
+                  executingTools={executingTools}
+                  queuedTools={queuedTools}
+                  pendingTools={pendingTools}
                   sessionId={sessionId}
                 />
               )}

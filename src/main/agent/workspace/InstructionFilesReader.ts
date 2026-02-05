@@ -412,13 +412,13 @@ export class InstructionFilesReader {
                   const file = await this.readFile(filePath, pattern.type);
                   if (file) files.push(file);
                 } catch {
-                  // File doesn't exist, continue
+                  // File doesn't exist - expected behavior when scanning optional locations
                 }
               }
             }
           }
         } catch {
-          // Directory doesn't exist, continue
+          // Directory doesn't exist - expected for optional instruction file locations
         }
       }
     }

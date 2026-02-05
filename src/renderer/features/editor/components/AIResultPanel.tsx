@@ -15,10 +15,10 @@ import {
   Sparkles,
   AlertTriangle,
   Info,
-  Loader2,
   FileCode,
   ClipboardPaste,
 } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { cn } from '../../../utils/cn';
 import { RendererLogger } from '../../../utils/logger';
 import type { EditorAIAction, EditorAIResult } from '../hooks/useEditorAI';
@@ -109,7 +109,7 @@ export const AIResultPanel: React.FC<AIResultPanelProps> = memo(({
             {action ? actionLabels[action] : 'AI Result'}
           </span>
           {isLoading && (
-            <Loader2 size={12} className="animate-spin text-[var(--color-accent-primary)]" />
+            <Spinner size="sm" className="w-3 h-3 text-[var(--color-accent-primary)]" />
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -144,7 +144,7 @@ export const AIResultPanel: React.FC<AIResultPanelProps> = memo(({
           {isLoading && (
             <div className="flex items-center justify-center py-8">
               <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
-                <Loader2 size={16} className="animate-spin" />
+                <Spinner size="sm" />
                 <span>Analyzing code...</span>
               </div>
             </div>

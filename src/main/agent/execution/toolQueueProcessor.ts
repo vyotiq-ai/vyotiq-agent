@@ -106,6 +106,11 @@ export class ToolQueueProcessor {
 
     const controller = this.activeControllers.get(session.state.id);
 
+    // Emit initial queue state so UI can show pending tools immediately
+    if (session.toolQueue && session.toolQueue.length > 0) {
+      this.emitToolQueuedEvent(session.state.id, runId, session.toolQueue);
+    }
+
     while (session.toolQueue && session.toolQueue.length > 0) {
       if (controller?.signal.aborted) {
         this.logger.info('Tool queue processing cancelled', {
@@ -176,6 +181,10 @@ export class ToolQueueProcessor {
           for (const tool of executableTools) {
             if (controller?.signal.aborted) break;
             await this.executeTool(session, tool, runId);
+            // Emit updated queue state after each tool completes (for remaining queue)
+            if (session.toolQueue && session.toolQueue.length > 0) {
+              this.emitToolQueuedEvent(session.state.id, runId, session.toolQueue);
+            }
           }
         }
       }
@@ -214,6 +223,17 @@ export class ToolQueueProcessor {
         status: 'running',
         timestamp: Date.now(),
         metadata: { callId: tool.callId, parallel: true },
+      });
+
+      // Emit tool-started event for each parallel tool for immediate UI feedback
+      this.emitEvent({
+        type: 'tool-started',
+        sessionId: session.state.id,
+        runId,
+        timestamp: Date.now(),
+        toolCall: tool,
+        executionOrder: tools.indexOf(tool) + 1,
+        totalInBatch: tools.length,
       });
     }
 
@@ -423,6 +443,18 @@ export class ToolQueueProcessor {
       status: 'executing',
       message: `Executing: ${tool.name}`,
       timestamp: Date.now(),
+    });
+
+    // Emit tool-started event BEFORE execution for immediate UI feedback
+    // This enables the UI to show the tool as "running" instantly
+    this.emitEvent({
+      type: 'tool-started',
+      sessionId: session.state.id,
+      runId,
+      timestamp: Date.now(),
+      toolCall: tool,
+      executionOrder: 1,
+      totalInBatch: 1,
     });
 
     this.emitEvent({
@@ -857,5 +889,27 @@ export class ToolQueueProcessor {
     const command = args.command as string | undefined;
     const query = (args.pattern || args.query) as string | undefined;
     return path || command || query;
+  }
+
+  /**
+   * Emit tool-queued event to notify UI about pending tools
+   * This enables showing users what tools are waiting to be executed
+   */
+  private emitToolQueuedEvent(sessionId: string, runId: string, tools: ToolCallPayload[]): void {
+    if (!tools || tools.length === 0) return;
+
+    this.emitEvent({
+      type: 'tool-queued',
+      sessionId,
+      runId,
+      timestamp: Date.now(),
+      tools: tools.map((tool, index) => ({
+        callId: tool.callId,
+        name: tool.name,
+        arguments: tool.arguments as Record<string, unknown> | undefined,
+        queuePosition: index + 1,
+      })),
+      totalQueued: tools.length,
+    });
   }
 }

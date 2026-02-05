@@ -5,7 +5,7 @@
  * Displays a compact branch indicator when viewing a non-main branch.
  */
 import React, { memo, useState, useCallback } from 'react';
-import { GitBranch, ChevronDown, Plus, Trash2, Check } from 'lucide-react';
+import { GitBranch, ChevronDown, Trash2, Check } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import type { ConversationBranch } from '../../../../shared/types';
 
@@ -46,23 +46,18 @@ export const BranchNavigation: React.FC<BranchNavigationProps> = memo(({
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono',
-          'transition-all duration-200',
+          'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono',
+          'transition-all duration-150',
           activeBranch
-            ? 'bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)] border border-[var(--color-accent-primary)]/20'
-            : 'bg-[var(--color-surface-1)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)]',
-          'hover:bg-[var(--color-surface-2)]',
+            ? 'text-[var(--color-accent-primary)] border border-[var(--color-accent-primary)]/25'
+            : 'text-[var(--color-text-muted)] border border-[var(--color-border-subtle)]/50',
+          'hover:text-[var(--color-text-secondary)] hover:border-[var(--color-border-subtle)]',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
         )}
       >
         <GitBranch size={10} />
         <span>{activeBranch?.name || 'main'}</span>
         <ChevronDown size={10} className={cn('transition-transform', isOpen && 'rotate-180')} />
-        {branches.length > 0 && (
-          <span className="px-1 py-0.5 bg-[var(--color-surface-2)] rounded text-[8px]">
-            {branches.length + 1}
-          </span>
-        )}
       </button>
 
       {/* Dropdown */}
@@ -138,13 +133,6 @@ export const BranchNavigation: React.FC<BranchNavigationProps> = memo(({
               </div>
             ))}
 
-            {/* Footer info */}
-            <div className="mt-1 pt-1 px-3 pb-1 border-t border-[var(--color-border-subtle)]">
-              <p className="text-[8px] text-[var(--color-text-dim)] flex items-center gap-1">
-                <Plus size={8} className="opacity-60" aria-hidden="true" />
-                Click fork button on any message to create a branch
-              </p>
-            </div>
           </div>
         </>
       )}

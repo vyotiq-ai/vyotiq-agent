@@ -12,7 +12,6 @@ import {
   FilePlus,
   FileX,
   History,
-  Loader2,
   RefreshCw,
   RotateCcw,
   RotateCw,
@@ -21,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { Spinner } from '../../components/ui/LoadingState';
 import { formatRelativeTimeWithSuffix, formatFullDateTime } from '../../utils/timeFormatting';
 import { useUndoHistory } from './useUndoHistory';
 import { ContentPreview } from './components/ContentPreview';
@@ -250,7 +250,7 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
         {statusMessage && <div className={cn('px-3 py-2 text-[10px] border-b', statusMessage.type === 'success' ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]' : 'bg-[var(--color-error)]/10 text-[var(--color-error)]')} role="status" aria-live="polite">{statusMessage.text}</div>}
         <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin" role="list" aria-label="Change history">
           {!sessionId ? <div className="flex flex-col items-center justify-center h-full text-center p-4"><History size={32} className="text-[var(--color-text-dim)] mb-2" aria-hidden="true" /><p className="text-xs text-[var(--color-text-muted)]">No session</p></div>
-          : isLoading && groupedHistory.length === 0 ? <div className="flex items-center justify-center h-full" role="status" aria-label="Loading"><Loader2 size={20} className="animate-spin text-[var(--color-text-muted)]" aria-hidden="true" /></div>
+          : isLoading && groupedHistory.length === 0 ? <div className="flex items-center justify-center h-full" role="status" aria-label="Loading"><Spinner size="md" colorVariant="secondary" /></div>
           : error ? <div className="flex flex-col items-center justify-center h-full p-4" role="alert"><p className="text-xs text-[var(--color-error)]">{error}</p><button onClick={() => void refresh()} className="mt-2 text-[10px] text-[var(--color-accent-primary)] hover:underline" aria-label="Retry loading history">Retry</button></div>
           : filteredHistory.length === 0 ? <div className="flex flex-col items-center justify-center h-full p-4"><History size={32} className="text-[var(--color-text-dim)] mb-2" aria-hidden="true" /><p className="text-xs text-[var(--color-text-muted)]">{searchQuery ? 'No matches' : 'No changes'}</p></div>
           : filteredHistory.map(g => <RunGroup key={g.runId} group={g} onUndoChange={handleUndoChange} onRedoChange={handleRedoChange} onUndoRun={handleUndoRun} isProcessing={isProcessing} searchQuery={searchQuery} />)}

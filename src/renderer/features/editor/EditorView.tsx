@@ -16,8 +16,9 @@
  */
 
 import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
-import { Loader2, Save, Settings, FolderOpen, FileText, RotateCcw, Layout, Code, Terminal, Moon, Type, Keyboard, GitCompare, Search, Replace, AlignJustify, Hash, AlertCircle } from 'lucide-react';
+import { Save, Settings, FolderOpen, FileText, RotateCcw, Layout, Code, Terminal, Moon, Type, Keyboard, GitCompare, Search, Replace, AlignJustify, Hash, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { Spinner } from '../../components/ui/LoadingState';
 import { useEditor } from '../../state/EditorProvider';
 import { useUI } from '../../state/UIProvider';
 import {
@@ -41,8 +42,7 @@ import type { Command } from './components/CommandPalette';
 import type { QuickOpenFile } from './components/QuickOpen';
 import type { DocumentSymbol } from './components/GoToSymbol';
 import { useEditorAI, type EditorAIAction } from './hooks/useEditorAI';
-import { useKeyboardShortcuts as _useKeyboardShortcuts, formatShortcut } from './hooks/useKeyboardShortcuts';
-import { useDocumentSymbols as _useDocumentSymbols } from './hooks/useDocumentSymbols';
+import { formatShortcut } from './hooks/useKeyboardShortcuts';
 import { useActiveWorkspace } from '../../hooks/useActiveWorkspace';
 
 export { formatShortcut };
@@ -826,7 +826,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ className }) => {
             {isLoading && (
               <div className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--color-surface-base)]/80 backdrop-blur-sm">
                 <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
-                  <Loader2 size={16} className="animate-spin" />
+                  <Spinner size="sm" />
                   <span className="text-[11px] font-mono">Loading...</span>
                 </div>
               </div>

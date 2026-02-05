@@ -737,8 +737,9 @@ export class ToolRegistry {
                 const parsed = JSON.parse(trimmed);
                 normalized[key] = [parsed];
                 logger.debug('Wrapped single JSON object in array', { key });
-              } catch {
+              } catch (err) {
                 // Not valid JSON, split by delimiter
+                logger.debug('Failed to parse JSON object, splitting by delimiter', { key, error: err instanceof Error ? err.message : String(err) });
                 normalized[key] = value.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
               }
             } else {
@@ -831,8 +832,9 @@ export class ToolRegistry {
       while ((match = objectPattern.exec(input)) !== null) {
         try {
           items.push(JSON.parse(match[0]));
-        } catch {
-          // Skip malformed objects
+        } catch (err) {
+          // Skip malformed objects - this is expected during heuristic parsing
+          logger.debug('Skipped malformed object during array extraction', { fragment: match[0].slice(0, 50), error: err instanceof Error ? err.message : String(err) });
         }
       }
     }
@@ -862,8 +864,9 @@ export class ToolRegistry {
     
     try {
       return JSON.parse(fixed);
-    } catch {
-      // Recovery failed
+    } catch (err) {
+      // Recovery failed - this is expected, return null to signal no recovery possible
+      logger.debug('JSON recovery failed', { error: err instanceof Error ? err.message : String(err) });
       return null;
     }
   }

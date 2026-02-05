@@ -19,7 +19,7 @@ import { ensureMonacoEnvironment } from '../utils/monacoEnvironment';
 import { registerAIInlineCompletionProvider, registerAICodeActionProvider, registerAICodeLensProvider, setAIActionCallback } from '../utils/monacoAIProvider';
 import { registerMonacoLSPProviders } from '../utils/monacoLSPProvider';
 import type { EditorSettings, EditorTab } from '../types';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { EditorContextMenu, type EditorContextMenuAction } from './EditorContextMenu';
 import { AIContextMenu } from './AIContextMenu';
 import { AIResultPanel } from './AIResultPanel';
@@ -1529,7 +1529,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
     return (
       <div className={cn('flex items-center justify-center h-full bg-[var(--color-surface-1)]', className)}>
         <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
-          <Loader2 size={16} className="animate-spin" />
+          <Spinner size="sm" />
           <span className="text-[11px] font-mono">Loading...</span>
         </div>
       </div>
@@ -1620,7 +1620,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = memo(({
       {/* Inline completion loading indicator */}
       {enableAI && inlineCompletion.isLoading && (
         <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-1 rounded bg-[var(--color-surface-2)]/80 backdrop-blur-sm">
-          <Loader2 size={10} className="animate-spin text-[var(--color-accent-primary)]" />
+          <Spinner size="sm" className="w-2.5 h-2.5 text-[var(--color-accent-primary)]" />
           <span className="text-[9px] text-[var(--color-text-muted)] font-mono">AI</span>
         </div>
       )}

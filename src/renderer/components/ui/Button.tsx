@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
 import { cn } from '../../utils/cn';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from './LoadingState';
 import { useMicroInteraction, useReducedMotion } from '../../utils';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -12,6 +12,24 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     /** Whether to show rounded corners (default: true) */
     rounded?: boolean;
 }
+
+// Map button sizes to spinner sizes
+const spinnerSizeMap = {
+    xs: 'sm' as const,
+    sm: 'sm' as const,
+    md: 'sm' as const,
+    lg: 'sm' as const,
+    icon: 'sm' as const,
+};
+
+// Custom spinner sizing classes for buttons
+const spinnerClassMap = {
+    xs: 'w-2.5 h-2.5',
+    sm: 'w-3 h-3',
+    md: 'w-3 h-3',
+    lg: 'w-3.5 h-3.5',
+    icon: 'w-3.5 h-3.5',
+};
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     ({ className, variant = 'primary', size = 'md', isLoading, leftIcon, rightIcon, children, disabled, rounded = true, ...props }, ref) => {
@@ -39,14 +57,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             icon: 'h-7 w-7 p-0 flex items-center justify-center',
         };
 
-        const iconSizes = {
-            xs: 10,
-            sm: 12,
-            md: 12,
-            lg: 14,
-            icon: 14,
-        };
-
         return (
             <button
                 ref={ref}
@@ -65,7 +75,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
                 {...(!disabled && !isLoading ? handlers : {})}
                 {...props}
             >
-                {isLoading && <Loader2 size={iconSizes[size]} className="animate-spin" />}
+                {isLoading && <Spinner size={spinnerSizeMap[size]} className={spinnerClassMap[size]} />}
                 {!isLoading && leftIcon}
                 {children}
                 {!isLoading && rightIcon}

@@ -9,13 +9,13 @@
  * - Early returns when no changes needed
  */
 
-import type { AgentSessionState } from '../../../shared/types';
+import type { AgentSessionState, StreamDeltaEvent } from '../../../shared/types';
 import type { AgentUIState } from '../agentReducer';
-import { safeCreateSet } from '../agentReducerUtils';
+import { safeCreateSet, updateAssistantMessageToolCall } from '../agentReducerUtils';
 
 export type StreamingAction =
-  | { type: 'STREAM_DELTA'; payload: { sessionId: string; messageId?: string; delta: string } }
-  | { type: 'STREAM_DELTA_BATCH'; payload: { sessionId: string; messageId?: string; delta: string } }
+  | { type: 'STREAM_DELTA'; payload: { sessionId: string; messageId?: string; delta?: string; toolCall?: StreamDeltaEvent['toolCall'] } }
+  | { type: 'STREAM_DELTA_BATCH'; payload: { sessionId: string; messageId?: string; delta?: string; toolCall?: StreamDeltaEvent['toolCall'] } }
   | { type: 'STREAM_THINKING_DELTA'; payload: { sessionId: string; messageId?: string; delta: string } }
   | { type: 'RUN_STATUS'; payload: { sessionId: string; status: AgentSessionState['status']; runId: string } };
 
@@ -187,19 +187,39 @@ export function streamingReducer(
   switch (action.type) {
     case 'STREAM_DELTA':
     case 'STREAM_DELTA_BATCH': {
-      // Optimized delta handling - only update what's needed
-      const sessions = updateAssistantMessageContent(state.sessions, action.payload.sessionId, action.payload.messageId, action.payload.delta);
+      const { sessionId, messageId, delta, toolCall } = action.payload;
       
-      // Early return if no change
-      if (sessions === state.sessions) {
-        return state;
+      // Handle tool call streaming
+      if (toolCall) {
+        const sessions = updateAssistantMessageToolCall(state.sessions, sessionId, messageId, toolCall);
+        
+        if (sessions === state.sessions) {
+          return state;
+        }
+        
+        const streamingSessions = safeCreateSet(state.streamingSessions);
+        streamingSessions.add(sessionId);
+        
+        return { ...state, sessions, streamingSessions };
       }
       
-      // Track streaming state
-      const streamingSessions = safeCreateSet(state.streamingSessions);
-      streamingSessions.add(action.payload.sessionId);
+      // Handle text delta streaming
+      if (delta) {
+        const sessions = updateAssistantMessageContent(state.sessions, sessionId, messageId, delta);
+        
+        // Early return if no change
+        if (sessions === state.sessions) {
+          return state;
+        }
+        
+        // Track streaming state
+        const streamingSessions = safeCreateSet(state.streamingSessions);
+        streamingSessions.add(sessionId);
+        
+        return { ...state, sessions, streamingSessions };
+      }
       
-      return { ...state, sessions, streamingSessions };
+      return state;
     }
 
     case 'STREAM_THINKING_DELTA': {

@@ -19,10 +19,17 @@ export type TaskAction =
   | { type: 'CLEAR_SESSION_TASK_STATE'; payload: string }
   | { type: 'AGENT_STATUS_UPDATE'; payload: { sessionId: string; status: AgentStatusInfo } }
   | { type: 'CONTEXT_METRICS_UPDATE'; payload: { sessionId: string; provider: LLMProviderName; modelId?: string; runId?: string; timestamp: number; metrics: ContextMetricsSnapshot } }
+  // Tool execution tracking for real-time UI feedback
+  | { type: 'TOOL_EXECUTION_START'; payload: { runId: string; callId: string; name: string; arguments?: Record<string, unknown> } }
+  | { type: 'TOOL_EXECUTION_FINISH'; payload: { runId: string; callId: string } }
+  // Tool queue tracking - shows what's waiting to run
+  | { type: 'TOOL_QUEUED'; payload: { runId: string; tools: Array<{ callId: string; name: string; arguments?: Record<string, unknown>; queuePosition: number }> } }
+  | { type: 'TOOL_DEQUEUED'; payload: { runId: string; callId: string } }
   // Tool result actions for rich content display
   | { type: 'TOOL_RESULT_RECEIVE'; payload: { runId: string; callId: string; toolName: string; result: { success: boolean; output: string; metadata?: Record<string, unknown> } } }
   | { type: 'INLINE_ARTIFACT_ADD'; payload: { runId: string; artifact: InlineArtifactState } }
   | { type: 'RUN_CLEANUP'; payload: string }
+  | { type: 'RUN_TOOLSTATE_CLEAR'; payload: string }
   // Media output actions (generated images/audio from multimodal models)
   | { type: 'MEDIA_OUTPUT_RECEIVE'; payload: { sessionId: string; messageId: string; mediaType: 'image' | 'audio'; data: string; mimeType: string } }
   // Task-based routing decision
@@ -180,6 +187,112 @@ export function taskReducer(
       };
     }
 
+    // Tool execution tracking for real-time UI feedback
+    case 'TOOL_EXECUTION_START': {
+      const { runId, callId, name, arguments: args } = action.payload;
+      const runTools = state.executingTools[runId] || {};
+      
+      return {
+        ...state,
+        executingTools: {
+          ...state.executingTools,
+          [runId]: {
+            ...runTools,
+            [callId]: {
+              callId,
+              name,
+              arguments: args,
+              startedAt: Date.now(),
+            },
+          },
+        },
+      };
+    }
+
+    case 'TOOL_EXECUTION_FINISH': {
+      const { runId, callId } = action.payload;
+      const runTools = state.executingTools[runId];
+      if (!runTools || !runTools[callId]) {
+        return state;
+      }
+      
+      // Remove the finished tool from executing tools
+      const { [callId]: _removed, ...remainingTools } = runTools;
+      
+      // If no more tools executing for this run, remove the run entry
+      if (Object.keys(remainingTools).length === 0) {
+        const { [runId]: _removedRun, ...remainingRuns } = state.executingTools;
+        return {
+          ...state,
+          executingTools: remainingRuns,
+        };
+      }
+      
+      return {
+        ...state,
+        executingTools: {
+          ...state.executingTools,
+          [runId]: remainingTools,
+        },
+      };
+    }
+
+    // Tool queue tracking - shows what's waiting to run
+    case 'TOOL_QUEUED': {
+      const { runId, tools } = action.payload;
+      const now = Date.now();
+      
+      // Replace the entire queue for this run with the new tools
+      return {
+        ...state,
+        queuedTools: {
+          ...state.queuedTools,
+          [runId]: tools.map(tool => ({
+            callId: tool.callId,
+            name: tool.name,
+            arguments: tool.arguments,
+            queuePosition: tool.queuePosition,
+            queuedAt: now,
+          })),
+        },
+      };
+    }
+
+    case 'TOOL_DEQUEUED': {
+      const { runId, callId } = action.payload;
+      const runQueue = state.queuedTools[runId];
+      
+      if (!runQueue) {
+        return state;
+      }
+      
+      // Remove the tool from the queue
+      const remainingQueue = runQueue.filter(t => t.callId !== callId);
+      
+      // Update queue positions for remaining tools
+      const updatedQueue = remainingQueue.map((tool, index) => ({
+        ...tool,
+        queuePosition: index + 1,
+      }));
+      
+      // If no more tools in queue, remove the run entry
+      if (updatedQueue.length === 0) {
+        const { [runId]: _removedRun, ...remainingRuns } = state.queuedTools;
+        return {
+          ...state,
+          queuedTools: remainingRuns,
+        };
+      }
+      
+      return {
+        ...state,
+        queuedTools: {
+          ...state.queuedTools,
+          [runId]: updatedQueue,
+        },
+      };
+    }
+
     // Tool result actions for rich content display
     case 'TOOL_RESULT_RECEIVE': {
       const { runId, callId, toolName, result } = action.payload;
@@ -195,8 +308,56 @@ export function taskReducer(
         currentToolResultsKeys: Object.keys(state.toolResults),
       });
 
+      // Also remove from executing tools when result is received
+      let executingTools = state.executingTools;
+      const runTools = executingTools[runId];
+      if (runTools) {
+        let removedCallId: string | undefined;
+        if (runTools[callId]) {
+          removedCallId = callId;
+        } else {
+          // Fallback: remove by tool name if callId mismatch
+          const match = Object.values(runTools).find((tool) => tool.name === toolName);
+          removedCallId = match?.callId;
+        }
+
+        if (removedCallId) {
+          const { [removedCallId]: _removed, ...remainingTools } = runTools;
+        if (Object.keys(remainingTools).length === 0) {
+          const { [runId]: _removedRun, ...remainingRuns } = executingTools;
+          executingTools = remainingRuns;
+        } else {
+          executingTools = {
+            ...executingTools,
+            [runId]: remainingTools,
+          };
+        }
+        }
+      }
+
+      // Also remove from queued tools in case tool-started was missed
+      let queuedTools = state.queuedTools;
+      const runQueue = queuedTools[runId];
+      if (runQueue && runQueue.length > 0) {
+        const filteredQueue = runQueue.filter((tool) => tool.callId !== callId && tool.name !== toolName);
+        if (filteredQueue.length === 0) {
+          const { [runId]: _removedRun, ...remainingRuns } = queuedTools;
+          queuedTools = remainingRuns;
+        } else if (filteredQueue.length !== runQueue.length) {
+          queuedTools = {
+            ...queuedTools,
+            [runId]: filteredQueue.map((tool, index) => ({
+              ...tool,
+              queuePosition: index + 1,
+            })),
+          };
+        }
+      }
+
       return {
         ...state,
+        executingTools,
+        queuedTools,
         toolResults: {
           ...state.toolResults,
           [runId]: {
@@ -214,7 +375,7 @@ export function taskReducer(
 
     case 'INLINE_ARTIFACT_ADD': {
       const { runId, artifact } = action.payload;
-      const existing = state.inlineArtifacts[runId] || [];
+      const existing = state.inlineArtifacts[runId] || {};
 
       return {
         ...state,
@@ -229,11 +390,27 @@ export function taskReducer(
       const runId = action.payload;
       const { [runId]: _deletedResults, ...remainingResults } = state.toolResults;
       const { [runId]: _deletedArtifacts, ...remainingArtifacts } = state.inlineArtifacts;
+      const { [runId]: _deletedExecuting, ...remainingExecuting } = state.executingTools;
+      const { [runId]: _deletedQueued, ...remainingQueued } = state.queuedTools;
 
       return {
         ...state,
         toolResults: remainingResults,
         inlineArtifacts: remainingArtifacts,
+        executingTools: remainingExecuting,
+        queuedTools: remainingQueued,
+      };
+    }
+
+    case 'RUN_TOOLSTATE_CLEAR': {
+      const runId = action.payload;
+      const { [runId]: _deletedExecuting, ...remainingExecuting } = state.executingTools;
+      const { [runId]: _deletedQueued, ...remainingQueued } = state.queuedTools;
+
+      return {
+        ...state,
+        executingTools: remainingExecuting,
+        queuedTools: remainingQueued,
       };
     }
 

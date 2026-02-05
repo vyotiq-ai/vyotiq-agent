@@ -7,7 +7,7 @@
 
 import { createLogger } from '../../logger';
 import type { ToolRegistry } from '../registry/ToolRegistry';
-import type { ToolCategory } from '../types';
+import type { ToolCategory, ToolExecutionContext } from '../types';
 
 const logger = createLogger('DynamicToolFactory');
 
@@ -112,8 +112,8 @@ export class DynamicToolFactory {
           },
         },
       },
-      execute: async (params: Record<string, unknown>) => {
-        const result = await this.executeComposite(options, params);
+      execute: async (params: Record<string, unknown>, context: ToolExecutionContext) => {
+        const result = await this.executeComposite(options, params, context);
         return {
           toolName: name,
           success: true,
@@ -135,7 +135,8 @@ export class DynamicToolFactory {
    */
   private async executeComposite(
     options: ToolCreationOptions,
-    initialInput: Record<string, unknown>
+    initialInput: Record<string, unknown>,
+    context: ToolExecutionContext
   ): Promise<unknown> {
     const stepResults: StepResult[] = [];
     let currentInput = initialInput;
@@ -166,8 +167,8 @@ export class DynamicToolFactory {
       const resolvedInput = this.resolveInput(step.input, stepResults, currentInput);
 
       try {
-        // Execute the step
-        const result = await tool.execute(resolvedInput, {} as never);
+        // Execute the step with proper context
+        const result = await tool.execute(resolvedInput, context);
         stepResults.push({ success: true, output: result });
         currentInput = { ...currentInput, [`step${i + 1}`]: result };
       } catch (err) {

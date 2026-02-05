@@ -13,9 +13,9 @@ import {
   TestTube,
   Bug,
   Wand2,
-  Loader2,
   X,
 } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { cn } from '../../../utils/cn';
 import type { EditorAIAction } from '../hooks/useEditorAI';
 
@@ -135,7 +135,7 @@ export const TabAIMenu: React.FC<TabAIMenuProps> = memo(({
         aria-expanded={isOpen}
       >
         {isLoading ? (
-          <Loader2 size={12} className="animate-spin" />
+          <Spinner size="sm" className="w-3 h-3" />
         ) : (
           <Sparkles size={12} />
         )}

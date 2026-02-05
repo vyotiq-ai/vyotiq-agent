@@ -10,6 +10,7 @@ import type {
   ArtifactEvent,
   AgentStatusEvent,
   ToolResultEvent,
+  ToolCallEvent,
   ContextMetricsEvent,
   RoutingDecisionEvent,
   StreamDeltaEvent,
@@ -217,6 +218,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   // Buffer terminal output bursts to avoid dispatching (and string-appending) per chunk.
   const terminalBufferRef = useRef(new Map<number, Array<{ stream: 'stdout' | 'stderr'; data: string }>>());
   const terminalFlushTimerRef = useRef<number | null>(null);
+  const lastAgentStatusRef = useRef<Record<string, { status: string; message?: string; timestamp: number }>>({});
 
   const flushTerminalBuffers = useCallback(() => {
     const buffers = terminalBufferRef.current;
@@ -319,9 +321,31 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           });
           if (event.status === 'idle' || event.status === 'error') {
             dispatchRef.current({ type: 'PENDING_TOOL_REMOVE', payload: event.runId });
+            if (event.runId) {
+              dispatchRef.current({ type: 'RUN_TOOLSTATE_CLEAR', payload: event.runId });
+            }
+          }
+          if (event.status === 'awaiting-confirmation' && event.runId) {
+            // Awaiting approval: ensure no tools show as running/queued
+            dispatchRef.current({ type: 'RUN_TOOLSTATE_CLEAR', payload: event.runId });
           }
           break;
         case 'tool-call': {
+          // Track tool execution start for immediate UI feedback
+          // This enables showing the tool as "running" instantly
+          const toolCallEvent = event as ToolCallEvent;
+          if (toolCallEvent.toolCall && toolCallEvent.runId && !event.requiresApproval) {
+            dispatchRef.current({
+              type: 'TOOL_EXECUTION_START',
+              payload: {
+                runId: toolCallEvent.runId,
+                callId: toolCallEvent.toolCall.callId,
+                name: toolCallEvent.toolCall.name,
+                arguments: toolCallEvent.toolCall.arguments as Record<string, unknown> | undefined,
+              },
+            });
+          }
+          
           // Only add to pending confirmations if approval is actually required
           // This prevents flickering when tools auto-execute in yolo mode
           if (event.requiresApproval) {
@@ -353,6 +377,43 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
               callId,
               toolName: toolResultEvent.result.toolName,
               result: toolResultEvent.result,
+            },
+          });
+          break;
+        }
+
+        case 'tool-queued': {
+          // Track queued tools for immediate UI feedback
+          // Shows users what tools are waiting to execute
+          const queuedEvent = event as import('../../../shared/types').ToolQueuedEvent;
+          dispatchRef.current({
+            type: 'TOOL_QUEUED',
+            payload: {
+              runId: queuedEvent.runId,
+              tools: queuedEvent.tools,
+            },
+          });
+          break;
+        }
+
+        case 'tool-started': {
+          // Tool is now actively executing (distinct from tool-call which may require approval)
+          const startedEvent = event as import('../../../shared/types').ToolStartedEvent;
+          // Remove from queue and add to executing
+          dispatchRef.current({
+            type: 'TOOL_DEQUEUED',
+            payload: {
+              runId: startedEvent.runId,
+              callId: startedEvent.toolCall.callId,
+            },
+          });
+          dispatchRef.current({
+            type: 'TOOL_EXECUTION_START',
+            payload: {
+              runId: startedEvent.runId,
+              callId: startedEvent.toolCall.callId,
+              name: startedEvent.toolCall.name,
+              arguments: startedEvent.toolCall.arguments as Record<string, unknown> | undefined,
             },
           });
           break;
@@ -413,6 +474,32 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
         case 'agent-status': {
           // Agent status updates (summarizing, analyzing, iteration progress, etc.)
           const statusEvent = event as AgentStatusEvent;
+          const last = lastAgentStatusRef.current[statusEvent.sessionId];
+          const now = Date.now();
+          const isSameStatus = last?.status === statusEvent.status;
+          const isSameMessage = last?.message === statusEvent.message;
+          const recentlyUpdated = last ? (now - last.timestamp) < 1200 : false;
+
+          // Drop noisy, repetitive executing updates
+          if (
+            statusEvent.status === 'executing' &&
+            isSameStatus &&
+            recentlyUpdated &&
+            (!statusEvent.message || statusEvent.message.startsWith('Executing:'))
+          ) {
+            break;
+          }
+
+          if (isSameStatus && isSameMessage && recentlyUpdated) {
+            break;
+          }
+
+          lastAgentStatusRef.current[statusEvent.sessionId] = {
+            status: statusEvent.status,
+            message: statusEvent.message,
+            timestamp: now,
+          };
+
           dispatchRef.current({
             type: 'AGENT_STATUS_UPDATE',
             payload: {

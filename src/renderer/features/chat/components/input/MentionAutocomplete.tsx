@@ -5,8 +5,9 @@
  * Features CLI aesthetic with monospace fonts, subtle borders, and smooth animations.
  */
 import React, { memo, useRef, useEffect } from 'react';
-import { File, FolderOpen, Code2, Loader2 } from 'lucide-react';
+import { File, FolderOpen, Code2 } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import type { MentionItem } from '../../hooks/useMentions';
 
 // =============================================================================
@@ -231,14 +232,14 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = memo(({
         </div>
         
         {isLoading && (
-          <Loader2 size={10} className="text-[var(--color-accent-primary)] animate-spin" />
+          <Spinner size="sm" colorVariant="primary" className="w-2.5 h-2.5" />
         )}
       </div>
 
       {/* Loading state */}
       {isLoading && suggestions.length === 0 && (
         <div className="px-3 py-6 flex flex-col items-center justify-center gap-2 text-[var(--color-text-muted)]">
-          <Loader2 size={16} className="animate-spin text-[var(--color-accent-primary)]" />
+          <Spinner size="sm" colorVariant="primary" />
           <span className="text-[9px]">scanning workspace...</span>
         </div>
       )}

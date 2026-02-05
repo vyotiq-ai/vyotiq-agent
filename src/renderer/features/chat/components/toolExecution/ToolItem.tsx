@@ -1,31 +1,20 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  X as XIcon,
-  FileText,
-  Copy,
-} from 'lucide-react';
 
 import { cn } from '../../../../utils/cn';
 import { cleanTerminalOutput } from '../../../../utils/ansi';
 import { useTerminalStream } from '../../../../hooks';
-import { ToolIconDisplay } from '../../../../components/ui/ToolIcons';
 import {
   formatDurationMs,
   formatElapsed,
   getDurationMsFromMetadata,
   getReadMetadataInfo,
-  getToolTarget,
 } from '../../utils/toolDisplay';
+import { getToolActionDescription, type ToolStatus } from '../../utils/toolActionDescriptions';
 
 import { ResearchResultPreview } from './ResearchResultPreview';
 import { LiveFetchPreview } from './LiveFetchPreview';
 import { AutoFetchPreview } from './AutoFetchPreview';
 import { TerminalOutputPreview } from './TerminalOutputPreview';
-import { DynamicToolIndicator } from '../DynamicToolIndicator';
 import { FileChangeDiff } from './FileChangeDiff';
 
 import type { ToolCall } from './types';
@@ -52,13 +41,20 @@ export const ToolItem: React.FC<{
   isLast: boolean;
   onOpenFile?: (path: string) => void;
 }> = memo(({ tool, isExpanded, onToggle, isLast, onOpenFile }) => {
-  const target = getToolTarget(tool.arguments, tool.name, tool._argsJson);
+  const isQueued = tool.status === 'queued';
   const isActive = tool.status === 'running';
   const hasError = tool.status === 'error';
   const isSuccess = tool.status === 'completed';
+  const isPending = tool.status === 'pending';
   
-  // Determine tool status for icon coloring
-  const toolStatus = isActive ? 'running' : hasError ? 'error' : 'completed';
+  // Determine tool status for descriptions styling
+  const toolStatus: ToolStatus = 
+    isQueued ? 'queued' : isActive ? 'running' : hasError ? 'error' : isPending ? 'pending' : 'completed';
+
+  // Generate descriptive action text based on tool, status and arguments
+  const actionDescription = useMemo(() => {
+    return getToolActionDescription(tool.name, toolStatus, tool.arguments || {}, tool._argsJson);
+  }, [tool.name, toolStatus, tool.arguments, tool._argsJson]);
 
   // Check if this is a file operation tool
   const isFileOperation = tool.name === 'write' || tool.name === 'edit' || tool.name === 'create_file';
@@ -72,14 +68,14 @@ export const ToolItem: React.FC<{
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (!isActive || !tool.startTime) return;
+    if ((!isActive && !isQueued) || !tool.startTime) return;
 
     const updateElapsed = () => setElapsed(formatElapsed(tool.startTime!));
     updateElapsed();
     // Update every 100ms for smoother elapsed time display
     const interval = setInterval(updateElapsed, 100);
     return () => clearInterval(interval);
-  }, [isActive, tool.startTime]);
+  }, [isActive, isQueued, tool.startTime]);
 
   // Check if this is a terminal/run command tool
   const isTerminalTool = tool.name === 'run' || tool.name.includes('terminal') || tool.name.includes('command');
@@ -172,9 +168,9 @@ export const ToolItem: React.FC<{
           role={hasExpandableDetails ? 'button' : undefined}
           tabIndex={hasExpandableDetails ? 0 : undefined}
           className={cn(
-            'flex items-center gap-2 py-1 min-w-0 w-full',
-            'hover:bg-[var(--color-surface-2)]/40 rounded px-2 -mx-2',
-            'transition-all duration-150',
+              'flex items-center gap-2 py-0.5 min-w-0 w-full',
+              'px-1 -mx-1',
+              'transition-colors duration-150',
             'outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30',
             hasExpandableDetails ? 'cursor-pointer' : 'cursor-default',
           )}
@@ -188,54 +184,21 @@ export const ToolItem: React.FC<{
           }}
           aria-expanded={hasExpandableDetails ? isExpanded : undefined}
         >
-          {/* Status indicator with subtle background */}
-          <span className={cn(
-            'flex items-center justify-center w-4 h-4 rounded flex-shrink-0',
-            isActive && 'bg-[var(--color-warning)]/10',
-            hasError && 'bg-[var(--color-error)]/10',
-            isSuccess && 'bg-[var(--color-success)]/10',
-          )}>
-            {isActive ? (
-              <Loader2 size={10} className="text-[var(--color-warning)] animate-spin" />
-            ) : hasError ? (
-              <XIcon size={10} className="text-[var(--color-error)]" />
-            ) : (
-              <Check size={10} className="text-[var(--color-success)]" />
+          {/* Descriptive action text showing what the tool is doing */}
+          <span
+            className={cn(
+              'text-[10px] font-medium truncate min-w-0',
+              'max-w-[40vw] sm:max-w-[50vw] md:max-w-[400px]',
+              isQueued && 'text-[var(--color-info)]',
+              isActive && 'text-[var(--color-warning)]',
+              isPending && 'text-[var(--color-info)]',
+              hasError && 'text-[var(--color-error)]',
+              isSuccess && 'text-[var(--color-text-secondary)]',
             )}
+            title={actionDescription}
+          >
+            {actionDescription}
           </span>
-
-          {/* Tool icon with tooltip showing tool name */}
-          <ToolIconDisplay
-            toolName={tool.name}
-            size={13}
-            status={toolStatus}
-            showTooltip={true}
-          />
-
-          {/* Dynamic tool indicator */}
-          {tool.isDynamic && (
-            <DynamicToolIndicator
-              toolName={tool.name}
-              createdBy={tool.dynamicToolInfo?.createdBy}
-              usageCount={tool.dynamicToolInfo?.usageCount}
-              successRate={tool.dynamicToolInfo?.successRate}
-              status={tool.dynamicToolInfo?.status}
-            />
-          )}
-
-          {/* Target/context - styled as a subtle tag */}
-          {target && (
-            <span
-              className={cn(
-                'text-[10px] text-[var(--color-text-muted)] truncate min-w-0',
-                'px-1.5 py-0.5 rounded bg-[var(--color-surface-2)]/50',
-                'max-w-[30vw] sm:max-w-[35vw] md:max-w-[280px]',
-              )}
-              title={target}
-            >
-              {target}
-            </span>
-          )}
 
           {/* Read operation metadata */}
           {isSuccess && readMetaInfo && (
@@ -246,8 +209,8 @@ export const ToolItem: React.FC<{
 
           {/* Expand indicator for expandable items */}
           {hasExpandableDetails && (
-            <span className="text-[var(--color-text-dim)]/50 flex-shrink-0 ml-auto mr-1">
-              {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <span className="text-[var(--color-text-dim)]/70 flex-shrink-0 ml-auto mr-1 text-[9px]">
+              {isExpanded ? 'hide' : 'show'}
             </span>
           )}
 
@@ -271,13 +234,13 @@ export const ToolItem: React.FC<{
                   type="button"
                   onClick={handleCopyPath}
                   className={cn(
-                    'p-1 rounded text-[var(--color-text-muted)]',
-                    'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
+                    'px-1 py-0.5 rounded text-[var(--color-text-muted)] text-[9px]',
+                    'hover:text-[var(--color-text-primary)]',
                     'transition-colors opacity-0 group-hover/tool:opacity-100'
                   )}
                   title={copied ? 'Copied!' : 'Copy path'}
                 >
-                  <Copy size={10} className={copied ? 'text-[var(--color-success)]' : ''} />
+                  {copied ? 'copied' : 'copy'}
                 </button>
                 
                 {/* Open file */}
@@ -286,13 +249,13 @@ export const ToolItem: React.FC<{
                     type="button"
                     onClick={handleOpenFile}
                     className={cn(
-                      'p-1 rounded text-[var(--color-text-muted)]',
-                      'hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]',
+                      'px-1 py-0.5 rounded text-[var(--color-text-muted)] text-[9px]',
+                      'hover:text-[var(--color-text-primary)]',
                       'transition-colors opacity-0 group-hover/tool:opacity-100'
                     )}
                     title="Open file"
                   >
-                    <FileText size={10} />
+                    open
                   </button>
                 )}
               </>
@@ -301,10 +264,30 @@ export const ToolItem: React.FC<{
             {/* Non-file operations: timing and error info */}
             {!fileOpMeta && (
               <>
-                {isActive && elapsed && (
-                  <span className="text-[9px] text-[var(--color-warning)]/80 font-mono">{elapsed}</span>
+                {/* Queued status indicator */}
+                {isQueued && tool.queuePosition && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-info)]/10 text-[var(--color-info)] font-mono">
+                    waiting #{tool.queuePosition}
+                  </span>
                 )}
-                {!isActive && typeof durationMs === 'number' && !hasError && (
+                {isQueued && !tool.queuePosition && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-info)]/10 text-[var(--color-info)] font-mono">
+                    waiting
+                  </span>
+                )}
+                {/* Running status with elapsed time */}
+                {isActive && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-warning)]/10 text-[var(--color-warning)] font-mono">
+                    running{elapsed ? ` ${elapsed}` : ''}
+                  </span>
+                )}
+                {/* Pending status */}
+                {isPending && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-info)]/10 text-[var(--color-info)] font-mono">
+                    pending
+                  </span>
+                )}
+                {!isActive && !isQueued && !isPending && typeof durationMs === 'number' && !hasError && (
                   <span className="text-[9px] text-[var(--color-text-dim)] font-mono">
                     {formatDurationMs(durationMs)}
                   </span>

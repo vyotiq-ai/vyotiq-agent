@@ -349,4 +349,183 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = memo(({
 
 LoadingOverlay.displayName = 'LoadingOverlay';
 
+// =============================================================================
+// Global Loading Indicator Component
+// =============================================================================
+
+interface GlobalLoadingIndicatorProps {
+  /** Whether loading is active */
+  isLoading: boolean;
+  /** Loading message/label */
+  label?: string | null;
+  /** Optional detail text */
+  detail?: string | null;
+  /** Progress percentage (0-100) */
+  progress?: number | null;
+  /** Position of the indicator */
+  position?: 'top' | 'bottom' | 'center';
+  /** Whether to show as minimal bar or full indicator */
+  variant?: 'bar' | 'indicator' | 'overlay';
+  /** Additional CSS classes */
+  className?: string;
+}
+
+/**
+ * Global loading indicator for app-wide loading states.
+ * Can render as a progress bar, compact indicator, or full overlay.
+ */
+export const GlobalLoadingIndicator: React.FC<GlobalLoadingIndicatorProps> = memo(({
+  isLoading,
+  label,
+  detail,
+  progress,
+  position = 'top',
+  variant = 'bar',
+  className,
+}) => {
+  if (!isLoading) return null;
+  
+  const positionClasses = {
+    top: 'top-0 left-0 right-0',
+    bottom: 'bottom-0 left-0 right-0',
+    center: 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
+  };
+  
+  // Progress bar variant - minimal top/bottom bar
+  if (variant === 'bar') {
+    return (
+      <div
+        className={cn(
+          'fixed z-50 h-1 overflow-hidden',
+          positionClasses[position],
+          className
+        )}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress || undefined}
+        aria-label={label || 'Loading'}
+      >
+        <div className="absolute inset-0 bg-[var(--color-surface-2)]" />
+        {typeof progress === 'number' ? (
+          <div
+            className="absolute inset-y-0 left-0 bg-[var(--color-accent-primary)] transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        ) : (
+          <div className="absolute inset-y-0 left-0 w-1/3 bg-[var(--color-accent-primary)] animate-loading-bar" />
+        )}
+      </div>
+    );
+  }
+  
+  // Compact indicator variant
+  if (variant === 'indicator') {
+    return (
+      <div
+        className={cn(
+          'fixed z-50 flex items-center gap-2 px-3 py-1.5 rounded-full',
+          'bg-[var(--color-surface-overlay)] backdrop-blur-sm',
+          'border border-[var(--color-border-muted)]',
+          'shadow-lg shadow-black/10',
+          position === 'top' && 'top-3 left-1/2 -translate-x-1/2',
+          position === 'bottom' && 'bottom-3 left-1/2 -translate-x-1/2',
+          position === 'center' && 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
+          className
+        )}
+        role="status"
+        aria-live="polite"
+      >
+        <Spinner size="sm" variant="default" colorVariant="primary" />
+        {label && (
+          <span className="text-[11px] text-[var(--color-text-secondary)] font-medium max-w-[200px] truncate">
+            {label}
+          </span>
+        )}
+        {typeof progress === 'number' && (
+          <span className="text-[10px] text-[var(--color-text-muted)] font-mono">
+            {progress}%
+          </span>
+        )}
+      </div>
+    );
+  }
+  
+  // Full overlay variant
+  return (
+    <div
+      className={cn(
+        'fixed inset-0 z-50 flex items-center justify-center',
+        'bg-[var(--color-surface-base)]/80 backdrop-blur-sm',
+        className
+      )}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-col items-center gap-3 p-6 rounded-xl bg-[var(--color-surface-overlay)] border border-[var(--color-border-muted)] shadow-xl">
+        <Spinner size="lg" variant="default" colorVariant="primary" />
+        {label && (
+          <span className="text-[13px] text-[var(--color-text-primary)] font-medium">
+            {label}
+          </span>
+        )}
+        {detail && (
+          <span className="text-[11px] text-[var(--color-text-muted)] max-w-[300px] text-center">
+            {detail}
+          </span>
+        )}
+        {typeof progress === 'number' && (
+          <div className="w-48 h-1 bg-[var(--color-surface-2)] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[var(--color-accent-primary)] transition-all duration-300 rounded-full"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+GlobalLoadingIndicator.displayName = 'GlobalLoadingIndicator';
+
+// =============================================================================
+// Wrapper Component Using Context
+// =============================================================================
+
+/**
+ * Connected global loading indicator that reads from LoadingProvider.
+ * Place this in your app root to show app-wide loading states.
+ */
+export const ConnectedLoadingIndicator: React.FC<{
+  position?: 'top' | 'bottom' | 'center';
+  variant?: 'bar' | 'indicator' | 'overlay';
+  className?: string;
+}> = memo(({ position = 'top', variant = 'bar', className }) => {
+  // Try to use the loading context if available
+  // This component can be used outside the provider with a fallback
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useLoading } = require('../../state/LoadingProvider');
+    const { isLoading, currentLabel, currentDetail, overallProgress } = useLoading();
+    
+    return (
+      <GlobalLoadingIndicator
+        isLoading={isLoading}
+        label={currentLabel}
+        detail={currentDetail}
+        progress={overallProgress}
+        position={position}
+        variant={variant}
+        className={className}
+      />
+    );
+  } catch {
+    // If no provider is available, render nothing
+    return null;
+  }
+});
+
+ConnectedLoadingIndicator.displayName = 'ConnectedLoadingIndicator';
+
 export default LoadingState;

@@ -6,7 +6,6 @@
  * Features smooth transitions and visual feedback for streaming state.
  */
 import React, { memo, useState, useCallback, useEffect, useRef } from 'react';
-import { ChevronDown, Copy, Check, Brain } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 
 interface ThinkingPanelProps {
@@ -15,25 +14,6 @@ interface ThinkingPanelProps {
   modelName?: string;
   defaultCollapsed?: boolean;
 }
-
-/** Simple brain icon for thinking state */
-const ThinkingIcon: React.FC<{ isActive: boolean; className?: string }> = memo(({ isActive, className }) => (
-  <Brain 
-    size={10} 
-    className={cn(
-      'flex-shrink-0 transition-colors duration-200',
-      isActive ? 'text-[var(--color-info)]' : 'text-[var(--color-text-muted)]',
-      className
-    )} 
-  />
-));
-ThinkingIcon.displayName = 'ThinkingIcon';
-
-/** Simple streaming indicator */
-const StreamingDots: React.FC = memo(() => (
-  <span className="text-[var(--color-info)] ml-0.5">...</span>
-));
-StreamingDots.displayName = 'StreamingDots';
 
 const ThinkingPanelComponent: React.FC<ThinkingPanelProps> = ({
   thinking,
@@ -100,26 +80,12 @@ const ThinkingPanelComponent: React.FC<ThinkingPanelProps> = ({
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleToggle())}
         aria-expanded={!isCollapsed}
       >
-        {/* Status indicator */}
-        <ThinkingIcon isActive={isStreaming} />
-
-        {/* Chevron with rotation animation */}
-        <span className={cn(
-          'text-[var(--color-text-dim)] opacity-40 w-2.5 flex-shrink-0',
-          'transition-transform duration-200',
-          !isCollapsed && 'rotate-0',
-          isCollapsed && '-rotate-90'
-        )}>
-          <ChevronDown size={10} />
-        </span>
-
         {/* Label */}
         <span className={cn(
           'text-[11px] font-medium transition-colors duration-200',
           isStreaming ? 'text-[var(--color-info)]' : 'text-[var(--color-text-secondary)]'
         )}>
           Reasoning
-          {isStreaming && <StreamingDots />}
         </span>
 
         {/* Model name */}
@@ -139,23 +105,22 @@ const ThinkingPanelComponent: React.FC<ThinkingPanelProps> = ({
               {charDisplay} chars
             </span>
           )}
+          <span className="text-[var(--color-text-dim)]/70">
+            {isCollapsed ? 'show' : 'hide'}
+          </span>
           {thinking && !isStreaming && (
             <button
               type="button"
               onClick={handleCopy}
               className={cn(
-                'p-0.5 rounded text-[var(--color-text-muted)]',
-                'hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]',
+                'px-1 py-0.5 rounded text-[var(--color-text-muted)] text-[9px]',
+                'hover:text-[var(--color-text-secondary)]',
                 'transition-all duration-150 opacity-0 group-hover/thinking:opacity-100',
                 'active:scale-95'
               )}
               title={copied ? 'Copied!' : 'Copy'}
             >
-              {copied ? (
-                <Check size={10} className="text-[var(--color-success)] animate-fade-in" />
-              ) : (
-                <Copy size={10} />
-              )}
+              {copied ? 'copied' : 'copy'}
             </button>
           )}
         </span>
@@ -181,7 +146,7 @@ const ThinkingPanelComponent: React.FC<ThinkingPanelProps> = ({
                 {thinking}
                 {isStreaming && (
                   <span 
-                    className="inline-block w-[2px] h-[12px] bg-[var(--color-info)] ml-0.5 align-middle animate-blink"
+                    className="inline-block w-[2px] h-[12px] bg-[var(--color-info)] ml-0.5 align-middle opacity-70"
                     aria-hidden="true"
                   />
                 )}
@@ -191,11 +156,7 @@ const ThinkingPanelComponent: React.FC<ThinkingPanelProps> = ({
                 <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-[var(--color-surface-base)] to-transparent pointer-events-none" />
               )}
             </>
-          ) : (
-            <div className="text-[10px] text-[var(--color-text-placeholder)] py-1 italic">
-              reasoning...
-            </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

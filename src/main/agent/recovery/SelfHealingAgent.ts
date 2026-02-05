@@ -387,25 +387,37 @@ export class SelfHealingAgent extends EventEmitter {
   // ===========================================================================
 
   private async reduceConcurrency(): Promise<void> {
+    const factor = 0.5;
+    this.deps.logger.info('SelfHealingAgent: reducing concurrency', { factor });
+    
     this.deps.emitEvent({
       type: 'self-healing-action',
       action: 'reduce-concurrency',
-      details: { factor: 0.5 },
+      details: { factor },
       timestamp: Date.now(),
     });
-    // Actual implementation would coordinate with ResourceManager
+    
+    // Execute hook if provided by host
+    await this.deps.reduceConcurrency?.(factor);
   }
 
   private async scaleDown(): Promise<void> {
+    this.deps.logger.info('SelfHealingAgent: scaling down to minimum agents');
+    
     this.deps.emitEvent({
       type: 'self-healing-action',
       action: 'scale-down',
       details: { targetAgents: 1 },
       timestamp: Date.now(),
     });
+    
+    // Scale down is handled via reduce concurrency with aggressive factor
+    await this.deps.reduceConcurrency?.(0.25);
   }
 
   private async clearCaches(): Promise<void> {
+    this.deps.logger.info('SelfHealingAgent: clearing caches');
+    
     this.deps.emitEvent({
       type: 'self-healing-action',
       action: 'clear-caches',
@@ -413,36 +425,52 @@ export class SelfHealingAgent extends EventEmitter {
       timestamp: Date.now(),
     });
 
-    // Actually clear caches when the host provides an implementation.
-    // Kept optional to avoid tight coupling between recovery and other subsystems.
+    // Execute hook if provided by host
     await this.deps.clearCaches?.();
   }
 
   private async pauseNewTasks(): Promise<void> {
+    const durationMs = 30000;
+    this.deps.logger.info('SelfHealingAgent: pausing new tasks', { durationMs });
+    
     this.deps.emitEvent({
       type: 'self-healing-action',
       action: 'pause-new-tasks',
-      details: { durationMs: 30000 },
+      details: { durationMs },
       timestamp: Date.now(),
     });
+    
+    // Execute hook if provided by host
+    await this.deps.pauseNewTasks?.(durationMs);
   }
 
   private async circuitBreak(): Promise<void> {
+    this.deps.logger.warn('SelfHealingAgent: triggering circuit break');
+    
     this.deps.emitEvent({
       type: 'self-healing-action',
       action: 'circuit-break',
       details: { scope: 'all' },
       timestamp: Date.now(),
     });
+    
+    // Execute hook if provided by host
+    await this.deps.triggerCircuitBreak?.();
   }
 
   private async restartAgents(): Promise<void> {
+    this.deps.logger.info('SelfHealingAgent: requesting agent restart');
+    
     this.deps.emitEvent({
       type: 'self-healing-action',
       action: 'restart-agents',
       details: {},
       timestamp: Date.now(),
     });
+    
+    // Restart is typically handled by orchestrator listening to events
+    // Clear caches as part of restart preparation
+    await this.deps.clearCaches?.();
   }
 
   private async triggerGC(): Promise<void> {

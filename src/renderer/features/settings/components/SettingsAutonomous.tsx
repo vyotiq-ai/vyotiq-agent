@@ -44,11 +44,7 @@ const CORE_TOOLS = [
 export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings, onChange }) => {
   const [expandedToolSection, setExpandedToolSection] = useState<'confirm' | 'disabled' | null>(null);
 
-  if (!settings) {
-    return <div className="text-[10px] text-[var(--color-text-muted)] font-mono"># loading autonomous settings...</div>;
-  }
-
-  const toolSettings = settings.toolSettings || {};
+  const toolSettings = settings?.toolSettings || {};
   const alwaysConfirmTools = toolSettings.alwaysConfirmTools ?? ['run', 'write', 'edit', 'delete'];
   const disabledTools = toolSettings.disabledTools ?? [];
 
@@ -62,6 +58,10 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
     CORE_TOOLS.filter(t => !disabledTools.includes(t.id)),
     [disabledTools]
   );
+
+  if (!settings) {
+    return <div className="text-[10px] text-[var(--color-text-muted)] font-mono"># loading autonomous settings...</div>;
+  }
 
   const handleAddConfirmTool = (toolId: string) => {
     onChange('toolSettings', { 

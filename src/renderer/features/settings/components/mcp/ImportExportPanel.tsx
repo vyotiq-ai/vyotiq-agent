@@ -14,10 +14,10 @@ import {
   FileJson,
   CheckCircle,
   AlertCircle,
-  Loader2,
   Copy,
   ClipboardPaste,
 } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
 import { Button } from '../../../../components/ui/Button';
 import type { MCPServerConfig } from '../../../../../shared/types/mcp';
@@ -197,7 +197,7 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
                 disabled={exporting}
                 leftIcon={
                   exporting ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <Spinner size="sm" className="w-3 h-3" />
                   ) : (
                     <Download className="w-3 h-3" />
                   )
@@ -248,7 +248,7 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
                 disabled={importing}
                 leftIcon={
                   importing ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <Spinner size="sm" className="w-3 h-3" />
                   ) : (
                     <Upload className="w-3 h-3" />
                   )

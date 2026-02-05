@@ -6,10 +6,10 @@
  */
 
 import React from 'react';
-import { Loader2 } from 'lucide-react';
 import type { AgentSettings } from '../../../../../shared/types';
 import type { SettingsTabId } from '../../config/tabConfig';
 import type { UseSettingsComposedReturn } from '../../hooks/useSettingsComposed';
+import { Spinner } from '../../../../components/ui/LoadingState';
 
 // Settings components
 import { SettingsProviders } from '../SettingsProviders';
@@ -53,7 +53,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   if (!localSettings) {
     return (
       <div className="flex items-center justify-center py-16 text-[var(--color-text-muted)] font-mono text-[11px]">
-        <Loader2 className="animate-spin mr-2" size={14} /> loading config...
+        <Spinner size="sm" className="mr-2" /> loading config...
       </div>
     );
   }

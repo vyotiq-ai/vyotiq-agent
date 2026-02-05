@@ -14,9 +14,9 @@ import {
   FileText,
   Zap,
   Search,
-  Loader2,
   ChevronRight,
 } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { cn } from '../../../utils/cn';
 import type { EditorAIAction } from '../hooks/useEditorAI';
 
@@ -199,7 +199,7 @@ export const AIContextMenu: React.FC<AIContextMenuProps> = memo(({
             ai actions
           </span>
           {isLoading && (
-            <Loader2 size={10} className="ml-auto animate-spin text-[var(--color-accent-primary)]" />
+            <Spinner size="sm" className="w-2.5 h-2.5 ml-auto text-[var(--color-accent-primary)]" />
           )}
         </div>
       </div>
@@ -296,7 +296,7 @@ export const AISubmenuTrigger: React.FC<AISubmenuTriggerProps> = memo(({
       <Sparkles size={12} className="text-[var(--color-accent-primary)] shrink-0" />
       <span className="flex-1">ai actions</span>
       {isLoading ? (
-        <Loader2 size={10} className="animate-spin text-[var(--color-accent-primary)]" />
+        <Spinner size="sm" className="w-2.5 h-2.5 text-[var(--color-accent-primary)]" />
       ) : (
         <ChevronRight size={10} className="text-[var(--color-text-placeholder)]" />
       )}

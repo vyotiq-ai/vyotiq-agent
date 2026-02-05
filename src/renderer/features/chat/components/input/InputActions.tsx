@@ -21,8 +21,9 @@
  * />
  */
 import React, { memo, useCallback } from 'react';
-import { Play, Square, Loader2 } from 'lucide-react';
+import { Play, Square } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
+import { Spinner } from '../../../../components/ui/LoadingState';
 
 // =============================================================================
 // Types
@@ -60,12 +61,12 @@ const KillButton: React.FC<{ onStop: () => void }> = memo(({ onStop }) => {
       onClick={handleClick}
       className={cn(
         'terminal-btn terminal-kill-btn group',
-        'flex items-center gap-1 px-2.5 py-1.5 rounded',
+        'flex items-center gap-1 px-2 py-1 rounded',
         'bg-[var(--color-error)]/15 text-[var(--color-error)]',
         'border border-[var(--color-error)]/30',
         'hover:bg-[var(--color-error)]/25 hover:border-[var(--color-error)]/50',
         'active:bg-[var(--color-error)]/30 active:scale-[0.97]',
-        'transition-all duration-150 text-[10px] font-mono',
+        'transition-all duration-150 text-[9px] font-mono',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-error)]/40',
         // Subtle pulse animation when running
         'animate-[pulse-subtle_2s_ease-in-out_infinite]'
@@ -123,8 +124,8 @@ const RunButton: React.FC<RunButtonProps> = memo(({ canSend, isSending, onSend }
       disabled={isDisabled}
       className={cn(
         'terminal-btn terminal-run-btn group',
-        'flex items-center gap-1 px-2.5 py-1.5 rounded',
-        'transition-all duration-150 text-[10px] font-mono',
+        'flex items-center gap-1 px-2 py-1 rounded',
+        'transition-all duration-150 text-[9px] font-mono',
         'border',
         // Enabled state - vibrant and inviting
         canSend && !isSending && cn(
@@ -159,10 +160,9 @@ const RunButton: React.FC<RunButtonProps> = memo(({ canSend, isSending, onSend }
     >
       {isSending ? (
         <>
-          <Loader2 
-            size={10} 
-            className="animate-spin" 
-            aria-hidden="true" 
+          <Spinner 
+            size="sm" 
+            className="w-2.5 h-2.5" 
           />
           <span className="font-medium tracking-wide">sending</span>
         </>

@@ -566,6 +566,37 @@ export interface ToolResultEvent extends AgentEventBase {
 }
 
 /**
+ * Event emitted when tools are queued for execution.
+ * Enables UI to show pending tools before they start running.
+ */
+export interface ToolQueuedEvent extends AgentEventBase {
+  type: 'tool-queued';
+  /** Tools that have been queued for execution */
+  tools: Array<{
+    callId: string;
+    name: string;
+    arguments?: Record<string, unknown>;
+    queuePosition: number;
+  }>;
+  /** Total number of tools in queue */
+  totalQueued: number;
+}
+
+/**
+ * Event emitted when a tool starts executing.
+ * Distinct from tool-call which is sent when tool needs approval.
+ * This event indicates the tool is actively running.
+ */
+export interface ToolStartedEvent extends AgentEventBase {
+  type: 'tool-started';
+  toolCall: ToolCallPayload;
+  /** Position in execution order (1-based) */
+  executionOrder: number;
+  /** Total tools being executed in this batch */
+  totalInBatch: number;
+}
+
+/**
  * Event for generated media (images, audio) from multimodal models.
  * @see https://ai.google.dev/gemini-api/docs/image-generation
  * @see https://ai.google.dev/gemini-api/docs/speech-generation
@@ -3873,6 +3904,8 @@ export type AgentEvent =
   | RunStatusEvent
   | ToolCallEvent
   | ToolResultEvent
+  | ToolQueuedEvent
+  | ToolStartedEvent
   | MediaOutputEvent
   | SessionStateEvent
   | ProgressEvent

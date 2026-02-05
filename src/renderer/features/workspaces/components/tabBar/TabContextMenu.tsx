@@ -61,8 +61,6 @@ export const TabContextMenu = memo<ContextMenuProps>(({ x, y, workspaceId, onClo
     { type: 'item', label: 'close tab', action: handleCloseTab },
     { type: 'item', label: 'close others', action: handleCloseOthers },
     { type: 'item', label: 'close to the right', action: handleCloseRight },
-    { type: 'divider' },
-    { type: 'item', label: 'pin tab', action: () => {}, disabled: true, hint: 'coming soon' },
   ];
 
   return (

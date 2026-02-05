@@ -17,7 +17,6 @@ import {
   ExternalLink,
   Camera,
   FileText,
-  Loader2,
   AlertCircle,
   Home,
   Lock,
@@ -28,6 +27,7 @@ import {
   Ban,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { Spinner } from '../../components/ui/LoadingState';
 import { useBrowser } from './useBrowser';
 
 interface BrowserPanelProps {
@@ -253,7 +253,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
           <Globe size={12} className="text-[var(--color-accent-primary)]" />
           <span className="text-[10px] text-[var(--color-text-primary)]">Browser</span>
           {browser.isLoading && (
-            <Loader2 size={10} className="animate-spin text-[var(--color-accent-primary)]" />
+            <Spinner size="sm" className="w-2.5 h-2.5" colorVariant="primary" />
           )}
         </div>
         
@@ -462,7 +462,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
         {/* Initial loading state when attaching */}
         {browser.isLoading && !browser.state.url && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--color-surface-base)] z-10">
-            <Loader2 size={24} className="animate-spin text-[var(--color-accent-primary)] mb-2" />
+            <Spinner size="lg" colorVariant="primary" className="mb-2" />
             <span className="text-[10px] text-[var(--color-text-muted)]">Loading...</span>
           </div>
         )}
@@ -540,7 +540,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
           
           {browser.isLoading && (
             <span className="flex items-center gap-1">
-              <Loader2 size={10} className="animate-spin" />
+              <Spinner size="sm" className="w-2.5 h-2.5" />
               Loading...
             </span>
           )}

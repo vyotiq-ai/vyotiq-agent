@@ -573,6 +573,12 @@ export interface RecoveryDeps {
   getSystemState?: () => Record<string, unknown>;
   /** Optional hook to clear in-process caches (tool/context/editor/autocomplete/etc). */
   clearCaches?: () => void | Promise<void>;
+  /** Optional hook to reduce concurrency (e.g., limit concurrent runs). */
+  reduceConcurrency?: (factor: number) => void | Promise<void>;
+  /** Optional hook to pause accepting new tasks temporarily. */
+  pauseNewTasks?: (durationMs: number) => void | Promise<void>;
+  /** Optional hook to trigger circuit breaker. */
+  triggerCircuitBreak?: () => void | Promise<void>;
   classifier?: import('./ErrorClassifier').ErrorClassifier;
   diagnosticEngine?: import('./DiagnosticEngine').DiagnosticEngine;
 }

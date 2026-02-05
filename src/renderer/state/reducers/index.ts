@@ -48,10 +48,16 @@ const TASK_ACTIONS = new Set([
   'TERMINAL_OUTPUT',
   'TERMINAL_EXIT',
   'TERMINAL_CLEAR',
+  // Tool execution tracking for real-time UI feedback
+  'TOOL_EXECUTION_START',
+  'TOOL_EXECUTION_FINISH',
+  'TOOL_QUEUED',
+  'TOOL_DEQUEUED',
   // Tool result actions for rich content display
   'TOOL_RESULT_RECEIVE',
   'INLINE_ARTIFACT_ADD',
   'RUN_CLEANUP',
+  'RUN_TOOLSTATE_CLEAR',
   // Media output actions (generated images/audio from multimodal models)
   'MEDIA_OUTPUT_RECEIVE',
   // Task-based routing decision

@@ -8,11 +8,15 @@
  * @module hooks/useAgentSelectors
  */
 
-import { useMemo as _useMemo, useCallback } from 'react';
-import { useAgentSelector, useAgentActions as _useAgentActions } from '../state/AgentProvider';
+import { useCallback } from 'react';
+import { useAgentSelector, useAgentActions } from '../state/AgentProvider';
 import type { AgentUIState } from '../state/agentReducer';
-import type { ChatMessage, AgentSessionState, ConfirmToolPayload as _ConfirmToolPayload } from '../../shared/types';
+import type { ChatMessage, AgentSessionState, ConfirmToolPayload } from '../../shared/types';
 import type { TodoItem } from '../../shared/types/todo';
+
+// Re-export for backward compatibility
+export { useAgentActions };
+export type { ConfirmToolPayload };
 
 // =============================================================================
 // Shallow Comparison Utilities

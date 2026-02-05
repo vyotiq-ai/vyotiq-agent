@@ -19,8 +19,8 @@ import {
   AlignJustify,
   RotateCcw,
   FileCode,
-  Loader2,
 } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { cn } from '../../../utils/cn';
 import { RendererLogger } from '../../../utils/logger';
 import { registerCustomThemes } from '../utils/themeUtils';
@@ -122,7 +122,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
 
     const diffEditor = monaco.editor.createDiffEditor(containerRef.current, {
       fontSize: settings.fontSize || 13,
-      fontFamily: settings.fontFamily || "'JetBrains Mono', 'Fira Code', monospace",
+      fontFamily: settings.fontFamily || "'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace",
       readOnly,
       renderSideBySide: viewMode === 'split',
       enableSplitViewResizing: true,
@@ -199,7 +199,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
       monaco.editor.setTheme(settings.theme || 'vyotiq-dark');
       diffEditorRef.current.updateOptions({
         fontSize: settings.fontSize || 13,
-        fontFamily: settings.fontFamily || "'JetBrains Mono', 'Fira Code', monospace",
+        fontFamily: settings.fontFamily || "'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace",
       });
     }
   }, [settings]);
@@ -402,7 +402,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
         {isLoading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--color-surface-base)]/80 backdrop-blur-sm">
             <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
-              <Loader2 size={16} className="animate-spin" />
+              <Spinner size="sm" />
               <span className="text-[11px]">Computing diff...</span>
             </div>
           </div>

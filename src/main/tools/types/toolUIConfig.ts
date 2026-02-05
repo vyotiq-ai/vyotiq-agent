@@ -169,13 +169,6 @@ export const TOOL_UI_CONFIG: Record<string, ToolUIMetadata> = {
     runningLabel: 'Processing Files',
     completedLabel: 'Processed Files',
   },
-  watch: {
-    icon: 'Eye',
-    label: 'Watch',
-    color: 'text-sky-400',
-    runningLabel: 'Watching',
-    completedLabel: 'Watching',
-  },
 
   // Agent Internal Tools
   TodoWrite: {
@@ -184,6 +177,266 @@ export const TOOL_UI_CONFIG: Record<string, ToolUIMetadata> = {
     color: 'text-[var(--color-accent-primary)]',
     runningLabel: 'Updating tasks',
     completedLabel: 'Tasks updated',
+  },
+
+  // Plan Tools
+  CreatePlan: {
+    icon: 'ListChecks',
+    label: 'Create Plan',
+    color: 'text-violet-400',
+    runningLabel: 'Creating plan',
+    completedLabel: 'Plan created',
+  },
+  VerifyTasks: {
+    icon: 'CheckCircle',
+    label: 'Verify Tasks',
+    color: 'text-violet-400',
+    runningLabel: 'Verifying tasks',
+    completedLabel: 'Tasks verified',
+  },
+  GetActivePlan: {
+    icon: 'ClipboardList',
+    label: 'Get Plan',
+    color: 'text-violet-400',
+    runningLabel: 'Getting plan',
+    completedLabel: 'Plan retrieved',
+  },
+  ListPlans: {
+    icon: 'List',
+    label: 'List Plans',
+    color: 'text-violet-400',
+    runningLabel: 'Listing plans',
+    completedLabel: 'Plans listed',
+  },
+  DeletePlan: {
+    icon: 'Trash2',
+    label: 'Delete Plan',
+    color: 'text-red-400',
+    runningLabel: 'Deleting plan',
+    completedLabel: 'Plan deleted',
+  },
+
+  // Dynamic Tool Creation
+  request_tools: {
+    icon: 'Search',
+    label: 'Request Tools',
+    color: 'text-violet-400',
+    runningLabel: 'Requesting tools',
+    completedLabel: 'Tools requested',
+  },
+  create_tool: {
+    icon: 'Hammer',
+    label: 'Create Tool',
+    color: 'text-violet-400',
+    runningLabel: 'Creating tool',
+    completedLabel: 'Tool created',
+  },
+
+  // Browser Tools
+  browser_navigate: {
+    icon: 'Globe',
+    label: 'Navigate',
+    color: 'text-sky-400',
+    runningLabel: 'Navigating',
+    completedLabel: 'Navigated',
+  },
+  browser_click: {
+    icon: 'MousePointer',
+    label: 'Click',
+    color: 'text-sky-400',
+    runningLabel: 'Clicking',
+    completedLabel: 'Clicked',
+  },
+  browser_type: {
+    icon: 'Type',
+    label: 'Type',
+    color: 'text-sky-400',
+    runningLabel: 'Typing',
+    completedLabel: 'Typed',
+  },
+  browser_scroll: {
+    icon: 'ArrowDownUp',
+    label: 'Scroll',
+    color: 'text-sky-400',
+    runningLabel: 'Scrolling',
+    completedLabel: 'Scrolled',
+  },
+  browser_screenshot: {
+    icon: 'Camera',
+    label: 'Screenshot',
+    color: 'text-sky-400',
+    runningLabel: 'Capturing',
+    completedLabel: 'Captured',
+  },
+  browser_fetch: {
+    icon: 'Download',
+    label: 'Fetch',
+    color: 'text-sky-400',
+    runningLabel: 'Fetching',
+    completedLabel: 'Fetched',
+  },
+  browser_extract: {
+    icon: 'FileText',
+    label: 'Extract',
+    color: 'text-sky-400',
+    runningLabel: 'Extracting',
+    completedLabel: 'Extracted',
+  },
+  browser_console: {
+    icon: 'Terminal',
+    label: 'Console',
+    color: 'text-sky-400',
+    runningLabel: 'Getting console',
+    completedLabel: 'Got console',
+  },
+  browser_network: {
+    icon: 'Network',
+    label: 'Network',
+    color: 'text-sky-400',
+    runningLabel: 'Getting network',
+    completedLabel: 'Got network',
+  },
+  browser_snapshot: {
+    icon: 'FileImage',
+    label: 'Snapshot',
+    color: 'text-sky-400',
+    runningLabel: 'Taking snapshot',
+    completedLabel: 'Snapshot taken',
+  },
+  browser_state: {
+    icon: 'Info',
+    label: 'State',
+    color: 'text-sky-400',
+    runningLabel: 'Getting state',
+    completedLabel: 'Got state',
+  },
+  browser_fill_form: {
+    icon: 'FormInput',
+    label: 'Fill Form',
+    color: 'text-sky-400',
+    runningLabel: 'Filling form',
+    completedLabel: 'Form filled',
+  },
+  browser_hover: {
+    icon: 'MousePointer2',
+    label: 'Hover',
+    color: 'text-sky-400',
+    runningLabel: 'Hovering',
+    completedLabel: 'Hovered',
+  },
+  browser_evaluate: {
+    icon: 'Code2',
+    label: 'Evaluate',
+    color: 'text-sky-400',
+    runningLabel: 'Evaluating',
+    completedLabel: 'Evaluated',
+  },
+  browser_back: {
+    icon: 'ArrowLeft',
+    label: 'Back',
+    color: 'text-sky-400',
+    runningLabel: 'Going back',
+    completedLabel: 'Went back',
+  },
+  browser_forward: {
+    icon: 'ArrowRight',
+    label: 'Forward',
+    color: 'text-sky-400',
+    runningLabel: 'Going forward',
+    completedLabel: 'Went forward',
+  },
+  browser_reload: {
+    icon: 'RefreshCw',
+    label: 'Reload',
+    color: 'text-sky-400',
+    runningLabel: 'Reloading',
+    completedLabel: 'Reloaded',
+  },
+  browser_tabs: {
+    icon: 'Layers',
+    label: 'Tabs',
+    color: 'text-sky-400',
+    runningLabel: 'Managing tabs',
+    completedLabel: 'Tabs managed',
+  },
+  browser_wait: {
+    icon: 'Clock',
+    label: 'Wait',
+    color: 'text-sky-400',
+    runningLabel: 'Waiting',
+    completedLabel: 'Waited',
+  },
+  browser_security_status: {
+    icon: 'Shield',
+    label: 'Security',
+    color: 'text-sky-400',
+    runningLabel: 'Checking security',
+    completedLabel: 'Security checked',
+  },
+  browser_check_url: {
+    icon: 'LinkIcon',
+    label: 'Check URL',
+    color: 'text-sky-400',
+    runningLabel: 'Checking URL',
+    completedLabel: 'URL checked',
+  },
+
+  // LSP Tools
+  lsp_hover: {
+    icon: 'Info',
+    label: 'Hover Info',
+    color: 'text-indigo-400',
+    runningLabel: 'Getting hover info',
+    completedLabel: 'Got hover info',
+  },
+  lsp_definition: {
+    icon: 'ArrowRight',
+    label: 'Definition',
+    color: 'text-indigo-400',
+    runningLabel: 'Finding definition',
+    completedLabel: 'Found definition',
+  },
+  lsp_references: {
+    icon: 'GitBranch',
+    label: 'References',
+    color: 'text-indigo-400',
+    runningLabel: 'Finding references',
+    completedLabel: 'Found references',
+  },
+  lsp_symbols: {
+    icon: 'Code',
+    label: 'Symbols',
+    color: 'text-indigo-400',
+    runningLabel: 'Getting symbols',
+    completedLabel: 'Got symbols',
+  },
+  lsp_diagnostics: {
+    icon: 'TriangleAlert',
+    label: 'Diagnostics',
+    color: 'text-orange-400',
+    runningLabel: 'Getting diagnostics',
+    completedLabel: 'Got diagnostics',
+  },
+  lsp_completions: {
+    icon: 'Sparkles',
+    label: 'Completions',
+    color: 'text-indigo-400',
+    runningLabel: 'Getting completions',
+    completedLabel: 'Got completions',
+  },
+  lsp_code_actions: {
+    icon: 'Lightbulb',
+    label: 'Code Actions',
+    color: 'text-yellow-400',
+    runningLabel: 'Getting code actions',
+    completedLabel: 'Got code actions',
+  },
+  lsp_rename: {
+    icon: 'TextCursor',
+    label: 'Rename',
+    color: 'text-amber-400',
+    runningLabel: 'Renaming',
+    completedLabel: 'Renamed',
   },
 };
 
@@ -210,7 +463,6 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   references: 'code-intelligence',
   diagnostics: 'code-intelligence',
   bulk: 'file-write',
-  watch: 'file-read',
   // LSP tools
   lsp_hover: 'code-intelligence',
   lsp_definition: 'code-intelligence',
@@ -245,6 +497,8 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   browser_wait: 'browser-write',
   // Agent internal tools
   TodoWrite: 'agent-internal',
+  request_tools: 'agent-internal',
+  create_tool: 'agent-internal',
 };
 
 // Default fallback config

@@ -5,7 +5,8 @@
  * Clean, minimal terminal aesthetic with subtle status indicators.
  */
 import React, { memo, useRef, useEffect } from 'react';
-import { Trash2, Loader2, Circle } from 'lucide-react';
+import { Trash2, Circle } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
 import type { SessionOptionProps } from './types';
 import { formatRelativeTime, getStatusLabel, isSessionRunning } from './utils';
@@ -62,9 +63,9 @@ export const SessionOption = memo<SessionOptionProps>(function SessionOption({
       {/* Status indicator - dot style */}
       <div className="w-3 flex justify-center flex-shrink-0">
         {isRunning ? (
-          <Loader2 
-            size={8} 
-            className="text-[var(--color-success)] animate-spin" 
+          <Spinner 
+            size="sm" 
+            className="w-2 h-2 text-[var(--color-success)]" 
           />
         ) : isSelected ? (
           <Circle size={6} className="fill-[var(--color-accent-primary)] text-[var(--color-accent-primary)]" />

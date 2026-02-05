@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, CheckCircle, AlertCircle, Crown, Zap, ExternalLink, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle, AlertCircle, Crown, Zap, ExternalLink, Eye, EyeOff } from 'lucide-react';
+import { Spinner } from '../../../components/ui/LoadingState';
 import { Button } from '../../../components/ui/Button';
 import { Toggle } from '../../../components/ui/Toggle';
 import { cn } from '../../../utils/cn';
@@ -176,7 +177,7 @@ export const SettingsGLMSubscription: React.FC = () => {
       <div className="border border-[var(--color-border-subtle)] bg-[var(--color-surface-header)] p-3 space-y-3">
         {isChecking ? (
           <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
-            <Loader2 size={12} className="animate-spin" />
+            <Spinner size="sm" className="w-3 h-3" />
             <span>checking status...</span>
           </div>
         ) : status.connected ? (
@@ -220,7 +221,7 @@ export const SettingsGLMSubscription: React.FC = () => {
                 size="sm"
                 onClick={handleDisconnect}
                 disabled={isLoading}
-                leftIcon={isLoading ? <Loader2 size={10} className="animate-spin" /> : undefined}
+                leftIcon={isLoading ? <Spinner size="sm" className="w-2.5 h-2.5" /> : undefined}
               >
                 disconnect
               </Button>
@@ -336,7 +337,7 @@ export const SettingsGLMSubscription: React.FC = () => {
                 size="sm"
                 onClick={handleConnect}
                 disabled={isLoading || !apiKey.trim()}
-                leftIcon={isLoading ? <Loader2 size={10} className="animate-spin" /> : undefined}
+                leftIcon={isLoading ? <Spinner size="sm" className="w-2.5 h-2.5" /> : undefined}
                 className="bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border-cyan-500/30"
               >
                 {isLoading ? 'connecting...' : 'connect'}

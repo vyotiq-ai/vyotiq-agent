@@ -1,20 +1,9 @@
-import { 
-  TerminalSquare, 
-  Search, 
-  FolderOpen, 
-  FileEdit, 
-  FilePlus, 
-  Eye, 
-  Skull, 
-  Clock,
-  FileSearch,
-  Folder,
-  CircleX,
-  Wrench,
-  TriangleAlert,
-  ListTodo,
-  type LucideIcon 
-} from 'lucide-react';
+﻿/**
+ * Tool Utilities
+ * 
+ * Utility functions for tool operations.
+ * Icons have been removed for a cleaner, minimalist interface.
+ */
 
 // Re-export shared utilities
 export {
@@ -41,95 +30,81 @@ export {
   ToolUtils,
 } from '../../shared/utils/toolUtils';
 
+// Re-export from ToolIcons for backwards compatibility
+export { getToolDescription, getToolCategory } from '../components/ui/ToolIcons';
+
+// =============================================================================
+// Tool Labels
+// =============================================================================
+
+const TOOL_LABELS: Record<string, string> = {
+  read: 'Read',
+  read_file: 'Read',
+  cat: 'Display',
+  write: 'Create',
+  write_file: 'Create',
+  create_file: 'Create',
+  edit: 'Edit',
+  edit_file: 'Edit',
+  replace: 'Replace',
+  replace_string_in_file: 'Edit',
+  patch: 'Patch',
+  delete: 'Delete',
+  delete_file: 'Delete',
+  remove: 'Remove',
+  rm: 'Remove',
+  ls: 'List',
+  list_dir: 'List',
+  list_directory: 'List',
+  tree: 'Tree',
+  run: 'Run',
+  run_terminal: 'Run',
+  run_terminal_command: 'Run',
+  exec: 'Execute',
+  shell: 'Shell',
+  bash: 'Bash',
+  check_terminal: 'Check',
+  check_terminal_output: 'Check',
+  kill: 'Kill',
+  kill_terminal: 'Kill',
+  kill_terminal_process: 'Kill',
+  grep: 'Search',
+  search: 'Search',
+  find: 'Find',
+  glob: 'Find files',
+  code_search: 'Search code',
+  fetch: 'Fetch',
+  web_fetch: 'Fetch',
+  browse: 'Browse',
+  download: 'Download',
+  research: 'Research',
+  analyze: 'Analyze',
+  think: 'Think',
+  git: 'Git',
+  commit: 'Commit',
+  pr: 'PR',
+  todo_write: 'Tasks',
+  TodoWrite: 'Tasks',
+  todo: 'Todo',
+  create_plan: 'Plan',
+  create_tool: 'Create tool',
+  message: 'Message',
+  image: 'Image',
+  error: 'Error',
+  fatal: 'Fatal',
+  warning: 'Warning',
+};
+
+/**
+ * @deprecated Use getToolDescription from ToolIcons instead
+ */
 export interface ToolUIConfig {
-  Icon: LucideIcon;
   label: string;
   color?: string;
   category?: string;
 }
 
-const toolConfigs: Record<string, ToolUIConfig> = {
-  // File Reading
-  read: { Icon: Eye, label: 'Read', color: 'text-[var(--color-info)]', category: 'file' },
-  read_file: { Icon: Eye, label: 'Read', color: 'text-[var(--color-info)]', category: 'file' },
-  
-  // Directory Listing
-  ls: { Icon: FolderOpen, label: 'List', color: 'text-[var(--color-info)]', category: 'file' },
-  list_dir: { Icon: Folder, label: 'List', color: 'text-[var(--color-info)]', category: 'file' },
-  list_directory: { Icon: Folder, label: 'List', color: 'text-[var(--color-info)]', category: 'file' },
-  
-  // File Writing
-  write: { Icon: FilePlus, label: 'Create', color: 'text-[var(--color-success)]', category: 'file' },
-  create_file: { Icon: FilePlus, label: 'Create', color: 'text-[var(--color-success)]', category: 'file' },
-  
-  // File Editing
-  edit: { Icon: FileEdit, label: 'Edit', color: 'text-[var(--color-warning)]', category: 'file' },
-  replace_string_in_file: { Icon: FileEdit, label: 'Edit', color: 'text-[var(--color-warning)]', category: 'file' },
-  
-  // Search
-  grep: { Icon: Search, label: 'Search', color: 'text-[var(--color-accent-secondary)]', category: 'search' },
-  search: { Icon: Search, label: 'Search', color: 'text-[var(--color-accent-secondary)]', category: 'search' },
-  glob: { Icon: FileSearch, label: 'Find files', color: 'text-[var(--color-accent-secondary)]', category: 'search' },
-  
-  // Terminal
-  run: { Icon: TerminalSquare, label: 'Run command', color: 'text-[var(--color-success)]', category: 'terminal' },
-  run_terminal_command: { Icon: TerminalSquare, label: 'Run command', color: 'text-[var(--color-success)]', category: 'terminal' },
-  check_terminal_output: { Icon: Clock, label: 'Check output', color: 'text-[var(--color-info)]', category: 'terminal' },
-  kill: { Icon: CircleX, label: 'Kill process', color: 'text-[var(--color-error)]', category: 'terminal' },
-  kill_terminal: { Icon: CircleX, label: 'Kill process', color: 'text-[var(--color-error)]', category: 'terminal' },
-  kill_terminal_process: { Icon: CircleX, label: 'Kill process', color: 'text-[var(--color-error)]', category: 'terminal' },
-
-  // Agent Internal
-  TodoWrite: { Icon: ListTodo, label: 'Tasks', color: 'text-[var(--color-accent-primary)]', category: 'agent' },
-
-  // Other
-  'file-read': { Icon: Eye, label: 'Reading', color: 'text-[var(--color-info)]', category: 'file' },
-  'file-write': { Icon: FilePlus, label: 'Writing', color: 'text-[var(--color-success)]', category: 'file' },
-  'tool-call': { Icon: TerminalSquare, label: 'Executing', color: 'text-[var(--color-success)]', category: 'tool' },
-  command: { Icon: TerminalSquare, label: 'Running', color: 'text-[var(--color-success)]', category: 'terminal' },
-  
-  // Error/fatal states
-  error: { Icon: Skull, label: 'Error', color: 'text-[var(--color-error)]', category: 'error' },
-  fatal: { Icon: Skull, label: 'Fatal', color: 'text-[var(--color-error)]', category: 'error' },
-  warning: { Icon: TriangleAlert, label: 'Warning', color: 'text-[var(--color-warning)]', category: 'warning' },
-};
-
-// Icon mapping for dynamic icon loading (e.g., from saved configs)
-const iconMap: Record<string, LucideIcon> = {
-  TerminalSquare,
-  Search,
-  FolderOpen,
-  FileEdit,
-  FilePlus,
-  Eye,
-  Clock,
-  FileSearch,
-  Folder,
-  CircleX,
-  Wrench,
-  Skull,
-  TriangleAlert,
-  ListTodo,
-};
-
-/**
- * Get icon component by name string - useful for dynamic icon resolution
- * where the icon name comes from configuration or user-defined skills.
- */
-export function getIconByName(iconName: string): LucideIcon {
-  return iconMap[iconName] || Wrench;
-}
-
-/**
- * Get all available icon names for UI selectors
- */
-export function getAvailableIconNames(): string[] {
-  return Object.keys(iconMap);
-}
-
-// Default configuration
 const defaultConfig: ToolUIConfig = {
-  Icon: Wrench,
   label: 'Tool',
   color: 'text-[var(--color-text-secondary)]',
   category: 'other',
@@ -137,40 +112,26 @@ const defaultConfig: ToolUIConfig = {
 
 /**
  * Get UI configuration for a tool by name
+ * @deprecated Use getToolDescription and getToolCategory from ToolIcons instead
  */
 export function getToolUIConfig(toolName?: string): ToolUIConfig {
   if (!toolName) return defaultConfig;
 
   const normalized = toolName.toLowerCase().trim();
+  const label = TOOL_LABELS[normalized] || TOOL_LABELS[toolName] || 
+    toolName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   
-  // Exact match first
-  if (toolConfigs[normalized]) {
-    return toolConfigs[normalized];
-  }
-  
-  // Partial matches
-  for (const [key, config] of Object.entries(toolConfigs)) {
-    if (normalized.includes(key) || key.includes(normalized)) {
-      return config;
-    }
-  }
-
-  return defaultConfig;
+  return {
+    label,
+    color: 'text-[var(--color-text-secondary)]',
+    category: 'other',
+  };
 }
 
 /**
  * Get the color for a tool
+ * @deprecated Status colors are now handled in individual components
  */
-export function getToolColor(toolName?: string): string {
-  const config = getToolUIConfig(toolName);
-  return config.color ?? 'text-[var(--color-text-secondary)]';
+export function getToolColor(_toolName?: string): string {
+  return 'text-[var(--color-text-secondary)]';
 }
-
-/**
- * Get the category for a tool
- */
-export function getToolCategory(toolName?: string): string | undefined {
-  const config = getToolUIConfig(toolName);
-  return config.category;
-}
-

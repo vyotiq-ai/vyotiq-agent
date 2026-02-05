@@ -345,14 +345,14 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
     return (
       <div 
         className={cn(
-          'py-1.5 group relative font-mono min-w-0 w-full',
+          'py-1 group relative font-mono min-w-0 w-full',
           isSearchMatch && 'bg-[var(--color-warning)]/10',
           isCurrentSearchMatch && 'ring-1 ring-[var(--color-warning)]'
         )}
         data-message-id={message.id}
       >
         {/* Header row */}
-        <div className="flex items-center justify-between gap-2 text-[10px] mb-1">
+        <div className="flex items-center justify-between gap-2 text-[9px] mb-1">
           {/* Left - actions on hover */}
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
@@ -389,7 +389,7 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
         </div>
 
         {/* Content - full width with subtle left accent */}
-        <div className="pl-3 ml-2 border-l border-[var(--color-accent-primary)]/20 min-w-0 w-full">
+          <div className="pl-2 ml-2 border-l border-[var(--color-accent-primary)]/20 min-w-0 w-full">
           {/* Attachments with image previews */}
           {message.attachments && message.attachments.length > 0 && (
             <MessageAttachments attachments={message.attachments} variant="block" />
@@ -433,18 +433,18 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
   return (
     <div 
       className={cn(
-        'py-1.5 group relative font-mono min-w-0 w-full',
-        isSearchMatch && 'bg-[var(--color-warning)]/10 rounded-lg',
-        isCurrentSearchMatch && 'ring-2 ring-[var(--color-warning)] ring-offset-1 ring-offset-[var(--color-surface-base)]'
+        'py-1 group relative font-mono min-w-0 w-full',
+        isSearchMatch && 'bg-[var(--color-warning)]/10',
+        isCurrentSearchMatch && 'ring-1 ring-[var(--color-warning)]'
       )}
       data-message-id={message.id}
     >
       {/* Header row */}
-      <div className="flex items-center justify-between gap-2 text-[10px] mb-1">
+      <div className="flex items-center justify-between gap-2 text-[9px] mb-1">
         <div className="min-w-0 flex items-center gap-2 font-mono">
           {showBranding ? (
             <>
-              <span className="text-[var(--color-accent-primary)] text-sm font-medium">λ</span>
+              <span className="text-[var(--color-accent-primary)] text-[11px] font-medium">λ</span>
               <span className="text-[var(--color-text-muted)] text-[9px]">vyotiq</span>
               <span className="text-[var(--color-text-dim)] text-[9px]">{timeStr}</span>
             </>
@@ -558,10 +558,10 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
 
       {/* Content area */}
       <div className={cn(
-        'pl-3 border-l min-w-0 w-full',
+        'pl-2 border-l min-w-0 w-full',
         showBranding 
           ? 'ml-2 border-[var(--color-accent-primary)]/15' 
-          : 'ml-4 border-[var(--color-border-subtle)]/30'
+          : 'ml-3 border-[var(--color-border-subtle)]/30'
       )}>
         {/* Thinking Panel */}
         {(message.thinking || message.isThinkingStreaming) && (
@@ -634,29 +634,27 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
             />
           )}
           
-          {/* Streaming cursor - softer pulsing indicator */}
+          {/* Streaming indicator - static cursor */}
           {isStreaming && displayContent && (
             <span 
               className={cn(
                 "inline-block w-[3px] h-[14px] rounded-[1px] ml-0.5 align-middle",
-                "bg-[var(--color-accent-primary)]",
-                "animate-streaming"
+                "bg-[var(--color-accent-primary)] opacity-80"
               )}
               aria-label="Streaming content"
               role="status"
             />
           )}
           
-          {/* Empty streaming state - thinking indicator */}
+          {/* Empty streaming state - static indicator */}
           {isStreaming && !displayContent && (
             <span 
-              className="inline-flex items-center gap-0.5 text-[var(--color-text-muted)] text-[10px]"
-              aria-label="Thinking"
+              className="inline-flex items-center gap-1 text-[var(--color-text-muted)] text-[10px] font-mono"
+              aria-label="Processing"
               role="status"
             >
-              <span className="thinking-dot">•</span>
-              <span className="thinking-dot">•</span>
-              <span className="thinking-dot">•</span>
+              <span className="text-[var(--color-accent-primary)]">▸</span>
+              <span>processing</span>
             </span>
           )}
         </div>

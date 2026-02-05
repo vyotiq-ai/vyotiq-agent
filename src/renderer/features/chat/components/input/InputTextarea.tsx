@@ -233,7 +233,7 @@ export const InputTextarea = memo(forwardRef<HTMLTextAreaElement, InputTextareaP
   const shouldShowCharCount = showCharCount && maxLength && (maxLength - value.length) < 500;
   
   return (
-    <div className={cn('relative flex items-start gap-0 px-2 py-1.5 min-w-0 overflow-hidden', className)}>
+    <div className={cn('relative flex items-start gap-0 px-1.5 py-1 min-w-0 overflow-hidden', className)}>
       <div className="flex-1 relative min-h-[20px] min-w-0 overflow-hidden">
         <textarea
           ref={textareaRef}

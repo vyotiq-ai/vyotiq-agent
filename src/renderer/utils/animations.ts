@@ -68,26 +68,28 @@ export const ANIMATIONS = {
   dialogEnter: 'animate-in fade-in zoom-in-95 duration-200',
   dialogExit: 'animate-out fade-out zoom-out-95 duration-150',
   
-  // Terminal-specific animations
-  terminalTypeIn: 'animate-in fade-in slide-in-from-left-1 duration-150',
-  terminalFlash: 'animate-pulse',
-  terminalBlink: 'animate-blink',
-  terminalGlow: 'animate-pulse-glow',
-  terminalExecute: 'animate-in fade-in slide-in-from-bottom-1 duration-200',
-  terminalResult: 'animate-in fade-in slide-in-from-left-2 duration-250',
+  // Terminal-specific animations - clean transitions
+  terminalTypeIn: 'transition-opacity duration-150',
+  terminalFlash: 'transition-opacity duration-100',
+  terminalBlink: '',
+  terminalGlow: '',
+  terminalExecute: 'transition-opacity duration-150',
+  terminalResult: 'transition-opacity duration-150',
   
   // Message animations
   messageIn: 'animate-in slide-in-from-bottom-2 fade-in duration-300',
   messageOut: 'animate-out slide-out-to-bottom-2 fade-out duration-200',
   
-  // Tool execution animations
-  toolStart: 'animate-in fade-in zoom-in-95 duration-200',
-  toolComplete: 'animate-in fade-in slide-in-from-left-1 duration-150',
-  toolPending: 'animate-pulse',
+  // Tool execution animations - clean, static transitions without distracting effects
+  toolStart: 'transition-opacity duration-150',
+  toolComplete: 'transition-opacity duration-100',
+  toolPending: 'opacity-80',
+  toolQueued: 'opacity-70',
+  toolRunning: 'opacity-100',
   
-  // Skeleton/loading
-  shimmer: 'animate-pulse bg-gradient-to-r from-[var(--color-surface-2)] via-[var(--color-surface-3)] to-[var(--color-surface-2)] bg-[length:200%_100%]',
-  skeleton: 'animate-pulse bg-[var(--color-surface-2)]',
+  // Skeleton/loading - only for actual loading skeletons, not tools
+  shimmer: 'bg-gradient-to-r from-[var(--color-surface-2)] via-[var(--color-surface-3)] to-[var(--color-surface-2)] bg-[length:200%_100%]',
+  skeleton: 'bg-[var(--color-surface-2)]',
   
   // Status indicators
   pulse: 'animate-pulse',

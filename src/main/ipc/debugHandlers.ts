@@ -399,7 +399,7 @@ export function registerDebugHandlers(context: IpcContext): void {
       return await undoHistory.undoChange(sessionId, changeId);
     } catch (error) {
       logger.error('Failed to undo change', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, message: (error as Error).message };
+      return { success: false, error: (error as Error).message };
     }
   });
 
@@ -409,7 +409,7 @@ export function registerDebugHandlers(context: IpcContext): void {
       return await undoHistory.redoChange(sessionId, changeId);
     } catch (error) {
       logger.error('Failed to redo change', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, message: (error as Error).message };
+      return { success: false, error: (error as Error).message };
     }
   });
 
@@ -419,7 +419,7 @@ export function registerDebugHandlers(context: IpcContext): void {
       return await undoHistory.undoRun(sessionId, runId);
     } catch (error) {
       logger.error('Failed to undo run', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, message: (error as Error).message, count: 0 };
+      return { success: false, error: (error as Error).message, count: 0 };
     }
   });
 

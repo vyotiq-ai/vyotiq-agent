@@ -173,8 +173,9 @@ export class BackupManager {
       // Clean up failed backup
       try {
         await fs.rm(backupDir, { recursive: true, force: true });
-      } catch {
-        // Ignore cleanup errors
+      } catch (err) {
+        // Cleanup failure is non-critical; log for debugging
+        logger.debug('Failed to clean up failed backup directory', { error: err instanceof Error ? err.message : String(err) });
       }
 
       logger.error('Failed to create backup', {
@@ -255,8 +256,9 @@ export class BackupManager {
         try {
           const content = await fs.readFile(metadataPath, 'utf-8');
           backups.push(JSON.parse(content) as BackupMetadata);
-        } catch {
-          // Skip invalid backup directories
+        } catch (err) {
+          // Skip invalid backup directories; log for debugging
+          logger.debug('Skipping invalid backup directory', { entry, error: err instanceof Error ? err.message : String(err) });
         }
       }
 

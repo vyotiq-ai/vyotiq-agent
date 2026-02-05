@@ -5,7 +5,8 @@
  * Supports running session animation, session dropdown, and workspace actions.
  */
 import React, { memo, useCallback, useState, useRef } from 'react';
-import { X, FolderOpen, Loader2, ChevronDown, MessageSquare } from 'lucide-react';
+import { X, FolderOpen, ChevronDown, MessageSquare } from 'lucide-react';
+import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
 import { useWorkspaceActivity } from '../../../../hooks/useWorkspaceSessions';
 import type { TabItemProps } from './types';
@@ -136,9 +137,9 @@ export const TabItem = memo<TabItemProps>(({
         {/* Running session indicator */}
         {isRunning && (
           <div className="flex items-center gap-0.5">
-            <Loader2
-              size={11}
-              className="text-[var(--color-success)] animate-spin"
+            <Spinner
+              size="sm"
+              className="w-[11px] h-[11px] text-[var(--color-success)]"
             />
             {runningCount > 1 && (
               <span className="text-[9px] text-[var(--color-success)] font-medium tabular-nums">
