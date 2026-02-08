@@ -94,6 +94,9 @@ out/
 # Build output
 dist/
 
+# Rust build output
+rust-backend/target/
+
 # GitHub and Kiro
 .github/
 .kiro/

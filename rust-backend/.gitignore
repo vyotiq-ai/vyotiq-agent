@@ -1,0 +1,10 @@
+# Rust build output
+/target/
+
+# Cargo lock is useful for applications (keep it)
+# Cargo.lock
+
+# IDE
+.idea/
+*.swp
+*.swo
