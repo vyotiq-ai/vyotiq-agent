@@ -11,7 +11,6 @@
 // Core Hooks
 // =============================================================================
 
-export { useActiveWorkspace } from './useActiveWorkspace';
 export { useAgentStatus } from './useAgentStatus';
 
 // =============================================================================
@@ -43,10 +42,6 @@ export {
   useActiveSessionTodos,
   useActiveSessionTodoItems,
   useTodoCompletionPercentage,
-  // Workspace selectors
-  useActiveWorkspaceFromState,
-  useActiveWorkspacePath,
-  useActiveWorkspaceName,
   // Streaming selectors
   useIsActiveSessionStreaming,
   // Config selectors
@@ -79,7 +74,6 @@ export {
 // Settings Hooks
 // =============================================================================
 
-export { useSettings } from './useSettings';
 export { useAppearanceSettings, applyAppearanceSettings } from './useAppearanceSettings';
 
 // =============================================================================
@@ -98,7 +92,6 @@ export { useLocalStorage, useSessionStorage } from './useLocalStorage';
 
 export { useSessionList } from '../features/sessions/hooks/useSessionList';
 export { useStreamingBuffer } from './useStreamingBuffer';
-export { useWorkspaceList } from './useWorkspaceList';
 export { useAvailableProviders, type ProviderCooldownInfo } from './useAvailableProviders';
 
 // =============================================================================
@@ -219,18 +212,6 @@ export {
   type FieldState,
   type UseFormValidationResult,
 } from './useFormValidation';
-
-// =============================================================================
-// Multi-Workspace Session Hooks
-// =============================================================================
-
-export {
-  useWorkspaceSessions,
-  useAllRunningSessions,
-  useWorkspaceActivity,
-  type WorkspaceSessionsState,
-  type WorkspaceSessionsActions,
-} from './useWorkspaceSessions';
 
 // =============================================================================
 // UI Utility Hooks

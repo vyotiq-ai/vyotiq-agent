@@ -65,7 +65,7 @@ const MetricCard: React.FC<{
   };
 
   return (
-    <div className="p-3 bg-[var(--color-surface-1)] rounded-lg border border-[var(--color-border-subtle)]">
+    <div className="p-3 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]">
       <div className="flex items-center gap-2 mb-1">
         <span className={cn('opacity-70', colorClasses[color])}>{icon}</span>
         <span className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wide">{label}</span>
@@ -87,7 +87,7 @@ const TabButton: React.FC<{
   <button
     onClick={onClick}
     className={cn(
-      'px-3 py-1.5 text-[10px] font-medium rounded transition-colors',
+      'px-3 py-1.5 text-[10px] font-medium transition-colors',
       active
         ? 'bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]'
         : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]'
@@ -285,7 +285,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
 
                 {/* Token Distribution */}
                 {totalTokens > 0 && (
-                  <div className="p-3 bg-[var(--color-surface-1)] rounded-lg border border-[var(--color-border-subtle)]">
+                  <div className="p-3 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wide">Token Distribution</span>
                     </div>
@@ -310,7 +310,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
 
                 {/* Context Window Details */}
                 {sessionData.ctx && (
-                  <div className="p-3 bg-[var(--color-surface-1)] rounded-lg border border-[var(--color-border-subtle)]">
+                  <div className="p-3 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wide">Context Window</span>
                       <span className={cn(
@@ -365,13 +365,13 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
 
                 {/* Provider Breakdown */}
                 {cost.providerBreakdown.length > 0 && (
-                  <div className="p-3 bg-[var(--color-surface-1)] rounded-lg border border-[var(--color-border-subtle)]">
+                  <div className="p-3 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]">
                     <div className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Provider Breakdown</div>
                     <div className="space-y-2">
                       {cost.providerBreakdown.map((p) => (
                         <div 
                           key={p.provider}
-                          className="flex items-center justify-between p-2 bg-[var(--color-surface-2)] rounded"
+                          className="flex items-center justify-between p-2 bg-[var(--color-surface-2)]"
                         >
                           <span className="text-[var(--color-accent-primary)] font-medium">{p.provider}</span>
                           <div className="flex items-center gap-4 text-[10px] text-[var(--color-text-muted)]">
@@ -418,7 +418,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
                     <div 
                       key={sess.id}
                       className={cn(
-                        'p-3 rounded-lg border transition-colors',
+                        'p-3 border transition-colors',
                         isActive 
                           ? 'bg-[var(--color-accent-primary)]/5 border-[var(--color-accent-primary)]/30'
                           : 'bg-[var(--color-surface-1)] border-[var(--color-border-subtle)] hover:border-[var(--color-border-default)]'
@@ -439,7 +439,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
                             {sess.title}
                           </span>
                           {isActive && (
-                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-[var(--color-accent-primary)]/20 text-[var(--color-accent-primary)]">
+                            <span className="text-[8px] px-1.5 py-0.5 bg-[var(--color-accent-primary)]/20 text-[var(--color-accent-primary)]">
                               ACTIVE
                             </span>
                           )}
@@ -484,14 +484,14 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={refreshPerfMetrics}
-                  className="flex items-center gap-1 px-2 py-1 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] bg-[var(--color-surface-2)] rounded transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] bg-[var(--color-surface-2)] transition-colors"
                 >
                   <RefreshCw size={10} />
                   Refresh
                 </button>
                 <button
                   onClick={clearPerfMetrics}
-                  className="flex items-center gap-1 px-2 py-1 text-[9px] text-[var(--color-error)] hover:bg-[var(--color-error)]/10 rounded transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 text-[9px] text-[var(--color-error)] hover:bg-[var(--color-error)]/10 transition-colors"
                 >
                   <Trash2 size={10} />
                   Clear
@@ -531,7 +531,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
 
             {/* Top Components by Render Time */}
             {perfSummary.topComponents.length > 0 ? (
-              <div className="p-3 bg-[var(--color-surface-1)] rounded-lg border border-[var(--color-border-subtle)]">
+              <div className="p-3 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]">
                 <div className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
                   Top Components by Total Render Time
                 </div>
@@ -539,7 +539,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
                   {perfSummary.topComponents.map((comp, idx) => (
                     <div 
                       key={comp.componentName}
-                      className="flex items-center justify-between p-2 bg-[var(--color-surface-2)] rounded"
+                      className="flex items-center justify-between p-2 bg-[var(--color-surface-2)]"
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-[9px] text-[var(--color-text-dim)] w-4">{idx + 1}.</span>
@@ -577,7 +577,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
             )}
 
             {/* Performance Tips */}
-            <div className="p-3 bg-[var(--color-surface-1)] rounded-lg border border-[var(--color-border-subtle)]">
+            <div className="p-3 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]">
               <div className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
                 Performance Tips
               </div>

@@ -8,6 +8,7 @@ import { promises as fs } from 'node:fs';
 import { resolvePath } from '../../utils/fileSystem';
 import { wasFileRead, getReadFilesCache } from '../fileTracker';
 import { undoHistory } from '../../agent/undoHistory';
+import { notifyFileChanged } from '../../utils/fileChangeNotifier';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
 
@@ -786,6 +787,11 @@ File: ${filePath}`,
       output += `Lines: ${originalLines} → ${newLines} (${linesChanged >= 0 ? '+' : ''}${linesChanged})\n`;
       output += `Characters: ${charsChanged >= 0 ? '+' : ''}${charsChanged}\n`;
       output += `Resolved path: ${resolvedPath}`;
+
+      // Notify Rust backend for incremental re-indexing
+      if (context.workspacePath) {
+        notifyFileChanged(context.workspacePath, resolvedPath, 'modified');
+      }
 
       return {
         toolName: 'edit',

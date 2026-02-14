@@ -36,17 +36,24 @@ export const SplitPane: React.FC<SplitPaneProps> = memo(({
   const [isDragging, setIsDragging] = useState(false);
   const startPos = useRef(0);
   const startSizes = useRef(sizes);
+  // Track whether user has manually resized to avoid resetting on re-render
+  const userResized = useRef(false);
+  // Stable reference to initialSizes to avoid re-triggering effects
+  const initialSizesRef = useRef(initialSizes);
+  initialSizesRef.current = initialSizes;
 
-  // Handle collapse
+  // Handle collapse — only reset to initialSizes if user hasn't resized
   useEffect(() => {
     if (collapsed === 'first') {
       setSizes([0, 100]);
+      userResized.current = false;
     } else if (collapsed === 'second') {
       setSizes([100, 0]);
-    } else {
-      setSizes(initialSizes);
+      userResized.current = false;
+    } else if (!userResized.current) {
+      setSizes(initialSizesRef.current);
     }
-  }, [collapsed, initialSizes]);
+  }, [collapsed]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -93,6 +100,7 @@ export const SplitPane: React.FC<SplitPaneProps> = memo(({
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      userResized.current = true;
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -157,7 +165,7 @@ export const SplitPane: React.FC<SplitPaneProps> = memo(({
         tabIndex={0}
         aria-orientation={isHorizontal ? 'vertical' : 'horizontal'}
         className={cn(
-          'relative flex items-center justify-center shrink-0',
+          'relative flex items-center justify-center shrink-0 group',
           'bg-[var(--color-surface-2)] transition-colors',
           isHorizontal ? 'w-1 cursor-col-resize hover:bg-[var(--color-accent-primary)]/30' : 'h-1 cursor-row-resize hover:bg-[var(--color-accent-primary)]/30',
           isDragging && 'bg-[var(--color-accent-primary)]/50',

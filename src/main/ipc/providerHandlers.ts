@@ -2,7 +2,7 @@
  * Provider IPC Handlers
  * 
  * Unified IPC handlers for all LLM providers.
- * Handles model fetching for OpenRouter, Anthropic, OpenAI, DeepSeek, Gemini, and Mistral.
+ * Handles model fetching for OpenRouter, Anthropic, OpenAI, DeepSeek, Gemini, Mistral, and xAI.
  * 
  * @module main/ipc/providerHandlers
  */
@@ -22,176 +22,101 @@ import { XAIProvider, type XAIModel } from '../agent/providers/xaiProvider';
 
 const logger = createLogger('IPC:Providers');
 
+// =============================================================================
+// Generic provider model fetcher to eliminate duplication
+// =============================================================================
+
+interface ProviderConfig<TModel> {
+  /** IPC channel name */
+  channel: string;
+  /** Settings key for the API key */
+  apiKeyField: string;
+  /** Human-readable provider name */
+  providerName: string;
+  /** Factory to create the provider instance */
+  createProvider: (apiKey: string) => { fetchModels: () => Promise<TModel[]> };
+}
+
+function registerProviderModelFetcher<TModel>(
+  config: ProviderConfig<TModel>,
+  getSettingsStore: IpcContext['getSettingsStore'],
+): void {
+  ipcMain.handle(config.channel, async (): Promise<{ success: boolean; models: TModel[]; error?: string }> => {
+    try {
+      const settings = getSettingsStore().get();
+      const apiKey = (settings.apiKeys as Record<string, string | undefined>)?.[config.apiKeyField];
+
+      if (!apiKey) {
+        return { success: false, models: [], error: `No ${config.providerName} API key configured` };
+      }
+
+      const provider = config.createProvider(apiKey);
+      const models = await provider.fetchModels();
+
+      logger.debug(`Fetched ${config.providerName} models`, { count: models.length });
+      return { success: true, models };
+    } catch (error) {
+      logger.error(`Failed to fetch ${config.providerName} models`, { error: error instanceof Error ? error.message : String(error) });
+      return { success: false, models: [], error: error instanceof Error ? error.message : 'Failed to fetch models' };
+    }
+  });
+}
+
+// =============================================================================
+// Registration
+// =============================================================================
+
 export function registerProviderHandlers(context: IpcContext): void {
   const { getSettingsStore } = context;
 
-  // ===========================================================================
-  // OpenRouter
-  // ===========================================================================
+  const providers: ProviderConfig<OpenRouterModel | AnthropicModel | OpenAIModel | DeepSeekModel | GeminiModel | MistralModel | XAIModel>[] = [
+    {
+      channel: 'openrouter:fetch-models',
+      apiKeyField: 'openrouter',
+      providerName: 'OpenRouter',
+      createProvider: (key) => new OpenRouterProvider(key),
+    },
+    {
+      channel: 'anthropic:fetch-models',
+      apiKeyField: 'anthropic',
+      providerName: 'Anthropic',
+      createProvider: (key) => new AnthropicProvider(key),
+    },
+    {
+      channel: 'openai:fetch-models',
+      apiKeyField: 'openai',
+      providerName: 'OpenAI',
+      createProvider: (key) => new OpenAIProvider(key),
+    },
+    {
+      channel: 'deepseek:fetch-models',
+      apiKeyField: 'deepseek',
+      providerName: 'DeepSeek',
+      createProvider: (key) => new DeepSeekProvider(key),
+    },
+    {
+      channel: 'gemini:fetch-models',
+      apiKeyField: 'gemini',
+      providerName: 'Gemini',
+      createProvider: (key) => new GeminiProvider(key),
+    },
+    {
+      channel: 'mistral:fetch-models',
+      apiKeyField: 'mistral',
+      providerName: 'Mistral',
+      createProvider: (key) => new MistralProvider(key),
+    },
+    {
+      channel: 'xai:fetch-models',
+      apiKeyField: 'xai',
+      providerName: 'xAI',
+      createProvider: (key) => new XAIProvider(key),
+    },
+  ];
 
-  ipcMain.handle('openrouter:fetch-models', async (): Promise<{ success: boolean; models: OpenRouterModel[]; error?: string }> => {
-    try {
-      const settings = getSettingsStore().get();
-      const apiKey = settings.apiKeys?.openrouter;
-      
-      if (!apiKey) {
-        return { success: false, models: [], error: 'No OpenRouter API key configured' };
-      }
-
-      const provider = new OpenRouterProvider(apiKey);
-      const models = await provider.fetchModels();
-      
-      logger.debug('Fetched OpenRouter models', { count: models.length });
-      return { success: true, models };
-    } catch (error) {
-      logger.error('Failed to fetch OpenRouter models', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, models: [], error: error instanceof Error ? error.message : 'Failed to fetch models' };
-    }
-  });
-
-  // ===========================================================================
-  // Anthropic
-  // ===========================================================================
-
-  ipcMain.handle('anthropic:fetch-models', async (): Promise<{ success: boolean; models: AnthropicModel[]; error?: string }> => {
-    try {
-      const settings = getSettingsStore().get();
-      const apiKey = settings.apiKeys?.anthropic;
-      
-      if (!apiKey) {
-        return { success: false, models: [], error: 'No Anthropic API key configured' };
-      }
-
-      const provider = new AnthropicProvider(apiKey);
-      const models = await provider.fetchModels();
-      
-      logger.debug('Fetched Anthropic models', { count: models.length });
-      return { success: true, models };
-    } catch (error) {
-      logger.error('Failed to fetch Anthropic models', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, models: [], error: error instanceof Error ? error.message : 'Failed to fetch models' };
-    }
-  });
-
-  // ===========================================================================
-  // OpenAI
-  // ===========================================================================
-
-  ipcMain.handle('openai:fetch-models', async (): Promise<{ success: boolean; models: OpenAIModel[]; error?: string }> => {
-    try {
-      const settings = getSettingsStore().get();
-      const apiKey = settings.apiKeys?.openai;
-      
-      if (!apiKey) {
-        return { success: false, models: [], error: 'No OpenAI API key configured' };
-      }
-
-      const provider = new OpenAIProvider(apiKey);
-      const models = await provider.fetchModels();
-      
-      logger.debug('Fetched OpenAI models', { count: models.length });
-      return { success: true, models };
-    } catch (error) {
-      logger.error('Failed to fetch OpenAI models', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, models: [], error: error instanceof Error ? error.message : 'Failed to fetch models' };
-    }
-  });
-
-  // ===========================================================================
-  // DeepSeek
-  // ===========================================================================
-
-  ipcMain.handle('deepseek:fetch-models', async (): Promise<{ success: boolean; models: DeepSeekModel[]; error?: string }> => {
-    try {
-      const settings = getSettingsStore().get();
-      const apiKey = settings.apiKeys?.deepseek;
-      
-      if (!apiKey) {
-        return { success: false, models: [], error: 'No DeepSeek API key configured' };
-      }
-
-      const provider = new DeepSeekProvider(apiKey);
-      const models = await provider.fetchModels();
-      
-      logger.debug('Fetched DeepSeek models', { count: models.length });
-      return { success: true, models };
-    } catch (error) {
-      logger.error('Failed to fetch DeepSeek models', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, models: [], error: error instanceof Error ? error.message : 'Failed to fetch models' };
-    }
-  });
-
-  // ===========================================================================
-  // Gemini
-  // ===========================================================================
-
-  ipcMain.handle('gemini:fetch-models', async (): Promise<{ success: boolean; models: GeminiModel[]; error?: string }> => {
-    try {
-      const settings = getSettingsStore().get();
-      const apiKey = settings.apiKeys?.gemini;
-      
-      if (!apiKey) {
-        return { success: false, models: [], error: 'No Gemini API key configured' };
-      }
-
-      const provider = new GeminiProvider(apiKey);
-      const models = await provider.fetchModels();
-      
-      logger.debug('Fetched Gemini models', { count: models.length });
-      return { success: true, models };
-    } catch (error) {
-      logger.error('Failed to fetch Gemini models', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, models: [], error: error instanceof Error ? error.message : 'Failed to fetch models' };
-    }
-  });
-
-  // ===========================================================================
-  // Mistral
-  // ===========================================================================
-
-  ipcMain.handle('mistral:fetch-models', async (): Promise<{ success: boolean; models: MistralModel[]; error?: string }> => {
-    try {
-      const settings = getSettingsStore().get();
-      const apiKey = settings.apiKeys?.mistral;
-      
-      if (!apiKey) {
-        return { success: false, models: [], error: 'No Mistral API key configured' };
-      }
-
-      const provider = new MistralProvider(apiKey);
-      const models = await provider.fetchModels();
-      
-      logger.debug('Fetched Mistral models', { count: models.length });
-      return { success: true, models };
-    } catch (error) {
-      logger.error('Failed to fetch Mistral models', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, models: [], error: error instanceof Error ? error.message : 'Failed to fetch models' };
-    }
-  });
-
-  // ===========================================================================
-  // xAI (Grok)
-  // ===========================================================================
-
-  ipcMain.handle('xai:fetch-models', async (): Promise<{ success: boolean; models: XAIModel[]; error?: string }> => {
-    try {
-      const settings = getSettingsStore().get();
-      const apiKey = settings.apiKeys?.xai;
-      
-      if (!apiKey) {
-        return { success: false, models: [], error: 'No xAI API key configured' };
-      }
-
-      const provider = new XAIProvider(apiKey);
-      const models = await provider.fetchModels();
-      
-      logger.debug('Fetched xAI models', { count: models.length });
-      return { success: true, models };
-    } catch (error) {
-      logger.error('Failed to fetch xAI models', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, models: [], error: error instanceof Error ? error.message : 'Failed to fetch models' };
-    }
-  });
+  for (const config of providers) {
+    registerProviderModelFetcher(config, getSettingsStore);
+  }
 
   logger.info('Provider IPC handlers registered');
 }

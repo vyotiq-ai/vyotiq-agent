@@ -5,7 +5,7 @@
  * to different task types (frontend, backend, debugging, etc.)
  */
 import React, { useMemo } from 'react';
-import { ChevronDown, ChevronUp, RefreshCw, Eye } from 'lucide-react';
+import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { Toggle } from '../../../components/ui/Toggle';
 import type { 
   TaskRoutingSettings, RoutingTaskType, TaskModelMapping, LLMProviderName, ProviderSettings,
@@ -13,7 +13,7 @@ import type {
 import { ROUTING_TASK_INFO } from '../../../../shared/types';
 import { PROVIDERS, getModelsForProvider } from '../../../../shared/providers';
 import { cn } from '../../../utils/cn';
-import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider } from '../primitives';
+import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsInfoBox } from '../primitives';
 
 interface TaskMappingCardProps {
   taskType: RoutingTaskType;
@@ -60,7 +60,7 @@ const TaskMappingCard: React.FC<TaskMappingCardProps> = ({ taskType, mapping, av
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <Toggle checked={mapping.enabled} onToggle={() => onUpdate({ ...mapping, enabled: !mapping.enabled })} size="sm" />
-          <button onClick={() => setExpanded(!expanded)} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
+          <button onClick={() => setExpanded(!expanded)} aria-expanded={expanded} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
             {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
           </button>
         </div>
@@ -196,13 +196,12 @@ export const SettingsRouting: React.FC<SettingsRoutingProps> = ({ settings, prov
   return (
     <SettingsSection title="task routing" description="Automatically route different tasks to specialized models">
       {/* Master Toggle */}
-      <div className="flex items-center justify-between p-3 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]">
-        <div>
-          <div className="text-[10px] text-[var(--color-text-primary)]">Enable Task Routing</div>
-          <div className="text-[9px] text-[var(--color-text-dim)]">Automatically detect task type and use configured models</div>
-        </div>
-        <Toggle checked={enabled} onToggle={() => onSettingChange?.('enabled', !enabled)} />
-      </div>
+      <SettingsToggleRow
+        label="enable-routing"
+        description="automatically detect task type and use configured models"
+        checked={enabled}
+        onToggle={() => onSettingChange?.('enabled', !enabled)}
+      />
 
       {/* Global Settings */}
       <div className={`space-y-3 ${!enabled && 'opacity-50 pointer-events-none'}`}>
@@ -213,16 +212,7 @@ export const SettingsRouting: React.FC<SettingsRoutingProps> = ({ settings, prov
           </div>
           <SettingsToggleRow label="allow-override" description="let agent override routing for complex tasks" checked={allowAgentOverride} onToggle={() => onSettingChange?.('allowAgentOverride', !allowAgentOverride)} />
           <div className="grid gap-2 sm:grid-cols-2">
-            <div className="flex items-center justify-between p-2 bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)]">
-              <div className="flex items-center gap-2">
-                <Eye size={12} className="text-[var(--color-text-muted)]" />
-                <div>
-                  <div className="text-[10px] text-[var(--color-text-muted)]">--show-badge</div>
-                  <div className="text-[9px] text-[var(--color-text-dim)]"># show task badge on messages</div>
-                </div>
-              </div>
-              <Toggle checked={showRoutingBadge} onToggle={() => onSettingChange?.('showRoutingBadge', !showRoutingBadge)} size="sm" />
-            </div>
+            <SettingsToggleRow label="show-badge" description="show task badge on messages" checked={showRoutingBadge} onToggle={() => onSettingChange?.('showRoutingBadge', !showRoutingBadge)} />
             <SettingsToggleRow label="enable-fallback" description="fallback when provider fails" checked={enableFallback} onToggle={() => onSettingChange?.('enableFallback', !enableFallback)} />
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -248,9 +238,9 @@ export const SettingsRouting: React.FC<SettingsRoutingProps> = ({ settings, prov
         </SettingsGroup>
 
         {/* Info */}
-        <div className="text-[9px] text-[var(--color-text-dim)] bg-[var(--color-surface-base)] p-2 border border-[var(--color-border-subtle)]">
-          Task detection analyzes your message content, file extensions, and conversation context to determine the task type. Configure different models for specialized tasks to optimize cost and quality. Set provider to "auto" to use default selection for that task.
-        </div>
+        <SettingsInfoBox>
+          Task detection analyzes your message content, file extensions, and conversation context to determine the task type. Configure different models for specialized tasks to optimize cost and quality. Set provider to &quot;auto&quot; to use default selection for that task.
+        </SettingsInfoBox>
       </div>
     </SettingsSection>
   );

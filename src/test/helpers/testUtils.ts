@@ -4,20 +4,12 @@
  * Common test helper functions and utilities.
  */
 
-interface FeatureFlags {
-  enableAutonomousMode: boolean;
-  enableTaskPlanning: boolean;
-  enableDynamicTools: boolean;
-  enableSafetyFramework: boolean;
-  enablePerformanceMonitoring: boolean;
-  enableAdvancedDebugging: boolean;
-  maxDynamicToolsPerSession?: number;
-}
+import type { AutonomousFeatureFlags } from '../../shared/types';
 
 /**
  * Create default feature flags for testing
  */
-export function createDefaultFeatureFlags(overrides?: Partial<FeatureFlags>): FeatureFlags {
+export function createDefaultFeatureFlags(overrides?: Partial<AutonomousFeatureFlags>): AutonomousFeatureFlags {
   return {
     enableAutonomousMode: false,
     enableTaskPlanning: false,

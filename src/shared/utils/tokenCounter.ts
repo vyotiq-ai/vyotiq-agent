@@ -394,49 +394,6 @@ export function fitsWithinTokenLimit(
 // React Hook
 // =============================================================================
 
-import { useMemo, useCallback } from 'react';
-
-/**
- * Hook for token counting in React components
- */
-export function useTokenCounter(model: TokenizerModel = 'default') {
-  const counter = getTokenCounter();
-  
-  const count = useCallback((text: string) => {
-    return counter.count(text, { model }).tokens;
-  }, [model, counter]);
-  
-  const countMessages = useCallback(
-    (messages: Array<{ role?: string; content: string }>) => {
-      return counter.countMessages(messages, { model }).tokens;
-    },
-    [model, counter]
-  );
-  
-  const truncate = useCallback(
-    (text: string, limit: number) => {
-      return counter.truncateToLimit(text, limit, { model });
-    },
-    [model, counter]
-  );
-  
-  return useMemo(() => ({
-    count,
-    countMessages,
-    truncate,
-    countFast: counter.countFast.bind(counter),
-    splitIntoChunks: (text: string, limit: number) => 
-      counter.splitIntoChunks(text, limit, { model }),
-  }), [count, countMessages, truncate, counter, model]);
-}
-
-/**
- * Hook that returns token count for a specific text
- */
-export function useTokenCount(text: string, model: TokenizerModel = 'default'): number {
-  return useMemo(() => countTokens(text, model), [text, model]);
-}
-
 export default {
   getTokenCounter,
   countTokens,
@@ -444,6 +401,4 @@ export default {
   countMessageTokens,
   truncateToTokenLimit,
   fitsWithinTokenLimit,
-  useTokenCounter,
-  useTokenCount,
 };

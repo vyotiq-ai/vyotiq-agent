@@ -13,6 +13,9 @@
  */
 
 import { performance as nodePerf } from 'node:perf_hooks';
+import { createLogger } from '../logger';
+
+const logger = createLogger('Performance');
 
 // ==========================================================================
 // Lazy Module Loader with WeakRef Caching
@@ -96,7 +99,8 @@ interface CacheEntry<V extends WeakKey> {
  */
 export class MemorySensitiveCache<K, V extends object> {
   private cache = new Map<K, CacheEntry<V>>();
-  private accessOrder: K[] = [];
+  // LRU tracking: Map preserves insertion order and has O(1) delete + re-insert
+  private accessOrderMap = new Map<K, true>();
   private readonly maxSize: number;
   private readonly maxMemoryBytes: number;
   private readonly onEvict?: (key: K, value: V) => void;
@@ -169,7 +173,7 @@ export class MemorySensitiveCache<K, V extends object> {
       }
     }
     this.cache.delete(key);
-    this.accessOrder = this.accessOrder.filter(k => k !== key);
+    this.accessOrderMap.delete(key);
     return entry !== undefined;
   }
 
@@ -185,7 +189,7 @@ export class MemorySensitiveCache<K, V extends object> {
       }
     }
     this.cache.clear();
-    this.accessOrder = [];
+    this.accessOrderMap.clear();
   }
 
   get size(): number {
@@ -193,16 +197,15 @@ export class MemorySensitiveCache<K, V extends object> {
   }
 
   private updateAccessOrder(key: K): void {
-    const idx = this.accessOrder.indexOf(key);
-    if (idx > -1) {
-      this.accessOrder.splice(idx, 1);
-    }
-    this.accessOrder.push(key);
+    this.accessOrderMap.delete(key);
+    this.accessOrderMap.set(key, true);
   }
 
   private evictOldest(): void {
-    const oldest = this.accessOrder.shift();
+    // Map.keys().next() returns the oldest (first inserted) key
+    const oldest = this.accessOrderMap.keys().next().value;
     if (oldest !== undefined) {
+      this.accessOrderMap.delete(oldest);
       this.delete(oldest);
     }
   }
@@ -733,7 +736,7 @@ function runIdleTasks(): void {
     try {
       task.callback();
     } catch (error) {
-      console.error('Idle task error:', error);
+      logger.error('Idle task error', { error: error instanceof Error ? error.message : String(error) });
     }
   }
 

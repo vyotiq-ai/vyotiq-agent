@@ -11,7 +11,6 @@ function createMockSession(overrides: Partial<AgentSessionState> = {}): AgentSes
   return {
     id: 'session-1',
     title: 'Test Session',
-    workspaceId: 'workspace-1',
     status: 'idle',
     messages: [],
     config: {
@@ -35,7 +34,6 @@ function createInitialState(overrides: Partial<AgentUIState> = {}): AgentUIState
   return {
     sessions: [],
     activeSessionId: undefined,
-    workspaces: [],
     sessionCost: {},
     streamingSessions: new Set(),
     progressGroups: {},
@@ -48,10 +46,13 @@ function createInitialState(overrides: Partial<AgentUIState> = {}): AgentUIState
     routingDecisions: {},
     terminalStreams: {},
     todos: {},
+    executingTools: {},
+    queuedTools: {},
     // Phase 4: Communication
     pendingQuestions: [],
     pendingDecisions: [],
     communicationProgress: [],
+    runErrors: {},
     settings: {
       apiKeys: {},
       rateLimits: {},

@@ -68,6 +68,8 @@ import type { RecoveryDeps } from './types';
 import { RecoveryManager } from './RecoveryManager';
 import { SelfHealingAgent } from './SelfHealingAgent';
 import { UserCommunication } from './UserCommunication';
+import { initDeadLetterQueue, closeDeadLetterQueue } from './DeadLetterQueue';
+import { initCrashRecoveryJournal, closeCrashRecoveryJournal } from './CrashRecoveryJournal';
 import { createLogger } from '../../logger';
 
 const logger = createLogger('Recovery');
@@ -84,7 +86,7 @@ let initialized = false;
 /**
  * Initialize recovery system
  */
-export function initRecovery(deps?: Partial<RecoveryDeps>): void {
+export async function initRecovery(deps?: Partial<RecoveryDeps>): Promise<void> {
   if (initialized) {
     logger.warn('Recovery system already initialized');
     return;
@@ -105,6 +107,25 @@ export function initRecovery(deps?: Partial<RecoveryDeps>): void {
 
   // Create self-healing agent
   selfHealingAgent = new SelfHealingAgent(recoveryManager, {}, recoveryDeps);
+
+  // Initialize crash resilience subsystems
+  try {
+    await initDeadLetterQueue();
+    logger.debug('Dead letter queue initialized');
+  } catch (error) {
+    logger.warn('Failed to initialize dead letter queue', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    await initCrashRecoveryJournal();
+    logger.debug('Crash recovery journal initialized');
+  } catch (error) {
+    logger.warn('Failed to initialize crash recovery journal', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   initialized = true;
   logger.info('Recovery system initialized');
@@ -183,6 +204,10 @@ export function resetRecovery(): void {
   if (recoveryManager) {
     recoveryManager.clearOldSessions(0);
   }
+
+  // Close crash resilience subsystems
+  closeDeadLetterQueue();
+  closeCrashRecoveryJournal();
 
   recoveryManager = null;
   selfHealingAgent = null;

@@ -22,9 +22,7 @@
  * 
  * ## Deprecated Exports
  * 
- * The following exports are deprecated and point to the same unified content:
- * - CORE_IDENTITY, CRITICAL_RULES, TOOL_CHAINING, EDIT_TOOL_GUIDE, etc.
- * 
+ * Legacy individual section exports have been removed.
  * Use getStaticContent() instead for the complete static prompt.
  */
 
@@ -41,18 +39,6 @@ export {
   PROMPT_SECTIONS,
   getStaticSections,
   getStaticContent,
-
-  // Static section content - DEPRECATED (use getStaticContent())
-  CORE_IDENTITY,
-  CRITICAL_RULES,
-  TOOL_CHAINING,
-  EDIT_TOOL_GUIDE,
-  COMMON_TASKS,
-  TASK_MANAGEMENT,
-  OUTPUT_FORMATTING,
-  SAFETY_GUIDELINES,
-  TOOL_WORKFLOWS,
-  TOOL_HINTS,
 
   // Dynamic section builders
   buildCoreContext,

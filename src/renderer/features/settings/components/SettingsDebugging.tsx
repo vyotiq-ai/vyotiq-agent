@@ -13,6 +13,7 @@ import type { DebugSettings } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
 import { createLogger } from '../../../utils/logger';
 import { SettingsSection, SettingsToggleRow, SettingsSlider } from '../primitives';
+import { formatDuration, formatDate } from '../utils/formatters';
 
 const logger = createLogger('SettingsDebugging');
 
@@ -45,16 +46,6 @@ const EXPORT_FORMATS: Array<{ value: DebugSettings['traceExportFormat']; label: 
   { value: 'json', label: 'JSON' },
   { value: 'markdown', label: 'Markdown' },
 ];
-
-const formatDuration = (ms: number): string => {
-  if (ms >= 60000) return `${(ms / 60000).toFixed(1)}m`;
-  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${ms}ms`;
-};
-
-const formatDate = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
 
 export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, onChange }) => {
   const [traces, setTraces] = useState<TraceSummary[]>([]);
@@ -127,6 +118,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
   const renderSectionHeader = (id: string, icon: React.ReactNode, title: string, description?: string) => (
     <button
       onClick={() => toggleSection(id)}
+      aria-expanded={expandedSection === id}
       className="w-full flex items-center justify-between py-2 text-left group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
     >
       <div className="flex items-center gap-2">
@@ -145,7 +137,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
         {renderSectionHeader('logging', <Terminal size={12} />, 'Logging Configuration', 'verbose output settings')}
         {expandedSection === 'logging' && (
           <div className="px-2 sm:px-3 pb-3 space-y-3 border-t border-[var(--color-border-subtle)]">
-            <SettingsToggleRow label="Enable Verbose Logging" description="Output detailed debug information to console" checked={settings.verboseLogging} onToggle={() => onChange('verboseLogging', !settings.verboseLogging)} />
+            <SettingsToggleRow label="verbose-logging" description="Output detailed debug information to console" checked={settings.verboseLogging} onToggle={() => onChange('verboseLogging', !settings.verboseLogging)} />
             <div>
               <label className="text-[9px] sm:text-[10px] text-[var(--color-text-primary)] block mb-1.5">Log Level</label>
               <div className="grid grid-cols-3 xs:grid-cols-5 gap-1">
@@ -167,7 +159,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
               </div>
               <p className="text-[8px] text-[var(--color-text-muted)] mt-1">{LOG_LEVELS.find(l => l.value === settings.logLevel)?.description}</p>
             </div>
-            <SettingsToggleRow label="Capture Full Payloads" description="Store complete request/response data for debugging" checked={settings.captureFullPayloads} onToggle={() => onChange('captureFullPayloads', !settings.captureFullPayloads)} />
+            <SettingsToggleRow label="capture-full-payloads" description="Store complete request/response data for debugging" checked={settings.captureFullPayloads} onToggle={() => onChange('captureFullPayloads', !settings.captureFullPayloads)} />
           </div>
         )}
       </div>
@@ -177,8 +169,8 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
         {renderSectionHeader('execution', <Play size={12} />, 'Execution Control', 'step-by-step mode')}
         {expandedSection === 'execution' && (
           <div className="px-3 pb-3 space-y-3 border-t border-[var(--color-border-subtle)]">
-            <SettingsToggleRow label="Step-by-Step Execution Mode" description="Pause before each step for manual inspection" checked={settings.stepByStepMode} onToggle={() => onChange('stepByStepMode', !settings.stepByStepMode)} />
-            <SettingsToggleRow label="Break on Error" description="Automatically pause execution when an error occurs" checked={settings.breakOnError} onToggle={() => onChange('breakOnError', !settings.breakOnError)} />
+            <SettingsToggleRow label="step-by-step-mode" description="Pause before each step for manual inspection" checked={settings.stepByStepMode} onToggle={() => onChange('stepByStepMode', !settings.stepByStepMode)} />
+            <SettingsToggleRow label="break-on-error" description="Automatically pause execution when an error occurs" checked={settings.breakOnError} onToggle={() => onChange('breakOnError', !settings.breakOnError)} />
             <div>
               <label className="text-[10px] text-[var(--color-text-primary)] block mb-1.5">Break on Tools (comma-separated)</label>
               <input
@@ -199,7 +191,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
         {renderSectionHeader('export', <Download size={12} />, 'Trace Export', 'export and auto-save settings')}
         {expandedSection === 'export' && (
           <div className="px-3 pb-3 space-y-3 border-t border-[var(--color-border-subtle)]">
-            <SettingsToggleRow label="Auto-Export Traces on Error" description="Automatically save traces when execution fails" checked={settings.autoExportOnError} onToggle={() => onChange('autoExportOnError', !settings.autoExportOnError)} />
+            <SettingsToggleRow label="auto-export-on-error" description="Automatically save traces when execution fails" checked={settings.autoExportOnError} onToggle={() => onChange('autoExportOnError', !settings.autoExportOnError)} />
             <div>
               <label className="text-[10px] text-[var(--color-text-primary)] block mb-1.5">Export Format</label>
               <div className="flex gap-2">
@@ -219,8 +211,8 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                 ))}
               </div>
             </div>
-            <SettingsToggleRow label="Include Full Payloads in Export" description="Include complete request/response data in exported traces" checked={settings.includeFullPayloadsInExport} onToggle={() => onChange('includeFullPayloadsInExport', !settings.includeFullPayloadsInExport)} />
-            <SettingsSlider label="Max Preview Length" description="Characters to show in trace previews" value={settings.maxPreviewLength} onChange={(v) => onChange('maxPreviewLength', v)} min={100} max={2000} step={100} format={(v) => `${v} chars`} />
+            <SettingsToggleRow label="include-payloads-in-export" description="Include complete request/response data in exported traces" checked={settings.includeFullPayloadsInExport} onToggle={() => onChange('includeFullPayloadsInExport', !settings.includeFullPayloadsInExport)} />
+            <SettingsSlider label="max-preview-length" description="Characters to show in trace previews" value={settings.maxPreviewLength} onChange={(v) => onChange('maxPreviewLength', v)} min={100} max={2000} step={100} format={(v) => `${v} chars`} />
           </div>
         )}
       </div>
@@ -230,10 +222,10 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
         {renderSectionHeader('viewer', <Eye size={12} />, 'Trace Viewer', 'display preferences')}
         {expandedSection === 'viewer' && (
           <div className="px-3 pb-3 space-y-3 border-t border-[var(--color-border-subtle)]">
-            <SettingsToggleRow label="Auto-Scroll to New Steps" description="Automatically scroll when new trace steps appear" checked={settings.autoScrollTraceViewer} onToggle={() => onChange('autoScrollTraceViewer', !settings.autoScrollTraceViewer)} />
-            <SettingsToggleRow label="Show Token Usage" description="Display token counts in trace steps" checked={settings.showTokenUsage} onToggle={() => onChange('showTokenUsage', !settings.showTokenUsage)} />
-            <SettingsToggleRow label="Show Timing Breakdown" description="Display duration details for each step" checked={settings.showTimingBreakdown} onToggle={() => onChange('showTimingBreakdown', !settings.showTimingBreakdown)} />
-            <SettingsSlider label="Slow Step Highlight Threshold" description="Steps taking longer than this will be highlighted as slow" value={settings.highlightDurationThreshold} onChange={(v) => onChange('highlightDurationThreshold', v)} min={1000} max={30000} step={1000} format={(v) => `${v}ms`} />
+            <SettingsToggleRow label="auto-scroll" description="Automatically scroll when new trace steps appear" checked={settings.autoScrollTraceViewer} onToggle={() => onChange('autoScrollTraceViewer', !settings.autoScrollTraceViewer)} />
+            <SettingsToggleRow label="show-token-usage" description="Display token counts in trace steps" checked={settings.showTokenUsage} onToggle={() => onChange('showTokenUsage', !settings.showTokenUsage)} />
+            <SettingsToggleRow label="show-timing" description="Display duration details for each step" checked={settings.showTimingBreakdown} onToggle={() => onChange('showTimingBreakdown', !settings.showTimingBreakdown)} />
+            <SettingsSlider label="slow-step-threshold" description="Steps taking longer than this will be highlighted as slow" value={settings.highlightDurationThreshold} onChange={(v) => onChange('highlightDurationThreshold', v)} min={1000} max={30000} step={1000} format={(v) => `${v}ms`} />
           </div>
         )}
       </div>

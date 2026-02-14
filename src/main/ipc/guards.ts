@@ -306,6 +306,18 @@ export function validateSafePath(
       code: IpcErrorCodes.INVALID_PAYLOAD,
     };
   }
+
+  // Block absolute paths unless explicitly allowed
+  if (!options?.allowAbsolute) {
+    const isAbsolute = /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('/');
+    if (isAbsolute) {
+      return {
+        success: false,
+        error: `${fieldName} must be a relative path`,
+        code: IpcErrorCodes.INVALID_PAYLOAD,
+      };
+    }
+  }
   
   // Check for hidden files if blocked
   if (options?.blockHidden && /\/\.[^/]+|\\.[^\\]+/.test(path)) {

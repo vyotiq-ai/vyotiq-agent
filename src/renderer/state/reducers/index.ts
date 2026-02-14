@@ -24,12 +24,13 @@ import { communicationReducer } from './communicationReducer';
  */
 const SESSION_ACTIONS = new Set([
   'SESSION_UPSERT',
+  'SESSIONS_BULK_UPSERT',
   'SESSION_SET_ACTIVE',
   'SESSION_RENAME',
+  'SESSION_PATCH',
+  'SESSION_APPLY_DELTA',
   'SESSION_DELETE',
   'SESSIONS_CLEAR',
-  'SESSIONS_CLEAR_FOR_WORKSPACE',
-  'SESSIONS_CLEAR_FOR_WORKSPACE_PRESERVE_RUNNING',
 ]);
 
 const STREAMING_ACTIONS = new Set([
@@ -65,6 +66,9 @@ const TASK_ACTIONS = new Set([
   // Todo list actions
   'TODO_UPDATE',
   'TODO_CLEAR',
+  // Run error tracking
+  'RUN_ERROR',
+  'RUN_ERROR_CLEAR',
 ]);
 
 
@@ -74,7 +78,6 @@ const CONFIRMATION_ACTIONS = new Set([
 ]);
 
 const SETTINGS_ACTIONS = new Set([
-  'WORKSPACES_UPDATE',
   'SETTINGS_UPDATE',
 ]);
 

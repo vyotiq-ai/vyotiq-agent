@@ -6,6 +6,7 @@
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSessionList } from '../../../sessions/hooks/useSessionList';
+import { useWorkspaceState } from '../../../../state/WorkspaceProvider';
 import type {
   SessionDropdownState,
   SessionDropdownActions,
@@ -38,7 +39,6 @@ interface UseSessionDropdownReturn {
   // Session data from hook
   sessions: SessionMeta[];
   activeSessionId: string | undefined;
-  activeWorkspaceId: string | undefined;
   hasWorkspace: boolean;
 }
 
@@ -47,15 +47,17 @@ export function useSessionDropdown(
 ): UseSessionDropdownReturn {
   const { disabled = false, disabledReason } = options;
 
+  // Get workspace path for session-workspace binding
+  const { workspacePath } = useWorkspaceState();
+
   // Get session data
   const {
     sessions: allSessions,
     activeSessionId,
-    activeWorkspaceId,
     handleStartSession,
     handleSelectSession,
     handleDeleteSession,
-  } = useSessionList();
+  } = useSessionList({ workspacePath, filterByWorkspace: !!workspacePath });
 
   // Refs
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -75,7 +77,7 @@ export function useSessionDropdown(
     placement: 'above',
   });
 
-  const hasWorkspace = !!activeWorkspaceId;
+  const hasWorkspace = !!workspacePath;
 
   // Filter sessions by search query
   const sessions = useMemo(() => {
@@ -294,6 +296,7 @@ export function useSessionDropdown(
     flatSessionList,
     sessionGroups,
     sessionCount,
+    filteredCount,
     activeSession,
     displayTitle,
     truncatedTitle,
@@ -323,7 +326,6 @@ export function useSessionDropdown(
     actions,
     sessions,
     activeSessionId,
-    activeWorkspaceId,
     hasWorkspace,
   };
 }

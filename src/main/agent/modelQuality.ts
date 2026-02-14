@@ -76,6 +76,10 @@ export interface ModelQualityConfig {
   maxRecordsPerModel: number;
   /** Time window for recent metrics (ms) */
   recentWindowMs: number;
+  /** Response time (ms) considered "fast" — score 100 */
+  responseTimeFastMs: number;
+  /** Response time (ms) considered "slow" — score 0 */
+  responseTimeSlowMs: number;
 }
 
 // =============================================================================
@@ -91,6 +95,8 @@ export const DEFAULT_MODEL_QUALITY_CONFIG: ModelQualityConfig = {
   userFeedbackWeight: 0.15,
   maxRecordsPerModel: 500,
   recentWindowMs: 7 * 24 * 60 * 60 * 1000, // 7 days
+  responseTimeFastMs: 1000,   // 1s — fast for LLM calls
+  responseTimeSlowMs: 30000,  // 30s — slow for LLM calls
 };
 
 // =============================================================================
@@ -126,9 +132,26 @@ export class ModelQualityTracker {
 
     modelRecords.push(fullRecord);
 
-    // Trim old records
+    // Trim old records per model
     if (modelRecords.length > this.config.maxRecordsPerModel) {
       modelRecords.shift();
+    }
+
+    // Cap total tracked models to prevent unbounded Map growth
+    if (this.records.size > 100) {
+      // Remove least recently used model entries
+      const entries = [...this.records.entries()];
+      entries.sort((a, b) => {
+        const aLast = a[1][a[1].length - 1]?.timestamp ?? 0;
+        const bLast = b[1][b[1].length - 1]?.timestamp ?? 0;
+        return aLast - bLast;
+      });
+      // Remove oldest 20% of entries
+      const toRemove = Math.floor(entries.length * 0.2);
+      for (let i = 0; i < toRemove; i++) {
+        this.records.delete(entries[i][0]);
+        this.metricsCache.delete(entries[i][0]);
+      }
     }
 
     // Invalidate cache
@@ -340,9 +363,10 @@ export class ModelQualityTracker {
     const successScore = successRate * 100;
 
     // Response time score (faster is better, normalize to 0-100)
-    // Assume 5000ms is "slow" (score 0) and 500ms is "fast" (score 100)
+    const fastMs = this.config.responseTimeFastMs;
+    const slowMs = this.config.responseTimeSlowMs;
     const responseTimeScore = Math.max(0, Math.min(100, 
-      100 - ((avgResponseTimeMs - 500) / 45)
+      100 - ((avgResponseTimeMs - fastMs) / ((slowMs - fastMs) / 100))
     ));
 
     // Loop avoidance score (fewer loops is better)

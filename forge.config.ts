@@ -12,7 +12,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: {
       // Unpack native modules and binaries for proper loading
-      unpack: '**/{*.node,*.dll,*.so,*.dylib,better-sqlite3/**/*,node-pty/**/*,onnxruntime-node/**/*,bindings/**/*}',
+      unpack: '**/{*.node,*.dll,*.so,*.dylib,better-sqlite3/**/*,node-pty/**/*,bindings/**/*}',
     },
     // Optimize app name and metadata
     name: 'Vyotiq AI',
@@ -23,7 +23,7 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {
     // Rebuild native modules for Electron
-    onlyModules: ['better-sqlite3'],
+    onlyModules: ['better-sqlite3', 'node-pty'],
   },
   hooks: {
     packageAfterCopy: async (_config, buildPath) => {
@@ -32,7 +32,7 @@ const config: ForgeConfig = {
       const path = await import('path');
       
       // Native modules that need to be copied
-      const nativeModules = ['better-sqlite3', 'bindings', 'file-uri-to-path', 'onnxruntime-node'];
+      const nativeModules = ['better-sqlite3', 'node-pty', 'bindings', 'file-uri-to-path'];
       
       // Language server packages (bundled for LSP support)
       const languageServerPackages = [

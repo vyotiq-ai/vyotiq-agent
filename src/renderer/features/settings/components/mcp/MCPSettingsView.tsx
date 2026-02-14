@@ -186,7 +186,7 @@ export const MCPSettingsView: React.FC<MCPSettingsViewProps> = memo(
           <SettingsGroup title="Values">
             <div className="grid grid-cols-2 gap-4">
               <SettingsInput
-                label="Connection Timeout"
+                label="connection-timeout"
                 description="seconds to wait for server connection"
                 value={String((settings.connectionTimeoutMs ?? 30000) / 1000)}
                 onChange={(val) => onUpdate({ connectionTimeoutMs: Number(val) * 1000 })}
@@ -194,7 +194,7 @@ export const MCPSettingsView: React.FC<MCPSettingsViewProps> = memo(
                 placeholder="30"
               />
               <SettingsInput
-                label="Tool Timeout"
+                label="tool-timeout"
                 description="seconds to wait for tool execution"
                 value={String((settings.toolTimeoutMs ?? 60000) / 1000)}
                 onChange={(val) => onUpdate({ toolTimeoutMs: Number(val) * 1000 })}
@@ -216,7 +216,7 @@ export const MCPSettingsView: React.FC<MCPSettingsViewProps> = memo(
           <SettingsGroup title="Limits">
             <div className="grid grid-cols-2 gap-4">
               <SettingsInput
-                label="Max Connections"
+                label="max-connections"
                 description="maximum concurrent server connections"
                 value={String(settings.maxConcurrentConnections ?? 10)}
                 onChange={(val) => onUpdate({ maxConcurrentConnections: Number(val) })}
@@ -224,7 +224,7 @@ export const MCPSettingsView: React.FC<MCPSettingsViewProps> = memo(
                 placeholder="10"
               />
               <SettingsInput
-                label="Retry Count"
+                label="retry-count"
                 description="number of retry attempts"
                 value={String(settings.retryCount ?? 3)}
                 onChange={(val) => onUpdate({ retryCount: Number(val) })}

@@ -105,12 +105,12 @@ const RATE_LIMIT_PATTERNS = [
  * Error patterns that indicate PERMANENT rate limit issues - request is too large
  * These are NOT retryable because the request itself exceeds the limit
  */
-const PERMANENT_RATE_LIMIT_PATTERNS = [
+const PERMANENT_RATE_LIMIT_PATTERNS: Array<string | RegExp> = [
   'would exceed the rate limit',     // Request is larger than per-minute quota
   'exceeded the rate limit',         // Already over quota (but may be temporary)
-  'exceeds.*token.*limit',           // Request exceeds token limit
-  'prompt.*too.*large',              // Prompt is too large
-  'context.*too.*large',             // Context is too large
+  /exceeds.*token.*limit/,           // Request exceeds token limit (pre-compiled regex)
+  /prompt.*too.*large/,              // Prompt is too large (pre-compiled regex)
+  /context.*too.*large/,             // Context is too large (pre-compiled regex)
 ];
 
 /**
@@ -187,13 +187,8 @@ function isRateLimitMessage(message: string): boolean {
 function isPermanentRateLimitMessage(message: string): boolean {
   const lowerMessage = message.toLowerCase();
   return PERMANENT_RATE_LIMIT_PATTERNS.some(pattern => {
-    // Handle regex patterns
-    if (pattern.includes('.*')) {
-      try {
-        return new RegExp(pattern).test(lowerMessage);
-      } catch {
-        return false;
-      }
+    if (pattern instanceof RegExp) {
+      return pattern.test(lowerMessage);
     }
     return lowerMessage.includes(pattern);
   });

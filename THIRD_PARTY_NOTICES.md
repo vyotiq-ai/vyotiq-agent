@@ -32,21 +32,7 @@ This file contains the licenses and notices for third-party software included in
 
 ---
 
-## Editor & Terminal
-
-### Monaco Editor
-- **Version**: 0.55.1
-- **License**: MIT
-- **Repository**: https://github.com/microsoft/monaco-editor
-- **Copyright**: Copyright (c) Microsoft Corporation.
-
-The Monaco Editor is the code editor that powers VS Code.
-
-### @monaco-editor/react
-- **Version**: 4.7.0
-- **License**: MIT
-- **Repository**: https://github.com/suren-atoyan/monaco-react
-- **Copyright**: Copyright (c) 2018 Suren Atoyan
+## Terminal
 
 ### xterm.js (@xterm/xterm)
 - **Version**: 5.5.0

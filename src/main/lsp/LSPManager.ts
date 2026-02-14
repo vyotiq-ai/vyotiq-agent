@@ -84,6 +84,7 @@ export class LSPManager extends EventEmitter {
   private failedClients = new Map<SupportedLanguage, number>(); // Track failed start attempts
   private diagnosticsCache = new Map<string, DiagnosticsCache>();
   private installedServers = new Set<SupportedLanguage>();
+  private configOverrides = new Map<string, typeof LANGUAGE_SERVER_CONFIGS[keyof typeof LANGUAGE_SERVER_CONFIGS]>();
   private static readonly FAILED_START_COOLDOWN_MS = 600000; // 10 minutes between retry attempts
   
   // Track permanently disabled servers to avoid repeated attempts
@@ -214,7 +215,7 @@ export class LSPManager extends EventEmitter {
       return false;
     }
 
-    const config = LANGUAGE_SERVER_CONFIGS[language];
+    const config = this.configOverrides.get(language) || LANGUAGE_SERVER_CONFIGS[language];
     if (!config) {
       this.logger.error(`No config for language: ${language}`);
       return false;
@@ -831,7 +832,8 @@ export class LSPManager extends EventEmitter {
     const cmd = isWindows ? 'where' : 'which';
     const _binExt = isWindows ? '.cmd' : ''; // Reserved for future use with cross-platform binary extensions
     
-    // Check all servers in parallel for faster startup
+    // Use a local copy of configs to avoid mutating the global constants
+    // Config overrides are stored in this.configOverrides for runtime use
     const checks = Object.entries(LANGUAGE_SERVER_CONFIGS).map(async ([language, config]) => {
       // Bundled servers - resolve path at runtime and check if binary exists
       if (config.bundled) {
@@ -841,8 +843,8 @@ export class LSPManager extends EventEmitter {
         
         try {
           await fs.promises.access(resolvedPath, fs.constants.F_OK);
-          // Update the config with the resolved path
-          config.command = resolvedPath;
+          // Store override in instance state instead of mutating global config
+          this.configOverrides.set(language, { ...config, command: resolvedPath });
           this.installedServers.add(language as SupportedLanguage);
           this.logger.debug(`Bundled server available: ${language}`, { command: resolvedPath });
         } catch {
@@ -867,11 +869,17 @@ export class LSPManager extends EventEmitter {
         this.installedServers.add('typescript');
         this.installedServers.add('javascript');
         
-        // Update config to use npx
-        LANGUAGE_SERVER_CONFIGS.typescript.command = 'npx';
-        LANGUAGE_SERVER_CONFIGS.typescript.args = ['--yes', 'typescript-language-server', '--stdio'];
-        LANGUAGE_SERVER_CONFIGS.javascript.command = 'npx';
-        LANGUAGE_SERVER_CONFIGS.javascript.args = ['--yes', 'typescript-language-server', '--stdio'];
+        // Store overrides in instance state instead of mutating global constants
+        this.configOverrides.set('typescript', {
+          ...LANGUAGE_SERVER_CONFIGS.typescript,
+          command: 'npx',
+          args: ['--yes', 'typescript-language-server', '--stdio'],
+        });
+        this.configOverrides.set('javascript', {
+          ...LANGUAGE_SERVER_CONFIGS.javascript,
+          command: 'npx',
+          args: ['--yes', 'typescript-language-server', '--stdio'],
+        });
       }
     }
   }

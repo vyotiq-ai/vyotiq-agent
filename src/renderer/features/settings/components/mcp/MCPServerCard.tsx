@@ -94,6 +94,8 @@ export const MCPServerCard: React.FC<MCPServerCardProps> = memo(
         {/* Header Row */}
         <div
           className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-[var(--color-surface-hover)]"
+          role="button"
+          aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
         >
           {/* Server Icon */}

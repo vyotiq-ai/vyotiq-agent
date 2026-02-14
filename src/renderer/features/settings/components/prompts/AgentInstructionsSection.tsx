@@ -33,56 +33,15 @@ export const AgentInstructionsSection: React.FC<AgentInstructionsSectionProps> =
 
   // Load instruction files status on mount
   useEffect(() => {
-    setInstructionFilesStatus(prev => ({ ...prev, loading: true }));
-    window.vyotiq.workspace.getInstructionFilesStatus?.()
-      .then(status => {
-        setInstructionFilesStatus(prev => ({ 
-          ...status, 
-          loading: false, 
-          expanded: prev.expanded,
-          error: status.error ?? null 
-        }));
-      })
-      .catch(err => {
-        setInstructionFilesStatus(prev => ({ 
-          ...prev, 
-          error: String(err), 
-          loading: false 
-        }));
-      });
+    setInstructionFilesStatus(prev => ({ ...prev, loading: false }));
   }, []);
 
   const handleRefreshInstructionFiles = useCallback(() => {
-    setInstructionFilesStatus(prev => ({ ...prev, loading: true }));
-    window.vyotiq.workspace.refreshInstructionFiles?.()
-      .then(() => window.vyotiq.workspace.getInstructionFilesStatus?.())
-      .then(status => {
-        if (status) setInstructionFilesStatus(prev => ({ 
-          ...status, 
-          loading: false,
-          expanded: prev.expanded,
-          error: status.error ?? null 
-        }));
-      })
-      .catch(err => {
-        setInstructionFilesStatus(prev => ({ ...prev, error: String(err), loading: false }));
-      });
+    // Instruction files refresh not available - workspace API removed
   }, []);
 
-  const handleToggleInstructionFile = useCallback((relativePath: string, enabled: boolean) => {
-    window.vyotiq.workspace.toggleInstructionFile?.(relativePath, enabled)
-      .then(() => window.vyotiq.workspace.getInstructionFilesStatus?.())
-      .then(status => {
-        if (status) setInstructionFilesStatus(prev => ({ 
-          ...status, 
-          loading: false,
-          expanded: prev.expanded,
-          error: status.error ?? null 
-        }));
-      })
-      .catch(err => {
-        console.error('Failed to toggle instruction file:', err);
-      });
+  const handleToggleInstructionFile = useCallback((_relativePath: string, _enabled: boolean) => {
+    // Instruction file toggle not available - workspace API removed
   }, []);
 
   const handleAddInstruction = useCallback((instructionDraft: Partial<AgentInstruction>) => {

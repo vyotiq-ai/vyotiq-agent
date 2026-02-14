@@ -79,6 +79,9 @@ export class ResourceAllocator extends EventEmitter {
     this.queueProcessorInterval = setInterval(() => {
       this.processQueues();
     }, 1000);
+    if (this.queueProcessorInterval && typeof this.queueProcessorInterval === 'object' && 'unref' in this.queueProcessorInterval) {
+      (this.queueProcessorInterval as NodeJS.Timeout).unref();
+    }
 
     this.logger.info('ResourceAllocator initialized');
   }

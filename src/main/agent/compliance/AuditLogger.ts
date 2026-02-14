@@ -636,6 +636,9 @@ export class AuditLogger {
     this.cleanupTimer = setInterval(() => {
       this.cleanup();
     }, this.config.cleanupIntervalMs);
+    if (this.cleanupTimer && typeof this.cleanupTimer === 'object' && 'unref' in this.cleanupTimer) {
+      (this.cleanupTimer as NodeJS.Timeout).unref();
+    }
   }
 
   private stopCleanupTimer(): void {

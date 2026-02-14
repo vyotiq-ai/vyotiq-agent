@@ -54,7 +54,6 @@ export interface TerminalContextInfo {
  * Editor context
  */
 export interface EditorContextInfo {
-  openFiles: string[];
   activeFile: string | null;
   cursorPosition: { lineNumber: number; column: number } | null;
   diagnostics?: Array<{
@@ -199,6 +198,8 @@ export interface SystemPromptContext {
   agentsMdContext?: AgentsMdContext;
   /** Extended instruction files context (AGENTS.md, CLAUDE.md, etc.) */
   instructionFilesContext?: InstructionFilesContext;
+  /** Semantically relevant code snippets from the workspace vector index */
+  workspaceCodeContext?: string;
   logger?: Logger;
 }
 

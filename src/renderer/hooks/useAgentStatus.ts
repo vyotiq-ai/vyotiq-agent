@@ -1,5 +1,6 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useAgentActions, useAgentSelector } from '../state/AgentProvider';
+import { getCurrentWorkspacePath } from '../state/WorkspaceProvider';
 
 export const useAgentStatus = () => {
   const actions = useAgentActions();
@@ -91,10 +92,10 @@ export const useAgentStatus = () => {
     return snapshot.activeSessionId.substring(0, 6);
   }, [snapshot.activeSessionId]);
   
-  // Count messages in session
-  const handleNewSession = () => {
-    actions.startSession();
-  };
+  // Count messages in session — wrapped in useCallback for stable identity
+  const handleNewSession = useCallback(() => {
+    actions.startSession?.(undefined, getCurrentWorkspacePath());
+  }, [actions]);
 
   return {
     status: snapshot.sessionStatus,

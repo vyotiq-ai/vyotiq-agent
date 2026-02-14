@@ -13,6 +13,10 @@ import {
   ChevronDown, ChevronRight, RefreshCw
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('StateInspectorPanel');
+import { DataViewer } from '../../../components/ui/DataViewer';
 
 interface StateInspectorPanelProps {
   sessionId: string;
@@ -106,7 +110,7 @@ export const StateInspectorPanel: React.FC<StateInspectorPanelProps> = ({
         setStateData(data);
       }
     } catch (error) {
-      console.error('Failed to fetch session state:', error);
+      logger.error('Failed to fetch session state', { error: error instanceof Error ? error.message : String(error) });
     }
   }, [sessionId]);
 
@@ -225,18 +229,14 @@ export const StateInspectorPanel: React.FC<StateInspectorPanelProps> = ({
               </button>
 
               {isExpanded && (
-                <div className="px-3 py-2 border-t border-[var(--color-border-subtle)] space-y-1">
-                  {Object.entries(section.data).map(([key, value]) => (
-                    <div
-                      key={key}
-                      className="flex justify-between text-[9px] font-mono"
-                    >
-                      <span className="text-[var(--color-text-dim)]">{key}:</span>
-                      <span className="text-[var(--color-text-secondary)]">
-                        {formatValue(value)}
-                      </span>
-                    </div>
-                  ))}
+                <div className="px-3 py-2 border-t border-[var(--color-border-subtle)]">
+                  <DataViewer
+                    data={section.data}
+                    compact
+                    initialDepth={1}
+                    maxDepth={3}
+                    showRoot={false}
+                  />
                 </div>
               )}
             </div>
@@ -246,8 +246,9 @@ export const StateInspectorPanel: React.FC<StateInspectorPanelProps> = ({
         {/* Session info */}
         <div className="pt-2 border-t border-[var(--color-border-subtle)]">
           <div className="text-[9px] font-mono text-[var(--color-text-dim)] space-y-0.5">
-            <div>session: {sessionId.slice(0, 8)}...</div>
-            {runId && <div>run: {runId.slice(0, 8)}...</div>}
+            <div>session: {formatValue(sessionId.slice(0, 8))}...</div>
+            {runId && <div>run: {formatValue(runId.slice(0, 8))}...</div>}
+            <div>sections: {formatValue(stateSections.length)}</div>
           </div>
         </div>
       </div>

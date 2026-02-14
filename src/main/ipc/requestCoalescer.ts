@@ -64,6 +64,7 @@ export class RequestCoalescer {
   private pendingRequests = new Map<string, PendingRequest<unknown>>();
   private cachedResults = new Map<string, { result: unknown; expiry: number }>();
   private config: CoalescerConfig;
+  private cleanupInterval: ReturnType<typeof setInterval>;
   private stats: CoalescerStats = {
     totalRequests: 0,
     coalescedRequests: 0,
@@ -76,7 +77,16 @@ export class RequestCoalescer {
     this.config = { ...DEFAULT_CONFIG, ...config };
     
     // Periodic cleanup of expired cache entries
-    setInterval(() => this.cleanupCache(), 30_000);
+    this.cleanupInterval = setInterval(() => this.cleanupCache(), 30_000);
+  }
+
+  /**
+   * Dispose the coalescer and clean up resources
+   */
+  dispose(): void {
+    clearInterval(this.cleanupInterval);
+    this.pendingRequests.clear();
+    this.cachedResults.clear();
   }
 
   /**

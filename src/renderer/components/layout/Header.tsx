@@ -5,7 +5,7 @@
  * - Left: Sidebar toggle + workspace/session path (session is clickable dropdown)
  * - Right: Panel toggles grouped together, settings separate
  */
-import React, { memo, useMemo } from 'react';
+import React, { memo } from 'react';
 import {
   Plus,
   PanelLeft,
@@ -14,11 +14,11 @@ import {
   Globe,
 } from 'lucide-react';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
-import { useAgentSelector } from '../../state/AgentProvider';
-import { useUI } from '../../state/UIProvider';
+import { useUIState, useUIActions } from '../../state/UIProvider';
 import { useLifecycleProfiler } from '../../utils/profiler';
 import { cn } from '../../utils/cn';
 import { SessionSelector } from '../../features/chat/components/sessionSelector';
+import { WorkspaceSwitcher } from '../../features/workspace';
 
 // =============================================================================
 // Types
@@ -28,7 +28,6 @@ interface HeaderProps {
   collapsed: boolean;
   onToggle: () => void;
   onOpenSettings: () => void;
-  hasWorkspace?: boolean;
   isMobile?: boolean;
   isTablet?: boolean;
 }
@@ -54,6 +53,7 @@ const IconButton: React.FC<{
     )}
     onClick={onClick}
     title={title}
+    aria-label={title}
   >
     {children}
   </button>
@@ -68,41 +68,19 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
   collapsed,
   onToggle,
   onOpenSettings,
-  hasWorkspace = false,
   isMobile = false,
 }) {
   useLifecycleProfiler('Header');
 
   const { handleNewSession } = useAgentStatus();
 
-  const agentHeader = useAgentSelector(
-    (state) => {
-      const activeWorkspace = state.workspaces.find((w) => w.isActive);
-      const activeSession = state.activeSessionId
-        ? state.sessions.find((s) => s.id === state.activeSessionId)
-        : undefined;
-      return {
-        activeWorkspace,
-        activeSessionId: state.activeSessionId,
-        activeSessionTitle: activeSession?.title,
-      };
-    },
-    (a, b) =>
-      a.activeWorkspace === b.activeWorkspace &&
-      a.activeSessionId === b.activeSessionId &&
-      a.activeSessionTitle === b.activeSessionTitle,
-  );
+  const {
+    undoHistoryOpen, browserPanelOpen,
+  } = useUIState();
 
   const {
-    undoHistoryOpen, toggleUndoHistory,
-    browserPanelOpen, toggleBrowserPanel,
-  } = useUI();
-
-  const workspaceLabel = useMemo(() => {
-    return agentHeader.activeWorkspace?.label ||
-      agentHeader.activeWorkspace?.path?.split(/[/\\]/).pop() ||
-      '';
-  }, [agentHeader.activeWorkspace]);
+    toggleUndoHistory, toggleBrowserPanel,
+  } = useUIActions();
 
   return (
     <header
@@ -123,28 +101,15 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
           <PanelLeft size={14} />
         </IconButton>
 
-        {/* CLI-style Path */}
-        <div className="flex items-center gap-1.5 text-[11px] min-w-0 overflow-hidden ml-1">
-          <span className="text-[var(--color-accent-primary)] flex-shrink-0 text-sm font-medium opacity-90">λ</span>
-
-          {hasWorkspace && workspaceLabel ? (
-            <span
-              className="text-[var(--color-text-secondary)] truncate max-w-[120px] sm:max-w-[160px]"
-              title={agentHeader.activeWorkspace?.path}
-            >
-              {workspaceLabel}
-            </span>
-          ) : (
-            <span className="text-[var(--color-text-placeholder)]">~</span>
-          )}
+        {/* Workspace selector */}
+        <div className="ml-1 pl-1 border-l border-[var(--color-border-subtle)]">
+          <WorkspaceSwitcher />
         </div>
 
         {/* Session selector - CLI style */}
-        {hasWorkspace && (
-          <div className="ml-2 pl-2 border-l border-[var(--color-border-subtle)]">
-            <SessionSelector />
-          </div>
-        )}
+        <div className="ml-1 pl-1 border-l border-[var(--color-border-subtle)]">
+          <SessionSelector />
+        </div>
       </div>
 
       {/* Right: Actions */}

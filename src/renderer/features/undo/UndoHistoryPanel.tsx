@@ -20,12 +20,15 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { createLogger } from '../../utils/logger';
 import { Spinner } from '../../components/ui/LoadingState';
 import { formatRelativeTimeWithSuffix, formatFullDateTime } from '../../utils/timeFormatting';
 import { useUndoHistory } from './useUndoHistory';
 import { ContentPreview } from './components/ContentPreview';
 import { useConfirm } from '../../components/ui/ConfirmModal';
 import type { FileChange, RunChangeGroup } from './types';
+
+const logger = createLogger('UndoHistoryPanel');
 
 interface UndoHistoryPanelProps {
   isOpen: boolean;
@@ -204,7 +207,7 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
     });
     if (!confirmed) return;
     setIsProcessing(true);
-    try { await clearHistory(); showStatus('success', 'Cleared'); } catch { showStatus('error', 'Failed'); } finally { setIsProcessing(false); }
+    try { await clearHistory(); showStatus('success', 'Cleared'); } catch (err) { logger.error('Failed to clear undo history', { error: err instanceof Error ? err.message : String(err) }); showStatus('error', 'Failed'); } finally { setIsProcessing(false); }
   }, [clearHistory, showStatus, confirm]);
 
   useEffect(() => {

@@ -1,18 +1,17 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { AgentOrchestrator } from './main/agent/orchestrator';
 import { ConsoleLogger } from './main/logger';
 import { SettingsStore } from './main/agent/settingsStore';
-import { WorkspaceManager } from './main/workspaces/workspaceManager';
 import { getToolResultCache, getContextCache } from './main/agent/cache';
 import { initBrowserManager, getBrowserManager } from './main/browser';
-import { initFileWatcher, watchWorkspace, stopWatching } from './main/workspaces/fileWatcher';
-import type { RendererEvent, BrowserState } from './shared/types';
-import { registerIpcHandlers, IpcEventBatcher, type EventPriority as _EventPriority } from './main/ipc';
+import type { RendererEvent, BrowserState, FileChangedEvent, SessionHealthUpdateEvent } from './shared/types';
+import { registerIpcHandlers, IpcEventBatcher, EventPriority } from './main/ipc';
 import { getSessionHealthMonitor } from './main/agent/sessionHealth';
-import { initThrottleController, getThrottleController } from './main/agent/performance/BackgroundThrottleController';
+import { initThrottleController } from './main/agent/performance/BackgroundThrottleController';
 import { getThrottleEventLogger } from './main/agent/performance/ThrottleEventLogger';
+import { rustSidecar } from './main/rustSidecar';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -29,22 +28,49 @@ app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 let mainWindow: BrowserWindow | null = null;
 let orchestrator: AgentOrchestrator | null = null;
 let settingsStore: SettingsStore;
-let workspaceManager: WorkspaceManager;
 let infraInitialized = false;
 let ipcRegistered = false;
 let eventBatcher: IpcEventBatcher | null = null;
 const logger = new ConsoleLogger('Vyotiq');
 
+// ---- Global error handlers ------------------------------------------------
+// Catch unhandled promise rejections and uncaught exceptions to prevent
+// silent failures. Logs them to the structured logger for diagnostics.
+process.on('unhandledRejection', (reason, promise) => {
+  const message = reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+  logger.error('Unhandled promise rejection', {
+    reason: message,
+    promise: String(promise),
+  });
+});
+
+process.on('uncaughtException', (error, origin) => {
+  logger.error('Uncaught exception', {
+    error: error.stack ?? error.message,
+    origin,
+  });
+  // Don't exit — Electron can recover from most uncaught exceptions
+});
+
 /**
  * High-performance event emission with batching for high-frequency events.
  * Uses IpcEventBatcher for streaming deltas and other frequent updates.
+ * Stream-delta events get HIGH priority for responsive word-by-word streaming.
  */
 const emitToRenderer = (event: RendererEvent): void => {
-  if (!mainWindow) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.webContents.isDestroyed()) return;
+
+  // Determine priority based on event type for responsive streaming
+  const priority = event.type === 'stream-delta'
+    ? EventPriority.HIGH
+    : event.type === 'run-status' || event.type === 'tool-call'
+      ? EventPriority.CRITICAL
+      : EventPriority.NORMAL;
 
   // Use batcher for high-frequency events when available
   if (eventBatcher) {
-    eventBatcher.send('agent:event', event);
+    eventBatcher.send('agent:event', event, priority);
   } else {
     // Fallback to direct send before batcher is initialized
     mainWindow.webContents.send('agent:event', event);
@@ -59,7 +85,7 @@ const emitToRenderer = (event: RendererEvent): void => {
     }
   } else if (event.type === 'file-changed') {
     // Real-time file change events for file tree updates
-    const payload = event as unknown as { changeType: string; path: string; oldPath?: string };
+    const payload = event as FileChangedEvent;
     mainWindow.webContents.send('files:changed', {
       type: payload.changeType,
       path: payload.path,
@@ -67,7 +93,7 @@ const emitToRenderer = (event: RendererEvent): void => {
     });
   } else if (event.type === 'session-health-update') {
     // Session health update events for real-time monitoring
-    const healthEvent = event as unknown as { sessionId: string; data: unknown };
+    const healthEvent = event as SessionHealthUpdateEvent;
     mainWindow.webContents.send('session-health:update', {
       sessionId: healthEvent.sessionId,
       status: healthEvent.data,
@@ -80,23 +106,34 @@ const emitToRenderer = (event: RendererEvent): void => {
  * Called after window is shown to prevent UI freeze
  */
 const initializeDeferredServices = async () => {
-  const activeWorkspace = workspaceManager.getActive();
+  const workspacePath = process.cwd();
+
+  // Start Rust backend sidecar (non-blocking)
+  rustSidecar.start().then((ok) => {
+    if (ok) {
+      logger.info('Rust backend sidecar started on port ' + rustSidecar.getPort());
+    } else {
+      logger.warn('Rust backend sidecar failed to start (non-critical, will retry)');
+    }
+  }).catch((err) => {
+    logger.warn('Rust sidecar start error', { error: err instanceof Error ? err.message : String(err) });
+  });
   
   // Initialize LSP manager for multi-language code intelligence
-  const { initLSPManager, getLSPManager, initLSPBridge, getLSPBridge } = await import('./main/lsp');
+  const { initLSPManager, getLSPManager, initLSPBridge } = await import('./main/lsp');
   initLSPManager(logger);
   logger.info('LSP manager initialized');
 
   // Initialize LSP bridge for real-time file change synchronization
   const lspBridge = initLSPBridge(logger);
 
-  // Initialize LSP for active workspace if one exists (runs async checks now)
-  if (activeWorkspace?.path) {
+  // Initialize LSP for workspace (runs async checks now)
+  {
     const lspManager = getLSPManager();
     if (lspManager) {
       // Non-blocking - uses async exec now
-      lspManager.initialize(activeWorkspace.path).then(() => {
-        logger.info('LSP manager initialized for active workspace', { workspacePath: activeWorkspace.path });
+      lspManager.initialize(workspacePath).then(() => {
+        logger.info('LSP manager initialized for workspace', { workspacePath });
       }).catch((err) => {
         logger.warn('LSP initialization failed', { error: err instanceof Error ? err.message : String(err) });
       });
@@ -134,7 +171,7 @@ const initializeDeferredServices = async () => {
     const tsDiagnosticsService = initTypeScriptDiagnosticsService(logger);
     
     // Run in background - don't await
-    tsDiagnosticsService.initialize(activeWorkspace.path).then(() => {
+    tsDiagnosticsService.initialize(workspacePath).then(() => {
       logger.info('TypeScript diagnostics service initialized');
     }).catch((err) => {
       logger.debug('TypeScript diagnostics not available', { error: err instanceof Error ? err.message : String(err) });
@@ -163,14 +200,7 @@ const initializeDeferredServices = async () => {
     });
   }
 
-  // Connect file watcher to LSP bridge for real-time updates
-  const { setLSPChangeHandler } = await import('./main/workspaces/fileWatcher');
-  setLSPChangeHandler((filePath, changeType) => {
-    const bridge = getLSPBridge();
-    if (bridge) {
-      bridge.onFileChanged(filePath, changeType);
-    }
-  });
+  // File watcher removed — rely on LSP for file change events
 
   // Forward LSP diagnostics updates to renderer
   lspBridge.on('diagnostics', (event) => {
@@ -192,10 +222,9 @@ const bootstrapInfrastructure = async () => {
 
     // Initialize all services
     settingsStore = new SettingsStore(path.join(userData, 'settings.json'));
-    workspaceManager = new WorkspaceManager(path.join(userData, 'workspaces.json'));
 
-    // Load all data in parallel
-    await Promise.all([settingsStore.load(), workspaceManager.load()]);
+    // Load settings
+    await settingsStore.load();
 
     // Apply cache settings from persisted settings
     const settings = settingsStore.get();
@@ -272,7 +301,6 @@ const bootstrapInfrastructure = async () => {
     // Create orchestrator AFTER settings are fully loaded
     orchestrator = new AgentOrchestrator({
       settingsStore,
-      workspaceManager,
       logger,
       sessionsPath: path.join(userData, 'sessions.json')
     });
@@ -286,7 +314,7 @@ const bootstrapInfrastructure = async () => {
     // Wire up session health monitor to emit IPC events
     const healthMonitor = getSessionHealthMonitor();
     healthMonitor.setEventEmitter((event) => {
-      emitToRenderer(event as unknown as RendererEvent);
+      emitToRenderer(event as RendererEvent);
     });
     logger.info('Session health monitor connected to IPC');
 
@@ -342,6 +370,16 @@ const createWindow = async () => {
   });
   logger.info('IPC event batcher initialized');
 
+  // Listen for renderer log reports (errors/warnings forwarded from renderer process)
+  ipcMain.on('log:report', (_event, payload: { level: string; message: string; meta?: Record<string, unknown> }) => {
+    const meta = { ...payload.meta, source: 'renderer' };
+    if (payload.level === 'error') {
+      logger.error(payload.message, meta);
+    } else {
+      logger.warn(payload.message, meta);
+    }
+  });
+
   // Initialize background throttle controller for power/visibility state tracking
   // This coordinates with the event batcher to disable throttling when agent is running
   const throttleController = initThrottleController(mainWindow);
@@ -368,7 +406,7 @@ const createWindow = async () => {
         windowFocused: state.windowFocused,
         effectiveInterval: throttleController.getEffectiveInterval(),
       },
-    } as unknown as RendererEvent);
+    });
     
     // Log state changes
     if (event.type === 'state-changed' && event.currentState.isThrottled !== undefined) {
@@ -409,17 +447,6 @@ const createWindow = async () => {
   initBrowserManager(mainWindow, settings.browserSettings);
   logger.info('Browser manager initialized with settings');
 
-  // Initialize file watcher for real-time file tree updates
-  initFileWatcher(mainWindow);
-  const activeWorkspace = workspaceManager.getActive();
-  if (activeWorkspace?.path) {
-    // Start file watcher - non-blocking with setImmediate wrapper
-    watchWorkspace(activeWorkspace.path).catch((err) => {
-      logger.warn('File watcher setup failed', { error: err instanceof Error ? err.message : String(err) });
-    });
-  }
-  logger.info('File watcher initialized');
-
   // Setup browser state event forwarding for real-time UI updates
   const browserManager = getBrowserManager();
   browserManager.on('state-changed', (state: BrowserState) => {
@@ -433,9 +460,8 @@ const createWindow = async () => {
     registerIpcHandlers({
       getOrchestrator: () => orchestrator,
       getSettingsStore: () => settingsStore,
-      getWorkspaceManager: () => workspaceManager,
       getMainWindow: () => mainWindow,
-      emitToRenderer,
+      emitToRenderer: emitToRenderer as (event: Record<string, unknown>) => void,
     });
     ipcRegistered = true;
     logger.info('IPC handlers registered before window load');
@@ -448,16 +474,23 @@ const createWindow = async () => {
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
 
-  // Always open DevTools in development for debugging
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL || process.env.VYOTIQ_DEVTOOLS === 'true') {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
-
   // Send initial state to renderer after window is ready
   mainWindow.webContents.once('did-finish-load', () => {
-    emitToRenderer({ type: 'workspace-update', workspaces: workspaceManager.list() });
-    emitToRenderer({ type: 'settings-update', settings: settingsStore.get() });
-    emitToRenderer({ type: 'sessions-update', sessions: orchestrator!.getSessions() });
+    // Open DevTools AFTER the page has loaded to avoid the internal
+    // BROWSER_GET_LAST_WEB_PREFERENCES race condition that occurs when
+    // openDevTools is called before the WebContents is fully initialized.
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL || process.env.VYOTIQ_DEVTOOLS === 'true') {
+      mainWindow!.webContents.openDevTools({ mode: 'detach' });
+    }
+
+    emitToRenderer({ type: 'settings-update', settings: settingsStore?.get() ?? {} as import('./shared/types').AgentSettings });
+    // Send all sessions to the renderer
+    if (orchestrator) {
+      const initialSessions = orchestrator.getSessions();
+      emitToRenderer({ type: 'sessions-update', sessions: initialSessions });
+    } else {
+      logger.warn('Orchestrator not available — skipping initial sessions emit');
+    }
     
     // Initialize heavy services in background AFTER UI is shown
     // This prevents "Not Responding" during startup
@@ -484,37 +517,64 @@ app.on('window-all-closed', () => {
 
 // Clean up resources before quitting
 app.on('before-quit', async (event) => {
-  if (orchestrator) {
-    event.preventDefault();
+  event.preventDefault();
+  try {
+    // Stop Claude background refresh and file watcher
     try {
-      // Stop Claude background refresh and file watcher
       const { stopBackgroundRefresh, stopCredentialsWatcher } = await import('./main/agent/claudeAuth');
       stopBackgroundRefresh();
       stopCredentialsWatcher();
       logger.info('Claude background refresh stopped');
+    } catch {
+      // May not be initialized
+    }
 
-      // Stop file watcher
-      await stopWatching();
-      logger.info('File watcher stopped');
-
-      // Shutdown LSP manager
-      const { shutdownLSPManager } = await import('./main/lsp');
-      await shutdownLSPManager();
-      logger.info('LSP manager shutdown complete');
-
-      // Cleanup terminal sessions
+    // Cleanup terminal sessions
+    try {
       const { cleanupTerminalSessions } = await import('./main/ipc');
       cleanupTerminalSessions();
       logger.info('Terminal sessions cleaned up');
-
-      await orchestrator.cleanup();
-    } catch (error) {
-      logger.error('Error during cleanup', { error: error instanceof Error ? error.message : String(error) });
+    } catch {
+      // May not be initialized
     }
-    // Remove the listener to prevent infinite loop and quit
-    app.removeAllListeners('before-quit');
-    app.quit();
+
+    // Destroy IPC event batcher to clean up timers
+    try {
+      const { destroyIpcEventBatcher } = await import('./main/ipc/eventBatcher');
+      destroyIpcEventBatcher();
+      logger.info('IPC event batcher destroyed');
+    } catch {
+      // May not be initialized
+    }
+
+    // Dispose request coalescer to clean up periodic timer
+    try {
+      const { getRequestCoalescer } = await import('./main/ipc/requestCoalescer');
+      getRequestCoalescer().dispose();
+      logger.info('Request coalescer disposed');
+    } catch {
+      // May not be initialized
+    }
+
+    // Stop Rust backend sidecar (always clean up to prevent orphaned processes)
+    try {
+      await rustSidecar.stop();
+      logger.info('Rust backend sidecar stopped');
+    } catch {
+      // May not be running
+    }
+
+    // Clean up orchestrator if initialized
+    if (orchestrator) {
+      await orchestrator.cleanup();
+      logger.info('Orchestrator cleaned up');
+    }
+  } catch (error) {
+    logger.error('Error during cleanup', { error: error instanceof Error ? error.message : String(error) });
   }
+  // Remove the listener to prevent infinite loop and quit
+  app.removeAllListeners('before-quit');
+  app.quit();
 });
 
 app.on('activate', () => {

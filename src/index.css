@@ -37,11 +37,13 @@ html.dark {
   --color-accent-secondary: #a78bfa;  /* violet-400 - secondary accent */
   --color-accent-tertiary: #f472b6;   /* pink-400 - tertiary accent (inline code) */
   --color-accent-hover: #6ee7b7;      /* emerald-300 - hover state */
+  --color-accent-primary-hover: #6ee7b7; /* emerald-300 - primary accent hover (alias) */
   --color-accent-active: #a7f3d0;     /* emerald-200 - active state */
   
   /* Text Colors */
   --color-text-primary: #e4e4e7;      /* zinc-200 - main content */
   --color-text-secondary: #a1a1aa;    /* zinc-400 - secondary content */
+  --color-text-tertiary: #71717a;     /* zinc-500 - tertiary/muted labels */
   --color-text-muted: #71717a;        /* zinc-500 - muted labels */
   --color-text-placeholder: #6b7280;  /* gray-500 - input placeholders */
   --color-text-dim: #9ca3af;          /* gray-400 - dim but readable */
@@ -58,6 +60,24 @@ html.dark {
   --color-terminal-prompt: #34d399;
   --color-terminal-command: #e4e4e7;
   --color-terminal-output: #a1a1aa;
+  
+  /* Terminal ANSI Colors */
+  --color-terminal-black: #1a1a2e;
+  --color-terminal-red: #ff6b6b;
+  --color-terminal-green: #00e5a0;
+  --color-terminal-yellow: #febc2e;
+  --color-terminal-blue: #6c9eff;
+  --color-terminal-magenta: #c792ea;
+  --color-terminal-cyan: #89ddff;
+  --color-terminal-white: #e0e0e8;
+  --color-terminal-bright-black: #4a4a5e;
+  --color-terminal-bright-red: #ff8a8a;
+  --color-terminal-bright-green: #5cf5c0;
+  --color-terminal-bright-yellow: #ffd966;
+  --color-terminal-bright-blue: #8ab4ff;
+  --color-terminal-bright-magenta: #dbb4f0;
+  --color-terminal-bright-cyan: #a8e8ff;
+  --color-terminal-bright-white: #ffffff;
   
   /* Diff Colors - Added lines (green) */
   --color-diff-added-bg: #1a2e1a;
@@ -136,11 +156,13 @@ html.light {
   --color-accent-secondary: #7c3aed;  /* violet-600 - secondary accent */
   --color-accent-tertiary: #db2777;   /* pink-600 - tertiary accent (inline code) */
   --color-accent-hover: #047857;      /* emerald-700 - hover state */
+  --color-accent-primary-hover: #047857; /* emerald-700 - primary accent hover (alias) */
   --color-accent-active: #065f46;     /* emerald-800 - active state */
   
   /* Text Colors */
   --color-text-primary: #18181b;      /* zinc-900 */
   --color-text-secondary: #3f3f46;    /* zinc-700 */
+  --color-text-tertiary: #71717a;     /* zinc-500 - tertiary text in light mode */
   --color-text-muted: #71717a;        /* zinc-500 */
   --color-text-dim: #a1a1aa;          /* zinc-400 - dim text in light mode */
   --color-text-placeholder: #a1a1aa;  /* zinc-400 */
@@ -157,6 +179,24 @@ html.light {
   --color-terminal-prompt: #059669;
   --color-terminal-command: #18181b;
   --color-terminal-output: #52525b;
+  
+  /* Terminal ANSI Colors */
+  --color-terminal-black: #3f3f46;
+  --color-terminal-red: #dc2626;
+  --color-terminal-green: #059669;
+  --color-terminal-yellow: #d97706;
+  --color-terminal-blue: #2563eb;
+  --color-terminal-magenta: #7c3aed;
+  --color-terminal-cyan: #0891b2;
+  --color-terminal-white: #18181b;
+  --color-terminal-bright-black: #71717a;
+  --color-terminal-bright-red: #ef4444;
+  --color-terminal-bright-green: #10b981;
+  --color-terminal-bright-yellow: #f59e0b;
+  --color-terminal-bright-blue: #3b82f6;
+  --color-terminal-bright-magenta: #8b5cf6;
+  --color-terminal-bright-cyan: #06b6d4;
+  --color-terminal-bright-white: #09090b;
   
   /* Diff Colors - Added lines (green) */
   --color-diff-added-bg: #e6ffec;
@@ -2224,94 +2264,6 @@ html.light .chat-input-redesigned:focus-within {
 }
 
 
-/* ========== Monaco Diff Editor Styling ========== */
-/* Diff viewer container */
-.diff-viewer-container {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-/* Monaco diff editor overrides for consistent theming */
-.monaco-diff-editor {
-  background-color: var(--color-surface-editor) !important;
-}
-
-.monaco-diff-editor .editor.original,
-.monaco-diff-editor .editor.modified {
-  background-color: var(--color-surface-editor) !important;
-}
-
-/* Diff gutter styling */
-.monaco-diff-editor .insert-sign,
-.monaco-diff-editor .char-insert {
-  background-color: rgba(52, 211, 153, 0.2) !important;
-}
-
-.monaco-diff-editor .delete-sign,
-.monaco-diff-editor .char-delete {
-  background-color: rgba(248, 113, 113, 0.2) !important;
-}
-
-/* Line highlighting for changes */
-.monaco-diff-editor .line-insert {
-  background-color: rgba(52, 211, 153, 0.08) !important;
-}
-
-.monaco-diff-editor .line-delete {
-  background-color: rgba(248, 113, 113, 0.08) !important;
-}
-
-/* Inline diff (unified view) styling */
-.monaco-diff-editor .inline-added-margin-view-zone {
-  background-color: rgba(52, 211, 153, 0.1) !important;
-}
-
-.monaco-diff-editor .inline-deleted-margin-view-zone {
-  background-color: rgba(248, 113, 113, 0.1) !important;
-}
-
-/* Word-level diff highlighting */
-.monaco-diff-editor .word-insert {
-  background-color: rgba(52, 211, 153, 0.3) !important;
-  border-radius: 2px;
-}
-
-.monaco-diff-editor .word-delete {
-  background-color: rgba(248, 113, 113, 0.3) !important;
-  border-radius: 2px;
-}
-
-/* Diff overview ruler (minimap) */
-.monaco-diff-editor .diffOverviewRuler {
-  background-color: var(--color-surface-1) !important;
-}
-
-/* Light mode overrides */
-html.light .monaco-diff-editor .insert-sign,
-html.light .monaco-diff-editor .char-insert {
-  background-color: rgba(5, 150, 105, 0.2) !important;
-}
-
-html.light .monaco-diff-editor .delete-sign,
-html.light .monaco-diff-editor .char-delete {
-  background-color: rgba(220, 38, 38, 0.2) !important;
-}
-
-html.light .monaco-diff-editor .line-insert {
-  background-color: rgba(5, 150, 105, 0.08) !important;
-}
-
-html.light .monaco-diff-editor .line-delete {
-  background-color: rgba(220, 38, 38, 0.08) !important;
-}
-
-html.light .monaco-diff-editor .word-insert {
-  background-color: rgba(5, 150, 105, 0.25) !important;
-}
-
-html.light .monaco-diff-editor .word-delete {
-  background-color: rgba(220, 38, 38, 0.25) !important;
-}
 
 /* ========================================================================== */
 /* Compact Mode Styles                                                        */

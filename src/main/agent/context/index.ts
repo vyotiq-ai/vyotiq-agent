@@ -45,3 +45,13 @@ export {
   type TaskIntent,
   type SessionToolState,
 } from './ToolContextManager';
+
+// Semantic context injection (auto-enrichment from vector search)
+export {
+  injectSemanticContext,
+  shouldInjectContext,
+  clearWorkspaceIdCache,
+  type SemanticContextConfig,
+  type SemanticContextResult,
+  DEFAULT_SEMANTIC_CONTEXT_CONFIG,
+} from './SemanticContextInjector';

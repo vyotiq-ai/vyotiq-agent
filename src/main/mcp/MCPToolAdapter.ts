@@ -13,6 +13,7 @@ import type { ToolDefinition, ToolExecutionContext } from '../tools/types/toolTy
 import type { ToolExecutionResult, ToolSpecification, DynamicToolState } from '../../shared/types';
 import type { MCPToolWithContext } from '../../shared/types/mcp';
 import type { ToolRegistry } from '../tools/registry/ToolRegistry';
+import { getDynamicToolValidator } from '../agent/compliance';
 
 const logger = createLogger('MCPToolAdapter');
 
@@ -45,8 +46,8 @@ export function mcpToolToToolDefinition(mcpTool: MCPToolWithContext): ToolDefini
     name: toolName,
     description: `[MCP: ${serverName}] ${tool.description}`,
     category: 'other', // Use 'other' as MCP is a meta-category
-    requiresApproval: false, // MCP tools follow their own approval flow
-    riskLevel: 'moderate', // Default to moderate risk
+    requiresApproval: true, // MCP tools from external sources require user approval
+    riskLevel: 'moderate', // Default to moderate risk for external tools
     schema: {
       type: 'object',
       properties,
@@ -171,9 +172,23 @@ export function findMCPToolDefinition(name: string): ToolDefinition | undefined 
   
   // Try with mcp_ prefix removed
   if (name.startsWith('mcp_')) {
-    const parts = name.substring(4).split('_');
+    const rest = name.substring(4);
+    const manager = getMCPServerManager();
+    const allTools = manager.getAllTools();
+    
+    // Find the matching tool by checking all registered server/tool combinations
+    // This avoids the ambiguity of splitting on underscore since both server IDs
+    // and tool names can contain underscores
+    for (const mcpTool of allTools) {
+      const expectedName = `mcp_${mcpTool.serverId.replace(/-/g, '_')}_${mcpTool.tool.name.replace(/-/g, '_')}`;
+      if (expectedName === name) {
+        return mcpToolToToolDefinition(mcpTool);
+      }
+    }
+    
+    // Fallback: try reconstructing with hyphen-based server ID
+    const parts = rest.split('_');
     if (parts.length >= 2) {
-      // Reconstruct server ID and tool name
       const toolName = parts[parts.length - 1];
       const serverId = parts.slice(0, -1).join('-');
       
@@ -316,9 +331,22 @@ export class MCPToolRegistryAdapter {
         try {
           const spec = createMCPToolSpec(mcpTool);
           const state = createMCPToolState(mcpTool);
+
+          // Validate dynamic tool before registration
+          const validator = getDynamicToolValidator();
+          const validationResult = validator.validate(spec);
+          if (!validationResult.valid) {
+            logger.warn('MCP tool failed validation, skipping registration', {
+              name: toolDef.name,
+              issues: validationResult.issues.filter(i => i.severity === 'error').map(i => i.message),
+              riskLevel: validationResult.riskLevel,
+            });
+            continue;
+          }
+
           this.toolRegistry.registerDynamic(toolDef, spec, state);
           this.registeredTools.add(toolDef.name);
-          logger.debug('Registered MCP tool', { name: toolDef.name });
+          logger.debug('Registered MCP tool', { name: toolDef.name, riskLevel: validationResult.riskLevel });
         } catch (err) {
           logger.warn('Failed to register MCP tool', { name: toolDef.name, error: err });
         }

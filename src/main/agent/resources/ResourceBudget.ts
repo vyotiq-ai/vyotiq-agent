@@ -55,6 +55,9 @@ export class ResourceBudgetManager {
       const interval = setInterval(() => {
         this.refill(id, config.refillAmount!);
       }, config.refillRate * 60000); // Convert minutes to ms
+      if (interval && typeof interval === 'object' && 'unref' in interval) {
+        (interval as NodeJS.Timeout).unref();
+      }
 
       this.refillIntervals.set(id, interval);
     }

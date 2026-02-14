@@ -10,6 +10,7 @@ import type { CacheSettings, LLMProviderName } from '../../../../shared/types';
 import { createLogger } from '../../../utils/logger';
 import { cn } from '../../../utils/cn';
 import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider } from '../primitives';
+import { formatBytes, formatDurationFull, formatCost } from '../utils/formatters';
 
 const logger = createLogger('SettingsPerformance');
 
@@ -17,26 +18,6 @@ interface SettingsPerformanceProps {
   settings: CacheSettings;
   onChange: (field: keyof CacheSettings, value: CacheSettings[keyof CacheSettings]) => void;
 }
-
-const formatBytes = (bytes: number): string => {
-  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${bytes} B`;
-};
-
-const formatDuration = (ms: number): string => {
-  if (ms >= 60000) return `${(ms / 60000).toFixed(0)} min`;
-  if (ms >= 1000) return `${(ms / 1000).toFixed(0)} sec`;
-  return `${ms} ms`;
-};
-
-const formatCost = (cost: number): string => {
-  if (cost >= 1) return `$${cost.toFixed(2)}`;
-  if (cost >= 0.01) return `$${cost.toFixed(3)}`;
-  if (cost > 0) return `$${cost.toFixed(4)}`;
-  return '$0.00';
-};
 
 interface CacheStats {
   promptCache: { hits: number; misses: number; hitRate: number; tokensSaved: number; costSaved: number };
@@ -194,7 +175,7 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
       <SettingsGroup title="tool cache" icon={<Database size={11} />}>
         <SettingsToggleRow label="enable-tool-cache" description="cache read-only tool results (read, ls, grep)" checked={settings.toolCache.enabled} onToggle={() => handleToolCacheChange('enabled', !settings.toolCache.enabled)} />
         <SettingsToggleRow label="lru-eviction" description="use LRU eviction when cache is full" checked={settings.enableLruEviction} onToggle={() => onChange('enableLruEviction', !settings.enableLruEviction)} />
-        <SettingsSlider label="tool-cache-ttl" description="time before cached tool results expire" value={settings.toolCache.defaultTtlMs} onChange={(v) => handleToolCacheChange('defaultTtlMs', v)} min={10000} max={300000} step={10000} format={formatDuration} />
+        <SettingsSlider label="tool-cache-ttl" description="time before cached tool results expire" value={settings.toolCache.defaultTtlMs} onChange={(v) => handleToolCacheChange('defaultTtlMs', v)} min={10000} max={300000} step={10000} format={formatDurationFull} />
         <SettingsSlider label="tool-cache-size" description="max entries before eviction" value={settings.toolCache.maxEntries} onChange={(v) => handleToolCacheChange('maxEntries', v)} min={50} max={500} step={25} format={(v) => `${v} entries`} />
         
         {/* Per-Tool TTL Overrides */}
@@ -202,6 +183,7 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
           <button
             type="button"
             onClick={() => setShowToolTtlsSection(!showToolTtlsSection)}
+            aria-expanded={showToolTtlsSection}
             className="w-full flex items-center justify-between py-1 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
           >
             <div className="flex items-center gap-1.5">
@@ -289,7 +271,7 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
       {/* Context Cache Settings */}
       <SettingsGroup title="context cache">
         <SettingsToggleRow label="enable-context-cache" description="cache file content and symbols" checked={settings.contextCache.enabled} onToggle={() => handleContextCacheChange('enabled', !settings.contextCache.enabled)} />
-        <SettingsSlider label="context-cache-ttl" description="time before cached file content expires" value={settings.contextCache.defaultTtlMs} onChange={(v) => handleContextCacheChange('defaultTtlMs', v)} min={60000} max={600000} step={30000} format={formatDuration} />
+        <SettingsSlider label="context-cache-ttl" description="time before cached file content expires" value={settings.contextCache.defaultTtlMs} onChange={(v) => handleContextCacheChange('defaultTtlMs', v)} min={60000} max={600000} step={30000} format={formatDurationFull} />
         <SettingsSlider label="context-cache-size" description="max memory for context cache" value={settings.contextCache.maxSizeMb} onChange={(v) => handleContextCacheChange('maxSizeMb', v)} min={10} max={100} step={5} format={(v) => `${v} MB`} />
       </SettingsGroup>
 

@@ -460,3 +460,4 @@ export const ModelSelectorComponent: React.FC<ModelSelectorProps> = ({
 };
 
 export const ModelSelector = memo(ModelSelectorComponent);
+ModelSelector.displayName = 'ModelSelector';

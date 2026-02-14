@@ -392,11 +392,15 @@ export function buildCoreTools(tools?: ToolDefForPrompt[]): string {
  */
 export const DYNAMIC_TOOL_CATEGORIES: Record<string, { tools: string[]; description: string }> = {
   file: {
-    tools: ['read', 'write', 'edit', 'ls', 'grep', 'glob', 'bulk', 'read_lints', 'rename', 'delete'],
-    description: 'File operations, search, diagnostics',
+    tools: ['read', 'write', 'edit', 'ls', 'grep', 'glob', 'bulk', 'read_lints'],
+    description: 'File operations, bulk rename/move/copy/delete, diagnostics',
+  },
+  search: {
+    tools: ['semantic_search', 'full_text_search', 'code_query', 'code_similarity'],
+    description: 'Semantic vector search, BM25 keyword search, natural language code queries, code similarity detection',
   },
   terminal: {
-    tools: ['run', 'check_terminal', 'kill_terminal', 'list_terminals'],
+    tools: ['run', 'check_terminal', 'kill_terminal'],
     description: 'Command execution, process management',
   },
   browser: {

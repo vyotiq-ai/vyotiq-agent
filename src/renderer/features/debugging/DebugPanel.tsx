@@ -14,6 +14,7 @@ import {
   AlertCircle, CheckCircle, XCircle, Settings
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { createLogger } from '../../utils/logger';
 import { DebugTraceViewer } from './components/DebugTraceViewer';
 import { BreakpointConfig } from './components/BreakpointConfig';
 import { StateInspectorPanel } from './components/StateInspectorPanel';
@@ -28,6 +29,8 @@ interface DebugPanelProps {
 
 type DebugTab = 'trace' | 'breakpoints' | 'state';
 
+const logger = createLogger('DebugPanel');
+
 export const DebugPanel: React.FC<DebugPanelProps> = ({
   sessionId,
   runId,
@@ -40,8 +43,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   const [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
   // Selected step for detailed inspection
   const [selectedStep, setSelectedStep] = useState<TraceStepDetail | null>(null);
-  // Debug settings state
-  const [_showDebugSettings, setShowDebugSettings] = useState(false);
 
   // Fetch active trace data from IPC
   useEffect(() => {
@@ -96,7 +97,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
           }
         }
       } catch (error) {
-        console.error('Failed to fetch trace data:', error);
+        logger.error('Failed to fetch trace data', { error: error instanceof Error ? error.message : String(error) });
       }
     };
 
@@ -117,8 +118,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       try {
         const paused = await window.vyotiq?.agent?.isRunPaused?.(sessionId);
         setIsPaused(!!paused);
-      } catch {
-        // Ignore errors
+      } catch (err) {
+        logger.debug('Failed to check pause state', { sessionId, error: err instanceof Error ? err.message : String(err) });
       }
     };
     
@@ -131,7 +132,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
 
   // Toggle debug settings panel
   const handleDebugSettingsClick = useCallback(() => {
-    setShowDebugSettings(prev => !prev);
     // Switch to breakpoints tab which contains debug configuration
     setActiveTab('breakpoints');
   }, []);
@@ -148,7 +148,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         setIsPaused(true);
       }
     } catch (error) {
-      console.error('Failed to pause/resume run:', error);
+      logger.error('Failed to pause/resume run', { error: error instanceof Error ? error.message : String(error) });
     }
   }, [sessionId, isPaused]);
 
@@ -161,7 +161,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       await window.vyotiq?.debug?.updateConfig?.({ stepMode: true });
       await window.vyotiq?.agent?.resumeRun?.(sessionId);
     } catch (error) {
-      console.error('Failed to step forward:', error);
+      logger.error('Failed to step forward', { error: error instanceof Error ? error.message : String(error) });
     }
   }, [sessionId, isPaused]);
 
@@ -171,7 +171,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     try {
       await window.vyotiq?.agent?.cancelRun?.(sessionId);
     } catch (error) {
-      console.error('Failed to stop run:', error);
+      logger.error('Failed to stop run', { error: error instanceof Error ? error.message : String(error) });
     }
   }, [sessionId]);
 
@@ -233,10 +233,14 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       {isExpanded && (
         <>
           {/* Tab bar */}
-          <div className="flex border-b border-[var(--color-border-subtle)]">
+          <div className="flex border-b border-[var(--color-border-subtle)]" role="tablist" aria-label="Debug panel tabs">
             {(['trace', 'breakpoints', 'state'] as DebugTab[]).map(tab => (
               <button
                 key={tab}
+                role="tab"
+                aria-selected={activeTab === tab}
+                aria-controls={`debug-panel-${tab}`}
+                id={`debug-tab-${tab}`}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
                   'px-3 py-1.5 text-[10px] font-mono transition-colors',
@@ -291,7 +295,12 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
           )}
 
           {/* Tab content */}
-          <div className="flex-1 overflow-hidden">
+          <div
+            role="tabpanel"
+            id={`debug-panel-${activeTab}`}
+            aria-labelledby={`debug-tab-${activeTab}`}
+            className="flex-1 overflow-hidden"
+          >
             {activeTab === 'trace' && (
               <DebugTraceViewer
                 sessionId={sessionId}

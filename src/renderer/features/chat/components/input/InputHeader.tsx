@@ -224,12 +224,12 @@ const TaskRow: React.FC<{ task: TodoItem; index: number; total: number }> = memo
         !isCompleted && !isActive && 'hover:bg-[var(--color-surface-2)]/30'
       )}
     >
-      {/* Task number */}
+      {/* Task number (X of Y) */}
       <span className={cn(
-        'text-[9px] tabular-nums w-4 text-right flex-shrink-0',
+        'text-[9px] tabular-nums w-8 text-right flex-shrink-0',
         isCompleted ? 'text-[var(--color-text-dim)]' : 'text-[var(--color-text-muted)]'
       )}>
-        {index + 1}
+        {index + 1}/{total}
       </span>
       
       {/* Status icon */}
@@ -358,7 +358,6 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
   className,
 }) => {
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
-  const _hasIterationInfo = isWorking && currentIteration && maxIterations;
   
   // Calculate todo stats
   const todoStats = useMemo(() => providedTodoStats ?? calculateTodoStats(todos), [providedTodoStats, todos]);

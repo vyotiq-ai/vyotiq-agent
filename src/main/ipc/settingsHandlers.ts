@@ -14,6 +14,7 @@ import { createLogger } from '../logger';
 import type { IpcContext } from './types';
 import type { AgentSettings } from '../../shared/types';
 import { getToolResultCache, getContextCache } from '../agent/cache';
+import { getBrowserManager } from '../browser';
 import { withErrorGuard } from './guards';
 import { validateAllSettings } from '../agent/settingsValidation';
 
@@ -44,11 +45,11 @@ function validateSettings(settings: Partial<AgentSettings>): ValidationError[] {
     promptSettings: settings.promptSettings,
     toolSettings: settings.autonomousFeatureFlags?.toolSettings,
     safetySettings: settings.safetySettings,
-    editorAISettings: settings.editorAISettings,
     appearanceSettings: settings.appearanceSettings,
     debugSettings: settings.debugSettings,
     cacheSettings: settings.cacheSettings,
     mcpSettings: settings.mcpSettings,
+    workspaceSettings: settings.workspaceSettings,
   });
 
   // Convert full validation result to ValidationError array
@@ -60,19 +61,6 @@ function validateSettings(settings: Partial<AgentSettings>): ValidationError[] {
           message: error.message,
         });
       }
-    }
-  }
-  
-  // Validate cacheSettings (deep validation not fully covered by comprehensive validators)
-  if (settings.cacheSettings) {
-    const cache = settings.cacheSettings;
-    
-    if (cache.toolCache?.maxEntries !== undefined && (cache.toolCache.maxEntries < 1 || cache.toolCache.maxEntries > 100000)) {
-      errors.push({ field: 'cacheSettings.toolCache.maxEntries', message: 'Max cache entries must be between 1 and 100000' });
-    }
-    
-    if (cache.contextCache?.maxSizeMb !== undefined && (cache.contextCache.maxSizeMb < 1 || cache.contextCache.maxSizeMb > 1024)) {
-      errors.push({ field: 'cacheSettings.contextCache.maxSizeMb', message: 'Max cache size must be between 1MB and 1024MB' });
     }
   }
   
@@ -116,6 +104,32 @@ function applyCacheSettings(settings: AgentSettings): void {
     }
   } catch (error) {
     logger.warn('Failed to apply cache settings', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Apply browser settings to the browser manager
+ * This ensures browser behavior settings are immediately effective without restart
+ */
+function applyBrowserSettings(settings: AgentSettings): void {
+  try {
+    const browserSettings = settings.browserSettings;
+    if (!browserSettings) return;
+
+    const browserManager = getBrowserManager();
+    browserManager.applyBehaviorSettings({
+      navigationTimeout: browserSettings.navigationTimeout,
+      maxContentLength: browserSettings.maxContentLength,
+      customUserAgent: browserSettings.customUserAgent,
+      enableJavaScript: browserSettings.enableJavaScript,
+      enableCookies: browserSettings.enableCookies,
+      clearDataOnExit: browserSettings.clearDataOnExit,
+    });
+    logger.debug('Browser settings applied reactively');
+  } catch (error) {
+    logger.warn('Failed to apply browser settings', {
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -207,6 +221,11 @@ export function registerSettingsHandlers(context: IpcContext): void {
       if (payload.settings.cacheSettings) {
         applyCacheSettings(updated);
       }
+
+      // Apply browser settings immediately if they were updated
+      if (payload.settings.browserSettings) {
+        applyBrowserSettings(updated);
+      }
       
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });
@@ -235,6 +254,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
       
       const updated = settingsStore.get();
       applyCacheSettings(updated);
+      applyBrowserSettings(updated);
       
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });
@@ -298,6 +318,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
       
       const updated = settingsStore.set(safeSettings);
       applyCacheSettings(updated);
+      applyBrowserSettings(updated);
       
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });

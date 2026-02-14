@@ -154,14 +154,6 @@ export function buildProviderMap(settings: AgentSettings): ProviderMap {
     hasXAI: Boolean(settings.apiKeys.xai?.trim()),
     hasMistral: Boolean(settings.apiKeys.mistral?.trim()),
     hasGLM: Boolean(settings.apiKeys.glm?.trim()),
-    openaiKeyLength: settings.apiKeys.openai?.length ?? 0,
-    deepseekKeyLength: settings.apiKeys.deepseek?.length ?? 0,
-    anthropicKeyLength: settings.apiKeys.anthropic?.length ?? 0,
-    geminiKeyLength: settings.apiKeys.gemini?.length ?? 0,
-    openrouterKeyLength: settings.apiKeys.openrouter?.length ?? 0,
-    xaiKeyLength: settings.apiKeys.xai?.length ?? 0,
-    mistralKeyLength: settings.apiKeys.mistral?.length ?? 0,
-    glmKeyLength: settings.apiKeys.glm?.length ?? 0,
   });
   
   // OpenAI

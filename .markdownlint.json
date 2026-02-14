@@ -1,6 +1,6 @@
 {
   "MD033": {
-    "allowed_elements": ["p", "h1", "img", "a", "strong", "details", "summary", "br"]
+    "allowed_elements": ["p", "h1", "img", "a", "strong", "details", "summary", "br", "code", "pre", "em", "hr", "ul", "ol", "li", "blockquote", "span", "div", "abbr", "acronym", "address", "b", "big", "cite", "dfn", "ins", "mark", "small", "sub", "sup", "time", "u", "wbr", "ruby", "rt", "rp", "bdi", "bdo", "data", "s", "samp", "var"]
   },
   "MD041": false,
   "MD013": false,

@@ -18,9 +18,7 @@ const mockVyotiq = {
     isRunPaused: vi.fn(),
     deleteSession: vi.fn(),
     getSessions: vi.fn().mockResolvedValue([]),
-    getSessionsByWorkspace: vi.fn().mockResolvedValue([]),
     getSessionSummaries: vi.fn().mockResolvedValue([]),
-    getActiveWorkspaceSessions: vi.fn().mockResolvedValue([]),
     regenerate: vi.fn(),
     renameSession: vi.fn(),
     getAvailableProviders: vi.fn().mockResolvedValue([]),
@@ -30,25 +28,8 @@ const mockVyotiq = {
     createBranch: vi.fn(),
     switchBranch: vi.fn(),
     deleteBranch: vi.fn(),
-    updateEditorState: vi.fn(),
     addReaction: vi.fn(),
     onEvent: vi.fn().mockReturnValue(() => {}),
-  },
-
-  // Workspace API - Workspace management
-  workspace: {
-    list: vi.fn().mockResolvedValue([]),
-    add: vi.fn(),
-    remove: vi.fn(),
-    setActive: vi.fn(),
-    getActive: vi.fn().mockResolvedValue(null),
-    getInfo: vi.fn(),
-    getStructure: vi.fn().mockResolvedValue({ files: [], folders: [] }),
-    refreshStructure: vi.fn(),
-    getDiagnostics: vi.fn().mockResolvedValue([]),
-    getRecentFiles: vi.fn().mockResolvedValue([]),
-    onDiagnosticsUpdate: vi.fn().mockReturnValue(() => {}),
-    onFileDiagnostics: vi.fn().mockReturnValue(() => {}),
   },
 
   // Settings API
@@ -113,20 +94,11 @@ const mockVyotiq = {
     write: vi.fn(),
     resize: vi.fn(),
     kill: vi.fn(),
+    rename: vi.fn(),
     getProcesses: vi.fn().mockResolvedValue([]),
     getOutput: vi.fn(),
     onData: vi.fn().mockReturnValue(() => {}),
     onExit: vi.fn().mockReturnValue(() => {}),
-  },
-
-  // Editor AI API
-  editorAI: {
-    complete: vi.fn(),
-    explain: vi.fn(),
-    refactor: vi.fn(),
-    fix: vi.fn(),
-    generate: vi.fn(),
-    getConfig: vi.fn(),
   },
 
   // LSP API
@@ -143,7 +115,6 @@ const mockVyotiq = {
     symbols: vi.fn(),
     completions: vi.fn(),
     codeActions: vi.fn(),
-    rename: vi.fn(),
   },
 
   // Git API
@@ -248,6 +219,18 @@ const mockVyotiq = {
   loopDetection: {
     getStatus: vi.fn(),
     reset: vi.fn(),
+  },
+
+  // Dynamic Tools API
+  dynamicTools: {
+    list: vi.fn().mockResolvedValue({ tools: [] }),
+    getSpec: vi.fn().mockResolvedValue(null),
+    updateState: vi.fn().mockResolvedValue({ success: true }),
+  },
+
+  // Logging bridge
+  log: {
+    report: vi.fn(),
   },
 };
 

@@ -89,7 +89,7 @@ export function handleIncompleteToolCalls(messages: ChatMessage[]): number {
   if (!lastAssistant.toolCalls || lastAssistant.toolCalls.length === 0) return 0;
 
   // Collect tool_call_ids that need responses
-  const toolCallIds = new Set(lastAssistant.toolCalls.map(tc => tc.callId));
+  const toolCallIds = new Set(lastAssistant.toolCalls.filter(tc => tc != null).map(tc => tc.callId).filter(Boolean));
 
   // Check which tool_calls already have corresponding tool messages
   for (let i = lastAssistantIndex + 1; i < messages.length; i++) {

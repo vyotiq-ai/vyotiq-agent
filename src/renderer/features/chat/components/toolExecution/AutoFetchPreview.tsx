@@ -52,9 +52,9 @@ export const AutoFetchPreview: React.FC<{
           </button>
           {showSources && (
             <div className="px-2 pb-2 space-y-1">
-              {sources.map((source, idx) => (
+              {sources.map((source) => (
                 <a
-                  key={idx}
+                  key={source.url}
                   href={source.url}
                   target="_blank"
                   rel="noopener noreferrer"

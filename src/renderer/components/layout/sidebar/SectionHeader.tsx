@@ -1,5 +1,4 @@
 import React from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface SectionHeaderProps {
   label: string;
@@ -34,8 +33,8 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
       }}
     >
       <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-        <span className="text-[var(--color-text-placeholder)] flex-shrink-0">
-          {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        <span className="text-[var(--color-text-placeholder)] flex-shrink-0 text-[8px] w-2 text-center">
+          {isOpen ? '▾' : '▸'}
         </span>
         <span className="uppercase tracking-wider truncate">{label}</span>
       </div>

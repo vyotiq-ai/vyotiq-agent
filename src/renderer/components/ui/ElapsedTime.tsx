@@ -42,10 +42,11 @@ const ElapsedTimeComponent: React.FC<ElapsedTimeProps> = ({
     // Update immediately
     setElapsed(Date.now() - startTime);
     
-    // Then update every 100ms for smooth display
+    // Update every 1000ms — seconds-level precision is sufficient for UX
+    // and avoids 10 state updates/sec per ElapsedTime instance
     const interval = setInterval(() => {
       setElapsed(Date.now() - startTime);
-    }, 100);
+    }, 1000);
     
     return () => clearInterval(interval);
   }, [startTime]);
@@ -58,3 +59,4 @@ const ElapsedTimeComponent: React.FC<ElapsedTimeProps> = ({
 };
 
 export const ElapsedTime = memo(ElapsedTimeComponent);
+ElapsedTime.displayName = 'ElapsedTime';

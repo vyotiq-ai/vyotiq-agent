@@ -106,33 +106,33 @@ export const DEFAULT_VALIDATOR_CONFIG: DynamicToolValidatorConfig = {
  * Dangerous code patterns to detect
  */
 const DANGEROUS_PATTERNS = [
-  { pattern: /eval\s*\(/gi, code: 'EVAL_USAGE', message: 'Use of eval() is not allowed' },
-  { pattern: /new\s+Function\s*\(/gi, code: 'FUNCTION_CONSTRUCTOR', message: 'Function constructor is not allowed' },
-  { pattern: /process\.exit/gi, code: 'PROCESS_EXIT', message: 'process.exit is not allowed' },
-  { pattern: /child_process/gi, code: 'CHILD_PROCESS', message: 'child_process module is restricted' },
-  { pattern: /require\s*\(\s*['"`]fs['"`]\s*\)/gi, code: 'FS_REQUIRE', message: 'Direct fs require is restricted' },
-  { pattern: /require\s*\(\s*['"`]net['"`]\s*\)/gi, code: 'NET_REQUIRE', message: 'Direct net require is restricted' },
-  { pattern: /require\s*\(\s*['"`]http['"`]\s*\)/gi, code: 'HTTP_REQUIRE', message: 'Direct http require is restricted' },
-  { pattern: /require\s*\(\s*['"`]https['"`]\s*\)/gi, code: 'HTTPS_REQUIRE', message: 'Direct https require is restricted' },
-  { pattern: /__dirname|__filename/gi, code: 'PATH_GLOBALS', message: 'Path globals are restricted' },
-  { pattern: /process\.env/gi, code: 'ENV_ACCESS', message: 'Direct environment access is restricted' },
-  { pattern: /globalThis|global\./gi, code: 'GLOBAL_ACCESS', message: 'Global object access is restricted' },
-  { pattern: /while\s*\(\s*true\s*\)/gi, code: 'INFINITE_LOOP', message: 'Potential infinite loop detected' },
-  { pattern: /for\s*\(\s*;\s*;\s*\)/gi, code: 'INFINITE_LOOP', message: 'Potential infinite loop detected' },
-  { pattern: /rm\s+-rf|rmdir\s+\/s/gi, code: 'DESTRUCTIVE_CMD', message: 'Destructive command pattern detected' },
-  { pattern: /DROP\s+TABLE|DELETE\s+FROM\s+\w+\s*;/gi, code: 'SQL_DANGER', message: 'Dangerous SQL pattern detected' },
+  { pattern: /eval\s*\(/i, code: 'EVAL_USAGE', message: 'Use of eval() is not allowed' },
+  { pattern: /new\s+Function\s*\(/i, code: 'FUNCTION_CONSTRUCTOR', message: 'Function constructor is not allowed' },
+  { pattern: /process\.exit/i, code: 'PROCESS_EXIT', message: 'process.exit is not allowed' },
+  { pattern: /child_process/i, code: 'CHILD_PROCESS', message: 'child_process module is restricted' },
+  { pattern: /require\s*\(\s*['"`]fs['"`]\s*\)/i, code: 'FS_REQUIRE', message: 'Direct fs require is restricted' },
+  { pattern: /require\s*\(\s*['"`]net['"`]\s*\)/i, code: 'NET_REQUIRE', message: 'Direct net require is restricted' },
+  { pattern: /require\s*\(\s*['"`]http['"`]\s*\)/i, code: 'HTTP_REQUIRE', message: 'Direct http require is restricted' },
+  { pattern: /require\s*\(\s*['"`]https['"`]\s*\)/i, code: 'HTTPS_REQUIRE', message: 'Direct https require is restricted' },
+  { pattern: /__dirname|__filename/i, code: 'PATH_GLOBALS', message: 'Path globals are restricted' },
+  { pattern: /process\.env/i, code: 'ENV_ACCESS', message: 'Direct environment access is restricted' },
+  { pattern: /globalThis|global\./i, code: 'GLOBAL_ACCESS', message: 'Global object access is restricted' },
+  { pattern: /while\s*\(\s*true\s*\)/i, code: 'INFINITE_LOOP', message: 'Potential infinite loop detected' },
+  { pattern: /for\s*\(\s*;\s*;\s*\)/i, code: 'INFINITE_LOOP', message: 'Potential infinite loop detected' },
+  { pattern: /rm\s+-rf|rmdir\s+\/s/i, code: 'DESTRUCTIVE_CMD', message: 'Destructive command pattern detected' },
+  { pattern: /DROP\s+TABLE|DELETE\s+FROM\s+\w+\s*;/i, code: 'SQL_DANGER', message: 'Dangerous SQL pattern detected' },
 ];
 
 /**
  * Suspicious patterns (warnings)
  */
 const SUSPICIOUS_PATTERNS = [
-  { pattern: /setTimeout|setInterval/gi, code: 'TIMER_USAGE', message: 'Timer usage may cause issues' },
-  { pattern: /fetch\s*\(/gi, code: 'FETCH_USAGE', message: 'Network fetch detected' },
-  { pattern: /XMLHttpRequest/gi, code: 'XHR_USAGE', message: 'XMLHttpRequest detected' },
-  { pattern: /localStorage|sessionStorage/gi, code: 'STORAGE_ACCESS', message: 'Browser storage access detected' },
-  { pattern: /document\.|window\./gi, code: 'DOM_ACCESS', message: 'DOM access detected' },
-  { pattern: /crypto\.subtle/gi, code: 'CRYPTO_USAGE', message: 'Cryptographic operations detected' },
+  { pattern: /setTimeout|setInterval/i, code: 'TIMER_USAGE', message: 'Timer usage may cause issues' },
+  { pattern: /fetch\s*\(/i, code: 'FETCH_USAGE', message: 'Network fetch detected' },
+  { pattern: /XMLHttpRequest/i, code: 'XHR_USAGE', message: 'XMLHttpRequest detected' },
+  { pattern: /localStorage|sessionStorage/i, code: 'STORAGE_ACCESS', message: 'Browser storage access detected' },
+  { pattern: /document\.|window\./i, code: 'DOM_ACCESS', message: 'DOM access detected' },
+  { pattern: /crypto\.subtle/i, code: 'CRYPTO_USAGE', message: 'Cryptographic operations detected' },
 ];
 
 // =============================================================================

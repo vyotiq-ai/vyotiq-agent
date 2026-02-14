@@ -9,6 +9,8 @@ import type { SessionManager } from './sessionManager';
 import type { RunExecutor } from './runExecutor';
 import type { InternalSession } from './types';
 import { randomUUID } from 'node:crypto';
+import { getLoopDetector } from './loopDetection';
+import { getSessionHealthMonitor } from './sessionHealth';
 
 /**
  * Handles tool confirmation logic - user approval/denial/feedback of tool execution
@@ -115,6 +117,7 @@ export class ToolConfirmationHandler {
       content: `[Tool execution skipped by user]\n\nThe user declined to execute "${pending.tool.name}" and provided the following instructions instead:\n\n${payload.feedback}`,
       toolCallId: pending.tool.callId,
       toolName: pending.tool.name,
+      toolSuccess: false,
       createdAt: Date.now(),
       runId: pending.runId,
     };
@@ -185,6 +188,10 @@ export class ToolConfirmationHandler {
     session.agenticContext = undefined; // Clear agentic context - run is cancelled
     session.state.status = 'idle';
     session.state.activeRunId = undefined;
+
+    // Clean up run-specific state to prevent leaks
+    getLoopDetector().cleanupRun(pending.runId);
+    getSessionHealthMonitor().stopMonitoring(session.state.id);
     
     // Persist the cancelled state
     this.sessionManager.updateSessionState(session.state.id, {
@@ -241,11 +248,29 @@ export class ToolConfirmationHandler {
       }
       
       // Queue is done - continue the run to get next LLM response
-      // This is async but we fire and forget since the run will handle its own lifecycle
+      // Handle continuation errors to prevent stuck sessions
       this.runExecutor.continueAfterToolConfirmation(session).catch(error => {
         this.logger.error('Error continuing run after tool confirmation', {
           sessionId: payload.sessionId,
           error: error instanceof Error ? error.message : String(error),
+        });
+        
+        // Recover session from stuck state
+        session.state.status = 'error';
+        session.state.activeRunId = undefined;
+        this.sessionManager.updateSessionState(session.state.id, {
+          status: session.state.status,
+          activeRunId: session.state.activeRunId,
+          updatedAt: Date.now(),
+        });
+        
+        this.emitEvent({ type: 'session-state', session: session.state });
+        this.emitEvent({
+          type: 'run-status',
+          sessionId: session.state.id,
+          runId: pending.runId,
+          status: 'error',
+          timestamp: Date.now(),
         });
       });
       

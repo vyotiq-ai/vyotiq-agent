@@ -9,6 +9,11 @@ import type {
 	StartSessionPayload,
 	UpdateConfigPayload,
 } from './shared/types';
+import type {
+	DynamicToolListFilter,
+	DynamicToolListResponse,
+	DynamicToolSpecResponse,
+} from './shared/ipcTypes';
 
 // ==========================================================================
 // Agent API
@@ -25,30 +30,12 @@ const agentAPI = {
 	isRunPaused: (sessionId: string) => ipcRenderer.invoke('agent:is-run-paused', sessionId),
 	deleteSession: (sessionId: string) => ipcRenderer.invoke('agent:delete-session', sessionId),
 	getSessions: () => ipcRenderer.invoke('agent:get-sessions'),
-	getSessionsByWorkspace: (workspaceId: string) => ipcRenderer.invoke('agent:get-sessions-by-workspace', workspaceId),
-	getSessionSummaries: (workspaceId?: string) => ipcRenderer.invoke('agent:get-session-summaries', workspaceId),
-	getActiveWorkspaceSessions: () => ipcRenderer.invoke('agent:get-active-workspace-sessions'),
+	getSessionSummaries: () => ipcRenderer.invoke('agent:get-session-summaries'),
 	regenerate: (sessionId: string) => ipcRenderer.invoke('agent:regenerate', sessionId),
 	renameSession: (sessionId: string, title: string) => ipcRenderer.invoke('agent:rename-session', sessionId, title),
 	getAvailableProviders: () => ipcRenderer.invoke('agent:get-available-providers'),
 	hasAvailableProviders: () => ipcRenderer.invoke('agent:has-available-providers'),
 	getProvidersCooldown: () => ipcRenderer.invoke('agent:get-providers-cooldown'),
-	
-	// Multi-workspace session operations
-	/** Get all running sessions across all workspaces */
-	getAllRunningSessions: () => ipcRenderer.invoke('agent:get-all-running-sessions'),
-	/** Get running session count per workspace */
-	getRunningSessionsByWorkspace: () => ipcRenderer.invoke('agent:get-running-sessions-by-workspace'),
-	/** Get workspace resource metrics */
-	getWorkspaceResources: () => ipcRenderer.invoke('agent:get-workspace-resources'),
-	/** Get concurrent execution statistics */
-	getConcurrentStats: () => ipcRenderer.invoke('agent:get-concurrent-stats'),
-	/** Get global session statistics for multi-workspace concurrent execution */
-	getGlobalSessionStats: () => ipcRenderer.invoke('agent:get-global-session-stats'),
-	/** Get detailed running session information across all workspaces */
-	getDetailedRunningSessions: () => ipcRenderer.invoke('agent:get-detailed-running-sessions'),
-	/** Check if a new session can be started in a workspace */
-	canStartSession: (workspaceId: string) => ipcRenderer.invoke('agent:can-start-session', workspaceId),
 	
 	editMessage: (sessionId: string, messageIndex: number, newContent: string) =>
 		ipcRenderer.invoke('agent:edit-message', sessionId, messageIndex, newContent),
@@ -58,22 +45,6 @@ const agentAPI = {
 		ipcRenderer.invoke('agent:switch-branch', sessionId, branchId),
 	deleteBranch: (sessionId: string, branchId: string) =>
 		ipcRenderer.invoke('agent:delete-branch', sessionId, branchId),
-	updateEditorState: (state: {
-		openFiles: string[];
-		activeFile: string | null;
-		cursorPosition: { lineNumber: number; column: number } | null;
-		diagnostics?: Array<{
-			filePath: string;
-			message: string;
-			severity: 'error' | 'warning' | 'info' | 'hint';
-			line: number;
-			column: number;
-			endLine?: number;
-			endColumn?: number;
-			source?: string;
-			code?: string | number;
-		}>;
-	}) => ipcRenderer.invoke('agent:update-editor-state', state),
 	addReaction: (sessionId: string, messageId: string, reaction: 'up' | 'down' | null) =>
 		ipcRenderer.invoke('agent:add-reaction', sessionId, messageId, reaction),
 	onEvent: (handler: (event: RendererEvent) => void) => {
@@ -81,258 +52,6 @@ const agentAPI = {
 		ipcRenderer.on('agent:event', listener);
 		return () => ipcRenderer.removeListener('agent:event', listener);
 	},
-};
-
-// ==========================================================================
-// Workspace Diagnostics Types
-// ==========================================================================
-
-interface WorkspaceDiagnostic {
-	filePath: string;
-	fileName: string;
-	line: number;
-	column: number;
-	endLine?: number;
-	endColumn?: number;
-	message: string;
-	severity: 'error' | 'warning' | 'info' | 'hint';
-	source: string;
-	code?: string | number;
-}
-
-interface DiagnosticsUpdateEvent {
-	diagnostics: WorkspaceDiagnostic[];
-	errorCount: number;
-	warningCount: number;
-	filesWithErrors: string[];
-	timestamp: number;
-}
-
-interface FileDiagnosticsEvent {
-	filePath: string;
-	diagnostics: WorkspaceDiagnostic[];
-}
-
-// ==========================================================================
-// Workspace API
-// ==========================================================================
-
-const workspaceAPI = {
-	list: () => ipcRenderer.invoke('workspace:list'),
-	add: () => ipcRenderer.invoke('workspace:add'),
-	setActive: (workspaceId: string) => ipcRenderer.invoke('workspace:set-active', workspaceId),
-	remove: (workspaceId: string) => ipcRenderer.invoke('workspace:remove', workspaceId),
-	
-	// ==========================================================================
-	// Multi-Workspace Tab Management
-	// ==========================================================================
-	
-	/**
-	 * Get all open workspace tabs with their state.
-	 */
-	getTabs: () => ipcRenderer.invoke('workspace:get-tabs'),
-	
-	/**
-	 * Open a workspace in a new tab (or focus existing tab).
-	 */
-	openTab: (workspaceId: string) => ipcRenderer.invoke('workspace:open-tab', workspaceId),
-	
-	/**
-	 * Close a workspace tab.
-	 */
-	closeTab: (workspaceId: string) => ipcRenderer.invoke('workspace:close-tab', workspaceId),
-	
-	/**
-	 * Focus a specific workspace tab.
-	 */
-	focusTab: (workspaceId: string) => ipcRenderer.invoke('workspace:focus-tab', workspaceId),
-	
-	/**
-	 * Reorder workspace tabs.
-	 */
-	reorderTabs: (workspaceId: string, newOrder: number) => 
-		ipcRenderer.invoke('workspace:reorder-tabs', workspaceId, newOrder),
-	
-	/**
-	 * Get workspaces that have open tabs.
-	 */
-	getActiveWorkspaces: () => ipcRenderer.invoke('workspace:get-active-workspaces'),
-	
-	/**
-	 * Set maximum number of tabs allowed.
-	 */
-	setMaxTabs: (maxTabs: number) => ipcRenderer.invoke('workspace:set-max-tabs', maxTabs),
-
-	// ==========================================================================
-	// Workspace Resource Management (Multi-workspace Concurrent Sessions)
-	// ==========================================================================
-
-	/**
-	 * Get resource metrics for all active workspaces.
-	 */
-	getResourceMetrics: () => ipcRenderer.invoke('workspace:get-resource-metrics'),
-
-	/**
-	 * Get resource metrics for a specific workspace.
-	 */
-	getWorkspaceMetrics: (workspaceId: string) =>
-		ipcRenderer.invoke('workspace:get-workspace-metrics', workspaceId),
-
-	/**
-	 * Get total active sessions across all workspaces.
-	 */
-	getTotalActiveSessions: () => ipcRenderer.invoke('workspace:get-total-active-sessions'),
-
-	/**
-	 * Get resource limits configuration.
-	 */
-	getResourceLimits: () => ipcRenderer.invoke('workspace:get-resource-limits'),
-
-	/**
-	 * Update resource limits configuration.
-	 */
-	updateResourceLimits: (limits: {
-		maxSessionsPerWorkspace?: number;
-		maxToolExecutionsPerWorkspace?: number;
-		rateLimitWindowMs?: number;
-		maxRequestsPerWindow?: number;
-	}) => ipcRenderer.invoke('workspace:update-resource-limits', limits),
-
-	/**
-	 * Initialize workspace resources (for pre-warming).
-	 */
-	initResources: (workspaceId: string) => ipcRenderer.invoke('workspace:init-resources', workspaceId),
-
-	/**
-	 * Cleanup workspace resources.
-	 */
-	cleanupResources: (workspaceId: string) => ipcRenderer.invoke('workspace:cleanup-resources', workspaceId),
-	
-	/**
-	 * Get all TypeScript diagnostics from the entire workspace codebase.
-	 * Returns errors and warnings from all files, not just open ones.
-	 */
-	getDiagnostics: (options?: { forceRefresh?: boolean }) =>
-		ipcRenderer.invoke('workspace:get-diagnostics', options),
-	/**
-	 * Subscribe to real-time diagnostics updates.
-	 * Use onDiagnosticsChange to receive the updates.
-	 */
-	subscribeToDiagnostics: () => ipcRenderer.invoke('workspace:diagnostics-subscribe'),
-	/**
-	 * Unsubscribe from real-time diagnostics updates.
-	 */
-	unsubscribeFromDiagnostics: () => ipcRenderer.invoke('workspace:diagnostics-unsubscribe'),
-	/**
-	 * Subscribe to real-time diagnostics update events.
-	 * Called whenever workspace diagnostics change (file saved, errors fixed, etc.)
-	 */
-	onDiagnosticsChange: (handler: (event: DiagnosticsUpdateEvent) => void) => {
-		const listener = (_event: IpcRendererEvent, data: DiagnosticsUpdateEvent) => handler(data);
-		ipcRenderer.on('diagnostics:updated', listener);
-		return () => ipcRenderer.removeListener('diagnostics:updated', listener);
-	},
-	/**
-	 * Subscribe to file-specific diagnostics updates.
-	 * More granular than onDiagnosticsChange, useful for editor integration.
-	 */
-	onFileDiagnosticsChange: (handler: (event: FileDiagnosticsEvent) => void) => {
-		const listener = (_event: IpcRendererEvent, data: FileDiagnosticsEvent) => handler(data);
-		ipcRenderer.on('diagnostics:file-updated', listener);
-		return () => ipcRenderer.removeListener('diagnostics:file-updated', listener);
-	},
-	/**
-	 * Subscribe to diagnostics cleared events.
-	 * Called when all diagnostics are cleared (e.g., workspace change).
-	 */
-	onDiagnosticsCleared: (handler: () => void) => {
-		const listener = () => handler();
-		ipcRenderer.on('diagnostics:cleared', listener);
-		return () => ipcRenderer.removeListener('diagnostics:cleared', listener);
-	},
-	/**
-	 * Get AGENTS.md status for the active workspace.
-	 * Returns discovered AGENTS.md files and their sections.
-	 */
-	getAgentsMdStatus: () => ipcRenderer.invoke('workspace:agents-md-status') as Promise<{
-		enabled: boolean;
-		files: Array<{
-			path: string;
-			relativePath: string;
-			depth: number;
-			sectionCount: number;
-			size: number;
-		}>;
-		primaryFile: {
-			path: string;
-			sections: string[];
-		} | null;
-		error: string | null;
-	}>,
-	/**
-	 * Refresh AGENTS.md cache for the active workspace.
-	 */
-	refreshAgentsMd: () => ipcRenderer.invoke('workspace:agents-md-refresh') as Promise<{
-		success: boolean;
-		fileCount?: number;
-		error?: string;
-	}>,
-	/**
-	 * Get all instruction files status for the active workspace.
-	 * Returns all discovered instruction files (AGENTS.md, CLAUDE.md, copilot-instructions.md, etc.)
-	 */
-	getInstructionFilesStatus: () => ipcRenderer.invoke('workspace:instruction-files-status') as Promise<{
-		found: boolean;
-		fileCount: number;
-		enabledCount: number;
-		files: Array<{
-			path: string;
-			type: string;
-			enabled: boolean;
-			priority: number;
-			sectionsCount: number;
-			hasFrontmatter: boolean;
-		}>;
-		byType: Record<string, number>;
-		error: string | null;
-	}>,
-	/**
-	 * Refresh instruction files cache for the active workspace.
-	 */
-	refreshInstructionFiles: () => ipcRenderer.invoke('workspace:instruction-files-refresh') as Promise<{
-		success: boolean;
-		fileCount?: number;
-		enabledCount?: number;
-		error?: string;
-	}>,
-	/**
-	 * Toggle an instruction file's enabled status.
-	 */
-	toggleInstructionFile: (relativePath: string, enabled: boolean) => 
-		ipcRenderer.invoke('workspace:instruction-files-toggle', relativePath, enabled) as Promise<{
-			success: boolean;
-			error?: string;
-		}>,
-	/**
-	 * Update instruction files configuration.
-	 */
-	updateInstructionFilesConfig: (config: Record<string, unknown>) =>
-		ipcRenderer.invoke('workspace:instruction-files-config', config) as Promise<{
-			success: boolean;
-			error?: string;
-		}>,
-	/**
-	 * Get instruction files context for the active file.
-	 */
-	getInstructionFilesContext: (activeFilePath?: string) =>
-		ipcRenderer.invoke('workspace:instruction-files-context', activeFilePath) as Promise<{
-			found: boolean;
-			allFiles: unknown[];
-			enabledFiles: unknown[];
-			combinedContent: string;
-			scannedAt: number;
-			errors: Array<{ path: string; error: string }>;
-		}>,
 };
 
 // ==========================================================================
@@ -344,7 +63,7 @@ const settingsAPI = {
 	get: (): Promise<AgentSettings> => ipcRenderer.invoke('settings:get'),
 	/** Get settings with sensitive data masked (API keys replaced with •••) */
 	getSafe: (): Promise<Partial<AgentSettings>> => ipcRenderer.invoke('settings:get-safe'),
-	update: (payload: Partial<AgentSettings>): Promise<AgentSettings> =>
+	update: (payload: Partial<AgentSettings>): Promise<{ success: boolean; data?: AgentSettings; error?: string; validationErrors?: Array<{ field: string; message: string }> }> =>
 		ipcRenderer.invoke('settings:update', { settings: payload }),
 	/** Reset settings to defaults (optionally for a specific section only) */
 	reset: (section?: keyof AgentSettings): Promise<{ success: boolean; data?: AgentSettings; error?: string }> =>
@@ -609,6 +328,28 @@ const fileAPI = {
 };
 
 // ==========================================================================
+// Workspace API
+// ==========================================================================
+
+const workspaceAPI = {
+	getPath: (): Promise<{ success: boolean; path: string }> =>
+		ipcRenderer.invoke('workspace:get-path'),
+	setPath: (newPath: string): Promise<{ success: boolean; path?: string; error?: string }> =>
+		ipcRenderer.invoke('workspace:set-path', newPath),
+	selectFolder: (): Promise<{ success: boolean; path?: string; error?: string }> =>
+		ipcRenderer.invoke('workspace:select-folder'),
+	close: (): Promise<{ success: boolean }> =>
+		ipcRenderer.invoke('workspace:close'),
+	getRecent: (): Promise<{ success: boolean; paths: string[] }> =>
+		ipcRenderer.invoke('workspace:get-recent'),
+	onWorkspaceChanged: (handler: (data: { path: string }) => void) => {
+		const listener = (_event: IpcRendererEvent, data: { path: string }) => handler(data);
+		ipcRenderer.on('workspace:changed', listener);
+		return () => ipcRenderer.removeListener('workspace:changed', listener);
+	},
+};
+
+// ==========================================================================
 // Undo API
 // ==========================================================================
 
@@ -713,6 +454,10 @@ interface DebugTraceData {
 }
 
 const debugAPI = {
+	// Get all traces across all sessions
+	getAllTraces: (): Promise<DebugTraceData[]> =>
+		ipcRenderer.invoke('debug:get-all-traces'),
+
 	// Get all traces for a session
 	getTraces: (sessionId: string): Promise<DebugTraceData[]> =>
 		ipcRenderer.invoke('debug:get-traces', sessionId),
@@ -1162,134 +907,6 @@ const browserAPI = {
 		clearDataOnExit?: boolean;
 	}): Promise<{ success: boolean; error?: string }> =>
 		ipcRenderer.invoke('browser:applyBehaviorSettings', settings),
-};
-
-// ==========================================================================
-// Editor AI API
-// ==========================================================================
-
-interface EditorAIDiagnostic {
-	message: string;
-	severity: 'error' | 'warning' | 'info' | 'hint';
-	line: number;
-	column: number;
-	endLine?: number;
-	endColumn?: number;
-	source?: string;
-	code?: string | number;
-}
-
-interface EditorAIResult {
-	text?: string;
-	code?: string;
-	edits?: Array<{
-		range: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-		newText: string;
-		description?: string;
-	}>;
-	suggestions?: Array<{
-		title: string;
-		description: string;
-		severity: 'high' | 'medium' | 'low';
-		line?: number;
-		fix?: string;
-	}>;
-}
-
-const editorAIAPI = {
-	// Get inline code completion (ghost text)
-	inlineCompletion: (payload: {
-		filePath: string;
-		language: string;
-		content: string;
-		line: number;
-		column: number;
-		prefix: string;
-		suffix: string;
-		contextBefore?: string[];
-		contextAfter?: string[];
-		triggerKind: 'automatic' | 'explicit';
-		maxTokens?: number;
-	}): Promise<{
-		text: string | null;
-		range?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-		provider?: string;
-		modelId?: string;
-		latencyMs?: number;
-		cached?: boolean;
-		error?: string;
-	}> => ipcRenderer.invoke('editor-ai:inline-completion', payload),
-
-	// Execute an AI action on code
-	executeAction: (payload: {
-		action: string;
-		filePath: string;
-		language: string;
-		selectedCode?: string;
-		fileContent?: string;
-		cursorPosition?: { line: number; column: number };
-		selectionRange?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-		context?: {
-			diagnostics?: EditorAIDiagnostic[];
-			userInstructions?: string;
-		};
-	}): Promise<{
-		success: boolean;
-		action: string;
-		result?: EditorAIResult;
-		error?: string;
-		provider?: string;
-		modelId?: string;
-		latencyMs?: number;
-	}> => ipcRenderer.invoke('editor-ai:execute-action', payload),
-
-	// Get AI-powered quick fixes for a diagnostic
-	quickFix: (payload: {
-		filePath: string;
-		language: string;
-		diagnostic: EditorAIDiagnostic;
-		codeContext: string;
-		fileContent?: string;
-	}): Promise<{
-		fixes: Array<{
-			title: string;
-			description?: string;
-			edits: Array<{
-				range: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-				newText: string;
-			}>;
-			isPreferred?: boolean;
-			kind?: string;
-		}>;
-		provider?: string;
-		latencyMs?: number;
-		error?: string;
-	}> => ipcRenderer.invoke('editor-ai:quick-fix', payload),
-
-	// Cancel pending requests
-	cancel: (): Promise<{ success: boolean; error?: string }> =>
-		ipcRenderer.invoke('editor-ai:cancel'),
-
-	// Clear the cache
-	clearCache: (): Promise<{ success: boolean; error?: string }> =>
-		ipcRenderer.invoke('editor-ai:clear-cache'),
-
-	// Get cache statistics
-	getCacheStats: (): Promise<{
-		hits: number;
-		misses: number;
-		hitRate: number;
-	}> => ipcRenderer.invoke('editor-ai:get-cache-stats'),
-
-	// Get service status for debugging
-	getStatus: (): Promise<{
-		initialized: boolean;
-		error?: string;
-		providers: Array<{ name: string; enabled: boolean; hasApiKey: boolean }>;
-		config: unknown;
-		hasProviders?: boolean;
-		enabledProviders?: number;
-	}> => ipcRenderer.invoke('editor-ai:get-status'),
 };
 
 
@@ -2143,10 +1760,68 @@ const throttleAPI = {
 	},
 };
 
+// ==========================================================================
+// Rust Backend API (Sidecar – workspace, search, indexing)
+// ==========================================================================
+
+const rustBackendAPI = {
+	// Health / availability
+	health: (): Promise<{ success: boolean; status?: string; version?: string; uptime?: number; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:health'),
+	isAvailable: (): Promise<boolean> =>
+		ipcRenderer.invoke('rust-backend:is-available'),
+	getAuthToken: (): Promise<string> =>
+		ipcRenderer.invoke('rust-backend:get-auth-token'),
+
+	// Workspace management
+	listWorkspaces: (): Promise<{ success: boolean; workspaces: unknown[]; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:list-workspaces'),
+	createWorkspace: (name: string, rootPath: string): Promise<{ success: boolean; workspace?: unknown; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:create-workspace', name, rootPath),
+	activateWorkspace: (workspaceId: string): Promise<{ success: boolean; workspace?: unknown; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:activate-workspace', workspaceId),
+	removeWorkspace: (workspaceId: string): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:remove-workspace', workspaceId),
+
+	// File operations (via Rust sidecar)
+	listFiles: (
+		workspaceId: string,
+		subPath?: string,
+		options?: { recursive?: boolean; show_hidden?: boolean; max_depth?: number },
+	): Promise<{ success: boolean; files: unknown[]; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:list-files', workspaceId, subPath, options),
+	readFile: (workspaceId: string, filePath: string): Promise<{ success: boolean; content?: string; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:read-file', workspaceId, filePath),
+	writeFile: (workspaceId: string, filePath: string, content: string): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:write-file', workspaceId, filePath, content),
+
+	// Search & indexing
+	search: (
+		workspaceId: string,
+		query: string,
+		options?: { limit?: number; fuzzy?: boolean },
+	): Promise<{ success: boolean; results?: unknown[]; total?: number; took_ms?: number; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:search', workspaceId, query, options),
+	grep: (
+		workspaceId: string,
+		pattern: string,
+		options?: { is_regex?: boolean; case_sensitive?: boolean; limit?: number },
+	): Promise<{ success: boolean; results?: unknown[]; total?: number; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:grep', workspaceId, pattern, options),
+	semanticSearch: (
+		workspaceId: string,
+		query: string,
+		options?: { limit?: number },
+	): Promise<{ success: boolean; results?: unknown[]; query_time_ms?: number; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:semantic-search', workspaceId, query, options),
+	triggerIndex: (workspaceId: string): Promise<{ success: boolean; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:trigger-index', workspaceId),
+	indexStatus: (workspaceId: string): Promise<{ success: boolean; status?: string; total_files?: number; indexed_files?: number; error?: string }> =>
+		ipcRenderer.invoke('rust-backend:index-status', workspaceId),
+};
 
 contextBridge.exposeInMainWorld('vyotiq', {
 	agent: agentAPI,
-	workspace: workspaceAPI,
 	settings: settingsAPI,
 	openrouter: openrouterAPI,
 	anthropic: anthropicAPI,
@@ -2158,11 +1833,11 @@ contextBridge.exposeInMainWorld('vyotiq', {
 	mistral: mistralAPI,
 	debug: debugAPI,
 	files: fileAPI,
+	workspace: workspaceAPI,
 	cache: cacheAPI,
 	git: gitAPI,
 	undo: undoAPI,
 	browser: browserAPI,
-	editorAI: editorAIAPI,
 
 	// Language Server Protocol API
 	lsp: lspAPI,
@@ -2187,4 +1862,23 @@ contextBridge.exposeInMainWorld('vyotiq', {
 
 	// Background Throttle Control API
 	throttle: throttleAPI,
+
+	// Rust Backend Sidecar API (workspace, search, indexing)
+	rustBackend: rustBackendAPI,
+
+	// Dynamic Tool Management API
+	dynamicTools: {
+		list: (filter?: DynamicToolListFilter): Promise<DynamicToolListResponse> =>
+			ipcRenderer.invoke('dynamic-tool:list', filter),
+		getSpec: (toolName: string): Promise<DynamicToolSpecResponse> =>
+			ipcRenderer.invoke('dynamic-tool:spec', toolName),
+		updateState: (toolName: string, updates: { status?: string }): Promise<{ success: boolean; error?: string }> =>
+			ipcRenderer.invoke('dynamic-tool:update-state', toolName, updates),
+	},
+
+	// Logging bridge: forward renderer errors to main process log file
+	log: {
+		report: (level: 'warn' | 'error', message: string, meta?: Record<string, unknown>) =>
+			ipcRenderer.send('log:report', { level, message, meta }),
+	},
 });

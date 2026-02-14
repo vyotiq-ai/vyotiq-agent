@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   AgentEvent,
+  AgentErrorCode,
   ChatMessage,
   LLMProviderName,
   RendererEvent,
@@ -18,7 +19,6 @@ import type { InternalSession, AgenticContext } from './types';
 import type { Logger } from '../logger';
 import type { ProviderMap } from './providers';
 import type { ToolRegistry, TerminalManager } from '../tools';
-import type { WorkspaceManager } from '../workspaces/workspaceManager';
 import type { LLMProvider, ProviderRequest } from './providers/baseProvider';
 import { ContextWindowManager, ConversationSummarizer } from './context';
 import { AgentDebugger, type AgentTrace } from './debugging';
@@ -46,70 +46,12 @@ import { ToolQueueProcessor } from './execution/toolQueueProcessor';
 import { SessionQueueManager } from './execution/sessionQueueManager';
 import { PauseResumeManager } from './execution/pauseResumeManager';
 import { RequestBuilder } from './execution/requestBuilder';
-import { WorkspaceResourceManager } from './execution/workspaceResourceManager';
-
-interface RunExecutorDeps {
-  providers: ProviderMap;
-  toolRegistry: ToolRegistry;
-  terminalManager: TerminalManager;
-  workspaceManager: WorkspaceManager;
-  logger: Logger;
-  emitEvent: (event: RendererEvent | AgentEvent) => void;
-  getRateLimit: (provider: LLMProviderName) => number;
-  getProviderSettings: (provider: LLMProviderName) => ProviderSettings | undefined;
-  updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void;
-  getSafetySettings: () => SafetySettings | undefined;
-  getCacheSettings?: () => CacheSettings | undefined;
-  getDebugSettings?: () => DebugSettings | undefined;
-  getPromptSettings?: () => PromptSettings | undefined;
-  getComplianceSettings?: () => ComplianceSettings | undefined;
-  getAccessLevelSettings?: () => AccessLevelSettings | undefined;
-  getToolSettings?: () => ToolConfigSettings | undefined;
-  getTaskRoutingSettings?: () => TaskRoutingSettings | undefined;
-  getEditorState?: () => {
-    openFiles: string[];
-    activeFile: string | null;
-    cursorPosition: { lineNumber: number; column: number } | null;
-    diagnostics?: Array<{
-      filePath: string;
-      message: string;
-      severity: 'error' | 'warning' | 'info' | 'hint';
-      line: number;
-      column: number;
-      endLine?: number;
-      endColumn?: number;
-      source?: string;
-      code?: string | number;
-    }>;
-  };
-  getWorkspaceDiagnostics?: () => Promise<{
-    diagnostics: Array<{
-      filePath: string;
-      fileName: string;
-      line: number;
-      column: number;
-      endLine?: number;
-      endColumn?: number;
-      message: string;
-      severity: 'error' | 'warning' | 'info' | 'hint';
-      source: 'typescript' | 'eslint';
-      code?: string | number;
-    }>;
-    errorCount: number;
-    warningCount: number;
-    filesWithErrors: string[];
-    collectedAt: number;
-  } | null>;
-  onProviderHealth?: (provider: LLMProviderName, success: boolean, latencyMs: number) => void;
-  /** Workspace resource manager for multi-workspace concurrent session support */
-  workspaceResourceManager?: WorkspaceResourceManager;
-}
+import type { RunExecutorDeps, EditorState, WorkspaceDiagnostics, ProviderHealthCallback } from './execution/types';
 
 export class RunExecutor {
   private providers: ProviderMap;
   private readonly toolRegistry: ToolRegistry;
   private readonly terminalManager: TerminalManager;
-  private readonly workspaceManager: WorkspaceManager;
   private readonly logger: Logger;
   private readonly emitEvent: (event: RendererEvent | AgentEvent) => void;
   private readonly getProviderSettings: (provider: LLMProviderName) => ProviderSettings | undefined;
@@ -122,49 +64,14 @@ export class RunExecutor {
   private readonly getAccessLevelSettings: () => AccessLevelSettings | undefined;
   private readonly getToolSettings: () => ToolConfigSettings | undefined;
   private readonly getTaskRoutingSettings: () => TaskRoutingSettings | undefined;
-  private readonly getEditorState?: () => {
-    openFiles: string[];
-    activeFile: string | null;
-    cursorPosition: { lineNumber: number; column: number } | null;
-    diagnostics?: Array<{
-      filePath: string;
-      message: string;
-      severity: 'error' | 'warning' | 'info' | 'hint';
-      line: number;
-      column: number;
-      endLine?: number;
-      endColumn?: number;
-      source?: string;
-      code?: string | number;
-    }>;
-  };
-  private readonly getWorkspaceDiagnostics?: () => Promise<{
-    diagnostics: Array<{
-      filePath: string;
-      fileName: string;
-      line: number;
-      column: number;
-      endLine?: number;
-      endColumn?: number;
-      message: string;
-      severity: 'error' | 'warning' | 'info' | 'hint';
-      source: 'typescript' | 'eslint';
-      code?: string | number;
-    }>;
-    errorCount: number;
-    warningCount: number;
-    filesWithErrors: string[];
-    collectedAt: number;
-  } | null>;
+  private readonly getEditorState?: () => EditorState;
+  private readonly getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>;
 
   // Active controllers for cancellation
   private readonly activeControllers = new Map<string, AbortController>();
 
   // Provider health tracking (can be set after construction)
-  private onProviderHealth?: (provider: LLMProviderName, success: boolean, latencyMs: number) => void;
-
-  // Workspace resource manager for multi-workspace concurrent sessions
-  private readonly workspaceResourceManager?: WorkspaceResourceManager;
+  private onProviderHealth?: ProviderHealthCallback;
 
   // Default iteration settings
   private readonly defaultMaxIterations = 20;
@@ -200,7 +107,6 @@ export class RunExecutor {
     this.providers = deps.providers;
     this.toolRegistry = deps.toolRegistry;
     this.terminalManager = deps.terminalManager;
-    this.workspaceManager = deps.workspaceManager;
     this.logger = deps.logger;
     this.emitEvent = deps.emitEvent;
     this.getProviderSettings = deps.getProviderSettings;
@@ -216,7 +122,6 @@ export class RunExecutor {
     this.getEditorState = deps.getEditorState;
     this.getWorkspaceDiagnostics = deps.getWorkspaceDiagnostics;
     this.onProviderHealth = deps.onProviderHealth;
-    this.workspaceResourceManager = deps.workspaceResourceManager;
 
     // Initialize debugger
     const debugSettings = this.getDebugSettings();
@@ -230,7 +135,7 @@ export class RunExecutor {
     this.debugEnabled = debugSettings?.verboseLogging ?? true;
 
     // Initialize context manager
-    this.contextManager = new ContextWindowManager('deepseek');
+    this.contextManager = new ContextWindowManager();
     this.conversationSummarizer = new ConversationSummarizer({
       minMessagesForSummary: 100,
       keepRecentMessages: 40,
@@ -282,7 +187,6 @@ export class RunExecutor {
     this.toolQueueProcessor = new ToolQueueProcessor(
       this.toolRegistry,
       this.terminalManager,
-      this.workspaceManager,
       this.logger,
       this.emitEvent,
       this.progressTracker,
@@ -301,7 +205,6 @@ export class RunExecutor {
     this.pauseResumeManager = new PauseResumeManager(this.logger, this.emitEvent);
     this.requestBuilder = new RequestBuilder(
       this.toolRegistry,
-      this.workspaceManager,
       this.logger,
       this.contextBuilder,
       this.complianceValidator,
@@ -584,6 +487,9 @@ export class RunExecutor {
       this.completeRun(session, runId);
     } catch (error) {
       this.handleRunError(session, runId, error as Error);
+    } finally {
+      // Clean up AbortController to prevent memory leaks
+      this.activeControllers.delete(session.state.id);
     }
   }
 
@@ -594,26 +500,6 @@ export class RunExecutor {
     const runId = randomUUID();
     const controller = new AbortController();
     this.activeControllers.set(session.state.id, controller);
-
-    // Register session with workspace resource manager for concurrent session tracking
-    if (this.workspaceResourceManager) {
-      const registration = this.workspaceResourceManager.registerSession(session);
-      if (!registration.acquired) {
-        this.logger.warn('Failed to register session with workspace resource manager', {
-          sessionId: session.state.id,
-          workspaceId: session.state.workspaceId,
-          reason: registration.reason,
-        });
-        // Emit error but continue - resource manager is advisory
-        this.emitEvent({
-          type: 'agent-status',
-          sessionId: session.state.id,
-          status: 'error',
-          message: `Resource warning: ${registration.reason || 'Workspace session limit reached'}`,
-          timestamp: Date.now(),
-        });
-      }
-    }
 
     session.state.status = 'running';
     session.state.activeRunId = runId;
@@ -1084,11 +970,6 @@ export class RunExecutor {
     // Re-enables background throttling when no sessions are active
     this.notifySessionStopped(session.state.id, runDurationMs);
 
-    // Unregister session from workspace resource manager
-    if (this.workspaceResourceManager) {
-      this.workspaceResourceManager.unregisterSession(session);
-    }
-
     if (metricsResult) {
       this.logger.debug('Run metrics recorded', {
         runId,
@@ -1159,11 +1040,6 @@ export class RunExecutor {
     // Re-enables background throttling when no sessions are active
     this.notifySessionStopped(session.state.id);
 
-    // Unregister session from workspace resource manager
-    if (this.workspaceResourceManager) {
-      this.workspaceResourceManager.unregisterSession(session);
-    }
-
     agentMetrics.completeRun(runId, 'error');
 
     // Record model quality metrics for failed run
@@ -1182,24 +1058,8 @@ export class RunExecutor {
       });
     }
 
-    // Build a more helpful error message based on the error type
-    let userFriendlyMessage = error.message;
-    const errorLower = error.message.toLowerCase();
-
-    // Check for common error patterns and provide actionable advice
-    if (isToolSupportError(error)) {
-      const modelName = modelId || 'The selected model';
-      userFriendlyMessage = `${modelName} does not support tool/function calling.\n\nTo resolve: Select a model that supports tools. In the model selector, look for models with tool support (e.g., Claude, GPT-4, Gemini Pro, or paid OpenRouter models).`;
-    } else if (errorLower.includes('no endpoints found matching your data policy') || errorLower.includes('free model training')) {
-      userFriendlyMessage = `${error.message}\n\nTo resolve: Visit https://openrouter.ai/settings/privacy and enable "Allow free model training" in your data policy settings, or switch to a paid model.`;
-    } else if (errorLower.includes('insufficient') || errorLower.includes('credits') || errorLower.includes('balance')) {
-      const providerName = provider || 'the provider';
-      userFriendlyMessage = `${error.message}\n\nTo resolve: Add credits to your ${providerName} account, or switch to a different provider in Settings.`;
-    } else if (errorLower.includes(':free') || (modelId && modelId.includes(':free'))) {
-      userFriendlyMessage = `${error.message}\n\nNote: Free-tier models have strict rate limits. Consider using a paid model for more reliable performance.`;
-    } else if (errorLower.includes('provider returned error') || errorLower.includes('upstream error')) {
-      userFriendlyMessage = `${error.message}\n\nThe model provider encountered an error. This may be temporary - try again in a moment, or switch to a different model.`;
-    }
+    // Classify error and build structured error info
+    const { userFriendlyMessage, errorCode, recoverable, recoveryHint } = this.classifyRunError(error, modelId, provider);
 
     // Cleanup
     getLoopDetector().cleanupRun(runId);
@@ -1237,9 +1097,150 @@ export class RunExecutor {
       runId,
       status: 'error',
       message: userFriendlyMessage,
+      errorCode,
+      recoverable,
+      recoveryHint,
       timestamp: Date.now(),
     });
     this.emitEvent({ type: 'session-state', session: session.state });
+  }
+
+  /**
+   * Classify a run error into a structured error code with user-friendly message,
+   * recovery hint, and recoverability flag.
+   */
+  private classifyRunError(
+    error: Error,
+    modelId?: string,
+    provider?: LLMProviderName | 'auto',
+  ): {
+    userFriendlyMessage: string;
+    errorCode: AgentErrorCode;
+    recoverable: boolean;
+    recoveryHint?: string;
+  } {
+    const errorLower = error.message.toLowerCase();
+
+    // Tool support errors
+    if (isToolSupportError(error)) {
+      const modelName = modelId || 'The selected model';
+      return {
+        userFriendlyMessage: `${modelName} does not support tool/function calling.`,
+        errorCode: 'TOOL_NOT_SUPPORTED',
+        recoverable: false,
+        recoveryHint: 'Select a model that supports tools (e.g., Claude, GPT-4, Gemini Pro, or paid OpenRouter models).',
+      };
+    }
+
+    // Data policy errors
+    if (errorLower.includes('no endpoints found matching your data policy') || errorLower.includes('free model training')) {
+      return {
+        userFriendlyMessage: error.message,
+        errorCode: 'DATA_POLICY',
+        recoverable: false,
+        recoveryHint: 'Visit https://openrouter.ai/settings/privacy and enable "Allow free model training", or switch to a paid model.',
+      };
+    }
+
+    // Rate limit errors
+    if (errorLower.includes('rate limit') || errorLower.includes('429') || errorLower.includes('too many requests')) {
+      return {
+        userFriendlyMessage: 'Rate limit reached. The provider is temporarily throttling requests.',
+        errorCode: 'RATE_LIMIT',
+        recoverable: true,
+        recoveryHint: 'Wait a moment and try again, or switch to a different model/provider.',
+      };
+    }
+
+    // Auth errors
+    if (errorLower.includes('api key') || errorLower.includes('unauthorized') || errorLower.includes('401') || errorLower.includes('403') || errorLower.includes('authentication') || errorLower.includes('invalid_api_key')) {
+      const providerName = provider && provider !== 'auto' ? provider : 'the provider';
+      return {
+        userFriendlyMessage: `Authentication failed with ${providerName}.`,
+        errorCode: 'AUTH_FAILURE',
+        recoverable: false,
+        recoveryHint: `Check your API key for ${providerName} in Settings, or switch to a different provider.`,
+      };
+    }
+
+    // Quota/billing errors
+    if (errorLower.includes('insufficient') || errorLower.includes('credits') || errorLower.includes('balance') || errorLower.includes('quota') || errorLower.includes('billing')) {
+      const providerName = provider && provider !== 'auto' ? provider : 'the provider';
+      return {
+        userFriendlyMessage: `Quota or credits exhausted for ${providerName}.`,
+        errorCode: 'QUOTA_EXCEEDED',
+        recoverable: false,
+        recoveryHint: `Add credits to your ${providerName} account, or switch to a different provider in Settings.`,
+      };
+    }
+
+    // Context overflow
+    if (errorLower.includes('context length') || errorLower.includes('token limit') || errorLower.includes('too many tokens') || errorLower.includes('prompt is too long')) {
+      return {
+        userFriendlyMessage: 'Context window exceeded. The conversation is too long for this model.',
+        errorCode: 'CONTEXT_OVERFLOW',
+        recoverable: true,
+        recoveryHint: 'Start a new session, or switch to a model with a larger context window.',
+      };
+    }
+
+    // Network errors
+    if (errorLower.includes('fetch failed') || errorLower.includes('network') || errorLower.includes('econnrefused') || errorLower.includes('enotfound') || errorLower.includes('timeout') || errorLower.includes('timed out')) {
+      return {
+        userFriendlyMessage: 'Network error. Could not reach the model provider.',
+        errorCode: 'NETWORK_ERROR',
+        recoverable: true,
+        recoveryHint: 'Check your internet connection and try again.',
+      };
+    }
+
+    // Model not found
+    if (errorLower.includes('model not found') || errorLower.includes('model_not_found') || errorLower.includes('does not exist')) {
+      return {
+        userFriendlyMessage: `Model not found: ${modelId || 'unknown'}.`,
+        errorCode: 'MODEL_NOT_FOUND',
+        recoverable: false,
+        recoveryHint: 'Select a different model in the model selector.',
+      };
+    }
+
+    // Cancellation
+    if (errorLower.includes('abort') || errorLower.includes('cancel')) {
+      return {
+        userFriendlyMessage: 'Operation was cancelled.',
+        errorCode: 'CANCELLED',
+        recoverable: true,
+        recoveryHint: 'Send a new message to continue.',
+      };
+    }
+
+    // Free model rate limits
+    if (errorLower.includes(':free') || (modelId && modelId.includes(':free'))) {
+      return {
+        userFriendlyMessage: error.message,
+        errorCode: 'RATE_LIMIT',
+        recoverable: true,
+        recoveryHint: 'Free-tier models have strict rate limits. Consider using a paid model for more reliable performance.',
+      };
+    }
+
+    // Provider/upstream errors
+    if (errorLower.includes('provider returned error') || errorLower.includes('upstream error') || errorLower.includes('502') || errorLower.includes('503') || errorLower.includes('504')) {
+      return {
+        userFriendlyMessage: 'The model provider encountered a temporary error.',
+        errorCode: 'PROVIDER_ERROR',
+        recoverable: true,
+        recoveryHint: 'Try again in a moment, or switch to a different model.',
+      };
+    }
+
+    // Default: unknown error
+    return {
+      userFriendlyMessage: error.message,
+      errorCode: 'UNKNOWN',
+      recoverable: true,
+      recoveryHint: 'Try again, or check the error details for more information.',
+    };
   }
 
   // Debug API methods

@@ -20,7 +20,6 @@ import type {
   UpdateConfigPayload,
   WatcherStatus as _WatcherStatus,
   WatchOptions as _WatchOptions,
-  WorkspaceEntry,
   GitRepoStatus,
   GitCommit,
   GitBranch,
@@ -83,9 +82,7 @@ declare global {
         isRunPaused: (sessionId: string) => Promise<boolean>;
         deleteSession: (sessionId: string) => Promise<void>;
         getSessions: () => Promise<AgentSessionState[]>;
-        getSessionsByWorkspace: (workspaceId: string) => Promise<AgentSessionState[]>;
-        getSessionSummaries: (workspaceId?: string) => Promise<SessionSummary[]>;
-        getActiveWorkspaceSessions: () => Promise<AgentSessionState[]>;
+        getSessionSummaries: () => Promise<SessionSummary[]>;
         onEvent: (handler: (event: RendererEvent) => void) => () => void;
         regenerate: (sessionId: string) => Promise<void>;
         renameSession: (sessionId: string, title: string) => Promise<void>;
@@ -99,450 +96,11 @@ declare global {
         createBranch: (sessionId: string, messageId: string, name?: string) => Promise<{ success: boolean; branchId?: string; error?: string }>;
         switchBranch: (sessionId: string, branchId: string | null) => Promise<{ success: boolean; error?: string }>;
         deleteBranch: (sessionId: string, branchId: string) => Promise<{ success: boolean; error?: string }>;
-        updateEditorState: (state: {
-          openFiles: string[];
-          activeFile: string | null;
-          cursorPosition: { lineNumber: number; column: number } | null;
-          diagnostics?: Array<{
-            filePath: string;
-            message: string;
-            severity: 'error' | 'warning' | 'info' | 'hint';
-            line: number;
-            column: number;
-            endLine?: number;
-            endColumn?: number;
-            source?: string;
-            code?: string | number;
-          }>;
-        }) => Promise<{ success: boolean; error?: string }>;
         addReaction: (sessionId: string, messageId: string, reaction: 'up' | 'down' | null) => Promise<{ success: boolean; error?: string }>;
-        
-        // ==========================================================================
-        // Multi-Session Management (Concurrent Sessions Across Workspaces)
-        // ==========================================================================
-        
-        /**
-         * Get all running sessions across all workspaces.
-         */
-        getAllRunningSessions: () => Promise<AgentSessionState[]>;
-        
-        /**
-         * Get running session count per workspace.
-         */
-        getRunningSessionsByWorkspace: () => Promise<Record<string, number>>;
-        
-        /**
-         * Get global session statistics for multi-workspace concurrent execution.
-         */
-        getGlobalSessionStats: () => Promise<{
-          totalRunning: number;
-          totalQueued: number;
-          runningByWorkspace: Record<string, number>;
-          canStartNew: boolean;
-        } | null>;
-        
-        /**
-         * Get detailed running session information across all workspaces.
-         */
-        getDetailedRunningSessions: () => Promise<Array<{
-          sessionId: string;
-          workspaceId: string;
-          status: string;
-          startedAt: number;
-          iteration: number;
-          maxIterations: number;
-          provider?: string;
-        }>>;
-        
-        /**
-         * Check if a new session can be started in a workspace.
-         */
-        canStartSession: (workspaceId: string) => Promise<{
-          allowed: boolean;
-          reason?: string;
-        }>;
-        
-        /**
-         * Get workspace resource metrics for multi-workspace management.
-         */
-        getWorkspaceResources: () => Promise<unknown>;
-        
-        /**
-         * Get concurrent execution statistics.
-         */
-        getConcurrentStats: () => Promise<unknown>;
-      };
-      workspace: {
-        list: () => Promise<WorkspaceEntry[]>;
-        add: () => Promise<WorkspaceEntry[]>;
-        setActive: (workspaceId: string) => Promise<WorkspaceEntry[]>;
-        remove: (workspaceId: string) => Promise<WorkspaceEntry[]>;
-        
-        // ==========================================================================
-        // Multi-Workspace Tab Management
-        // ==========================================================================
-        
-        /**
-         * Get all open workspace tabs with their state.
-         */
-        getTabs: () => Promise<{
-          success: boolean;
-          tabs?: Array<{
-            workspaceId: string;
-            order: number;
-            isFocused: boolean;
-            openedAt: number;
-            lastFocusedAt: number;
-            hasUnsavedChanges?: boolean;
-            isRunning?: boolean;
-            customLabel?: string;
-            workspace: WorkspaceEntry | null;
-          }>;
-          focusedTabId?: string | null;
-          maxTabs?: number;
-          error?: string;
-        }>;
-        
-        /**
-         * Open a workspace in a new tab (or focus existing tab).
-         */
-        openTab: (workspaceId: string) => Promise<{
-          success: boolean;
-          tabs?: Array<{
-            workspaceId: string;
-            order: number;
-            isFocused: boolean;
-            openedAt: number;
-            lastFocusedAt: number;
-            hasUnsavedChanges?: boolean;
-            isRunning?: boolean;
-          }>;
-          focusedTabId?: string | null;
-          error?: string;
-        }>;
-        
-        /**
-         * Close a workspace tab.
-         */
-        closeTab: (workspaceId: string) => Promise<{
-          success: boolean;
-          tabs?: Array<{
-            workspaceId: string;
-            order: number;
-            isFocused: boolean;
-            openedAt: number;
-            lastFocusedAt: number;
-            hasUnsavedChanges?: boolean;
-            isRunning?: boolean;
-          }>;
-          focusedTabId?: string | null;
-          error?: string;
-        }>;
-        
-        /**
-         * Focus a specific workspace tab.
-         */
-        focusTab: (workspaceId: string) => Promise<{
-          success: boolean;
-          tabs?: Array<{
-            workspaceId: string;
-            order: number;
-            isFocused: boolean;
-            openedAt: number;
-            lastFocusedAt: number;
-            hasUnsavedChanges?: boolean;
-            isRunning?: boolean;
-          }>;
-          focusedTabId?: string | null;
-          error?: string;
-        }>;
-        
-        /**
-         * Reorder workspace tabs.
-         */
-        reorderTabs: (workspaceId: string, newOrder: number) => Promise<{
-          success: boolean;
-          tabs?: Array<{
-            workspaceId: string;
-            order: number;
-            isFocused: boolean;
-            openedAt: number;
-            lastFocusedAt: number;
-            hasUnsavedChanges?: boolean;
-            isRunning?: boolean;
-          }>;
-          focusedTabId?: string | null;
-          error?: string;
-        }>;
-        
-        /**
-         * Get workspaces that have open tabs.
-         */
-        getActiveWorkspaces: () => Promise<{
-          success: boolean;
-          workspaces?: WorkspaceEntry[];
-          error?: string;
-        }>;
-        
-        /**
-         * Set maximum number of tabs allowed.
-         */
-        setMaxTabs: (maxTabs: number) => Promise<{
-          success: boolean;
-          maxTabs?: number;
-          error?: string;
-        }>;
-        
-        // ==========================================================================
-        // Workspace Resource Management (Multi-workspace Concurrent Sessions)
-        // ==========================================================================
-        
-        /**
-         * Get resource metrics for all active workspaces.
-         */
-        getResourceMetrics: () => Promise<{
-          success: boolean;
-          metrics?: Array<{
-            workspaceId: string;
-            activeSessions: number;
-            activeToolExecutions: number;
-            memoryEstimateBytes: number;
-            lastActivityAt: number;
-            requestCounts: Record<string, number>;
-          }>;
-          error?: string;
-        }>;
-        
-        /**
-         * Get resource metrics for a specific workspace.
-         */
-        getWorkspaceMetrics: (workspaceId: string) => Promise<{
-          success: boolean;
-          metrics?: {
-            workspaceId: string;
-            activeSessions: number;
-            activeToolExecutions: number;
-            memoryEstimateBytes: number;
-            lastActivityAt: number;
-            requestCounts: Record<string, number>;
-          } | null;
-          error?: string;
-        }>;
-        
-        /**
-         * Get total active sessions across all workspaces.
-         */
-        getTotalActiveSessions: () => Promise<{
-          success: boolean;
-          count?: number;
-          error?: string;
-        }>;
-        
-        /**
-         * Get resource limits configuration.
-         */
-        getResourceLimits: () => Promise<{
-          success: boolean;
-          limits?: {
-            maxSessionsPerWorkspace: number;
-            maxToolExecutionsPerWorkspace: number;
-            rateLimitWindowMs: number;
-            maxRequestsPerWindow: number;
-          };
-          error?: string;
-        }>;
-        
-        /**
-         * Update resource limits configuration.
-         */
-        updateResourceLimits: (limits: {
-          maxSessionsPerWorkspace?: number;
-          maxToolExecutionsPerWorkspace?: number;
-          rateLimitWindowMs?: number;
-          maxRequestsPerWindow?: number;
-        }) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-        
-        /**
-         * Initialize workspace resources (for pre-warming).
-         */
-        initResources: (workspaceId: string) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-        
-        /**
-         * Cleanup workspace resources.
-         */
-        cleanupResources: (workspaceId: string) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-        
-        /**
-         * Get all TypeScript/ESLint diagnostics from the entire workspace codebase.
-         * Returns errors and warnings from all files, not just open ones.
-         */
-        getDiagnostics: (options?: { forceRefresh?: boolean }) => Promise<{
-          success: boolean;
-          diagnostics?: Array<{
-            filePath: string;
-            fileName: string;
-            line: number;
-            column: number;
-            severity: 'error' | 'warning' | 'info' | 'hint';
-            message: string;
-            source: string;
-            code?: string | number;
-            endLine?: number;
-            endColumn?: number;
-          }>;
-          errorCount?: number;
-          warningCount?: number;
-          filesWithErrors?: string[];
-          collectedAt?: number;
-          error?: string;
-          message?: string;
-        }>;
-        /**
-         * Subscribe to real-time diagnostics updates.
-         * Returns immediately and pushes updates via onDiagnosticsChange.
-         */
-        subscribeToDiagnostics: () => Promise<{ success: boolean; error?: string }>;
-        /**
-         * Unsubscribe from real-time diagnostics updates.
-         */
-        unsubscribeFromDiagnostics: () => Promise<{ success: boolean; error?: string }>;
-        /**
-         * Subscribe to real-time diagnostics update events.
-         * Called whenever workspace diagnostics change (file saved, errors fixed, etc.)
-         */
-        onDiagnosticsChange: (handler: (event: {
-          diagnostics: Array<{
-            filePath: string;
-            fileName: string;
-            line: number;
-            column: number;
-            endLine?: number;
-            endColumn?: number;
-            message: string;
-            severity: 'error' | 'warning' | 'info' | 'hint';
-            source: string;
-            code?: string | number;
-          }>;
-          errorCount: number;
-          warningCount: number;
-          filesWithErrors: string[];
-          timestamp: number;
-        }) => void) => () => void;
-        /**
-         * Subscribe to file-specific diagnostics updates.
-         */
-        onFileDiagnosticsChange: (handler: (event: {
-          filePath: string;
-          diagnostics: Array<{
-            filePath: string;
-            fileName: string;
-            line: number;
-            column: number;
-            endLine?: number;
-            endColumn?: number;
-            message: string;
-            severity: 'error' | 'warning' | 'info' | 'hint';
-            source: string;
-            code?: string | number;
-          }>;
-        }) => void) => () => void;
-        /**
-         * Subscribe to diagnostics cleared events.
-         */
-        onDiagnosticsCleared: (handler: () => void) => () => void;
-        /**
-         * Get AGENTS.md status for the active workspace.
-         * Returns discovered AGENTS.md files and their sections.
-         */
-        getAgentsMdStatus: () => Promise<{
-          enabled: boolean;
-          files: Array<{
-            path: string;
-            relativePath: string;
-            depth: number;
-            sectionCount: number;
-            size: number;
-          }>;
-          primaryFile: {
-            path: string;
-            sections: string[];
-          } | null;
-          error: string | null;
-        }>;
-        /**
-         * Refresh AGENTS.md cache for the active workspace.
-         */
-        refreshAgentsMd: () => Promise<{
-          success: boolean;
-          fileCount?: number;
-          error?: string;
-        }>;
-        /**
-         * Get all instruction files status for the active workspace.
-         * Returns all discovered instruction files (AGENTS.md, CLAUDE.md, copilot-instructions.md, etc.)
-         */
-        getInstructionFilesStatus: () => Promise<{
-          found: boolean;
-          fileCount: number;
-          enabledCount: number;
-          files: Array<{
-            path: string;
-            type: string;
-            enabled: boolean;
-            priority: number;
-            sectionsCount: number;
-            hasFrontmatter: boolean;
-          }>;
-          byType: Record<string, number>;
-          error: string | null;
-        }>;
-        /**
-         * Refresh instruction files cache for the active workspace.
-         */
-        refreshInstructionFiles: () => Promise<{
-          success: boolean;
-          fileCount?: number;
-          enabledCount?: number;
-          error?: string;
-        }>;
-        /**
-         * Toggle an instruction file's enabled status.
-         */
-        toggleInstructionFile: (relativePath: string, enabled: boolean) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-        /**
-         * Update instruction files configuration.
-         */
-        updateInstructionFilesConfig: (config: Record<string, unknown>) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-        /**
-         * Get instruction files context for the active file.
-         */
-        getInstructionFilesContext: (activeFilePath?: string) => Promise<{
-          found: boolean;
-          allFiles: unknown[];
-          enabledFiles: unknown[];
-          combinedContent: string;
-          scannedAt: number;
-          errors: Array<{ path: string; error: string }>;
-        }>;
       };
       settings: {
         get: () => Promise<AgentSettings>;
-        update: (payload: Partial<AgentSettings>) => Promise<AgentSettings>;
+        update: (payload: Partial<AgentSettings>) => Promise<{ success: boolean; data?: AgentSettings; error?: string; validationErrors?: Array<{ field: string; message: string }> }>;
       };
       openrouter: {
         fetchModels: () => Promise<{
@@ -815,6 +373,21 @@ declare global {
         }) => void) => () => void;
       };
 
+      workspace: {
+        /** Get the current active workspace path */
+        getPath: () => Promise<{ success: boolean; path: string }>;
+        /** Set the active workspace path */
+        setPath: (newPath: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+        /** Open a folder selection dialog to choose a workspace */
+        selectFolder: () => Promise<{ success: boolean; path?: string; error?: string }>;
+        /** Close the current workspace (clear the active path) */
+        close: () => Promise<{ success: boolean }>;
+        /** Get recently opened workspace paths */
+        getRecent: () => Promise<{ success: boolean; paths: string[] }>;
+        /** Subscribe to workspace path changes */
+        onWorkspaceChanged: (handler: (data: { path: string }) => void) => () => void;
+      };
+
       undo: {
         // Get all file changes for a session
         getHistory: (sessionId: string) => Promise<Array<{
@@ -969,122 +542,6 @@ declare global {
         cleanupToolResults: () => Promise<{ success: boolean; removed: number }>;
         // Invalidate tool results for a specific path
         invalidatePath: (path: string) => Promise<{ success: boolean; invalidated: number }>;
-      };
-      editorAI: {
-        // Get inline code completion (ghost text)
-        inlineCompletion: (payload: {
-          filePath: string;
-          language: string;
-          content: string;
-          line: number;
-          column: number;
-          prefix: string;
-          suffix: string;
-          contextBefore?: string[];
-          contextAfter?: string[];
-          triggerKind: 'automatic' | 'explicit';
-          maxTokens?: number;
-        }) => Promise<{
-          text: string | null;
-          range?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-          provider?: string;
-          modelId?: string;
-          latencyMs?: number;
-          cached?: boolean;
-          error?: string;
-        }>;
-        // Execute an AI action on code
-        executeAction: (payload: {
-          action: string;
-          filePath: string;
-          language: string;
-          selectedCode?: string;
-          fileContent?: string;
-          cursorPosition?: { line: number; column: number };
-          selectionRange?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-          context?: {
-            diagnostics?: Array<{
-              message: string;
-              severity: 'error' | 'warning' | 'info' | 'hint';
-              line: number;
-              column: number;
-              endLine?: number;
-              endColumn?: number;
-              source?: string;
-              code?: string | number;
-            }>;
-            userInstructions?: string;
-          };
-        }) => Promise<{
-          success: boolean;
-          action: string;
-          result?: {
-            text?: string;
-            code?: string;
-            edits?: Array<{
-              range: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-              newText: string;
-              description?: string;
-            }>;
-            suggestions?: Array<{
-              title: string;
-              description: string;
-              severity: 'high' | 'medium' | 'low';
-              line?: number;
-              fix?: string;
-            }>;
-          };
-          error?: string;
-          provider?: string;
-          modelId?: string;
-          latencyMs?: number;
-        }>;
-        // Get AI-powered quick fixes
-        quickFix: (payload: {
-          filePath: string;
-          language: string;
-          diagnostic: {
-            message: string;
-            severity: 'error' | 'warning' | 'info' | 'hint';
-            line: number;
-            column: number;
-            endLine?: number;
-            endColumn?: number;
-            source?: string;
-            code?: string | number;
-          };
-          codeContext: string;
-          fileContent?: string;
-        }) => Promise<{
-          fixes: Array<{
-            title: string;
-            description?: string;
-            edits: Array<{
-              range: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-              newText: string;
-            }>;
-            isPreferred?: boolean;
-            kind?: string;
-          }>;
-          provider?: string;
-          latencyMs?: number;
-          error?: string;
-        }>;
-        // Cancel pending requests
-        cancel: () => Promise<{ success: boolean; error?: string }>;
-        // Clear the cache
-        clearCache: () => Promise<{ success: boolean; error?: string }>;
-        // Get cache statistics
-        getCacheStats: () => Promise<{ hits: number; misses: number; hitRate: number }>;
-        // Get service status for debugging
-        getStatus: () => Promise<{
-          initialized: boolean;
-          error?: string;
-          providers: Array<{ name: string; enabled: boolean; hasApiKey: boolean }>;
-          config: unknown;
-          hasProviders?: boolean;
-          enabledProviders?: number;
-        }>;
       };
       browser: {
         // Navigation
@@ -1294,8 +751,10 @@ declare global {
           specification?: {
             name: string;
             description: string;
-            parameters: Record<string, unknown>;
-            implementation?: string;
+            inputSchema: Record<string, unknown>;
+            executionType: string;
+            requiredCapabilities: string[];
+            riskLevel: string;
           };
           state?: {
             status: string;
@@ -2301,6 +1760,60 @@ declare global {
         ) => () => void;
         onToolsUpdated: (handler: (event: { tools: import('../../shared/types/mcp').MCPToolWithContext[] }) => void) => () => void;
         onEvent: (handler: (event: Record<string, unknown>) => void) => () => void;
+      };
+
+      /** Rust Backend Sidecar API – workspace management, full-text search, file indexing */
+      rustBackend: {
+        // Health / availability
+        health: () => Promise<{ success: boolean; status?: string; version?: string; uptime?: number; error?: string }>;
+        isAvailable: () => Promise<boolean>;
+        getAuthToken: () => Promise<string>;
+
+        // Workspace management
+        listWorkspaces: () => Promise<{ success: boolean; workspaces: Array<{ id: string; name: string; root_path: string; path: string; is_active: boolean; created_at: string; file_count: number; total_size_bytes: number }>; error?: string }>;
+        createWorkspace: (name: string, rootPath: string) => Promise<{ success: boolean; workspace?: { id: string; name: string; root_path: string }; error?: string }>;
+        activateWorkspace: (workspaceId: string) => Promise<{ success: boolean; workspace?: { id: string; name: string; root_path: string }; error?: string }>;
+        removeWorkspace: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
+
+        // File operations (via Rust sidecar)
+        listFiles: (
+          workspaceId: string,
+          subPath?: string,
+          options?: { recursive?: boolean; show_hidden?: boolean; max_depth?: number },
+        ) => Promise<{ success: boolean; files: Array<{ name: string; path: string; is_dir: boolean; is_symlink: boolean; is_hidden: boolean; size: number; modified: string; extension?: string }>; error?: string }>;
+        readFile: (workspaceId: string, filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>;
+        writeFile: (workspaceId: string, filePath: string, content: string) => Promise<{ success: boolean; error?: string }>;
+
+        // Search & indexing
+        search: (
+          workspaceId: string,
+          query: string,
+          options?: { limit?: number; fuzzy?: boolean },
+        ) => Promise<{ success: boolean; results?: Array<{ path: string; score: number; snippet?: string }>; total?: number; took_ms?: number; error?: string }>;
+        grep: (
+          workspaceId: string,
+          pattern: string,
+          options?: { is_regex?: boolean; case_sensitive?: boolean; limit?: number },
+        ) => Promise<{ success: boolean; results?: Array<{ path: string; line_number: number; line_content: string; context_before?: string[]; context_after?: string[] }>; total?: number; error?: string }>;
+        semanticSearch: (
+          workspaceId: string,
+          query: string,
+          options?: { limit?: number },
+        ) => Promise<{ success: boolean; results?: Array<{ path: string; relative_path: string; chunk_text: string; score: number; line_start: number; line_end: number; language: string }>; query_time_ms?: number; error?: string }>;
+        triggerIndex: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
+        indexStatus: (workspaceId: string) => Promise<{ success: boolean; status?: string; total_files?: number; indexed_files?: number; error?: string }>;
+      };
+
+      /** Dynamic Tool Management API */
+      dynamicTools: {
+        list: (filter?: { status?: string; category?: string }) => Promise<{ success: boolean; tools: Array<{ id: string; name: string; description: string; status: 'active' | 'disabled' | 'expired'; category?: string; usageCount: number; successRate: number; createdAt: number; createdBy?: string; lastUsedAt?: number }>; error?: string }>;
+        getSpec: (toolName: string) => Promise<{ success: boolean; spec?: { name: string; description: string; inputSchema: Record<string, unknown>; executionType: string; requiredCapabilities: string[]; riskLevel: string }; error?: string }>;
+        updateState: (toolName: string, updates: { status?: string }) => Promise<{ success: boolean; error?: string }>;
+      };
+
+      /** Logging bridge: forward renderer errors/warnings to main process log file */
+      log: {
+        report: (level: 'warn' | 'error', message: string, meta?: Record<string, unknown>) => void;
       };
     };
   }

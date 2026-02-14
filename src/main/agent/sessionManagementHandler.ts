@@ -8,7 +8,6 @@
 } from '../../shared/types';
 import type { Logger } from '../logger';
 import type { SessionManager } from './sessionManager';
-import type { WorkspaceManager } from '../workspaces/workspaceManager';
 
 /**
  * Handles session management operations - create, delete, regenerate, etc.
@@ -17,56 +16,35 @@ import type { WorkspaceManager } from '../workspaces/workspaceManager';
 export class SessionManagementHandler {
   constructor(
     private sessionManager: SessionManager,
-    private workspaceManager: WorkspaceManager,
     private logger: Logger,
     private emitEvent: (event: RendererEvent | AgentEvent) => void,
   ) {}
 
   async startSession(payload: StartSessionPayload, defaultConfig: AgentConfig): Promise<AgentSessionState> {
-    const workspaceId = payload.workspaceId ?? this.workspaceManager.getActive()?.id;
-    
-    if (!workspaceId) {
-      throw new Error('No workspace selected');
-    }
-
-    // Verify workspace exists
-    const workspaceExists = this.workspaceManager.list().some(w => w.id === workspaceId);
-    if (!workspaceExists) {
-      throw new Error(`Workspace ${workspaceId} does not exist`);
-    }
-
     const session = this.sessionManager.createSession(payload, defaultConfig);
 
     this.emitEvent({ type: 'session-state', session: session.state });
-    // Emit updated sessions list for UI
-    this.emitEvent({ type: 'sessions-update', sessions: this.sessionManager.getAllSessions() });
+    const allSessions = this.sessionManager.getAllSessions();
+    this.emitEvent({ type: 'sessions-update', sessions: allSessions });
     return session.state;
   }
 
   deleteSession(sessionId: string): void {
     this.sessionManager.deleteSession(sessionId);
     this.logger.info('Session deleted', { sessionId });
-    // Emit updated sessions list for UI
-    this.emitEvent({ type: 'sessions-update', sessions: this.sessionManager.getAllSessions() });
+    const remainingSessions = this.sessionManager.getAllSessions();
+    this.emitEvent({ type: 'sessions-update', sessions: remainingSessions });
   }
 
   getSessions(): AgentSessionState[] {
     return this.sessionManager.getAllSessions();
   }
 
-  getSessionsByWorkspace(workspaceId: string): AgentSessionState[] {
-    return this.sessionManager.getSessionsByWorkspace(workspaceId);
-  }
-
   /**
    * Get session summaries for lazy loading (faster than full sessions)
    */
-  async getSessionSummaries(workspaceId?: string): Promise<SessionSummary[]> {
-    return this.sessionManager.getSessionSummaries(workspaceId);
-  }
-
-  getActiveWorkspaceSessions(): AgentSessionState[] {
-    return this.sessionManager.getActiveWorkspaceSessions();
+  async getSessionSummaries(): Promise<SessionSummary[]> {
+    return this.sessionManager.getSessionSummaries();
   }
 
   async regenerate(sessionId: string): Promise<void> {

@@ -476,7 +476,10 @@ export class ComplianceValidator {
     if (norm1 === norm2) return true;
     
     // Check if one ends with the other (handles absolute vs relative)
-    if (norm1.endsWith(norm2) || norm2.endsWith(norm1)) return true;
+    // Require a path separator boundary to avoid false positives like
+    // "a/utils.ts" matching "my-a/utils.ts"
+    if (norm1.endsWith(norm2) && (norm1.length === norm2.length || norm1[norm1.length - norm2.length - 1] === '/')) return true;
+    if (norm2.endsWith(norm1) && (norm2.length === norm1.length || norm2[norm2.length - norm1.length - 1] === '/')) return true;
     
     // Extract just the filename and compare (last resort)
     const file1 = norm1.split('/').pop();

@@ -95,7 +95,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved `useChatScroll` with optimized scroll behavior
 - **Settings UI Improvements**:
   - Enhanced `SettingsAppearance` with more customization options
-  - Improved `SettingsEditorAI` with better model selection
 - **Build Configuration**:
   - Updated `forge.config.ts` with improved build settings
   - Enhanced `vite.main.config.ts` with better optimization
@@ -226,7 +225,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release of Vyotiq AI
 - Multi-provider LLM support (Anthropic, OpenAI, Google, DeepSeek, OpenRouter)
 - 40+ built-in tools for file, terminal, and browser automation
-- Monaco code editor with syntax highlighting
 - Integrated terminal with PTY support
 - Playwright-based browser automation
 - Session persistence with SQLite

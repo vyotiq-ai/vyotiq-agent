@@ -1,43 +1,12 @@
 // State management barrel export
 export { AgentProvider, useAgent } from './AgentProvider';
 export { UIProvider } from './UIProvider';
-export { 
-  WorkspaceContextProvider, 
-  useWorkspaceContext, 
-  type WorkspaceContextState,
-  type WorkspaceDiagnostic,
-} from './WorkspaceContextProvider';
-export { 
-  WorkspaceTabsProvider, 
-  useWorkspaceTabs,
-  useWorkspaceTabsState,
-  useWorkspaceTabsActions,
-  useFocusedWorkspace,
-  useIsWorkspaceTabOpen,
-  type WorkspaceTabWithInfo,
-  type WorkspaceTabsState,
-  type WorkspaceTabsActions,
-} from './WorkspaceTabsProvider';
-export { EditorProvider, useEditor, type DiffState } from './EditorProvider';
-export { agentReducer, initialState, type AgentUIState, type AgentAction, type AgentStatusInfo } from './agentReducer';
 
-// Multi-workspace selectors for efficient state queries
-export {
-  selectSessionsByWorkspace,
-  selectWorkspaceSessions,
-  selectWorkspaceSummaries,
-  selectWorkspaceSummary,
-  selectActiveSessionsByWorkspace,
-  selectGlobalRunningSessionCount,
-  selectWaitingConfirmationCount,
-  selectIsWorkspaceActive,
-  selectSessionById,
-  sessionIdsEqual,
-  workspaceSummaryEqual,
-  workspaceSummariesEqual,
-  type WorkspaceSessionSummary,
-  type SessionsByWorkspace,
-} from './workspaceSelectors';
+// Types from centralized types module
+export type { AgentUIState, AgentAction, AgentStatusInfo, AgentState, QueuedTool, ToolResultState, InlineArtifactState, RoutingDecisionState, TerminalStreamState } from './types';
+
+// Utilities and initial state (still in agentReducer for backward compat)
+export { initialState, computeSessionCostSnapshot } from './agentReducer';
 
 // Domain-specific reducers
 export { 

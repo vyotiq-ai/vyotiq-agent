@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { ChatMessage, LLMProviderName as _LLMProviderName } from '../../../shared/types';
+import type { ChatMessage } from '../../../shared/types';
 import { SimpleTokenCounter } from '../routing/tokenUtils';
 
 // =============================================================================
@@ -60,9 +60,9 @@ export interface CompressedToolResult {
 // =============================================================================
 
 const DEFAULT_SUMMARY_CONFIG: SummaryConfig = {
-  minMessagesForSummary: 50,
+  minMessagesForSummary: 20,
   summaryTargetTokens: 2000,
-  keepRecentMessages: 20,
+  keepRecentMessages: 10,
   includeToolResults: true,
   maxToolResultTokens: 500,
 };

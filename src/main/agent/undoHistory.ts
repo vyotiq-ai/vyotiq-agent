@@ -96,8 +96,11 @@ class UndoHistoryManager {
   /** Storage directory for persistent history */
   private storageDir: string | null = null;
 
+  /** Promise that resolves when storage dir is initialized */
+  private storageDirReady: Promise<void>;
+
   constructor() {
-    this.initStorageDir();
+    this.storageDirReady = this.initStorageDir();
   }
 
   /**
@@ -125,9 +128,17 @@ class UndoHistoryManager {
   }
 
   /**
+   * Ensure storage dir is ready before file operations
+   */
+  private async ensureReady(): Promise<void> {
+    await this.storageDirReady;
+  }
+
+  /**
    * Load session history from disk
    */
   private async loadSessionFromDisk(sessionId: string): Promise<FileChange[]> {
+    await this.ensureReady();
     const filePath = this.getSessionFilePath(sessionId);
     if (!filePath) return [];
 
@@ -151,6 +162,7 @@ class UndoHistoryManager {
    * Save session history to disk
    */
   private async saveSessionToDisk(sessionId: string): Promise<void> {
+    await this.ensureReady();
     const filePath = this.getSessionFilePath(sessionId);
     if (!filePath) return;
 
@@ -182,7 +194,7 @@ class UndoHistoryManager {
    * Generate a unique change ID
    */
   private generateChangeId(): string {
-    return `change_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `change_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   /**
@@ -383,15 +395,15 @@ class UndoHistoryManager {
           break;
       }
 
-      // Update status
-      change.status = 'redoable';
+      // Update status — after redo, the change is active again and can be undone
+      change.status = 'undoable';
       await this.saveSessionToDisk(sessionId);
 
       return {
         success: true,
         message: `Successfully redid: ${change.description}`,
         filePath: change.filePath,
-        newStatus: 'redoable',
+        newStatus: 'undoable',
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

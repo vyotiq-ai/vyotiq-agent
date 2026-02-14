@@ -257,7 +257,8 @@ export function registerDebugHandlers(context: IpcContext): void {
       const state = inspector.getAgentState(sessionId);
       
       if (!state) {
-        // Return default state structure when no state is captured yet
+        // Return default state with real resource metrics when no debug state is captured
+        const memoryMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
         return {
           context: {
             maxTokens: 200000,
@@ -281,7 +282,7 @@ export function registerDebugHandlers(context: IpcContext): void {
             lastTool: null,
           },
           resources: {
-            memoryMb: 0,
+            memoryMb,
             cpuPercent: 0,
             activeConnections: 0,
             cacheHitRate: '0%',
@@ -308,14 +309,36 @@ export function registerDebugHandlers(context: IpcContext): void {
       // Message queue processing
       const messageQueue: QueuedMessage[] = state.messageQueue || [];
       
+      // Get cache stats for hit rate calculation
+      let cacheHitRate = '0%';
+      try {
+        const { getToolResultCache } = await import('../agent/cache');
+        const cache = getToolResultCache();
+        const cacheStats = cache.getStats();
+        const totalRequests = cacheStats.hits + cacheStats.misses;
+        if (totalRequests > 0) {
+          cacheHitRate = `${Math.round((cacheStats.hits / totalRequests) * 100)}%`;
+        }
+      } catch {
+        // Cache may not be initialized yet
+      }
+      
+      // Extract context usage from metadata if available
+      const contextUsage = (state.metadata?.contextUsage ?? {}) as Record<string, number>;
+      const usedTokens = contextUsage.usedTokens ?? 0;
+      const systemPromptTokens = contextUsage.systemPromptTokens ?? 0;
+      const toolResultTokens = contextUsage.toolResultTokens ?? 0;
+
       return {
         context: {
           maxTokens: 200000,
-          usedTokens: 0, // Would need to get from context manager
-          utilization: '0%',
+          usedTokens,
+          utilization: usedTokens
+            ? `${Math.round((usedTokens / 200000) * 100)}%` 
+            : '0%',
           messageCount: messageQueue.length,
-          systemPromptTokens: 0,
-          toolResultTokens: 0,
+          systemPromptTokens,
+          toolResultTokens,
         },
         messages: {
           pending: messageQueue.filter((m: QueuedMessage) => m.status === 'pending').length,
@@ -336,7 +359,7 @@ export function registerDebugHandlers(context: IpcContext): void {
           memoryMb: state.resourceUsage?.memoryMb ?? Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
           cpuPercent: state.resourceUsage?.cpuPercent || 0,
           activeConnections: state.resourceUsage?.activeConnections || 0,
-          cacheHitRate: '0%', // Would need to get from cache manager
+          cacheHitRate,
           pendingRequests: state.resourceUsage?.pendingOperations || 0,
         },
       };
@@ -448,9 +471,9 @@ export function registerDebugHandlers(context: IpcContext): void {
   // Throttle Control Status (for debugging background throttling behavior)
   // ==========================================================================
 
-  ipcMain.handle('debug:get-throttle-status', () => {
+  ipcMain.handle('debug:get-throttle-status', async () => {
     try {
-      const { getThrottleStatus } = require('./eventBatcher');
+      const { getThrottleStatus } = await import('./eventBatcher');
       return getThrottleStatus();
     } catch (error) {
       logger.error('Failed to get throttle status', { error: error instanceof Error ? error.message : String(error) });
@@ -458,9 +481,9 @@ export function registerDebugHandlers(context: IpcContext): void {
     }
   });
 
-  ipcMain.handle('debug:get-batcher-stats', () => {
+  ipcMain.handle('debug:get-batcher-stats', async () => {
     try {
-      const { getBatcherStats } = require('./eventBatcher');
+      const { getBatcherStats } = await import('./eventBatcher');
       return getBatcherStats();
     } catch (error) {
       logger.error('Failed to get batcher stats', { error: error instanceof Error ? error.message : String(error) });

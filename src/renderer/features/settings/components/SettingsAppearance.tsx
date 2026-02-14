@@ -12,7 +12,7 @@
  * Uses CSS variables for theme-aware styling.
  * Refactored to use shared primitives from primitives/.
  */
-import React, { useEffect, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTheme, type ThemeMode } from '../../../utils/themeMode.tsx';
 import { 
   type AppearanceSettings,
@@ -107,55 +107,10 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
 }) => {
   const { mode, setMode, resolved } = useTheme();
 
-  // Apply font size scale to CSS variables
-  useEffect(() => {
-    const scale = FONT_SIZE_SCALES[settings.fontSizeScale] ?? FONT_SIZE_SCALES.default;
-    document.documentElement.style.setProperty('--font-size-base', `${scale.base}px`);
-    document.documentElement.style.setProperty('--font-size-sm', `${scale.sm}px`);
-    document.documentElement.style.setProperty('--font-size-xs', `${scale.xs}px`);
-    document.documentElement.style.setProperty('--font-size-lg', `${scale.lg}px`);
-  }, [settings.fontSizeScale]);
-
-  // Apply accent color to CSS variables
-  useEffect(() => {
-    if (settings.accentColor === 'custom' && settings.customAccentColor) {
-      document.documentElement.style.setProperty('--color-accent-primary', settings.customAccentColor);
-    } else if (settings.accentColor !== 'custom') {
-      const preset = ACCENT_COLOR_PRESETS[settings.accentColor];
-      if (preset) {
-        document.documentElement.style.setProperty('--color-accent-primary', preset.primary);
-        document.documentElement.style.setProperty('--color-accent-hover', preset.hover);
-        document.documentElement.style.setProperty('--color-accent-active', preset.active);
-      }
-    }
-  }, [settings.accentColor, settings.customAccentColor]);
-
-  // Apply compact mode
-  useEffect(() => {
-    if (settings.compactMode) {
-      document.documentElement.classList.add('compact-mode');
-    } else {
-      document.documentElement.classList.remove('compact-mode');
-    }
-  }, [settings.compactMode]);
-
-  // Apply terminal font settings
-  useEffect(() => {
-    const fontFamily = settings.terminalFont === 'system' 
-      ? 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
-      : `"${settings.terminalFont}", monospace`;
-    document.documentElement.style.setProperty('--font-terminal', fontFamily);
-    document.documentElement.style.setProperty('--font-terminal-size', `${settings.terminalFontSize}px`);
-  }, [settings.terminalFont, settings.terminalFontSize]);
-
-  // Apply animations setting
-  useEffect(() => {
-    if (settings.enableAnimations) {
-      document.documentElement.setAttribute('data-animations', 'true');
-    } else {
-      document.documentElement.removeAttribute('data-animations');
-    }
-  }, [settings.enableAnimations]);
+  // Note: CSS variable application is handled by the root-level
+  // useAppearanceSettings hook in App.tsx, so we don't duplicate it here.
+  // That hook watches settings changes from the agent state and applies
+  // them to the document regardless of which tab is active.
 
   // Handle setting changes
   const handleChange = useCallback(<K extends keyof AppearanceSettings>(
@@ -173,7 +128,7 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
       {/* Theme Selection */}
       <SettingsGroup title="theme">
         <SettingsSelect
-          label="Color Mode"
+          label="color-mode"
           description={`Current: ${resolved}${mode === 'system' ? ' (detected from system)' : ''}`}
           value={mode}
           options={themeOptions}
@@ -184,8 +139,8 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
       {/* Font Size */}
       <SettingsGroup title="font-size">
         <SettingsSelect
-          label="UI Scale"
-          description="Adjust text size throughout the application"
+          label="ui-scale"
+          description={`Adjust text size throughout the application (base: ${FONT_SIZE_SCALES[settings.fontSizeScale].base}px)`}
           value={settings.fontSizeScale}
           options={fontSizeOptions}
           onChange={(value) => handleChange('fontSizeScale', value)}
@@ -195,8 +150,8 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
       {/* Accent Color */}
       <SettingsGroup title="accent-color">
         <SettingsSelect
-          label="Accent Color"
-          description="Primary highlight color for interactive elements"
+          label="accent-color"
+          description={`Primary highlight color for interactive elements${settings.accentColor !== 'custom' ? ` (${ACCENT_COLOR_PRESETS[settings.accentColor as Exclude<AccentColorPreset, 'custom'>]?.primary ?? ''})` : ''}`}
           value={settings.accentColor}
           options={accentColorOptions}
           onChange={(value) => handleChange('accentColor', value)}
@@ -206,14 +161,14 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
       {/* Terminal Font */}
       <SettingsGroup title="terminal">
         <SettingsSelect
-          label="Font Family"
+          label="font-family"
           description="Monospace font for code and terminal"
           value={settings.terminalFont}
           options={terminalFontOptions}
           onChange={(value) => handleChange('terminalFont', value)}
         />
         <SettingsSelect
-          label="Font Size"
+          label="font-size"
           description="Terminal and code block text size"
           value={String(settings.terminalFontSize)}
           options={terminalFontSizeOptions}
@@ -224,7 +179,7 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
       {/* Animation Settings */}
       <SettingsGroup title="animations">
         <SettingsToggleRow
-          label="Enable Animations"
+          label="enable-animations"
           description="Toggle smooth transitions and effects"
           checked={settings.enableAnimations}
           onToggle={() => handleChange('enableAnimations', !settings.enableAnimations)}
@@ -233,21 +188,21 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
         {settings.enableAnimations && (
           <>
             <SettingsSelect
-              label="Loading Indicator"
+              label="loading-indicator"
               description="Style of loading indicators"
               value={settings.loadingIndicatorStyle}
               options={loadingIndicatorOptions}
               onChange={(value) => handleChange('loadingIndicatorStyle', value)}
             />
             <SettingsSelect
-              label="Animation Speed"
+              label="animation-speed"
               description="Speed of UI animations"
               value={settings.animationSpeed}
               options={animationSpeedOptions}
               onChange={(value) => handleChange('animationSpeed', value)}
             />
             <SettingsSelect
-              label="Reduce Motion"
+              label="reduce-motion"
               description="Accessibility preference for motion"
               value={settings.reduceMotion}
               options={reduceMotionOptions}
@@ -257,7 +212,7 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
         )}
 
         <SettingsToggleRow
-          label="Compact Mode"
+          label="compact-mode"
           description="Reduce padding for more content on screen"
           checked={settings.compactMode}
           onToggle={() => handleChange('compactMode', !settings.compactMode)}
@@ -267,13 +222,13 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
       {/* Code Display */}
       <SettingsGroup title="code-display">
         <SettingsToggleRow
-          label="Show Line Numbers"
+          label="show-line-numbers"
           description="Display line numbers in code blocks"
           checked={settings.showLineNumbers}
           onToggle={() => handleChange('showLineNumbers', !settings.showLineNumbers)}
         />
         <SettingsToggleRow
-          label="Syntax Highlighting"
+          label="syntax-highlighting"
           description="Enable colored syntax highlighting"
           checked={settings.enableSyntaxHighlighting}
           onToggle={() => handleChange('enableSyntaxHighlighting', !settings.enableSyntaxHighlighting)}

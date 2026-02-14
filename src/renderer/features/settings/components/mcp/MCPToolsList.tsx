@@ -52,9 +52,9 @@ const ToolCard: React.FC<ToolCardProps> = memo(({ tool, expanded, onToggle }) =>
   return (
     <div
       className={cn(
-        'border rounded-lg overflow-hidden transition-all',
+        'border overflow-hidden transition-all',
         'bg-[var(--color-surface-elevated)] border-[var(--color-border)]',
-        expanded && 'ring-1 ring-[var(--color-accent)]'
+        expanded && 'border-[var(--color-accent)]'
       )}
     >
       <button

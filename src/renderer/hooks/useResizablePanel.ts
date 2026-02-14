@@ -18,11 +18,11 @@ export type ResizeDirection = 'horizontal' | 'vertical';
 export interface ResizablePanelOptions {
   /** Direction of resize: 'horizontal' for width, 'vertical' for height */
   direction: ResizeDirection;
-  /** Initial size (percentage for horizontal, pixels for vertical) */
+  /** Initial size in pixels */
   initialSize: number;
-  /** Minimum size */
+  /** Minimum size in pixels */
   minSize: number;
-  /** Maximum size */
+  /** Maximum size in pixels */
   maxSize: number;
   /** Callback when resize completes */
   onResizeEnd?: (size: number) => void;
@@ -30,6 +30,12 @@ export interface ResizablePanelOptions {
   onResizeStart?: () => void;
   /** Whether to persist size in localStorage */
   persistKey?: string;
+  /**
+   * Invert drag delta direction. Use for panels anchored to the right or
+   * bottom edge of the viewport where dragging left/up should *increase* size.
+   * For vertical panels this is already the default behaviour.
+   */
+  invertDelta?: boolean;
 }
 
 export interface ResizablePanelResult {
@@ -92,6 +98,7 @@ export function useResizablePanel({
   onResizeEnd,
   onResizeStart,
   persistKey,
+  invertDelta = false,
 }: ResizablePanelOptions): ResizablePanelResult {
   // Load persisted size if available
   const getInitialSize = (): number => {
@@ -118,7 +125,6 @@ export function useResizablePanel({
   // Track resize start position and size
   const startPosRef = useRef<number>(0);
   const startSizeRef = useRef<number>(0);
-  const containerIdRef = useRef<string | null>(null);
 
   // Persist size changes
   useEffect(() => {
@@ -146,11 +152,6 @@ export function useResizablePanel({
     
     startPosRef.current = direction === 'horizontal' ? e.clientX : e.clientY;
     startSizeRef.current = size;
-    
-    // Find container element for percentage calculations
-    const target = e.currentTarget as HTMLElement;
-    const container = target.closest('[data-resize-container]');
-    containerIdRef.current = container?.id || null;
   }, [direction, size, onResizeStart]);
 
   // Handle mouse move during resize
@@ -160,21 +161,12 @@ export function useResizablePanel({
     const handleMouseMove = (e: MouseEvent) => {
       const currentPos = direction === 'horizontal' ? e.clientX : e.clientY;
       const delta = currentPos - startPosRef.current;
-      
-      if (direction === 'horizontal') {
-        // For horizontal, calculate percentage
-        const container = containerIdRef.current 
-          ? document.getElementById(containerIdRef.current)
-          : document.body;
-        const containerWidth = container?.getBoundingClientRect().width || window.innerWidth;
-        const deltaPercentage = (delta / containerWidth) * 100;
-        const newSize = clampSize(startSizeRef.current + deltaPercentage);
-        setSize(newSize);
-      } else {
-        // For vertical, use pixels directly (negative delta = increase height)
-        const newSize = clampSize(startSizeRef.current - delta);
-        setSize(newSize);
-      }
+      // For vertical panels or right/bottom-anchored panels, invert delta so
+      // moving up/left increases size. Default horizontal (left-anchored)
+      // panels grow when the mouse moves right (positive delta).
+      const shouldInvert = direction === 'vertical' || invertDelta;
+      const newSize = clampSize(startSizeRef.current + (shouldInvert ? -delta : delta));
+      setSize(newSize);
     };
 
     const handleMouseUp = () => {
@@ -196,11 +188,11 @@ export function useResizablePanel({
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing, direction, size, clampSize, onResizeEnd]);
+  }, [isResizing, direction, invertDelta, size, clampSize, onResizeEnd]);
 
   // Handle keyboard navigation for accessibility
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const step = direction === 'horizontal' ? 1 : 10; // 1% for horizontal, 10px for vertical
+    const step = 10; // 10px step for keyboard navigation
     let newSize = size;
 
     switch (e.key) {
@@ -225,7 +217,7 @@ export function useResizablePanel({
     e.preventDefault();
     setSize(newSize);
     onResizeEnd?.(newSize);
-  }, [size, clampSize, direction, minSize, maxSize, onResizeEnd]);
+  }, [size, clampSize, minSize, maxSize, onResizeEnd]);
 
   // Reset to initial size
   const reset = useCallback(() => {

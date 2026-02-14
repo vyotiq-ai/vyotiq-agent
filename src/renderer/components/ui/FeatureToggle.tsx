@@ -43,9 +43,9 @@ export interface FeatureToggleProps {
 
 const badgeColors = {
   default: 'bg-[var(--color-surface-2)] text-[var(--color-text-muted)]',
-  info: 'bg-blue-500/20 text-blue-400',
-  warning: 'bg-amber-500/20 text-amber-400',
-  success: 'bg-green-500/20 text-green-400',
+  info: 'bg-[var(--color-info)]/20 text-[var(--color-info)]',
+  warning: 'bg-[var(--color-warning)]/20 text-[var(--color-warning)]',
+  success: 'bg-[var(--color-success)]/20 text-[var(--color-success)]',
 };
 
 // =============================================================================

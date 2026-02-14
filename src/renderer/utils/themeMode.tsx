@@ -309,12 +309,12 @@ export function ThemeProvider({
   const resolved = useMemo(() => resolveTheme(mode), [mode]);
   const colors = useMemo(() => resolved === 'dark' ? darkTheme : lightTheme, [resolved]);
   
-  // Apply theme to document
+  // Apply theme to document via CSS class toggle
+  // The html.dark / html.light classes in index.css handle all --color-* variables
   useEffect(() => {
-    applyThemeToDocument(colors);
     document.documentElement.classList.remove('light', 'dark');
     document.documentElement.classList.add(resolved);
-  }, [colors, resolved]);
+  }, [resolved]);
   
   // Listen for system preference changes
   useEffect(() => {
@@ -324,8 +324,6 @@ export function ThemeProvider({
     
     const handler = () => {
       const newResolved = getSystemPreference();
-      const newColors = newResolved === 'dark' ? darkTheme : lightTheme;
-      applyThemeToDocument(newColors);
       document.documentElement.classList.remove('light', 'dark');
       document.documentElement.classList.add(newResolved);
     };

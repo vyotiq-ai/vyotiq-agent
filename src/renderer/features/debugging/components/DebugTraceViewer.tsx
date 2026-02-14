@@ -13,7 +13,10 @@ import {
   XCircle, Clock, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { createLogger } from '../../../utils/logger';
 import type { TraceStepDetail } from '../../../../shared/types';
+
+const logger = createLogger('DebugTraceViewer');
 
 interface DebugTraceViewerProps {
   sessionId: string;
@@ -127,7 +130,7 @@ export const DebugTraceViewer: React.FC<DebugTraceViewerProps> = ({
         setTraceSteps([]);
       }
     } catch (error) {
-      console.error('Failed to fetch trace data:', error);
+      logger.error('Failed to fetch trace data', { error: error instanceof Error ? error.message : String(error) });
       setTraceSteps([]);
     }
   }, [sessionId, runId]);

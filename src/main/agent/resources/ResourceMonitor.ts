@@ -63,11 +63,17 @@ export class ResourceMonitor extends EventEmitter {
     this.samplingInterval = setInterval(() => {
       this.collectSamples();
     }, this.config.samplingIntervalMs);
+    if (this.samplingInterval && typeof this.samplingInterval === 'object' && 'unref' in this.samplingInterval) {
+      (this.samplingInterval as NodeJS.Timeout).unref();
+    }
 
     // Start cleanup of old samples
     this.cleanupInterval = setInterval(() => {
       this.cleanupOldSamples();
     }, 60000); // Every minute
+    if (this.cleanupInterval && typeof this.cleanupInterval === 'object' && 'unref' in this.cleanupInterval) {
+      (this.cleanupInterval as NodeJS.Timeout).unref();
+    }
 
     this.logger.info('ResourceMonitor started', {
       samplingInterval: this.config.samplingIntervalMs,

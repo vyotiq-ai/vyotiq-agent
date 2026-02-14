@@ -11,7 +11,6 @@ export * from './types';
 export { PerformanceMonitor } from './PerformanceMonitor';
 export { CachingLayer } from './CachingLayer';
 export { BatchProcessor, createAPIBatchProcessor, createFileBatchProcessor } from './BatchProcessor';
-export { LazyLoader } from './LazyLoader';
 export { ResourceManager } from './ResourceManager';
 
 // Export background throttle controller
@@ -45,7 +44,6 @@ export {
 import type { PerformanceDeps } from './types';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { CachingLayer } from './CachingLayer';
-import { LazyLoader } from './LazyLoader';
 import { ResourceManager } from './ResourceManager';
 import { createLogger } from '../../logger';
 
@@ -57,7 +55,6 @@ const logger = createLogger('Performance');
 
 let performanceMonitor: PerformanceMonitor | null = null;
 let cachingLayer: CachingLayer | null = null;
-let lazyLoader: LazyLoader | null = null;
 let resourceManager: ResourceManager | null = null;
 let initialized = false;
 
@@ -82,9 +79,6 @@ export function initPerformance(deps?: Partial<PerformanceDeps>): void {
   // Create caching layer
   cachingLayer = new CachingLayer({}, perfDeps);
   cachingLayer.start();
-
-  // Create lazy loader
-  lazyLoader = new LazyLoader({}, perfDeps);
 
   // Create resource manager
   resourceManager = new ResourceManager({}, perfDeps);
@@ -112,16 +106,6 @@ export function getCachingLayer(): CachingLayer {
     throw new Error('Performance system not initialized. Call initPerformance() first.');
   }
   return cachingLayer;
-}
-
-/**
- * Get lazy loader instance
- */
-export function getLazyLoader(): LazyLoader {
-  if (!lazyLoader) {
-    throw new Error('Performance system not initialized. Call initPerformance() first.');
-  }
-  return lazyLoader;
 }
 
 /**
@@ -204,9 +188,6 @@ export function resetPerformance(): void {
     cachingLayer.stop();
     cachingLayer.clear();
   }
-  if (lazyLoader) {
-    lazyLoader.clear();
-  }
   if (resourceManager) {
     resourceManager.stop();
     resourceManager.clear();
@@ -214,7 +195,6 @@ export function resetPerformance(): void {
 
   performanceMonitor = null;
   cachingLayer = null;
-  lazyLoader = null;
   resourceManager = null;
   initialized = false;
   logger.info('Performance system reset');
@@ -233,7 +213,6 @@ export function isPerformanceInitialized(): boolean {
 export function getPerformanceStats(): {
   monitor: ReturnType<PerformanceMonitor['getStats']>;
   cache: ReturnType<CachingLayer['getStats']>;
-  lazyLoader: ReturnType<LazyLoader['getStats']>;
   resources: ReturnType<ResourceManager['getStats']>;
 } | null {
   if (!initialized) {
@@ -243,7 +222,6 @@ export function getPerformanceStats(): {
   return {
     monitor: getPerformanceMonitor().getStats(),
     cache: getCachingLayer().getStats(),
-    lazyLoader: getLazyLoader().getStats(),
     resources: getResourceManager().getStats(),
   };
 }

@@ -79,7 +79,6 @@ Comprehensive documentation has been created for the Vyotiq AI project. All docu
   - Runtime issues and fixes
   - API and provider issues
   - Terminal issues
-  - Editor issues
   - Performance issues
   - Data and storage issues
   - Getting help resources
@@ -89,7 +88,7 @@ Comprehensive documentation has been created for the Vyotiq AI project. All docu
 - App startup issues
 - Provider configuration problems
 - Rate limiting and API errors
-- Terminal and editor troubleshooting
+- Terminal troubleshooting
 - Memory and performance optimization
 - Database corruption recovery
 - Issue reporting guidelines
@@ -147,7 +146,6 @@ Comprehensive documentation has been created for the Vyotiq AI project. All docu
 
 ### UI Features
 - Chat interface with message history
-- Monaco code editor with syntax highlighting
 - Terminal emulator (xterm.js)
 - Browser automation panel
 - Settings panel with 20+ configuration options

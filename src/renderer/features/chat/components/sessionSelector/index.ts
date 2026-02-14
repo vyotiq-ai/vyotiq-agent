@@ -32,7 +32,6 @@ export {
   getDisplayTitle,
   getWorkspaceLabelFromPath,
   getSessionStats,
-  getRunningCountForWorkspace,
 } from './utils';
 
 // Types

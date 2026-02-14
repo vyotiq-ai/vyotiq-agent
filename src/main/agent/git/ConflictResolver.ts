@@ -233,7 +233,8 @@ export class GitConflictResolver extends EventEmitter {
     const git = getGitService();
 
     try {
-      // Try to abort merge by checking out HEAD
+      // Use checkout HEAD to reset working tree state
+      // GitService doesn't expose raw() — checkout is the best available method
       await git.checkout('HEAD');
       this.activeConflicts.clear();
       return true;

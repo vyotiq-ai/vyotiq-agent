@@ -60,9 +60,9 @@ export function delay(ms: number): Promise<void> {
  * 
  * @example
  * ```ts
- * const workspaces = await withIpcRetry(
- *   () => window.vyotiq.workspace.list(),
- *   { operationLabel: 'workspace:list' }
+ * const sessions = await withIpcRetry(
+ *   () => window.vyotiq.agent.getSessions(),
+ *   { operationLabel: 'agent:get-sessions' }
  * );
  * ```
  */

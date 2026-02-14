@@ -73,32 +73,16 @@ export function groupSessionsByDate(sessions: SessionMeta[]): SessionGroup[] {
     }));
 }
 
-/** Group sessions by workspace */
+/** Group sessions by workspace (returns single group) */
 export function groupSessionsByWorkspace(
   sessions: SessionMeta[], 
-  workspaceLabels: Map<string, string>
+  _workspaceLabels: Map<string, string>
 ): SessionGroup[] {
-  const groups = new Map<string, SessionMeta[]>();
-  
-  sessions.forEach(session => {
-    const workspaceId = session.workspaceId || 'unknown';
-    if (!groups.has(workspaceId)) {
-      groups.set(workspaceId, []);
-    }
-    groups.get(workspaceId)!.push(session);
-  });
-  
-  return Array.from(groups.entries())
-    .map(([workspaceId, groupSessions]) => ({
-      label: workspaceLabels.get(workspaceId) || 'Unknown Workspace',
-      sessions: groupSessions.sort((a, b) => b.updatedAt - a.updatedAt)
-    }))
-    .sort((a, b) => {
-      // Sort by most recent session in each group
-      const aLatest = Math.max(...a.sessions.map(s => s.updatedAt));
-      const bLatest = Math.max(...b.sessions.map(s => s.updatedAt));
-      return bLatest - aLatest;
-    });
+  if (sessions.length === 0) return [];
+  return [{
+    label: 'All Sessions',
+    sessions: [...sessions].sort((a, b) => b.updatedAt - a.updatedAt),
+  }];
 }
 
 // =============================================================================
@@ -256,14 +240,4 @@ export function getSessionStats(sessions: SessionMeta[]): {
     },
     { total: 0, running: 0, idle: 0, paused: 0, error: 0 }
   );
-}
-
-/** Get running session count for workspace */
-export function getRunningCountForWorkspace(
-  sessions: SessionMeta[], 
-  workspaceId: string
-): number {
-  return sessions.filter(
-    s => s.workspaceId === workspaceId && isSessionRunning(s.status)
-  ).length;
 }

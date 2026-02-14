@@ -7,10 +7,12 @@
  * - Priority-based event scheduling
  * - Memory-efficient buffer management
  * - Automatic flush on idle
- * - Workspace-scoped event routing for multi-workspace support
  */
 
 import type { BrowserWindow } from 'electron';
+import { createLogger } from '../logger';
+
+const logger = createLogger('IPC:EventBatcher');
 
 // Event priority levels
 export enum EventPriority {
@@ -25,7 +27,6 @@ interface BatchedEvent {
   data: unknown;
   priority: EventPriority;
   timestamp: number;
-  workspaceId?: string;  // Optional workspace scope
   sessionId?: string;    // Optional session scope
 }
 
@@ -38,9 +39,7 @@ interface BatcherConfig {
   highPriorityMaxDelayMs?: number;
   /** Enable compression for large payloads (default: false) */
   enableCompression?: boolean;
-  /** Enable workspace-scoped filtering (default: true) */
-  enableWorkspaceFiltering?: boolean;
-  /** Batch interval for background workspaces (default: 100ms) */
+  /** Batch interval for background sessions (default: 100ms) */
   backgroundBatchIntervalMs?: number;
 }
 
@@ -49,7 +48,6 @@ const DEFAULT_CONFIG: Required<BatcherConfig> = {
   maxBatchSize: 50,
   highPriorityMaxDelayMs: 8,
   enableCompression: false,
-  enableWorkspaceFiltering: true,
   backgroundBatchIntervalMs: 100,
 };
 
@@ -68,7 +66,6 @@ const BATCH_ELIGIBLE_CHANNELS = new Set([
  */
 const NEVER_BATCH_CHANNELS = new Set([
   'agent:error',
-  'workspace:error',
 ]);
 
 /**
@@ -89,8 +86,7 @@ export class IpcEventBatcher {
   private readonly getWindow: () => BrowserWindow | null;
   private isProcessing = false;
 
-  // Workspace tracking for filtering
-  private focusedWorkspaceId: string | null = null;
+  // Session tracking
   private focusedSessionId: string | null = null;
   
   // Background event queue for non-focused workspaces
@@ -129,12 +125,12 @@ export class IpcEventBatcher {
     // Track mode activations for debugging
     if (isRunning && !wasRunning) {
       this.stats.agentRunningModeActivations++;
-      console.debug('[IpcEventBatcher] Agent running mode ENABLED - background throttling disabled', {
+      logger.debug('Agent running mode ENABLED - background throttling disabled', {
         activeSessions: this.runningSessionIds.size,
         pendingBackgroundEvents: this.backgroundQueue.length,
       });
     } else if (!isRunning && wasRunning) {
-      console.debug('[IpcEventBatcher] Agent running mode DISABLED - background throttling re-enabled', {
+      logger.debug('Agent running mode DISABLED - background throttling re-enabled', {
         eventsProcessedWhileRunning: this.stats.eventsWhileAgentRunning,
         backgroundQueueBypassed: this.stats.backgroundQueueBypassed,
       });
@@ -179,17 +175,6 @@ export class IpcEventBatcher {
   }
 
   /**
-   * Set the currently focused workspace for event filtering
-   */
-  setFocusedWorkspace(workspaceId: string | null): void {
-    if (this.focusedWorkspaceId !== workspaceId) {
-      this.focusedWorkspaceId = workspaceId;
-      // Flush background queue when focus changes
-      this.flushBackgroundQueue();
-    }
-  }
-
-  /**
    * Set the currently focused session
    */
   setFocusedSession(sessionId: string | null): void {
@@ -198,15 +183,13 @@ export class IpcEventBatcher {
 
   /**
    * Queue an event for batched delivery
-   * Enhanced with workspace-scoped routing for multi-workspace support
    * Background throttling is disabled when agent is running for responsive streaming
    */
   send(channel: string, data: unknown, priority: EventPriority = EventPriority.NORMAL): void {
     this.stats.eventsReceived++;
 
-    // Extract workspace/session from data if present
-    const eventData = data as { workspaceId?: string; sessionId?: string } | undefined;
-    const workspaceId = eventData?.workspaceId;
+    // Extract session from data if present
+    const eventData = data as { sessionId?: string } | undefined;
     const sessionId = eventData?.sessionId;
 
     // Never batch critical events
@@ -233,7 +216,6 @@ export class IpcEventBatcher {
       data,
       priority,
       timestamp: Date.now(),
-      workspaceId,
       sessionId,
     };
 
@@ -243,24 +225,23 @@ export class IpcEventBatcher {
       this.stats.eventsWhileAgentRunning++;
     }
 
-    // When agent is running, skip background queue routing for responsive streaming
-    // Workspace-scoped routing: route to background queue for non-focused workspaces
-    // only when agent is NOT running
-    const wouldRouteToBackground = 
-      this.config.enableWorkspaceFiltering &&
-      workspaceId &&
-      this.focusedWorkspaceId &&
-      workspaceId !== this.focusedWorkspaceId &&
-      priority >= EventPriority.NORMAL;
+    // Route to background queue for non-focused sessions when agent is NOT running.
+    // When the agent is running, bypass background throttling for responsive streaming.
+    const isBackgroundSession =
+      sessionId &&
+      this.focusedSessionId &&
+      sessionId !== this.focusedSessionId &&
+      !agentCurrentlyRunning;
 
-    if (wouldRouteToBackground && !agentCurrentlyRunning) {
+    if (isBackgroundSession) {
       this.backgroundQueue.push(batchedEvent);
       this.scheduleBackgroundFlush();
       return;
     }
-    
-    // Track when we bypass background queue due to agent running
-    if (wouldRouteToBackground && agentCurrentlyRunning) {
+
+    // When agent is running and event belongs to a non-focused session,
+    // track the bypass for diagnostics but still use the foreground queue.
+    if (sessionId && this.focusedSessionId && sessionId !== this.focusedSessionId && agentCurrentlyRunning) {
       this.stats.backgroundQueueBypassed++;
     }
 
@@ -272,19 +253,17 @@ export class IpcEventBatcher {
   }
 
   /**
-   * Send event with explicit workspace/session scope
+   * Send event with explicit session scope
    */
   sendScoped(
     channel: string,
     data: unknown,
-    workspaceId: string | null,
     sessionId: string | null,
     priority: EventPriority = EventPriority.NORMAL
   ): void {
     // Merge scope into data
     const scopedData = {
       ...(typeof data === 'object' && data !== null ? data : { value: data }),
-      ...(workspaceId && { workspaceId }),
       ...(sessionId && { sessionId }),
     };
     this.send(channel, scopedData, priority);
@@ -302,7 +281,7 @@ export class IpcEventBatcher {
   }
 
   /**
-   * Schedule background queue flush (for non-focused workspaces)
+   * Schedule background queue flush
    * Uses faster interval when agent is running for responsive streaming
    */
   private scheduleBackgroundFlush(): void {
@@ -322,7 +301,7 @@ export class IpcEventBatcher {
 
   /**
    * Flush background queue
-   * Sends condensed updates for non-focused workspaces
+   * Sends condensed updates for non-focused sessions
    */
   private flushBackgroundQueue(): void {
     if (this.backgroundQueue.length === 0) return;
@@ -338,28 +317,12 @@ export class IpcEventBatcher {
       return;
     }
 
-    // Group events by workspace and merge similar ones
-    const eventsByWorkspace = new Map<string, BatchedEvent[]>();
+    // Optimize and send all background events
+    const optimizedEvents = this.optimizeEvents(this.backgroundQueue);
     
-    for (const event of this.backgroundQueue) {
-      const wsId = event.workspaceId ?? 'unknown';
-      const existing = eventsByWorkspace.get(wsId);
-      if (existing) {
-        existing.push(event);
-      } else {
-        eventsByWorkspace.set(wsId, [event]);
-      }
-    }
-
-    // Send condensed events per workspace
-    for (const [_workspaceId, events] of eventsByWorkspace) {
-      // For stream-delta events, merge them together
-      const optimizedEvents = this.optimizeEvents(events);
-      
-      for (const event of optimizedEvents) {
-        window.webContents.send(event.channel, event.data);
-        this.stats.eventsSent++;
-      }
+    for (const event of optimizedEvents) {
+      window.webContents.send(event.channel, event.data);
+      this.stats.eventsSent++;
     }
 
     this.backgroundQueue = [];
@@ -418,10 +381,16 @@ export class IpcEventBatcher {
       return;
     }
 
-    // Sort by priority (lower number = higher priority)
+    // Sort by priority only if events have mixed priorities (skip if all same priority)
     const events = this.eventQueue;
     this.eventQueue = [];
-    events.sort((a, b) => a.priority - b.priority);
+    if (events.length > 1) {
+      const firstPriority = events[0].priority;
+      const hasMixedPriority = events.some(e => e.priority !== firstPriority);
+      if (hasMixedPriority) {
+        events.sort((a, b) => a.priority - b.priority);
+      }
+    }
 
     // Optimize events by channel
     const optimizedEvents = this.optimizeEvents(events);
@@ -489,7 +458,8 @@ export class IpcEventBatcher {
       return { event: first, nextIndex: startIndex + 1 };
     }
 
-    let mergedDelta = firstData.delta || '';
+    // Collect deltas in array and join at end (avoids repeated string concatenation)
+    const deltaChunks: string[] = [firstData.delta || ''];
     let i = startIndex + 1;
     const firstIsThinking = firstData.isThinking ?? false;
 
@@ -513,7 +483,7 @@ export class IpcEventBatcher {
         nextIsThinking === firstIsThinking && // Critical: must match isThinking flag
         nextData.delta
       ) {
-        mergedDelta += nextData.delta;
+        deltaChunks.push(nextData.delta);
         i++;
       } else {
         break;
@@ -525,7 +495,7 @@ export class IpcEventBatcher {
       ...first,
       data: {
         ...firstData,
-        delta: mergedDelta,
+        delta: deltaChunks.join(''),
         isThinking: firstIsThinking || undefined, // Preserve flag, omit if false for backward compat
       },
     };
@@ -579,13 +549,6 @@ export class IpcEventBatcher {
   }
 
   /**
-   * Get focused workspace ID
-   */
-  getFocusedWorkspace(): string | null {
-    return this.focusedWorkspaceId;
-  }
-
-  /**
    * Get focused session ID
    */
   getFocusedSession(): string | null {
@@ -633,6 +596,17 @@ export function initIpcEventBatcher(getWindow: () => BrowserWindow | null, confi
  */
 export function getIpcEventBatcher(): IpcEventBatcher | null {
   return globalBatcher;
+}
+
+/**
+ * Destroy the global IPC event batcher (call on app quit)
+ * Cleans up all timers and flushes remaining events.
+ */
+export function destroyIpcEventBatcher(): void {
+  if (globalBatcher) {
+    globalBatcher.destroy();
+    globalBatcher = null;
+  }
 }
 
 /**

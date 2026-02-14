@@ -133,7 +133,7 @@ function getToolMessagesForAssistant(
   allMessages: ChatMessageType[]
 ): ChatMessageType[] {
   if (!assistantMsg.toolCalls) return [];
-  const toolCallIds = new Set(assistantMsg.toolCalls.map(tc => tc.callId).filter(Boolean));
+  const toolCallIds = new Set(assistantMsg.toolCalls.filter(tc => tc != null).map(tc => tc.callId).filter(Boolean));
   return allMessages.filter(
     m => m.role === 'tool' && m.toolCallId && toolCallIds.has(m.toolCallId)
   );

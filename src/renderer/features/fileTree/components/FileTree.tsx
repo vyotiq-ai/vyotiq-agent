@@ -2,7 +2,7 @@
  * FileTree Component
  * 
  * Main file tree container with VS Code-like functionality:
- * - Virtualized rendering for performance
+ * - Virtualized rendering for large workspace performance
  * - Multi-selection support
  * - Keyboard navigation
  * - Drag and drop
@@ -10,7 +10,7 @@
  * - Search/filter
  */
 
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { 
   RefreshCw, 
   FolderPlus, 
@@ -22,13 +22,17 @@ import {
   FolderTree,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { createLogger } from '../../../utils/logger';
 import { useFileTree } from '../useFileTree';
 import { FileTreeItem } from './FileTreeItem';
 import { FileTreeContextMenu } from './FileTreeContextMenu';
 import { NewItemInput } from './NewItemInput';
 import { FileTreeSearch } from './FileTreeSearch';
 import { useConfirm } from '../../../components/ui/ConfirmModal';
-import type { ContextMenuAction } from '../types';
+import { VirtualizedList } from '../../../components/ui/VirtualizedList';
+import type { ContextMenuAction, FileTreeNode } from '../types';
+
+const logger = createLogger('FileTree');
 
 interface FileTreeProps {
   workspacePath: string | null;
@@ -174,9 +178,37 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
         break;
         
       case 'openInTerminal': {
-        // Reveal in system file explorer which can then open terminal
+        // Open the integrated terminal at the target directory
         const terminalDir = targetType === 'directory' ? targetPath : targetPath.substring(0, targetPath.lastIndexOf('/'));
-        revealInExplorer(terminalDir);
+        void (async () => {
+          try {
+            // Spawn a new terminal session with the cwd set to the target directory
+            const result = await window.vyotiq?.terminal?.spawn?.({ id: `filetree-${Date.now()}`, cwd: terminalDir });
+            if (!result?.success) {
+              logger.warn('Terminal spawn returned error, falling back to explorer', { terminalDir, error: result?.error });
+              revealInExplorer(terminalDir);
+            }
+          } catch (err) {
+            logger.warn('Failed to open terminal at directory, falling back to explorer', { terminalDir, error: err instanceof Error ? err.message : String(err) });
+            revealInExplorer(terminalDir);
+          }
+        })();
+        break;
+      }
+      
+      case 'openInEditor': {
+        // Dispatch global event for editor to pick up
+        document.dispatchEvent(new CustomEvent('vyotiq:open-file', {
+          detail: { filePath: targetPath },
+        }));
+        break;
+      }
+
+      case 'openDiff': {
+        // Open file in diff view mode
+        document.dispatchEvent(new CustomEvent('vyotiq:open-file-diff', {
+          detail: { filePath: targetPath },
+        }));
         break;
       }
         
@@ -480,10 +512,10 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
         </div>
       )}
       
-      {/* File tree */}
+      {/* File tree - virtualized for large workspace performance */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin focus:outline-none"
+        className="flex-1 overflow-hidden focus:outline-none"
         onContextMenu={handleRootContextMenu}
         onKeyDown={handleKeyDown}
         onClick={handleContainerClick}
@@ -500,53 +532,25 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
             <span className="text-[var(--color-text-placeholder)]"># empty directory</span>
           </div>
         ) : (
-          <>
-            {/* New item input at root level */}
-            {newItemState && newItemState.parentPath === workspacePath && (
-              <NewItemInput
-                type={newItemState.type}
-                depth={0}
-                onSubmit={handleNewItemSubmit}
-                onCancel={handleNewItemCancel}
-              />
-            )}
-            
-            {flatNodes.map((node) => (
-              <React.Fragment key={node.id}>
-                <FileTreeItem
-                  node={node}
-                  isExpanded={node.isExpanded || false}
-                  isSelected={node.isSelected || false}
-                  isRenaming={node.isRenaming || false}
-                  isFocused={node.isFocused || false}
-                  dragDrop={dragDrop}
-                  onToggleExpand={toggleExpand}
-                  onSelect={selectPath}
-                  onDoubleClick={handleDoubleClick}
-                  onContextMenu={handleContextMenu}
-                  onRename={rename}
-                  onCancelRename={cancelRenaming}
-                  onDragStart={startDrag}
-                  onDragOver={(path) => updateDropTarget(path, 'inside')}
-                  onDragEnd={endDrag}
-                  onDrop={handleDrop}
-                />
-                
-                {/* New item input inside expanded folder */}
-                {newItemState && 
-                 newItemState.parentPath === node.path && 
-                 node.type === 'directory' && 
-                 node.isExpanded && (
-                  <NewItemInput
-                    type={newItemState.type}
-                    depth={node.depth + 1}
-                    onSubmit={handleNewItemSubmit}
-                    onCancel={handleNewItemCancel}
-                  />
-                )}
-              </React.Fragment>
-            ))}
-          </>
+          <FileTreeVirtualized
+            flatNodes={flatNodes}
+            workspacePath={workspacePath}
+            newItemState={newItemState}
+            dragDrop={dragDrop}
+            containerRef={containerRef}
+            toggleExpand={toggleExpand}
+            selectPath={selectPath}
+            handleDoubleClick={handleDoubleClick}
+            handleContextMenu={handleContextMenu}
+            rename={rename}
+            cancelRenaming={cancelRenaming}
+            startDrag={startDrag}
+            updateDropTarget={updateDropTarget}
+            endDrag={endDrag}
+            handleDrop={handleDrop}
+            handleNewItemSubmit={handleNewItemSubmit}
+            handleNewItemCancel={handleNewItemCancel}
+          />
         )}
       </div>
       
@@ -564,3 +568,155 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
     </div>
   );
 };
+
+// =============================================================================
+// Virtualized File Tree - renders only visible items for large workspaces
+// =============================================================================
+
+const ITEM_HEIGHT = 22; // Each file tree row is 22px
+
+interface FileTreeVirtualizedProps {
+  flatNodes: FileTreeNode[];
+  workspacePath: string | null;
+  newItemState: { type: 'file' | 'folder'; parentPath: string } | null;
+  dragDrop: import('../types').DragDropState;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  toggleExpand: (path: string) => void;
+  selectPath: (path: string, mode?: 'single' | 'toggle' | 'range') => void;
+  handleDoubleClick: (path: string, type: 'file' | 'directory') => void;
+  handleContextMenu: (e: React.MouseEvent, path: string, type: 'file' | 'directory') => void;
+  rename: (oldPath: string, newName: string) => Promise<boolean>;
+  cancelRenaming: () => void;
+  startDrag: (path: string, type: 'file' | 'directory') => void;
+  updateDropTarget: (path: string | null, position: 'before' | 'inside' | 'after' | null) => void;
+  endDrag: () => void;
+  handleDrop: (targetPath: string) => Promise<boolean>;
+  handleNewItemSubmit: (name: string) => Promise<void>;
+  handleNewItemCancel: () => void;
+}
+
+const FileTreeVirtualized: React.FC<FileTreeVirtualizedProps> = React.memo(({
+  flatNodes,
+  workspacePath,
+  newItemState,
+  dragDrop,
+  containerRef,
+  toggleExpand,
+  selectPath,
+  handleDoubleClick,
+  handleContextMenu,
+  rename,
+  cancelRenaming,
+  startDrag,
+  updateDropTarget,
+  endDrag,
+  handleDrop,
+  handleNewItemSubmit,
+  handleNewItemCancel,
+}) => {
+  // Compute container height from the actual ref
+  const [containerHeight, setContainerHeight] = useState(400);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(container);
+    setContainerHeight(container.clientHeight || 400);
+
+    return () => observer.disconnect();
+  }, [containerRef]);
+
+  // Stable drag-over callback
+  const handleDragOver = useCallback(
+    (nodePath: string) => updateDropTarget(nodePath, 'inside'),
+    [updateDropTarget]
+  );
+
+  // Build augmented nodes with new-item inserts for rendering
+  const renderNodes = useMemo(() => {
+    if (!newItemState) return flatNodes;
+
+    // Insert new-item placeholder after the parent node or at root
+    const result: (FileTreeNode | { isNewItem: true; type: 'file' | 'folder'; parentPath: string; depth: number })[] = [];
+
+    if (newItemState.parentPath === workspacePath) {
+      result.push({ isNewItem: true, type: newItemState.type, parentPath: newItemState.parentPath, depth: 0 });
+    }
+
+    for (const node of flatNodes) {
+      result.push(node);
+      if (
+        newItemState.parentPath === node.path &&
+        node.type === 'directory' &&
+        node.isExpanded
+      ) {
+        result.push({ isNewItem: true, type: newItemState.type, parentPath: newItemState.parentPath, depth: node.depth + 1 });
+      }
+    }
+
+    return result;
+  }, [flatNodes, newItemState, workspacePath]);
+
+  const getKey = useCallback(
+    (item: FileTreeNode | { isNewItem: true; type: string; parentPath: string; depth: number }) =>
+      'isNewItem' in item ? `new-${item.parentPath}` : item.id,
+    []
+  );
+
+  const renderTreeItem = useCallback(
+    (item: FileTreeNode | { isNewItem: true; type: 'file' | 'folder'; parentPath: string; depth: number }) => {
+      if ('isNewItem' in item) {
+        return (
+          <NewItemInput
+            type={item.type}
+            depth={item.depth}
+            onSubmit={handleNewItemSubmit}
+            onCancel={handleNewItemCancel}
+          />
+        );
+      }
+
+      return (
+        <FileTreeItem
+          node={item}
+          isExpanded={item.isExpanded || false}
+          isSelected={item.isSelected || false}
+          isRenaming={item.isRenaming || false}
+          isFocused={item.isFocused || false}
+          dragDrop={dragDrop}
+          onToggleExpand={toggleExpand}
+          onSelect={selectPath}
+          onDoubleClick={handleDoubleClick}
+          onContextMenu={handleContextMenu}
+          onRename={rename}
+          onCancelRename={cancelRenaming}
+          onDragStart={startDrag}
+          onDragOver={handleDragOver}
+          onDragEnd={endDrag}
+          onDrop={handleDrop}
+        />
+      );
+    },
+    [dragDrop, toggleExpand, selectPath, handleDoubleClick, handleContextMenu, rename, cancelRenaming, startDrag, handleDragOver, endDrag, handleDrop, handleNewItemSubmit, handleNewItemCancel]
+  );
+
+  return (
+    <VirtualizedList
+      items={renderNodes}
+      itemHeight={ITEM_HEIGHT}
+      containerHeight={containerHeight}
+      renderItem={renderTreeItem}
+      overscan={10}
+      getKey={getKey}
+      className="scrollbar-thin"
+    />
+  );
+});
+
+FileTreeVirtualized.displayName = 'FileTreeVirtualized';

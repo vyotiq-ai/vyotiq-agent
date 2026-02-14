@@ -133,7 +133,6 @@ export const SessionSelector: React.FC<SessionSelectorProps> = memo(function Ses
         sessionGroups={sessionGroups}
         flatSessionList={flatSessionList}
         activeSessionId={activeSessionId}
-        activeWorkspaceId={hasWorkspace ? 'active' : undefined}
         focusedIndex={focusedIndex}
         sessionCount={sessionCount}
         hasWorkspace={hasWorkspace}

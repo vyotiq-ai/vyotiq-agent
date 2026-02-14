@@ -73,6 +73,22 @@ export function buildToolingSystem(config: ToolingConfig): ToolingSystem {
   registry.registerAlias('tasks', 'TodoWrite');
   registry.registerAlias('checklist', 'TodoWrite');
 
+  // Semantic search aliases
+  registry.registerAlias('semantic', 'semantic_search');
+  registry.registerAlias('vector_search', 'semantic_search');
+  registry.registerAlias('embedding_search', 'semantic_search');
+  registry.registerAlias('find_code', 'code_query');
+  registry.registerAlias('ask_code', 'code_query');
+  registry.registerAlias('similar_code', 'code_similarity');
+  registry.registerAlias('find_similar', 'code_similarity');
+  registry.registerAlias('code_clone', 'code_similarity');
+
+  // Full-text search aliases (BM25 ranked keyword search)
+  registry.registerAlias('fulltext_search', 'full_text_search');
+  registry.registerAlias('text_search', 'full_text_search');
+  registry.registerAlias('keyword_search', 'full_text_search');
+  registry.registerAlias('index_search', 'full_text_search');
+
   // Browser fetch aliases (for web content retrieval)
   registry.registerAlias('fetch', 'browser_fetch');
   registry.registerAlias('fetch_url', 'browser_fetch');

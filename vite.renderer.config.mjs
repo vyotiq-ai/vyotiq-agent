@@ -24,7 +24,6 @@ export default defineConfig({
   optimizeDeps: {
     // Pre-bundle these dependencies for faster startup
     include: [
-      'monaco-editor',
       'react',
       'react-dom',
       'lucide-react',
@@ -58,8 +57,7 @@ export default defineConfig({
   build: {
     // Modern browser targets for smaller bundles
     target: 'esnext',
-    // Increase chunk size warning limit (Monaco is large)
-    chunkSizeWarningLimit: 1500,
+    chunkSizeWarningLimit: 1000,
     // Use esbuild for fastest minification
     minify: 'esbuild',
     // Disable gzip size reporting for faster builds
@@ -74,10 +72,6 @@ export default defineConfig({
       output: {
         // Advanced chunking strategy for optimal loading
         manualChunks: (id) => {
-          // Isolate Monaco Editor (largest dependency ~3MB)
-          if (id.includes('monaco-editor') || id.includes('@monaco-editor')) {
-            return 'monaco-editor';
-          }
           // React core - loaded immediately
           if (id.includes('react-dom') || id.includes('react/')) {
             return 'react-vendor';
@@ -151,7 +145,6 @@ export default defineConfig({
       clientFiles: [
         './src/renderer/App.tsx',
         './src/renderer/state/AgentProvider.tsx',
-        './src/renderer/state/EditorProvider.tsx',
         './src/renderer/features/chat/ChatArea.tsx',
         './src/renderer/components/layout/MainLayout.tsx',
       ],

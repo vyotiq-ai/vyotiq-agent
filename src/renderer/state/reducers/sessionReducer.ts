@@ -8,18 +8,20 @@ import type { AgentSessionState } from '../../../shared/types';
 import type { AgentUIState } from '../agentReducer';
 import { computeSessionCostSnapshot } from '../agentReducer';
 import { safeCreateSet, hasSessionChanged } from '../agentReducerUtils';
+import { computeSessionDelta, applySessionDelta, type SessionDelta } from '../sessionDelta';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('SessionReducer');
 
 export type SessionAction =
   | { type: 'SESSION_UPSERT'; payload: AgentSessionState }
+  | { type: 'SESSIONS_BULK_UPSERT'; payload: { sessions: AgentSessionState[]; activeSessionId?: string } }
   | { type: 'SESSION_SET_ACTIVE'; payload: string }
   | { type: 'SESSION_RENAME'; payload: { sessionId: string; title: string } }
+  | { type: 'SESSION_PATCH'; payload: { sessionId: string; patch: Partial<AgentSessionState>; messagePatch?: { messageId: string; changes: Record<string, unknown> } } }
+  | { type: 'SESSION_APPLY_DELTA'; payload: SessionDelta }
   | { type: 'SESSION_DELETE'; payload: string }
-  | { type: 'SESSIONS_CLEAR' }
-  | { type: 'SESSIONS_CLEAR_FOR_WORKSPACE'; payload: string }
-  | { type: 'SESSIONS_CLEAR_FOR_WORKSPACE_PRESERVE_RUNNING'; payload: string };
+  | { type: 'SESSIONS_CLEAR' };
 
 /**
  * Handle session upsert (create or update)
@@ -45,6 +47,47 @@ function handleSessionUpsert(
   // OPTIMIZATION: Use fast change detection to skip expensive merge
   if (existingSession && !hasSessionChanged(existingSession, incomingSession)) {
     return state;
+  }
+
+  // OPTIMIZATION: When session exists, try delta-based update first to minimize object creation.
+  // computeSessionDelta produces a compact diff; if it finds differences, we can use
+  // the delta path which is cheaper than a full merge for large sessions.
+  if (existingSession) {
+    const delta = computeSessionDelta(existingSession, incomingSession);
+    if (delta) {
+      try {
+        const { session: deltaUpdated, messagesChanged, propertiesChanged } = applySessionDelta(
+          existingSession,
+          delta,
+        );
+        if (messagesChanged > 0 || propertiesChanged.length > 0) {
+          const deltaSessions = state.sessions.slice();
+          deltaSessions[existingSessionIndex] = deltaUpdated;
+          let nextCost = state.sessionCost;
+          if (messagesChanged > 0 && deltaUpdated.messages.some(m => m.usage)) {
+            try {
+              nextCost = { ...nextCost, [deltaUpdated.id]: computeSessionCostSnapshot(deltaUpdated.messages) };
+            } catch {
+              // Fall through to full merge on cost computation failure
+            }
+          }
+          // Handle idle-status clearing of pending confirmations
+          let updatedPendingConfirmations = state.pendingConfirmations;
+          if (incomingSession.status === 'idle') {
+            const hasConfs = Object.values(state.pendingConfirmations).some(c => c.sessionId === incomingSession.id);
+            if (hasConfs) {
+              updatedPendingConfirmations = Object.fromEntries(
+                Object.entries(state.pendingConfirmations).filter(([, c]) => c.sessionId !== incomingSession.id),
+              );
+            }
+          }
+          return { ...state, sessions: deltaSessions, sessionCost: nextCost, pendingConfirmations: updatedPendingConfirmations };
+        }
+      } catch {
+        // Delta application failed — fall through to full merge below
+        logger.debug('Delta-based upsert failed, falling back to full merge', { sessionId: incomingSession.id });
+      }
+    }
   }
   
   // If session status changed to 'idle', clear any pending confirmations
@@ -248,183 +291,6 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
 }
 
 /**
- * Handle clearing sessions for workspace
- */
-function handleSessionsClearForWorkspace(
-  state: AgentUIState, 
-  workspaceId: string
-): AgentUIState {
-  const sessions = state.sessions.filter(
-    (session) => session.workspaceId === workspaceId
-  );
-  
-  // Clear active session if it doesn't belong to the workspace
-  const activeSession = state.sessions.find(s => s.id === state.activeSessionId);
-  const activeSessionId = (activeSession?.workspaceId === workspaceId)
-    ? state.activeSessionId
-    : sessions[0]?.id;
-  
-  // Get removed sessions and their runIds
-  const removedSessions = state.sessions.filter(s => s.workspaceId !== workspaceId);
-  const removedSessionIds = new Set(removedSessions.map(s => s.id));
-  
-  // Extract runIds from removed sessions for cleanup of run-keyed state
-  const runIdsToClean = new Set<string>();
-  for (const session of removedSessions) {
-    if (session.messages) {
-      for (const message of session.messages) {
-        if (message.runId) {
-          runIdsToClean.add(message.runId);
-        }
-      }
-    }
-  }
-  
-  // Clean up session-keyed state
-  const progressGroups = Object.fromEntries(
-    Object.entries(state.progressGroups).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const artifacts = Object.fromEntries(
-    Object.entries(state.artifacts).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const agentStatus = Object.fromEntries(
-    Object.entries(state.agentStatus).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const routingDecisions = Object.fromEntries(
-    Object.entries(state.routingDecisions ?? {}).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const contextMetrics = Object.fromEntries(
-    Object.entries(state.contextMetrics ?? {}).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const todos = Object.fromEntries(
-    Object.entries(state.todos ?? {}).filter(([id]) => !removedSessionIds.has(id))
-  );
-  
-  // Clean up run-keyed state
-  const toolResults = runIdsToClean.size > 0
-    ? Object.fromEntries(Object.entries(state.toolResults).filter(([runId]) => !runIdsToClean.has(runId)))
-    : state.toolResults;
-  const inlineArtifacts = runIdsToClean.size > 0
-    ? Object.fromEntries(Object.entries(state.inlineArtifacts).filter(([runId]) => !runIdsToClean.has(runId)))
-    : state.inlineArtifacts;
-  
-  return {
-    ...state,
-    sessions,
-    activeSessionId,
-    progressGroups,
-    artifacts,
-    agentStatus,
-    routingDecisions,
-    contextMetrics,
-    todos,
-    toolResults,
-    inlineArtifacts,
-  };
-}
-
-/**
- * Handle clearing sessions for workspace while preserving running sessions.
- * This keeps sessions that are currently executing (not idle).
- */
-function handleSessionsClearForWorkspacePreserveRunning(
-  state: AgentUIState,
-  workspaceId: string
-): AgentUIState {
-  // Keep sessions that: 1) belong to the workspace OR 2) are currently running
-  const sessions = state.sessions.filter(
-    (session) => session.workspaceId === workspaceId || session.status !== 'idle'
-  );
-  
-  // Clear active session if it doesn't belong to the workspace and isn't running
-  const activeSession = state.sessions.find(s => s.id === state.activeSessionId);
-  const shouldKeepActive = activeSession && 
-    (activeSession.workspaceId === workspaceId || activeSession.status !== 'idle');
-  const activeSessionId = shouldKeepActive
-    ? state.activeSessionId
-    : sessions[0]?.id;
-  
-  // Get removed sessions and their runIds
-  const removedSessions = state.sessions.filter(
-    s => s.workspaceId !== workspaceId && s.status === 'idle'
-  );
-  const removedSessionIds = new Set(removedSessions.map(s => s.id));
-  
-  // If no sessions were removed, return early
-  if (removedSessionIds.size === 0) {
-    return state;
-  }
-  
-  // Extract runIds from removed sessions for cleanup of run-keyed state
-  const runIdsToClean = new Set<string>();
-  for (const session of removedSessions) {
-    if (session.messages) {
-      for (const message of session.messages) {
-        if (message.runId) {
-          runIdsToClean.add(message.runId);
-        }
-      }
-    }
-  }
-  
-  // Clean up session-keyed state (same as handleSessionsClearForWorkspace)
-  const progressGroups = Object.fromEntries(
-    Object.entries(state.progressGroups).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const artifacts = Object.fromEntries(
-    Object.entries(state.artifacts).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const agentStatus = Object.fromEntries(
-    Object.entries(state.agentStatus).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const routingDecisions = Object.fromEntries(
-    Object.entries(state.routingDecisions ?? {}).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const contextMetrics = Object.fromEntries(
-    Object.entries(state.contextMetrics ?? {}).filter(([id]) => !removedSessionIds.has(id))
-  );
-  const todos = Object.fromEntries(
-    Object.entries(state.todos ?? {}).filter(([id]) => !removedSessionIds.has(id))
-  );
-  
-  // Clean up run-keyed state
-  const toolResults = runIdsToClean.size > 0
-    ? Object.fromEntries(Object.entries(state.toolResults).filter(([runId]) => !runIdsToClean.has(runId)))
-    : state.toolResults;
-  const inlineArtifacts = runIdsToClean.size > 0
-    ? Object.fromEntries(Object.entries(state.inlineArtifacts).filter(([runId]) => !runIdsToClean.has(runId)))
-    : state.inlineArtifacts;
-  
-  // Also clean up pending confirmations and execution state for removed sessions
-  const pendingConfirmations = Object.fromEntries(
-    Object.entries(state.pendingConfirmations).filter(([runId]) => !runIdsToClean.has(runId))
-  );
-  const executingTools = Object.fromEntries(
-    Object.entries(state.executingTools ?? {}).filter(([runId]) => !runIdsToClean.has(runId))
-  );
-  const queuedTools = Object.fromEntries(
-    Object.entries(state.queuedTools ?? {}).filter(([runId]) => !runIdsToClean.has(runId))
-  );
-  
-  return {
-    ...state,
-    sessions,
-    activeSessionId,
-    progressGroups,
-    artifacts,
-    agentStatus,
-    routingDecisions,
-    contextMetrics,
-    todos,
-    toolResults,
-    inlineArtifacts,
-    pendingConfirmations,
-    executingTools,
-    queuedTools,
-  };
-}
-
-/**
  * Session reducer
  */
 export function sessionReducer(
@@ -434,7 +300,55 @@ export function sessionReducer(
   switch (action.type) {
     case 'SESSION_UPSERT':
       return handleSessionUpsert(state, action.payload);
-      
+
+    case 'SESSIONS_BULK_UPSERT': {
+      // PERFORMANCE: Load all sessions in a single dispatch to avoid N individual dispatches
+      // Each individual dispatch triggers all subscribers & React re-renders.
+      // Bulk loading reduces this from N dispatches to 1.
+      const { sessions: incomingSessions, activeSessionId: bulkActiveId } = action.payload;
+      if (incomingSessions.length === 0) return state;
+
+      // Build a map of existing sessions for O(1) lookups
+      const existingMap = new Map(state.sessions.map(s => [s.id, s]));
+      const mergedSessions = [...state.sessions];
+      let nextSessionCost = state.sessionCost;
+
+      for (const incoming of incomingSessions) {
+        const existing = existingMap.get(incoming.id);
+        const existingIdx = existing ? mergedSessions.findIndex(s => s.id === incoming.id) : -1;
+        if (existing && existingIdx >= 0) {
+          // Update existing — only if it actually changed
+          if (!hasSessionChanged(existing, incoming)) continue;
+          mergedSessions[existingIdx] = incoming;
+          existingMap.set(incoming.id, incoming);
+        } else {
+          // New session
+          mergedSessions.push(incoming);
+          existingMap.set(incoming.id, incoming);
+        }
+
+        // Compute cost once per session (not per dispatch)
+        if (incoming.messages.some(m => m.usage)) {
+          try {
+            nextSessionCost = {
+              ...nextSessionCost,
+              [incoming.id]: computeSessionCostSnapshot(incoming.messages),
+            };
+          } catch (err) {
+            logger.warn('Cost computation failed for session', { sessionId: incoming.id, error: err instanceof Error ? err.message : String(err) });
+          }
+        }
+      }
+
+      const nextActiveId = bulkActiveId ?? state.activeSessionId ?? mergedSessions[0]?.id;
+      return {
+        ...state,
+        sessions: mergedSessions,
+        activeSessionId: nextActiveId,
+        sessionCost: nextSessionCost,
+      };
+    }
+
     case 'SESSION_SET_ACTIVE':
       return { ...state, activeSessionId: action.payload };
       
@@ -452,6 +366,74 @@ export function sessionReducer(
       return { ...state, sessions };
     }
     
+    case 'SESSION_PATCH': {
+      // Lightweight patch — O(1) update for trivial field changes (rename, config, reaction)
+      // Avoids the full O(n) SESSION_UPSERT merge with all its message copying
+      const { sessionId, patch, messagePatch } = action.payload;
+      const patchIndex = state.sessions.findIndex(s => s.id === sessionId);
+      if (patchIndex === -1) return state;
+
+      const existing = state.sessions[patchIndex];
+      let updated = { ...existing, ...patch };
+
+      // Apply message-level patch (e.g., reaction change) without copying all messages
+      if (messagePatch) {
+        const msgIndex = updated.messages.findIndex(m => m.id === messagePatch.messageId);
+        if (msgIndex !== -1) {
+          const messages = updated.messages.slice();
+          messages[msgIndex] = { ...messages[msgIndex], ...messagePatch.changes };
+          updated = { ...updated, messages };
+        }
+      }
+
+      const patchedSessions = state.sessions.slice();
+      patchedSessions[patchIndex] = updated;
+      return { ...state, sessions: patchedSessions };
+    }
+
+    case 'SESSION_APPLY_DELTA': {
+      // Apply a computed delta to an existing session for efficient incremental updates.
+      // Uses sessionDelta.ts applySessionDelta for minimal object creation.
+      const delta = action.payload;
+      const deltaIndex = state.sessions.findIndex(s => s.id === delta.sessionId);
+      if (deltaIndex === -1) {
+        logger.warn('SESSION_APPLY_DELTA: session not found', { sessionId: delta.sessionId });
+        return state;
+      }
+
+      try {
+        const { session: updatedSession, messagesChanged, propertiesChanged } = applySessionDelta(
+          state.sessions[deltaIndex],
+          delta,
+        );
+
+        if (messagesChanged === 0 && propertiesChanged.length === 0) {
+          return state; // No-op delta
+        }
+
+        const deltaSessions = state.sessions.slice();
+        deltaSessions[deltaIndex] = updatedSession;
+
+        // Recompute cost only when messages changed and have usage data
+        let nextCost = state.sessionCost;
+        if (messagesChanged > 0 && updatedSession.messages.some(m => m.usage)) {
+          try {
+            nextCost = {
+              ...nextCost,
+              [updatedSession.id]: computeSessionCostSnapshot(updatedSession.messages),
+            };
+          } catch (err) {
+            logger.warn('Cost computation failed for session delta', { sessionId: updatedSession.id, error: err instanceof Error ? err.message : String(err) });
+          }
+        }
+
+        return { ...state, sessions: deltaSessions, sessionCost: nextCost };
+      } catch (err) {
+        logger.error('SESSION_APPLY_DELTA failed, falling back to full upsert', { error: err });
+        return state;
+      }
+    }
+
     case 'SESSION_DELETE':
       return handleSessionDelete(state, action.payload);
       
@@ -474,12 +456,6 @@ export function sessionReducer(
         sessionCost: {},
         terminalStreams: {},
       };
-      
-    case 'SESSIONS_CLEAR_FOR_WORKSPACE':
-      return handleSessionsClearForWorkspace(state, action.payload);
-      
-    case 'SESSIONS_CLEAR_FOR_WORKSPACE_PRESERVE_RUNNING':
-      return handleSessionsClearForWorkspacePreserveRunning(state, action.payload);
       
     default:
       return state;

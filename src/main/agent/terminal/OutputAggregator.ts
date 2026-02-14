@@ -111,6 +111,9 @@ export class OutputAggregator extends EventEmitter {
     this.cleanupInterval = setInterval(() => {
       this.cleanupOldBuffers();
     }, 60000); // Check every minute
+    if (this.cleanupInterval && typeof this.cleanupInterval === 'object' && 'unref' in this.cleanupInterval) {
+      (this.cleanupInterval as NodeJS.Timeout).unref();
+    }
 
     this.logger.info('OutputAggregator initialized');
   }

@@ -68,6 +68,7 @@ export default [
         HTMLSpanElement: 'readonly',
         HTMLAudioElement: 'readonly',
         HTMLAnchorElement: 'readonly',
+        HTMLPreElement: 'readonly',
         SVGSVGElement: 'readonly',
         Node: 'readonly',
         DOMRect: 'readonly',
@@ -97,6 +98,8 @@ export default [
         BeforeUnloadEvent: 'readonly',
         // EventSource for SSE
         EventSource: 'readonly',
+        WebSocket: 'readonly',
+        DOMException: 'readonly',
         WeakRef: 'readonly',
         WeakMap: 'readonly',
         WeakSet: 'readonly',
@@ -184,9 +187,6 @@ export default [
       '*.config.ts',
       '*.config.mjs',
       '*.config.js',
-      'forge.config.ts',
-      'vite.*.config.*',
-      'vitest.config.ts',
     ],
   },
 ];

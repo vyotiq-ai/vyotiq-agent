@@ -492,6 +492,12 @@ export class RecoveryManager extends EventEmitter {
     };
 
     this.sessions.set(session.id, session);
+
+    // Periodically clear stale recovery sessions to prevent unbounded growth
+    if (this.sessions.size > 200) {
+      this.clearOldSessions(this.config.recoveryTimeoutMs || 3600000);
+    }
+
     return session;
   }
 

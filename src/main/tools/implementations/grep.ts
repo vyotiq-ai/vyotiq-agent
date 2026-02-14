@@ -8,6 +8,7 @@ import { promises as fs } from 'node:fs';
 import { join, relative } from 'node:path';
 import { resolvePath } from '../../utils/fileSystem';
 import { createLogger } from '../../logger';
+import { rustSidecar } from '../../rustSidecar';
 import { checkCancellation, formatCancelled } from '../types/formatUtils';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
@@ -41,6 +42,231 @@ const FILE_TYPE_MAP: Record<string, string[]> = {
   rb: ['.rb'],
   php: ['.php'],
 };
+
+// ---------------------------------------------------------------------------
+// Rust backend fast grep (indexed workspace, gitignore-aware)
+// ---------------------------------------------------------------------------
+
+const RUST_GREP_TIMEOUT = 15_000;
+
+interface RustGrepResult {
+  path: string;
+  relative_path: string;
+  line_number: number;
+  line_content: string;
+  match_start: number;
+  match_end: number;
+  context_before: string[];
+  context_after: string[];
+}
+
+interface RustGrepResponse {
+  results: RustGrepResult[];
+  total_matches: number;
+  files_searched: number;
+  query_time_ms: number;
+}
+
+/**
+ * Attempt grep via the Rust backend for fast indexed search.
+ * Returns null if the backend is unavailable or the workspace isn't indexed.
+ */
+async function tryRustBackendGrep(
+  args: GrepArgs,
+  context: ToolExecutionContext,
+): Promise<ToolExecutionResult | null> {
+  try {
+    if (!rustSidecar.isRunning()) return null;
+
+    const port = rustSidecar.getPort();
+
+    // Resolve workspace ID
+    const wsResponse = await fetch(`http://127.0.0.1:${port}/api/workspaces`, {
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!wsResponse.ok) return null;
+
+    const workspaces = await wsResponse.json() as Array<{ id: string; path: string }>;
+    const list = Array.isArray(workspaces) ? workspaces : [];
+    const normalize = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    const target = normalize(context.workspacePath);
+    const ws = list.find((w) => normalize(w.path) === target);
+    if (!ws) return null;
+
+    // Resolve search scope — Rust backend now supports sub-directory scoping via `path` field
+    const searchPath = args.path?.trim() || '.';
+    // Normalize path for Rust backend: use relative path from workspace root
+    let scopePath: string | undefined;
+    if (searchPath !== '.' && searchPath !== './' && searchPath !== context.workspacePath) {
+      // Convert to relative path from workspace root
+      const resolved = resolvePath(context.workspacePath, searchPath);
+      const wsNorm = context.workspacePath.replace(/\\/g, '/').replace(/\/+$/, '');
+      const resolvedNorm = resolved.replace(/\\/g, '/');
+      if (resolvedNorm.toLowerCase().startsWith(wsNorm.toLowerCase())) {
+        scopePath = resolvedNorm.slice(wsNorm.length).replace(/^\//, '') || undefined;
+      } else {
+        // Path is outside workspace — can't use Rust backend
+        return null;
+      }
+    }
+
+    const caseInsensitive = args['-i'] || false;
+    const contextLines = args['-C'] ?? Math.max(args['-B'] ?? 0, args['-A'] ?? 0);
+
+    const body: Record<string, unknown> = {
+      pattern: args.pattern,
+      is_regex: true,
+      case_sensitive: !caseInsensitive,
+      limit: args.head_limit ?? 100,
+      include_context: contextLines > 0,
+      context_lines: contextLines || 2,
+    };
+
+    // Include sub-directory scope if specified
+    if (scopePath) {
+      body.path = scopePath;
+    }
+
+    // Map file_type / glob to file_pattern
+    if (args.type && FILE_TYPE_MAP[args.type.toLowerCase()]) {
+      const exts = FILE_TYPE_MAP[args.type.toLowerCase()];
+      body.file_pattern = `*{${exts.join(',')}}`;
+    } else if (args.glob) {
+      body.file_pattern = args.glob;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), RUST_GREP_TIMEOUT);
+    if (context.signal) {
+      context.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
+    let response: RustGrepResponse;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/workspaces/${ws.id}/search/grep`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!res.ok) return null;
+      response = await res.json() as RustGrepResponse;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    // Format results to match existing grep output format
+    const outputMode = args.output_mode || 'files_with_matches';
+    const showLineNumbers = args['-n'] !== false;
+    const headLimit = args.head_limit;
+
+    if (response.results.length === 0) {
+      return {
+        toolName: 'grep',
+        success: true,
+        output: `No matches found for pattern: ${args.pattern}`,
+        metadata: {
+          pattern: args.pattern,
+          path: searchPath,
+          matchCount: 0,
+          filesSearched: response.files_searched,
+          source: 'rust-backend',
+        },
+      };
+    }
+
+    // Group results by file
+    const byFile = new Map<string, RustGrepResult[]>();
+    for (const r of response.results) {
+      const key = r.relative_path || r.path;
+      if (!byFile.has(key)) byFile.set(key, []);
+      byFile.get(key)!.push(r);
+    }
+
+    let output: string;
+
+    switch (outputMode) {
+      case 'count': {
+        const entries = Array.from(byFile.entries())
+          .map(([file, matches]) => `${file}: ${matches.length}`)
+          .slice(0, headLimit);
+        output = entries.join('\n');
+        output += `\n\n${response.total_matches} match(es) in ${byFile.size} file(s)`;
+        break;
+      }
+      case 'files_with_matches': {
+        const files = Array.from(byFile.keys()).slice(0, headLimit);
+        output = files.join('\n');
+        output += `\n\n${byFile.size} file(s) with matches`;
+        break;
+      }
+      case 'content':
+      default: {
+        const chunks: string[] = [];
+        let lineCount = 0;
+        for (const [file, matches] of byFile.entries()) {
+          if (headLimit && lineCount >= headLimit) break;
+          for (const m of matches) {
+            if (headLimit && lineCount >= headLimit) break;
+            const contextParts: string[] = [];
+
+            // Context before
+            if (m.context_before.length > 0) {
+              const startLine = m.line_number - m.context_before.length;
+              for (let i = 0; i < m.context_before.length; i++) {
+                const ln = startLine + i;
+                const lineNumStr = showLineNumbers ? ln.toString().padStart(4, ' ') + ' | ' : '';
+                contextParts.push(` ${lineNumStr}${m.context_before[i]}`);
+                lineCount++;
+              }
+            }
+
+            // Match line
+            const lineNumStr = showLineNumbers ? m.line_number.toString().padStart(4, ' ') + ' | ' : '';
+            contextParts.push(`>${lineNumStr}${m.line_content}`);
+            lineCount++;
+
+            // Context after
+            if (m.context_after.length > 0) {
+              const startLine = m.line_number + 1;
+              for (let i = 0; i < m.context_after.length; i++) {
+                const ln = startLine + i;
+                const lnStr = showLineNumbers ? ln.toString().padStart(4, ' ') + ' | ' : '';
+                contextParts.push(` ${lnStr}${m.context_after[i]}`);
+                lineCount++;
+              }
+            }
+
+            chunks.push(`${file}:\n${contextParts.join('\n')}`);
+          }
+        }
+        output = chunks.join('\n---\n');
+        output += `\n\n${response.total_matches} match(es) in ${byFile.size} file(s) [${response.query_time_ms}ms]`;
+        break;
+      }
+    }
+
+    return {
+      toolName: 'grep',
+      success: true,
+      output,
+      metadata: {
+        pattern: args.pattern,
+        path: searchPath,
+        matchCount: response.total_matches,
+        filesWithMatches: byFile.size,
+        filesSearched: response.files_searched,
+        queryTimeMs: response.query_time_ms,
+        source: 'rust-backend',
+      },
+    };
+  } catch (err) {
+    logger.debug('Rust backend grep unavailable, falling back to Node.js', {
+      error: (err as Error).message,
+    });
+    return null;
+  }
+}
 
 interface GrepArgs extends Record<string, unknown> {
   /** The regular expression pattern to search for in file contents */
@@ -242,6 +468,13 @@ edit(file, old, new) → make changes
         success: false,
         output: `═══ INVALID PATTERN ═══\n\nPattern must be a non-empty string.\n\n═══ EXAMPLES ═══\n• "FIXME" - Find fixmes\n• "function\\s+\\w+" - Find function declarations\n• "import.*react" - Find React imports\n• "console\\.log" - Find console.log calls (escape the dot)`,
       };
+    }
+
+    // Try Rust backend fast grep first (indexed, gitignore-aware, faster for large codebases)
+    // Falls back to Node.js implementation if backend unavailable or for sub-directory searches
+    if (!args.multiline) {
+      const rustResult = await tryRustBackendGrep(args, context);
+      if (rustResult) return rustResult;
     }
 
     // Use new parameter names

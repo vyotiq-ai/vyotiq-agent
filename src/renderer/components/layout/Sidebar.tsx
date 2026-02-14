@@ -1,8 +1,10 @@
 import React, { memo, useCallback, useState, useEffect } from 'react';
 import { Terminal, AlertCircle, FileOutput, Bug } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { SidebarWorkspaceList } from '../../features/workspaces/components/SidebarWorkspaceList';
 import { SidebarFileTree } from '../../features/fileTree/components/SidebarFileTree';
+import { SearchPanel, IndexStatusPanel } from '../../features/workspace';
+import { openFileInEditor } from '../../features/editor/components/EditorPanel';
+import { useWorkspaceState } from '../../state/WorkspaceProvider';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -39,8 +41,8 @@ const PanelIcon = memo<PanelIconProps>(({ icon, label, shortcut, onClick, badge,
         'absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5',
         'flex items-center justify-center',
         'text-[8px] font-bold rounded-full',
-        badgeType === 'error' 
-          ? 'bg-[var(--color-error)] text-white' 
+        badgeType === 'error'
+          ? 'bg-[var(--color-error)] text-white'
           : badgeType === 'warning'
           ? 'bg-[var(--color-warning)] text-black'
           : 'bg-[var(--color-info)] text-white'
@@ -59,8 +61,13 @@ interface ProblemCounts {
   warnings: number;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ collapsed, width = 248 }) => {
+const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) => {
+  const [activeTab, setActiveTab] = useState<'files' | 'search'>('files');
   const [problemCounts, setProblemCounts] = useState<ProblemCounts>({ errors: 0, warnings: 0 });
+
+  // Access workspace context for Rust backend integration
+  const wsState = useWorkspaceState();
+  const rustWorkspaceId = wsState?.rustWorkspaceId ?? null;
 
   // Listen for problem count updates
   useEffect(() => {
@@ -72,6 +79,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, width = 248 }) => {
     return () => {
       document.removeEventListener('vyotiq:problems:counts', handleProblemCounts as EventListener);
     };
+  }, []);
+
+  // Listen for global keyboard shortcuts to switch tabs
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        setActiveTab('search');
+      }
+      if (e.ctrlKey && e.shiftKey && e.key === 'E') {
+        e.preventDefault();
+        setActiveTab('files');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   // Dispatch custom events to toggle panels
@@ -104,14 +127,44 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, width = 248 }) => {
       aria-label="Sidebar navigation"
       aria-hidden={collapsed}
     >
-      {/* Workspaces section - fixed height, compact */}
-      <div className="shrink-0 px-2 sm:px-3 pt-3 pb-2">
-        <SidebarWorkspaceList collapsed={collapsed} />
-      </div>
-      
-      {/* File tree section - fills remaining space */}
-      <div className="flex-1 min-h-0 px-2 sm:px-3 pb-3 overflow-hidden">
-        <SidebarFileTree collapsed={collapsed} />
+      {/* Sidebar content */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Tab switcher — replaces activity bar icons */}
+        <div className="shrink-0 flex items-center border-b border-[var(--color-border-subtle)] px-1 h-[28px] gap-px">
+          {(['files', 'search'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                'px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest rounded-sm transition-colors',
+                activeTab === tab
+                  ? 'text-[var(--color-text-primary)] bg-[var(--color-surface-2)]'
+                  : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
+              )}
+              title={tab === 'files' ? 'Explorer (Ctrl+Shift+E)' : 'Search (Ctrl+Shift+F)'}
+            >
+              {tab === 'files' ? 'explorer' : 'search'}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content - fills remaining space */}
+        <div className="flex-1 min-h-0 px-2 sm:px-3 pt-3 pb-3 overflow-hidden">
+          {activeTab === 'files' && (
+            <SidebarFileTree collapsed={collapsed} onFileOpen={openFileInEditor} />
+          )}
+          {activeTab === 'search' && (
+            <SearchPanel
+              workspaceId={rustWorkspaceId}
+              onFileOpen={(path, _line) => openFileInEditor(path)}
+            />
+          )}
+        </div>
+
+        {/* Index status bar – shows progress/status when workspace is active */}
+        {rustWorkspaceId && (
+          <IndexStatusPanel workspaceId={rustWorkspaceId} />
+        )}
       </div>
 
       {/* Bottom panel toggles - refined compact bar */}
@@ -151,4 +204,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, width = 248 }) => {
   );
 };
 
+export const Sidebar = memo(SidebarComponent);
+Sidebar.displayName = 'Sidebar';
 

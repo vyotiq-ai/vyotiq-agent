@@ -166,6 +166,9 @@ export class SelfHealingAgent extends EventEmitter {
         });
       });
     }, this.config.checkIntervalMs);
+    if (this.checkInterval && typeof this.checkInterval === 'object' && 'unref' in this.checkInterval) {
+      (this.checkInterval as NodeJS.Timeout).unref();
+    }
 
     // Initial check
     this.performHealthCheck().catch(err => {
@@ -336,6 +339,10 @@ export class SelfHealingAgent extends EventEmitter {
     } finally {
       action.completedAt = Date.now();
       this.state.healingActions.push(action);
+      // Cap healing actions history to prevent unbounded memory growth
+      if (this.state.healingActions.length > 500) {
+        this.state.healingActions.splice(0, this.state.healingActions.length - 500);
+      }
       this.state.isHealing = false;
       this.state.lastHealing = Date.now();
     }

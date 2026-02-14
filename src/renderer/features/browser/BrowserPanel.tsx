@@ -167,10 +167,10 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
 
   // Update URL input when browser navigates
   useEffect(() => {
-    if (browser.state.url && browser.state.url !== urlInput) {
+    if (browser.state.url) {
       setUrlInput(browser.state.url);
     }
-  }, [browser.state.url, urlInput]);
+  }, [browser.state.url]);
 
   // Handle URL submission
   const handleNavigate = useCallback(() => {

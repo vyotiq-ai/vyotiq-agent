@@ -14,9 +14,6 @@ export * from './sessions';
 // Settings feature - Application settings
 export * from './settings';
 
-// Workspaces feature - Workspace management
-export * from './workspaces';
-
 // Browser feature - Embedded browser for agent
 export * from './browser';
 
@@ -26,11 +23,14 @@ export * from './undo';
 // File Tree feature - VS Code-style file explorer
 export * from './fileTree';
 
-// Editor feature - Monaco code editor
-export * from './editor';
-
 // Debugging feature - Agent execution debugging
 export * from './debugging';
 
 // Onboarding feature - First-run wizard
 export * from './onboarding';
+
+// Editor feature - Built-in code editor with tabs
+export * from './editor';
+
+// Workspace feature - Workspace management & search
+export * from './workspace';

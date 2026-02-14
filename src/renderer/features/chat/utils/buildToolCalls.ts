@@ -45,7 +45,7 @@ export function buildToolCalls(params: {
   for (const msg of messages) {
     if (msg.role === 'assistant' && msg.toolCalls) {
       for (const tc of msg.toolCalls) {
-        if (tc.callId) {
+        if (tc && tc.callId) {
           toolCallMap.set(tc.callId, tc);
         }
       }

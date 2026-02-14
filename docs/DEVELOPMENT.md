@@ -109,7 +109,6 @@ main/
 renderer/
 ├── features/                 # Feature modules
 │   ├── chat/                 # Chat interface
-│   ├── editor/               # Code editor
 │   ├── terminal/             # Terminal emulator
 │   ├── browser/              # Browser panel
 │   ├── settings/             # Settings panel
@@ -119,7 +118,6 @@ renderer/
 │   └── onboarding/           # First-run wizard
 ├── state/                    # State management
 │   ├── AgentProvider.tsx     # Agent context
-│   ├── EditorProvider.tsx    # Editor context
 │   ├── UIProvider.tsx        # UI context
 │   └── reducers/             # Reducer functions
 ├── components/               # Shared components
@@ -834,7 +832,6 @@ const DEFAULT_SETTINGS: Settings = {
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/)
 - [Tailwind CSS Documentation](https://tailwindcss.com/docs)
 - [Vitest Documentation](https://vitest.dev)
-- [Monaco Editor Documentation](https://microsoft.github.io/monaco-editor/)
 
 ---
 

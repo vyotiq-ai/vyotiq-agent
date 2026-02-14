@@ -3,7 +3,7 @@
  * 
  * Custom dropdown select with CLI aesthetics.
  */
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useId } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useClickOutside } from '../../hooks/useClickOutside';
@@ -81,9 +81,11 @@ export const Select: React.FC<SelectProps> = ({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const listboxId = useId();
   
   const config = sizeStyles[size];
   const selectedOption = options.find(opt => opt.value === value);
+  const getOptionId = (index: number) => `${listboxId}-option-${index}`;
 
   // Close on click outside
   const containerRef = useClickOutside<HTMLDivElement>(() => {
@@ -203,6 +205,8 @@ export const Select: React.FC<SelectProps> = ({
         )}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        aria-activedescendant={isOpen && highlightedIndex >= 0 ? getOptionId(highlightedIndex) : undefined}
+        aria-invalid={error ? 'true' : undefined}
       >
         <span className={cn(
           'truncate',
@@ -246,6 +250,7 @@ export const Select: React.FC<SelectProps> = ({
             return (
               <li
                 key={option.value}
+                id={getOptionId(index)}
                 role="option"
                 aria-selected={isSelected}
                 onClick={() => !option.disabled && handleSelect(option.value)}
@@ -284,7 +289,7 @@ export const Select: React.FC<SelectProps> = ({
         </p>
       )}
       {error && (
-        <p className="text-[10px] text-[var(--color-error)] ml-0.5 mt-1.5 animate-in slide-in-from-top-1 fade-in duration-200 flex items-center gap-1">
+        <p role="alert" className="text-[10px] text-[var(--color-error)] ml-0.5 mt-1.5 animate-in slide-in-from-top-1 fade-in duration-200 flex items-center gap-1">
           <span className="text-[var(--color-error)]">[ERR]</span> {error}
         </p>
       )}

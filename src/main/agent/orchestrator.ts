@@ -11,11 +11,9 @@ import type {
   LLMProviderName,
   ConversationBranch,
   SessionSummary,
-  WorkspaceResourceMetrics,
 } from '../../shared/types';
 import { DEFAULT_TOOL_CONFIG_SETTINGS } from '../../shared/types';
 import type { SettingsStore } from './settingsStore';
-import type { WorkspaceManager } from '../workspaces/workspaceManager';
 import { buildProviderMap } from './providers';
 import type { Logger } from '../logger';
 import { buildToolingSystem, ToolRegistry, type ToolLogger, type TerminalManager } from '../tools';
@@ -23,32 +21,27 @@ import { SessionManager } from './sessionManager';
 import { RunExecutor } from './runExecutor';
 import { ToolConfirmationHandler } from './toolConfirmationHandler';
 import { SessionManagementHandler } from './sessionManagementHandler';
-import { getEditorAIService } from './editor';
 import { getCacheManager, getContextCache, getToolResultCache } from './cache';
 import { TerminalEventHandler } from './terminalEventHandler';
 import { ProviderManager } from './providerManager';
 import { initRecovery, getSelfHealingAgent } from './recovery';
+import { getLoopDetector } from './loopDetection';
 import { initGitIntegration } from './git';
-import { ModelQualityTracker } from './modelQuality';
-import { WorkspaceResourceManager } from './execution/workspaceResourceManager';
-import { initMultiSessionManager, getMultiSessionManager, type MultiSessionManager } from './execution/multiSessionManager';
+import { ModelQualityTracker, getModelQualityTracker } from './modelQuality';
+import { getSessionHealthMonitor } from './sessionHealth';
 
 interface OrchestratorDeps {
   settingsStore: SettingsStore;
-  workspaceManager: WorkspaceManager;
   logger: Logger;
   sessionsPath?: string;
 }
 
 export class AgentOrchestrator extends EventEmitter {
   private readonly settingsStore: SettingsStore;
-  private readonly workspaceManager: WorkspaceManager;
   private readonly logger: Logger;
   private readonly toolRegistry: ToolRegistry;
   private readonly terminalManager: TerminalManager;
   private readonly modelQualityTracker: ModelQualityTracker;
-  private readonly workspaceResourceManager: WorkspaceResourceManager;
-  private multiSessionManager: MultiSessionManager | null = null;
 
   private sessionManager: SessionManager;
   private runExecutor: RunExecutor;
@@ -56,50 +49,24 @@ export class AgentOrchestrator extends EventEmitter {
   private sessionManagementHandler: SessionManagementHandler;
   private terminalEventHandler: TerminalEventHandler;
   private providerManager: ProviderManager;
-  private editorState: {
-    openFiles: string[];
-    activeFile: string | null;
-    cursorPosition: { lineNumber: number; column: number } | null;
-    diagnostics?: Array<{
-      filePath: string;
-      message: string;
-      severity: 'error' | 'warning' | 'info' | 'hint';
-      line: number;
-      column: number;
-      endLine?: number;
-      endColumn?: number;
-      source?: string;
-      code?: string | number;
-    }>;
-  } = { openFiles: [], activeFile: null, cursorPosition: null, diagnostics: [] };
-
-  // Debounce timer for editor state logging to reduce log noise
-  private editorStateLogTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastEditorStateLogTime = 0;
-  private readonly EDITOR_STATE_LOG_DEBOUNCE_MS = 500; // Only log once per 500ms
 
   // Throttle session-state events to prevent renderer thrashing
   private lastSessionStateEmitTime = new Map<string, number>();
   private pendingSessionStateEmits = new Map<string, ReturnType<typeof setTimeout>>();
-  private readonly SESSION_STATE_THROTTLE_MS = 100; // Minimum 100ms between session-state events per session
+  private readonly SESSION_STATE_THROTTLE_MS = 250; // Minimum 250ms between session-state events per session
+
+  // Periodic cleanup interval for orphaned session throttle tracking
+  private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(deps: OrchestratorDeps) {
     super();
+    // Allow up to 50 listeners to avoid Node.js memory leak warnings with many sessions
+    this.setMaxListeners(50);
     this.settingsStore = deps.settingsStore;
-    this.workspaceManager = deps.workspaceManager;
     this.logger = deps.logger;
 
     // Initialize model quality tracking
     this.modelQualityTracker = new ModelQualityTracker();
-
-    // Initialize workspace resource manager for multi-workspace concurrent session support
-    this.workspaceResourceManager = new WorkspaceResourceManager(this.logger, {
-      maxSessionsPerWorkspace: 5,
-      maxToolExecutionsPerWorkspace: 10,
-      rateLimitWindowMs: 60_000,
-      maxRequestsPerWindow: 60,
-      minRequestDelayMs: 100,
-    });
 
     const toolLogger: ToolLogger = {
       info: (message: string, meta?: Record<string, unknown>) => this.logger.info(`[tool] ${message}`, meta),
@@ -113,12 +80,11 @@ export class AgentOrchestrator extends EventEmitter {
     // Terminal event listeners are set up by TerminalEventHandler below
 
 
-    this.sessionManager = new SessionManager(this.workspaceManager, deps.sessionsPath);
+    this.sessionManager = new SessionManager(deps.sessionsPath);
     this.runExecutor = new RunExecutor({
       providers: buildProviderMap(this.settingsStore.get()), // Temporary initial providers
       toolRegistry: this.toolRegistry,
       terminalManager: this.terminalManager,
-      workspaceManager: this.workspaceManager,
       logger: this.logger,
       emitEvent: (event) => this.emitEvent(event),
       getRateLimit: (provider: LLMProviderName) => this.settingsStore.get().rateLimits[provider] ?? 0,
@@ -138,9 +104,7 @@ export class AgentOrchestrator extends EventEmitter {
         // Merge with defaults to ensure all required properties are present
         return toolSettings ? { ...DEFAULT_TOOL_CONFIG_SETTINGS, ...toolSettings } : DEFAULT_TOOL_CONFIG_SETTINGS;
       },
-      getEditorState: () => this.getEditorState(),
       getWorkspaceDiagnostics: () => this.getWorkspaceDiagnostics(),
-      workspaceResourceManager: this.workspaceResourceManager,
     });
 
     // Initialize new managers
@@ -168,7 +132,6 @@ export class AgentOrchestrator extends EventEmitter {
 
     this.sessionManagementHandler = new SessionManagementHandler(
       this.sessionManager,
-      this.workspaceManager,
       this.logger,
       (event) => this.emitEvent(event),
     );
@@ -190,19 +153,6 @@ export class AgentOrchestrator extends EventEmitter {
     await this.sessionManager.load();
     this.providerManager.validateConfiguration();
 
-    // Initialize multi-session manager for concurrent session support across workspaces
-    this.multiSessionManager = initMultiSessionManager(
-      this.logger,
-      this.workspaceResourceManager,
-      (event) => this.emitEvent(event),
-      {
-        maxGlobalConcurrent: 10,
-        maxPerWorkspaceConcurrent: 5,
-        emitCrossWorkspaceEvents: true,
-      }
-    );
-    this.logger.info('Multi-session manager initialized for concurrent session support');
-
     // Initialize git integration components
     try {
       initGitIntegration(this.logger);
@@ -223,23 +173,86 @@ export class AgentOrchestrator extends EventEmitter {
     // Initialize MCP (Model Context Protocol) integration
     await this.initializeMCPIntegration();
 
-    // Initialize editor AI service for code editor features
-    const { initEditorAIService } = await import('./editor');
-    initEditorAIService({
-      getProviders: () => this.providerManager.getProviders(),
-      getConfig: () => this.settingsStore.get().editorAISettings,
-      logger: this.logger,
-    });
-    this.logger.info('Editor AI service initialized');
-
     // Initialize recovery/self-healing system
     try {
-      initRecovery({
+      await initRecovery({
         logger: this.logger,
         emitEvent: (event: unknown) => this.emitEvent(event as RendererEvent),
         getSystemState: () => ({
           activeRuns: this.sessionManager.getAllActiveSessions().length,
         }),
+        reduceConcurrency: async (factor: number) => {
+          // Reduce concurrency by pausing a proportion of active sessions
+          const activeSessions = this.sessionManager.getAllActiveSessions();
+          const sessionsToReduce = Math.max(1, Math.ceil(activeSessions.length * Math.min(1, Math.max(0, factor))));
+          const sessionsToPause = activeSessions.slice(0, sessionsToReduce);
+          for (const session of sessionsToPause) {
+            try {
+              this.runExecutor.pauseRun(session.id);
+            } catch (err) {
+              this.logger.warn('Failed to pause session during concurrency reduction', {
+                sessionId: session.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          this.logger.info('Self-healing: paused sessions to reduce concurrency', {
+            pausedCount: sessionsToPause.length,
+            totalActive: activeSessions.length,
+            reductionFactor: factor,
+          });
+        },
+        pauseNewTasks: async (durationMs: number) => {
+          // Pause all active sessions and auto-resume after duration
+          const activeSessions = this.sessionManager.getAllActiveSessions();
+          for (const session of activeSessions) {
+            try {
+              this.runExecutor.pauseRun(session.id);
+            } catch (err) {
+              this.logger.warn('Failed to pause session', {
+                sessionId: session.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          setTimeout(() => {
+            // Re-fetch active sessions to avoid resuming stale/completed sessions
+            const currentSessions = this.sessionManager.getAllActiveSessions();
+            for (const session of currentSessions) {
+              try {
+                this.runExecutor.resumeRun(session.id);
+              } catch (err) {
+                this.logger.warn('Failed to resume session', {
+                  sessionId: session.id,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }
+            this.logger.info('Self-healing: auto-resumed paused sessions', { durationMs });
+          }, durationMs);
+        },
+        triggerCircuitBreak: async () => {
+          // Cancel all active runs as emergency measure
+          const activeSessions = this.sessionManager.getAllActiveSessions();
+          let cancelledCount = 0;
+          for (const sessionState of activeSessions) {
+            try {
+              const session = this.sessionManager.getSession(sessionState.id);
+              if (session) {
+                this.runExecutor.cancelRun(sessionState.id, session);
+                cancelledCount++;
+              }
+            } catch (err) {
+              this.logger.warn('Failed to cancel session during circuit break', {
+                sessionId: sessionState.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+          this.logger.warn('Self-healing: circuit break triggered, cancelled all active runs', {
+            cancelledCount,
+          });
+        },
         clearCaches: async () => {
           // Prompt cache (stats only; provider-side caching is external)
           try {
@@ -267,14 +280,6 @@ export class AgentOrchestrator extends EventEmitter {
             // Context cache reset is non-critical; log for debugging
             this.logger.debug('Failed to reset context cache', { error: err instanceof Error ? err.message : String(err) });
           }
-
-          // Editor AI cache
-          try {
-            getEditorAIService()?.clearCache();
-          } catch (err) {
-            // Editor AI cache reset is non-critical; log for debugging
-            this.logger.debug('Failed to clear editor AI cache', { error: err instanceof Error ? err.message : String(err) });
-          }
         },
       });
       // Start the self-healing agent for proactive monitoring
@@ -286,17 +291,24 @@ export class AgentOrchestrator extends EventEmitter {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+
+    // Periodic cleanup of orphaned session throttle tracking entries (every 5 minutes)
+    // Prevents memory leaks from sessions that expired without explicit deletion
+    this.cleanupIntervalId = setInterval(() => {
+      const activeSessions = new Set(this.sessionManager.getAllSessions().map(s => s.id));
+      for (const sessionId of this.lastSessionStateEmitTime.keys()) {
+        if (!activeSessions.has(sessionId)) {
+          this.cleanupSessionThrottleTracking(sessionId);
+        }
+      }
+    }, 5 * 60 * 1000);
+    if (this.cleanupIntervalId && typeof this.cleanupIntervalId === 'object' && 'unref' in this.cleanupIntervalId) {
+      (this.cleanupIntervalId as NodeJS.Timeout).unref();
+    }
   }
 
   refreshProviders(): void {
     this.providerManager.refreshProviders();
-  }
-
-  /**
-   * Validate that the system is properly configured
-   */
-  private validateConfiguration(): void {
-    this.providerManager.validateConfiguration();
   }
 
   /**
@@ -327,59 +339,6 @@ export class AgentOrchestrator extends EventEmitter {
     return this.providerManager.getProvidersCooldownStatus();
   }
 
-  updateEditorState(state: {
-    openFiles: string[];
-    activeFile: string | null;
-    cursorPosition: { lineNumber: number; column: number } | null;
-    diagnostics?: Array<{
-      filePath: string;
-      message: string;
-      severity: 'error' | 'warning' | 'info' | 'hint';
-      line: number;
-      column: number;
-      endLine?: number;
-      endColumn?: number;
-      source?: string;
-      code?: string | number;
-    }>;
-  }): void {
-    this.editorState = state;
-    
-    // Debounce editor state logging to reduce log noise
-    // Only log if enough time has passed since last log
-    const now = Date.now();
-    if (now - this.lastEditorStateLogTime >= this.EDITOR_STATE_LOG_DEBOUNCE_MS) {
-      this.lastEditorStateLogTime = now;
-      this.logger.debug('Editor state updated', {
-        openFilesCount: state.openFiles.length,
-        activeFile: state.activeFile,
-        diagnosticsCount: state.diagnostics?.length ?? 0,
-        errorCount: state.diagnostics?.filter(d => d.severity === 'error').length ?? 0,
-        warningCount: state.diagnostics?.filter(d => d.severity === 'warning').length ?? 0,
-      });
-    } else {
-      // Schedule a trailing log if we're debouncing
-      if (this.editorStateLogTimer) {
-        clearTimeout(this.editorStateLogTimer);
-      }
-      this.editorStateLogTimer = setTimeout(() => {
-        this.lastEditorStateLogTime = Date.now();
-        this.logger.debug('Editor state updated', {
-          openFilesCount: this.editorState.openFiles.length,
-          activeFile: this.editorState.activeFile,
-          diagnosticsCount: this.editorState.diagnostics?.length ?? 0,
-          errorCount: this.editorState.diagnostics?.filter(d => d.severity === 'error').length ?? 0,
-          warningCount: this.editorState.diagnostics?.filter(d => d.severity === 'warning').length ?? 0,
-        });
-        this.editorStateLogTimer = null;
-      }, this.EDITOR_STATE_LOG_DEBOUNCE_MS);
-    }
-  }
-
-  getEditorState() {
-    return this.editorState;
-  }
-
   /**
    * Get workspace-wide diagnostics (all errors/warnings from entire codebase)
    * Uses the new TypeScript Language Service for real-time diagnostics
@@ -395,7 +354,7 @@ export class AgentOrchestrator extends EventEmitter {
       endColumn?: number;
       message: string;
       severity: 'error' | 'warning' | 'info' | 'hint';
-      source: 'typescript' | 'eslint';
+      source: string;
       code?: string | number;
     }>;
     errorCount: number;
@@ -403,77 +362,64 @@ export class AgentOrchestrator extends EventEmitter {
     filesWithErrors: string[];
     collectedAt: number;
   } | null> {
-    // Get the active workspace path
-    const activeWorkspace = this.workspaceManager.getActive();
-    if (!activeWorkspace?.path) {
-      return null;
-    }
-
     try {
       // Try the new TypeScript Language Service first (real-time, fast)
-      const { getTypeScriptDiagnosticsService, initTypeScriptDiagnosticsService } = await import('./workspace/TypeScriptDiagnosticsService');
+      const { getTypeScriptDiagnosticsService } = await import('./workspace/TypeScriptDiagnosticsService');
       
-      let service = getTypeScriptDiagnosticsService();
+      const service = getTypeScriptDiagnosticsService();
       if (!service || !service.isReady()) {
-        // Initialize the service if not ready
-        service = initTypeScriptDiagnosticsService(this.logger);
-        await service.initialize(activeWorkspace.path);
+        return null;
       }
       
-      if (service.isReady()) {
-        const snapshot = service.getSnapshot();
-        
-        // Also get LSP diagnostics for multi-language support
-        const { getLSPManager } = await import('../lsp');
-        const lspManager = getLSPManager();
-        const lspDiagnostics = lspManager?.getAllDiagnostics() ?? [];
-        
-        // Merge TypeScript and LSP diagnostics, avoiding duplicates
-        const tsDiagnostics = snapshot.diagnostics.map((d: { filePath: string; fileName: string; line: number; column: number; endLine?: number; endColumn?: number; message: string; severity: 'error' | 'warning' | 'info' | 'hint'; code?: string | number }) => ({
+      const snapshot = service.getSnapshot();
+      
+      // Also get LSP diagnostics for multi-language support
+      const { getLSPManager } = await import('../lsp');
+      const lspManager = getLSPManager();
+      const lspDiagnostics = lspManager?.getAllDiagnostics() ?? [];
+      
+      // Merge TypeScript and LSP diagnostics, avoiding duplicates
+      const tsDiagnostics = snapshot.diagnostics.map((d: { filePath: string; fileName: string; line: number; column: number; endLine?: number; endColumn?: number; message: string; severity: 'error' | 'warning' | 'info' | 'hint'; code?: string | number }) => ({
+        filePath: d.filePath,
+        fileName: d.fileName,
+        line: d.line,
+        column: d.column,
+        endLine: d.endLine,
+        endColumn: d.endColumn,
+        message: d.message,
+        severity: d.severity,
+        source: 'typescript' as const,
+        code: d.code,
+      }));
+      
+      // Add non-TypeScript LSP diagnostics (Python, Rust, Go, etc.)
+      const nonTsDiagnostics = lspDiagnostics
+        .filter(d => !d.filePath.match(/\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/))
+        .map(d => ({
           filePath: d.filePath,
-          fileName: d.fileName,
+          fileName: d.filePath.split(/[/\\]/).pop() || d.filePath,
           line: d.line,
           column: d.column,
           endLine: d.endLine,
           endColumn: d.endColumn,
           message: d.message,
           severity: d.severity,
-          source: 'typescript' as const,
+          source: d.source || 'lsp',
           code: d.code,
         }));
-        
-        // Add non-TypeScript LSP diagnostics (Python, Rust, Go, etc.)
-        const nonTsDiagnostics = lspDiagnostics
-          .filter(d => !d.filePath.match(/\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/))
-          .map(d => ({
-            filePath: d.filePath,
-            fileName: d.filePath.split(/[/\\]/).pop() || d.filePath,
-            line: d.line,
-            column: d.column,
-            endLine: d.endLine,
-            endColumn: d.endColumn,
-            message: d.message,
-            severity: d.severity,
-            source: 'typescript' as const, // Keep consistent type
-            code: d.code,
-          }));
-        
-        const allDiagnostics = [...tsDiagnostics, ...nonTsDiagnostics];
-        const errorCount = allDiagnostics.filter(d => d.severity === 'error').length;
-        const warningCount = allDiagnostics.filter(d => d.severity === 'warning').length;
-        const filesWithErrors = [...new Set(allDiagnostics.filter(d => d.severity === 'error').map(d => d.filePath))];
-        
-        return {
-          diagnostics: allDiagnostics,
-          errorCount,
-          warningCount,
-          filesWithErrors,
-          collectedAt: snapshot.timestamp,
-        };
-      }
-
-      // TypeScript service not available
-      return null;
+      
+      const allDiagnostics = [...tsDiagnostics, ...nonTsDiagnostics];
+      const errorCount = allDiagnostics.filter(d => d.severity === 'error').length;
+      const warningCount = allDiagnostics.filter(d => d.severity === 'warning').length;
+      const filesWithErrors = [...new Set(allDiagnostics.filter(d => d.severity === 'error').map(d => d.filePath))];
+      
+      return {
+        diagnostics: allDiagnostics,
+        errorCount,
+        warningCount,
+        filesWithErrors,
+        collectedAt: snapshot.timestamp,
+      };
     } catch (error) {
       this.logger.error('Failed to get workspace diagnostics', {
         error: error instanceof Error ? error.message : String(error),
@@ -504,30 +450,6 @@ export class AgentOrchestrator extends EventEmitter {
     const session = this.sessionManager.getSession(payload.sessionId);
     if (!session) {
       throw new Error('Session not found');
-    }
-
-    // Validate workspace binding before executing any operations
-    if (session.state.workspaceId) {
-      const workspaceValidation = this.sessionManager.validateSessionWorkspace(payload.sessionId);
-      if (!workspaceValidation.valid) {
-        this.logger.error('Session workspace validation failed', {
-          sessionId: payload.sessionId,
-          workspaceId: session.state.workspaceId,
-          error: workspaceValidation.error,
-        });
-        throw new Error(`Cannot send message: ${workspaceValidation.error}. The session's workspace may have been removed.`);
-      }
-
-      this.logger.info('Message being sent with workspace context', {
-        sessionId: payload.sessionId,
-        workspaceId: session.state.workspaceId,
-        workspacePath: workspaceValidation.workspacePath,
-      });
-    } else {
-      // Legacy session without workspace binding - log warning
-      this.logger.warn('Sending message for session without workspace binding', {
-        sessionId: payload.sessionId,
-      });
     }
 
     // Debug: Log attachment info to trace content flow
@@ -579,7 +501,12 @@ export class AgentOrchestrator extends EventEmitter {
 
     this.emitEvent({ type: 'session-state', session: session.state });
 
-    void this.runExecutor.executeRun(session);
+    this.runExecutor.executeRun(session).catch((err) => {
+      this.logger.error('Run execution failed', {
+        sessionId: session.state.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   async confirmTool(payload: ConfirmToolPayload): Promise<void> {
@@ -630,8 +557,12 @@ export class AgentOrchestrator extends EventEmitter {
         });
       }
 
-      // Emit session-state update to reflect config changes
-      this.emitEvent({ type: 'session-state', session: session.state });
+      // Emit lightweight patch for config changes (avoids serializing all messages)
+      this.emitEvent({
+        type: 'session-patch',
+        sessionId: payload.sessionId,
+        patch: { config: session.state.config, updatedAt: Date.now() },
+      });
     }
   }
 
@@ -702,143 +633,11 @@ export class AgentOrchestrator extends EventEmitter {
     return this.sessionManagementHandler.getSessions();
   }
 
-  getSessionsByWorkspace(workspaceId: string): AgentSessionState[] {
-    return this.sessionManagementHandler.getSessionsByWorkspace(workspaceId);
-  }
-
   /**
    * Get session summaries for lazy loading (faster than full sessions)
    */
-  async getSessionSummaries(workspaceId?: string): Promise<SessionSummary[]> {
-    return this.sessionManagementHandler.getSessionSummaries(workspaceId);
-  }
-
-  getActiveWorkspaceSessions(): AgentSessionState[] {
-    return this.sessionManagementHandler.getActiveWorkspaceSessions();
-  }
-
-  // ===========================================================================
-  // Multi-Session Management
-  // ===========================================================================
-
-  /**
-   * Get all running sessions across all workspaces
-   * Used for showing global activity indicators in the UI
-   */
-  getAllRunningSessions(): AgentSessionState[] {
-    return this.sessionManager.getAllActiveSessions();
-  }
-
-  /**
-   * Get global session statistics for multi-workspace concurrent execution
-   */
-  getGlobalSessionStats(): {
-    totalRunning: number;
-    totalQueued: number;
-    runningByWorkspace: Record<string, number>;
-    canStartNew: boolean;
-  } {
-    if (!this.multiSessionManager) {
-      return {
-        totalRunning: this.sessionManager.getAllActiveSessions().length,
-        totalQueued: 0,
-        runningByWorkspace: {},
-        canStartNew: true,
-      };
-    }
-
-    const stats = this.multiSessionManager.getGlobalStats();
-    return {
-      totalRunning: stats.totalRunning,
-      totalQueued: stats.totalQueued,
-      runningByWorkspace: Object.fromEntries(stats.runningByWorkspace),
-      canStartNew: stats.totalRunning < 10, // maxGlobalConcurrent
-    };
-  }
-
-  /**
-   * Get detailed running session information for all workspaces
-   */
-  getDetailedRunningSessions(): Array<{
-    sessionId: string;
-    workspaceId: string;
-    status: string;
-    startedAt: number;
-    iteration: number;
-    maxIterations: number;
-    provider?: string;
-  }> {
-    if (!this.multiSessionManager) {
-      return this.sessionManager.getAllActiveSessions().map(s => ({
-        sessionId: s.id,
-        workspaceId: s.workspaceId ?? 'default',
-        status: s.status,
-        startedAt: s.updatedAt,
-        iteration: 0,
-        maxIterations: s.config.maxIterations ?? 20,
-        provider: s.config.preferredProvider,
-      }));
-    }
-
-    return this.multiSessionManager.getAllRunningSessions().map(info => ({
-      sessionId: info.sessionId,
-      workspaceId: info.workspaceId,
-      status: info.status,
-      startedAt: info.startedAt,
-      iteration: info.iteration,
-      maxIterations: info.maxIterations,
-      provider: info.provider,
-    }));
-  }
-
-  /**
-   * Check if a new session can be started (within concurrency limits)
-   */
-  canStartNewSession(workspaceId: string): { allowed: boolean; reason?: string } {
-    if (!this.multiSessionManager) {
-      return { allowed: true };
-    }
-    return this.multiSessionManager.canStartSession(workspaceId);
-  }
-
-  /**
-   * Notify multi-session manager when a run starts
-   * Called internally by runExecutor
-   */
-  notifyRunStarted(sessionId: string, runId: string, maxIterations: number): void {
-    const session = this.sessionManager.getSession(sessionId);
-    if (session && this.multiSessionManager) {
-      this.multiSessionManager.registerSessionStart(session, runId, maxIterations);
-    }
-  }
-
-  /**
-   * Notify multi-session manager when a run completes
-   * Called internally by runExecutor
-   */
-  notifyRunCompleted(sessionId: string): void {
-    if (this.multiSessionManager) {
-      this.multiSessionManager.registerSessionComplete(sessionId);
-    }
-  }
-
-  /**
-   * Notify multi-session manager when a run has an error
-   * Called internally by runExecutor
-   */
-  notifyRunError(sessionId: string, error: string): void {
-    if (this.multiSessionManager) {
-      this.multiSessionManager.registerSessionError(sessionId, error);
-    }
-  }
-
-  /**
-   * Update multi-session manager with run progress
-   */
-  notifyRunProgress(sessionId: string, iteration: number, provider?: string): void {
-    if (this.multiSessionManager) {
-      this.multiSessionManager.updateSessionProgress(sessionId, { iteration, provider });
-    }
+  async getSessionSummaries(): Promise<SessionSummary[]> {
+    return this.sessionManagementHandler.getSessionSummaries();
   }
 
   async regenerate(sessionId: string): Promise<void> {
@@ -849,7 +648,8 @@ export class AgentOrchestrator extends EventEmitter {
     const session = this.sessionManager.getSession(sessionId);
     if (session) {
       this.sessionManager.updateSessionState(sessionId, { title });
-      this.emitEvent({ type: 'session-state', session: session.state });
+      // Use lightweight patch instead of full session-state to avoid sending all messages
+      this.emitEvent({ type: 'session-patch', sessionId, patch: { title, updatedAt: Date.now() } });
     }
   }
 
@@ -882,7 +682,12 @@ export class AgentOrchestrator extends EventEmitter {
     this.emitEvent({ type: 'session-state', session: session.state });
 
     // Execute new run with the edited message context
-    void this.runExecutor.executeRun(session);
+    this.runExecutor.executeRun(session).catch((err) => {
+      this.logger.error('Run execution failed after message edit', {
+        sessionId: session.state.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     return { success: true };
   }
@@ -919,8 +724,13 @@ export class AgentOrchestrator extends EventEmitter {
       updatedAt: Date.now(),
     });
 
-    // Emit updated session state
-    this.emitEvent({ type: 'session-state', session: session.state });
+    // Use lightweight patch for reaction change (avoids serializing all messages)
+    this.emitEvent({
+      type: 'session-patch',
+      sessionId,
+      patch: { updatedAt: Date.now() },
+      messagePatch: { messageId, changes: { reaction, updatedAt: Date.now() } },
+    });
 
     return { success: true };
   }
@@ -937,6 +747,7 @@ export class AgentOrchestrator extends EventEmitter {
     if (result.success) {
       const session = this.sessionManager.getSession(sessionId);
       if (session) {
+        // Branch operations need full session (messages change), but we send it
         this.emitEvent({ type: 'session-state', session: session.state });
       }
     }
@@ -951,6 +762,7 @@ export class AgentOrchestrator extends EventEmitter {
     if (result.success) {
       const session = this.sessionManager.getSession(sessionId);
       if (session) {
+        // Branch switch changes visible messages, needs full session
         this.emitEvent({ type: 'session-state', session: session.state });
       }
     }
@@ -965,139 +777,11 @@ export class AgentOrchestrator extends EventEmitter {
     if (result.success) {
       const session = this.sessionManager.getSession(sessionId);
       if (session) {
+        // Branch delete changes messages, needs full session
         this.emitEvent({ type: 'session-state', session: session.state });
       }
     }
     return result;
-  }
-
-  // ==========================================================================
-  // Workspace Resource Management Methods (Multi-workspace Concurrent Sessions)
-  // ==========================================================================
-
-  /**
-   * Get resource metrics for all active workspaces
-   */
-  getWorkspaceResourceMetrics(): Map<string, WorkspaceResourceMetrics> {
-    return this.workspaceResourceManager.getMetrics();
-  }
-
-  /**
-   * Get resource metrics for a specific workspace
-   */
-  getWorkspaceMetrics(workspaceId: string): WorkspaceResourceMetrics | null {
-    return this.workspaceResourceManager.getWorkspaceMetrics(workspaceId);
-  }
-
-  /**
-   * Check if a workspace has any active sessions
-   */
-  hasActiveWorkspaceSessions(workspaceId: string): boolean {
-    return this.workspaceResourceManager.hasActiveSessions(workspaceId);
-  }
-
-  /**
-   * Get active session count for a specific workspace
-   */
-  getActiveWorkspaceSessionCount(workspaceId: string): number {
-    return this.workspaceResourceManager.getActiveSessionCount(workspaceId);
-  }
-
-  /**
-   * Get total active sessions across all workspaces
-   */
-  getTotalActiveSessionCount(): number {
-    return this.workspaceResourceManager.getTotalActiveSessions();
-  }
-
-  /**
-   * Initialize workspace resources (called when opening a workspace tab)
-   */
-  initializeWorkspaceResources(workspaceId: string): void {
-    this.workspaceResourceManager.initializeWorkspace(workspaceId);
-  }
-
-  /**
-   * Clean up workspace resources (called when closing a workspace tab)
-   */
-  cleanupWorkspaceResources(workspaceId: string): void {
-    this.workspaceResourceManager.cleanupWorkspace(workspaceId);
-  }
-
-  /**
-   * Register callback for workspace resource metrics updates
-   */
-  onWorkspaceResourceMetricsUpdate(
-    callback: (metrics: Map<string, WorkspaceResourceMetrics>) => void
-  ): () => void {
-    return this.workspaceResourceManager.onMetricsUpdate(callback);
-  }
-
-  /**
-   * Get current resource limits configuration
-   */
-  getResourceLimits(): {
-    maxSessionsPerWorkspace: number;
-    maxToolExecutionsPerWorkspace: number;
-    rateLimitWindowMs: number;
-    maxRequestsPerWindow: number;
-  } {
-    const limits = this.workspaceResourceManager.getLimits();
-    return {
-      maxSessionsPerWorkspace: limits.maxSessionsPerWorkspace,
-      maxToolExecutionsPerWorkspace: limits.maxToolExecutionsPerWorkspace,
-      rateLimitWindowMs: limits.rateLimitWindowMs,
-      maxRequestsPerWindow: limits.maxRequestsPerWindow,
-    };
-  }
-
-  /**
-   * Update resource limits configuration
-   */
-  updateResourceLimits(limits: {
-    maxSessionsPerWorkspace?: number;
-    maxToolExecutionsPerWorkspace?: number;
-    rateLimitWindowMs?: number;
-    maxRequestsPerWindow?: number;
-  }): void {
-    this.workspaceResourceManager.updateLimits(limits);
-  }
-
-  /**
-   * Get concurrent execution statistics across all workspaces
-   * Returns aggregate metrics for multi-workspace session management
-   */
-  getConcurrentExecutionStats(): {
-    totalActiveSessions: number;
-    workspaceCount: number;
-    metricsPerWorkspace: Array<{
-      workspaceId: string;
-      sessionCount: number;
-      activeToolExecutions: number;
-    }>;
-    resourceLimits: {
-      maxSessionsPerWorkspace: number;
-      maxToolExecutionsPerWorkspace: number;
-    };
-  } {
-    const metrics = this.workspaceResourceManager.getMetrics();
-    const limits = this.workspaceResourceManager.getLimits();
-    
-    const metricsPerWorkspace = Array.from(metrics.entries()).map(([workspaceId, m]) => ({
-      workspaceId,
-      sessionCount: m.activeSessions,
-      activeToolExecutions: m.activeToolExecutions,
-    }));
-    
-    return {
-      totalActiveSessions: this.workspaceResourceManager.getTotalActiveSessions(),
-      workspaceCount: metrics.size,
-      metricsPerWorkspace,
-      resourceLimits: {
-        maxSessionsPerWorkspace: limits.maxSessionsPerWorkspace,
-        maxToolExecutionsPerWorkspace: limits.maxToolExecutionsPerWorkspace,
-      },
-    };
   }
 
   // ==========================================================================
@@ -1184,13 +868,60 @@ export class AgentOrchestrator extends EventEmitter {
   async cleanup(): Promise<void> {
     this.logger.info('Orchestrator cleanup started');
 
+    // Clear the periodic orphaned session throttle cleanup interval
+    if (this.cleanupIntervalId) {
+      clearInterval(this.cleanupIntervalId);
+      this.cleanupIntervalId = null;
+    }
+
+    // Clear all pending session state emit timers to prevent leaks
+    for (const [sessionId, timer] of this.pendingSessionStateEmits) {
+      clearTimeout(timer);
+      this.logger.debug('Cleared pending session state emit timer', { sessionId });
+    }
+    this.pendingSessionStateEmits.clear();
+
+    // Dispose loop detector to stop its cleanup interval
+    try {
+      getLoopDetector().dispose();
+      this.logger.debug('Loop detector disposed');
+    } catch {
+      // Loop detector may not be initialized
+    }
+
+    // Dispose session health monitor singleton
+    try {
+      const healthMonitor = getSessionHealthMonitor();
+      healthMonitor.dispose();
+      this.logger.debug('Session health monitor disposed');
+    } catch {
+      // Health monitor may not be initialized
+    }
+
+    // Clear model quality tracker records
+    try {
+      const qualityTracker = getModelQualityTracker();
+      qualityTracker.clear();
+      this.logger.debug('Model quality tracker cleared');
+    } catch {
+      // Tracker may not be initialized
+    }
+
+    // Stop provider health monitor checks
+    try {
+      this.providerManager.getHealthMonitor()?.stopHealthChecks();
+      this.logger.debug('Provider health monitor stopped');
+    } catch {
+      // Provider health monitor may not be initialized
+    }
+
     try {
       // Flush any pending session persistence first (critical for data integrity)
       try {
-        await this.sessionManager.flushPendingPersistence();
-        this.logger.info('Session persistence flushed');
+        await this.sessionManager.dispose();
+        this.logger.info('Session manager disposed');
       } catch (error) {
-        this.logger.error('Error flushing session persistence', {
+        this.logger.error('Error disposing session manager', {
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -1272,21 +1003,6 @@ export class AgentOrchestrator extends EventEmitter {
       // Remove terminal event listeners to prevent memory leaks
       this.terminalEventHandler.removeEventListeners();
 
-      // Dispose workspace resource manager
-      try {
-        this.workspaceResourceManager.dispose();
-        this.logger.debug('Workspace resource manager disposed');
-      } catch (error) {
-        this.logger.warn('Error disposing workspace resource manager', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-
-      // Clear editor state log timer if pending
-      if (this.editorStateLogTimer) {
-        clearTimeout(this.editorStateLogTimer);
-        this.editorStateLogTimer = null;
-      }
     } catch (error) {
       this.logger.error('Error during orchestrator cleanup', {
         error: error instanceof Error ? error.message : String(error)
@@ -1337,7 +1053,7 @@ export class AgentOrchestrator extends EventEmitter {
               await factory.createTool({
                 name: tool.name,
                 description: tool.description,
-                steps: tool.steps.map(s => ({
+                steps: tool.steps.map((s: { toolName: string; input: Record<string, unknown>; condition?: string; onError?: string }) => ({
                   toolName: s.toolName,
                   input: s.input,
                   condition: s.condition,
@@ -1353,7 +1069,7 @@ export class AgentOrchestrator extends EventEmitter {
           }
         }
         
-        this.logger.info('Custom tools loaded', { count: customTools.filter(t => t.enabled).length });
+        this.logger.info('Custom tools loaded', { count: customTools.filter((t: { enabled: boolean }) => t.enabled).length });
       }
     } catch (err) {
       this.logger.warn('Failed to load custom tools', {
@@ -1439,7 +1155,7 @@ export class AgentOrchestrator extends EventEmitter {
   private emitEvent(event: RendererEvent | AgentEvent): void {
     // Throttle session-state events to prevent renderer thrashing
     if (event.type === 'session-state') {
-      const sessionEvent = event as { type: 'session-state'; session: { id: string } };
+      const sessionEvent = event as { type: 'session-state'; session: AgentSessionState };
       const sessionId = sessionEvent.session?.id;
       
       if (sessionId) {
@@ -1452,22 +1168,86 @@ export class AgentOrchestrator extends EventEmitter {
           const existingTimer = this.pendingSessionStateEmits.get(sessionId);
           if (existingTimer) clearTimeout(existingTimer);
           
-          // Schedule new emit at the end of throttle window
+          // Schedule new emit at the end of throttle window — use lightweight version
           const delay = this.SESSION_STATE_THROTTLE_MS - (now - lastEmit);
           const timer = setTimeout(() => {
             this.lastSessionStateEmitTime.set(sessionId, Date.now());
             this.pendingSessionStateEmits.delete(sessionId);
-            this.emit('event', event);
+            this.emit('event', this.createLightweightSessionEvent(sessionEvent));
           }, delay);
           this.pendingSessionStateEmits.set(sessionId, timer);
           return;
         }
         
         this.lastSessionStateEmitTime.set(sessionId, now);
+        // Emit lightweight version to reduce IPC payload
+        this.emit('event', this.createLightweightSessionEvent(sessionEvent));
+        return;
       }
     }
     
     this.emit('event', event);
+  }
+
+  /**
+   * Create a lightweight version of session-state events.
+   * When a session is actively running (streaming), the renderer already has
+   * message content from stream-delta events. We strip large content fields
+   * from messages to reduce IPC payload from ~400KB to ~5KB.
+   * 
+   * The renderer's SESSION_UPSERT handler preserves existing streamed content
+   * when the incoming message has shorter content — so this is safe.
+   */
+  private createLightweightSessionEvent(
+    event: { type: 'session-state'; session: AgentSessionState }
+  ): { type: 'session-state'; session: AgentSessionState } {
+    const session = event.session;
+    
+    // Only strip content for running sessions — idle sessions need full data
+    if (session.status !== 'running') {
+      return event;
+    }
+
+    // Strip large content from messages — renderer has this from stream-delta
+    const lightMessages = session.messages.map(msg => {
+      if (msg.role !== 'assistant') {
+        // User messages are small, keep them; but strip attachment content (base64)
+        if (msg.attachments?.some(a => a.content && a.content.length > 1000)) {
+          return {
+            ...msg,
+            attachments: msg.attachments.map(a => ({
+              ...a,
+              content: a.content && a.content.length > 1000 ? undefined : a.content,
+            })),
+          };
+        }
+        return msg;
+      }
+      
+      // For assistant messages, send structure but strip large content
+      // The renderer will keep its longer (streamed) version
+      return {
+        ...msg,
+        // Send empty content — renderer's merge keeps its own longer streamed version
+        content: '',
+        thinking: '',
+        reasoningContent: undefined,
+        // Strip generated images base64 data (can be 100KB+ each)
+        generatedImages: msg.generatedImages?.map(img => ({
+          ...img,
+          data: '',  // Renderer already has this from media-output event
+        })),
+        generatedAudio: msg.generatedAudio ? { ...msg.generatedAudio, data: '' } : undefined,
+      };
+    });
+
+    return {
+      type: 'session-state',
+      session: {
+        ...session,
+        messages: lightMessages,
+      },
+    };
   }
 
   // ==========================================================================

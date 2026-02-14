@@ -20,7 +20,6 @@ export { SettingsAppearance } from './components/SettingsAppearance';
 export { SettingsBrowser } from './components/SettingsBrowser';
 export { SettingsCompliance } from './components/SettingsCompliance';
 export { SettingsDebugging } from './components/SettingsDebugging';
-export { SettingsEditorAI } from './components/SettingsEditorAI';
 export { SettingsModels } from './components/SettingsModels';
 export { SettingsPerformance } from './components/SettingsPerformance';
 export { SettingsPrompts } from './components/SettingsPrompts';
@@ -28,6 +27,7 @@ export { SettingsProviders } from './components/SettingsProviders';
 export { SettingsRouting } from './components/SettingsRouting';
 export { SettingsSafety } from './components/SettingsSafety';
 export { SettingsAutonomous } from './components/SettingsAutonomous';
+export { SettingsWorkspace } from './components/SettingsWorkspace';
 export { SettingsMCP } from './components/SettingsMCP';
 export { MetricsDashboard } from './components/MetricsDashboard';
 

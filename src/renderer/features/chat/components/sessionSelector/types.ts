@@ -14,7 +14,6 @@ export interface SessionMeta {
   title: string;
   updatedAt: number;
   status: string;
-  workspaceId: string;
   messageCount: number;
 }
 
@@ -92,7 +91,6 @@ export interface SessionDropdownProps {
   sessionGroups: SessionGroup[];
   flatSessionList: SessionMeta[];
   activeSessionId: string | undefined;
-  activeWorkspaceId: string | undefined;
   focusedIndex: number;
   sessionCount: number;
   hasWorkspace: boolean;
@@ -129,6 +127,7 @@ export interface SessionDropdownState {
   flatSessionList: SessionMeta[];
   sessionGroups: SessionGroup[];
   sessionCount: number;
+  filteredCount: number;
   activeSession: SessionMeta | undefined;
   displayTitle: string;
   truncatedTitle: string;

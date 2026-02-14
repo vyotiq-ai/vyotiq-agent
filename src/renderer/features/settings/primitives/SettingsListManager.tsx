@@ -4,9 +4,10 @@
  * A component for managing a list of string items.
  * Provides add/remove functionality with terminal styling.
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import { Plus, X, AlertCircle } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { useFormValidation, validators } from '../../../hooks/useFormValidation';
 import type { ListManagerProps } from './types';
 
 export const SettingsListManager: React.FC<ListManagerProps> = ({
@@ -22,8 +23,29 @@ export const SettingsListManager: React.FC<ListManagerProps> = ({
   className,
   testId,
 }) => {
-  const [inputValue, setInputValue] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // Use form validation hook for input management
+  const form = useFormValidation({
+    input: {
+      initialValue: '',
+      validateOnChange: false,
+      rules: [
+        validators.required('Item cannot be empty'),
+        validators.custom<string>((value) => !items.includes(value.trim()), 'Item already exists'),
+        ...(validate
+          ? [validators.custom<string>((value) => {
+              const err = validate(value.trim());
+              return !err;
+            }, 'Invalid item')]
+          : []),
+        ...(maxItems !== undefined
+          ? [validators.custom<string>(() => items.length < maxItems, `Maximum ${maxItems} items allowed`)]
+          : []),
+      ],
+    },
+  });
+
+  const inputValue = form.values.input;
+  const error = form.errors.input;
 
   // Format label as lowercase with dashes (terminal style)
   const formattedLabel = label?.toLowerCase().replace(/\s+/g, '-');
@@ -31,51 +53,29 @@ export const SettingsListManager: React.FC<ListManagerProps> = ({
   // Check if we've reached max items
   const isMaxReached = maxItems !== undefined && items.length >= maxItems;
 
-  // Handle input change
+  // Handle input change (via form validation hook)
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setInputValue(e.target.value);
-      setError(null);
+      form.setValue('input', e.target.value);
+      if (form.errors.input) form.setError('input', null);
     },
-    []
+    [form]
   );
 
-  // Handle add item
-  const handleAdd = useCallback(() => {
+  // Handle add item (validates via form hook)
+  const handleAdd = useCallback(async () => {
     const trimmedValue = inputValue.trim();
-    
-    if (!trimmedValue) {
-      return;
-    }
+    if (!trimmedValue) return;
 
-    // Check for duplicates
-    if (items.includes(trimmedValue)) {
-      setError('Item already exists');
-      return;
-    }
-
-    // Run custom validation
-    if (validate) {
-      const validationError = validate(trimmedValue);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-    }
-
-    // Check max items
-    if (isMaxReached) {
-      setError(`Maximum ${maxItems} items allowed`);
-      return;
-    }
+    const fieldError = await form.validateField('input');
+    if (fieldError) return;
 
     onAdd(trimmedValue);
-    setInputValue('');
-    setError(null);
-  }, [inputValue, items, validate, isMaxReached, maxItems, onAdd]);
+    form.reset();
+  }, [inputValue, form, onAdd]);
 
-  // Handle key press (Enter to add)
-  const handleKeyPress = useCallback(
+  // Handle key down (Enter to add)
+  const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -121,7 +121,7 @@ export const SettingsListManager: React.FC<ListManagerProps> = ({
           type="text"
           value={inputValue}
           onChange={handleInputChange}
-          onKeyPress={handleKeyPress}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled || isMaxReached}
           className={cn(

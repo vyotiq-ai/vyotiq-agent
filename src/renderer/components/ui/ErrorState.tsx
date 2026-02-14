@@ -32,6 +32,13 @@ export interface ErrorStateProps {
     label: string;
     onClick: () => void;
   };
+  /** Help/documentation link */
+  helpLink?: {
+    label: string;
+    url: string;
+  };
+  /** Error code for display (e.g., 'AUTH_FAILURE') */
+  errorCode?: string;
   /** Whether to show expand/collapse for details */
   collapsibleDetails?: boolean;
   /** Size variant */
@@ -44,6 +51,8 @@ export interface ErrorStateProps {
   icon?: React.ReactNode;
   /** Whether to fill the container */
   fullScreen?: boolean;
+  /** Copy error details to clipboard */
+  copyable?: boolean;
 }
 
 // =============================================================================
@@ -104,24 +113,24 @@ InfoIcon.displayName = 'InfoIcon';
 const severityConfig = {
   error: {
     icon: ErrorIcon,
-    bgClass: 'bg-red-500/10',
-    borderClass: 'border-red-500/30',
-    iconClass: 'text-red-500',
-    titleClass: 'text-red-400',
+    bgClass: 'bg-[var(--color-error)]/10',
+    borderClass: 'border-[var(--color-error)]/30',
+    iconClass: 'text-[var(--color-error)]',
+    titleClass: 'text-[var(--color-error)]',
   },
   warning: {
     icon: WarningIcon,
-    bgClass: 'bg-amber-500/10',
-    borderClass: 'border-amber-500/30',
-    iconClass: 'text-amber-500',
-    titleClass: 'text-amber-400',
+    bgClass: 'bg-[var(--color-warning)]/10',
+    borderClass: 'border-[var(--color-warning)]/30',
+    iconClass: 'text-[var(--color-warning)]',
+    titleClass: 'text-[var(--color-warning)]',
   },
   info: {
     icon: InfoIcon,
-    bgClass: 'bg-blue-500/10',
-    borderClass: 'border-blue-500/30',
-    iconClass: 'text-blue-500',
-    titleClass: 'text-blue-400',
+    bgClass: 'bg-[var(--color-info)]/10',
+    borderClass: 'border-[var(--color-info)]/30',
+    iconClass: 'text-[var(--color-info)]',
+    titleClass: 'text-[var(--color-info)]',
   },
 };
 
@@ -137,20 +146,40 @@ export const ErrorState: React.FC<ErrorStateProps> = memo(({
   onRetry,
   onDismiss,
   action,
+  helpLink,
+  errorCode,
   collapsibleDetails = true,
   size = 'md',
   variant = 'card',
   className,
   icon,
   fullScreen = false,
+  copyable = false,
 }) => {
   const [showDetails, setShowDetails] = React.useState(!collapsibleDetails);
+  const [copied, setCopied] = React.useState(false);
   const config = severityConfig[severity];
   const IconComponent = config.icon;
 
   const toggleDetails = useCallback(() => {
     setShowDetails(prev => !prev);
   }, []);
+
+  const handleCopy = useCallback(async () => {
+    const text = [
+      errorCode && `[${errorCode}]`,
+      title,
+      message,
+      details && `\nDetails:\n${details}`,
+    ].filter(Boolean).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard not available
+    }
+  }, [title, message, details, errorCode]);
 
   const textSizes = {
     sm: { title: 'text-[11px]', message: 'text-[10px]', details: 'text-[9px]' },
@@ -177,12 +206,23 @@ export const ErrorState: React.FC<ErrorStateProps> = memo(({
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          {title && (
-            <h4 className={cn('font-medium', config.titleClass, textSizes[size].title)}>
-              {title}
-            </h4>
-          )}
-          <p className={cn('text-[var(--color-text-secondary)]', textSizes[size].message, title && 'mt-0.5')}>
+          <div className="flex items-center gap-2">
+            {errorCode && (
+              <span className={cn(
+                'text-[8px] uppercase tracking-wider font-medium px-1 py-0.5 rounded-sm',
+                'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
+                config.titleClass,
+              )}>
+                {errorCode}
+              </span>
+            )}
+            {title && (
+              <h4 className={cn('font-medium', config.titleClass, textSizes[size].title)}>
+                {title}
+              </h4>
+            )}
+          </div>
+          <p className={cn('text-[var(--color-text-secondary)]', textSizes[size].message, (title || errorCode) && 'mt-0.5')}>
             {message}
           </p>
 
@@ -238,7 +278,7 @@ export const ErrorState: React.FC<ErrorStateProps> = memo(({
       </div>
 
       {/* Actions */}
-      {(onRetry || action) && (
+      {(onRetry || action || helpLink || copyable) && (
         <div className="flex items-center gap-2 mt-2 ml-7">
           {onRetry && (
             <Button size="sm" variant="ghost" onClick={onRetry}>
@@ -248,6 +288,35 @@ export const ErrorState: React.FC<ErrorStateProps> = memo(({
           {action && (
             <Button size="sm" variant="secondary" onClick={action.onClick}>
               {action.label}
+            </Button>
+          )}
+          {helpLink && (
+            <a
+              href={helpLink.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                'inline-flex items-center gap-1 px-2 py-1',
+                'text-[10px] text-[var(--color-accent-primary)]',
+                'hover:underline transition-colors font-mono',
+              )}
+            >
+              {helpLink.label}
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </a>
+          )}
+          {copyable && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleCopy}
+              className="text-[var(--color-text-muted)]"
+            >
+              {copied ? 'Copied' : 'Copy'}
             </Button>
           )}
         </div>

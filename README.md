@@ -49,7 +49,7 @@
 |---------|-------------|
 | 🔀 **Multi-Provider AI** | Seamlessly switch between Claude, GPT, Gemini, DeepSeek, and OpenRouter |
 | 🤖 **Autonomous Agents** | Advanced task execution with tool confirmation and safety guardrails |
-| 💻 **Integrated IDE** | Monaco editor, xterm.js terminal, and browser automation |
+| 💻 **Integrated IDE** | xterm.js terminal and browser automation |
 | 🧠 **Context-Aware** | Smart summarization, prompt caching, and context window optimization |
 | � **Semantic Search** | AI-powered codebase search using local vector embeddings |
 | �📊 **Git Integration** | Review changes with git diff and commit directly |
@@ -162,20 +162,7 @@ Added comprehensive Model Context Protocol (MCP) server integration for dynamic 
 ### 🛠️ Development Tools
 
 <details open>
-<summary><strong>📝 Monaco Code Editor</strong></summary>
-
-- **Full VS Code Experience**: Syntax highlighting for 50+ languages
-- **Multi-Tab Editing**: Work on multiple files with tab management
-- **Git Integration**: View diffs, stage changes, commit directly
-- **IntelliSense**: Auto-completion and hover documentation via LSP
-- **Command Palette**: Quick access to all editor commands (Ctrl+Shift+P)
-- **Go to Symbol**: Navigate code structure quickly (Ctrl+Shift+O)
-- **Quick Open**: Fuzzy file search (Ctrl+P)
-
-</details>
-
-<details open>
-<summary><strong>💻 Integrated Terminal</strong></summary>
+<summary><strong> Integrated Terminal</strong></summary>
 
 - **xterm.js Powered**: Full-featured terminal with Unicode support
 - **Multiple Shells**: bash, zsh, PowerShell, cmd.exe
@@ -359,8 +346,7 @@ Type your request in the chat input:
 
 ### 4. Review & Apply Changes
 
-- AI-generated code appears in the editor with syntax highlighting
-- Review changes in the editor before committing
+- Review AI-generated code changes before committing
 - Use the **Undo History** panel to revert any changes
 
 ---
@@ -413,7 +399,6 @@ vyotiq/
 │   ├── renderer/                 # React frontend
 │   │   ├── features/             # Feature modules
 │   │   │   ├── chat/             # Chat interface
-│   │   │   ├── editor/           # Monaco editor
 │   │   │   ├── terminal/         # Terminal emulator
 │   │   │   ├── browser/          # Browser panel
 │   │   │   ├── settings/         # Settings panel
@@ -423,7 +408,6 @@ vyotiq/
 │   │   │   └── workspaces/       # Workspace switcher
 │   │   ├── state/                # State management
 │   │   │   ├── AgentProvider.tsx # Agent state context
-│   │   │   ├── EditorProvider.tsx# Editor state context
 │   │   │   └── UIProvider.tsx    # UI state context
 │   │   ├── hooks/                # React hooks
 │   │   └── components/           # Shared UI components
@@ -447,7 +431,6 @@ vyotiq/
 | [TypeScript](https://www.typescriptlang.org/) | 5.9 | Type-safe JavaScript |
 | [Vite](https://vitejs.dev/) | 7.2 | Lightning-fast build tool |
 | [Tailwind CSS](https://tailwindcss.com/) | 4.1 | Utility-first styling |
-| [Monaco Editor](https://microsoft.github.io/monaco-editor/) | Latest | VS Code's editor component |
 | [xterm.js](https://xtermjs.org/) | 5.5 | Terminal emulator |
 | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) | 12.5 | Local database |
 | [node-pty](https://github.com/microsoft/node-pty) | 1.1 | Terminal process management |
@@ -461,7 +444,6 @@ vyotiq/
 All settings are accessible via the Settings panel (`Ctrl + ,`):
 
 - **AI Providers**: Configure API keys and default models
-- **Editor**: Font size, theme, tab size, word wrap
 - **Terminal**: Shell path, font family, cursor style
 - **Safety**: Tool confirmation, file limits, protected paths, blocked commands
 - **Cache**: Prompt caching, tool result caching, context caching
@@ -580,7 +562,6 @@ When using Vyotiq-ai, your prompts and code context are sent to your chosen AI p
 ## 🙏 Acknowledgments
 
 - [Electron](https://www.electronjs.org/) - Desktop framework
-- [Monaco Editor](https://microsoft.github.io/monaco-editor/) - Code editor
 - [xterm.js](https://xtermjs.org/) - Terminal emulator
 - [Anthropic](https://www.anthropic.com/), [OpenAI](https://openai.com/), [Google](https://ai.google.dev/), [DeepSeek](https://www.deepseek.com/), [OpenRouter](https://openrouter.ai/) - AI providers
 - All our contributors and supporters!

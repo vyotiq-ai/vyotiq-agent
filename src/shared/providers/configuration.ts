@@ -56,6 +56,9 @@ export function getAvailableProviders(): LLMProviderName[] {
   return [...PROVIDER_ORDER];
 }
 
+/** Alias for getAvailableProviders for backward compatibility */
+export const getAllProviderIds = getAvailableProviders;
+
 /**
  * Check if a provider exists
  */

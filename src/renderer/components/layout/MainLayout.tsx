@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { GlobalStatusBar } from './GlobalStatusBar';
 import { MOBILE_BREAKPOINT, TABLET_BREAKPOINT } from '../../utils/constants';
-import { useActiveWorkspace } from '../../hooks/useActiveWorkspace';
 import { cn } from '../../utils/cn';
-import { useLocalStorage } from '../../hooks';
-import { WorkspaceTabBar } from '../../features/workspaces/components/WorkspaceTabBar';
-import { useWorkspaceTabsState } from '../../state/WorkspaceTabsProvider';
-import { useAllRunningSessions } from '../../hooks/useWorkspaceSessions';
+import { useLocalStorage, useResizablePanel } from '../../hooks';
+import { EditorPanel, openFileInEditor } from '../../features/editor/components/EditorPanel';
+import { useEditorStore } from '../../features/editor/store/editorStore';
+import { BottomPanel } from '../../features/terminal/components/BottomPanel';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -22,29 +22,44 @@ const DEFAULT_SIDEBAR_WIDTH = 248;
 export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings }) => {
   // Persisted layout preferences
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage('vyotiq-sidebar-collapsed', false);
-  const [sidebarWidth, setSidebarWidth] = useLocalStorage('vyotiq-sidebar-width', DEFAULT_SIDEBAR_WIDTH);
-  const [showTabBar, _setShowTabBar] = useLocalStorage('vyotiq-show-workspace-tabs', true);
+
+  // Sidebar resize via shared hook
+  const {
+    size: sidebarWidth,
+    isResizing,
+    resizeHandleProps: sidebarResizeProps,
+  } = useResizablePanel({
+    direction: 'horizontal',
+    initialSize: DEFAULT_SIDEBAR_WIDTH,
+    minSize: MIN_SIDEBAR_WIDTH,
+    maxSize: MAX_SIDEBAR_WIDTH,
+    persistKey: 'vyotiq-sidebar-width',
+  });
+
+  // Editor resize via shared hook (right-anchored, uses invertDelta)
+  const {
+    size: editorWidth,
+    isResizing: isEditorResizing,
+    resizeHandleProps: editorResizeProps,
+  } = useResizablePanel({
+    direction: 'horizontal',
+    initialSize: 500,
+    minSize: 300,
+    maxSize: Math.round(typeof window !== 'undefined' ? window.innerWidth * 0.7 : 900),
+    persistKey: 'vyotiq-editor-width',
+    invertDelta: true,
+  });
+
+  const { state: editorState } = useEditorStore();
+  const editorVisible = editorState.isVisible && editorState.tabs.length > 0;
 
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
+  const [bottomPanelOpen, setBottomPanelOpen] = useLocalStorage('vyotiq-bottom-panel-open', false);
 
-  const activeWorkspace = useActiveWorkspace();
-  
-  // Get workspace tabs state and running sessions
-  const tabsState = useWorkspaceTabsState();
-  const { totalRunning } = useAllRunningSessions();
-  const hasMultipleTabs = tabsState.tabs.length > 1;
-  
-  // Show tab bar when: has workspace OR multiple tabs OR running sessions
-  // Always show when there's an active workspace for session visibility
-  const shouldShowTabBar = !isMobile && (
-    showTabBar || 
-    hasMultipleTabs || 
-    tabsState.tabs.length >= 1 || 
-    totalRunning > 0 ||
-    !!activeWorkspace
-  );
+  const toggleBottomPanel = useCallback(() => {
+    setBottomPanelOpen((prev: boolean) => !prev);
+  }, [setBottomPanelOpen]);
 
   // Handle responsive behavior with debounced resize
   useEffect(() => {
@@ -79,37 +94,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
     setSidebarCollapsed(prev => !prev);
   }, [setSidebarCollapsed]);
 
-  // Sidebar resize handlers
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isResizing) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, e.clientX));
-      setSidebarWidth(newWidth);
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizing, setSidebarWidth]);
-
   // Close sidebar when clicking overlay on mobile
   const handleOverlayClick = useCallback(() => {
     if (isMobile && !sidebarCollapsed) {
@@ -136,6 +120,31 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleToggleSidebar]);
 
+  // Listen for global file-open events (dispatched from file tree, search results, etc.)
+  useEffect(() => {
+    const handleOpenFile = (e: Event) => {
+      const detail = (e as CustomEvent<{ filePath: string }>).detail;
+      if (detail?.filePath) {
+        openFileInEditor(detail.filePath);
+      }
+    };
+    const handleOpenFileDiff = (e: Event) => {
+      const detail = (e as CustomEvent<{ filePath: string }>).detail;
+      if (detail?.filePath) {
+        // Import the store's imperative openFile to open in diff mode
+        import('../../features/editor/store/editorStore').then(({ openFileImperative }) => {
+          openFileImperative(detail.filePath, { preview: false, viewMode: 'diff' });
+        });
+      }
+    };
+    document.addEventListener('vyotiq:open-file', handleOpenFile);
+    document.addEventListener('vyotiq:open-file-diff', handleOpenFileDiff);
+    return () => {
+      document.removeEventListener('vyotiq:open-file', handleOpenFile);
+      document.removeEventListener('vyotiq:open-file-diff', handleOpenFileDiff);
+    };
+  }, []);
+
   // Memoized content renderer
   const chatContent = useMemo(() => (
     <main className="flex-1 min-w-0 min-h-0 overflow-hidden relative flex flex-col bg-[var(--color-surface-base)] h-full w-full transition-colors">
@@ -151,7 +160,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
         collapsed={sidebarCollapsed}
         onToggle={handleToggleSidebar}
         onOpenSettings={onOpenSettings}
-        hasWorkspace={!!activeWorkspace}
         isMobile={isMobile}
         isTablet={isTablet}
       />
@@ -190,7 +198,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
                 'hover:bg-[var(--color-accent-primary)]/20 transition-colors',
                 isResizing && 'bg-[var(--color-accent-primary)]/30'
               )}
-              onMouseDown={handleResizeStart}
+              {...sidebarResizeProps}
             >
               {/* Visual drag handle indicator */}
               <div
@@ -208,17 +216,50 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
           )}
         </div>
 
-        {/* Main content area with optional workspace tabs */}
+        {/* Main content area — split between chat, editor, and bottom panel */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-          {/* Workspace Tab Bar - shown when multiple tabs or enabled */}
-          {shouldShowTabBar && (
-            <WorkspaceTabBar />
-          )}
-          
-          {/* Main content */}
-          {chatContent}
+          <div className="flex-1 flex min-w-0 min-h-0 overflow-hidden">
+            {/* Chat content area */}
+            {chatContent}
+
+            {/* Editor panel with resize handle */}
+            {editorVisible && (
+              <>
+                {/* Editor resize handle */}
+                <div
+                  className={cn(
+                    'w-1.5 cursor-col-resize z-10 group shrink-0',
+                    'hover:bg-[var(--color-accent-primary)]/20 transition-colors',
+                    isEditorResizing && 'bg-[var(--color-accent-primary)]/30'
+                  )}
+                  {...editorResizeProps}
+                >
+                  <div
+                    className={cn(
+                      'relative top-1/2 -translate-y-1/2 w-full h-12 flex flex-col justify-center items-center gap-0.5',
+                      'opacity-0 group-hover:opacity-100 transition-opacity',
+                      isEditorResizing && 'opacity-100'
+                    )}
+                  >
+                    <div className="w-0.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]/60" />
+                    <div className="w-0.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]/60" />
+                    <div className="w-0.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]/60" />
+                  </div>
+                </div>
+
+                {/* Editor panel */}
+                <div className="shrink-0 min-h-0 overflow-hidden" style={{ width: editorWidth }}>
+                  <EditorPanel />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Bottom panel (Terminal / Problems / Output / Debug Console) */}
+          <BottomPanel isOpen={bottomPanelOpen} onToggle={toggleBottomPanel} />
         </div>
       </div>
+      <GlobalStatusBar />
     </div>
   );
 };

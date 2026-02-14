@@ -38,6 +38,9 @@ const TOOL_CATEGORIES = {
   file: [
     'read', 'write', 'edit', 'ls', 'grep', 'glob', 'bulk', 'read_lints',
   ],
+  search: [
+    'semantic_search', 'full_text_search', 'code_query', 'code_similarity',
+  ],
   terminal: [
     'run', 'check_terminal', 'kill_terminal',
   ],
@@ -95,6 +98,12 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   bulk: 'Batch file operations (rename, move, copy, delete). Use for multiple file operations in one call.',
   read_lints: 'Get TypeScript/ESLint diagnostics for files. Use after edits to verify code quality. Essential verification step.',
   
+  // Search tools - Semantic and full-text code search
+  semantic_search: 'Vector/embedding-based semantic code search across the indexed workspace. Use natural language queries to find relevant code. Powered by Qwen3 embeddings + usearch HNSW.',
+  full_text_search: 'BM25 ranked keyword search via Tantivy engine. Supports fuzzy matching, language filtering, and file pattern filtering. Best for exact keyword/identifier searches.',
+  code_query: 'Natural language code query - ask questions about the codebase and get relevant code snippets with explanations.',
+  code_similarity: 'Find code similar to a given snippet or description. Uses vector embeddings to find structurally/semantically similar code.',
+
   // Terminal tools - Command execution
   run: 'Run a terminal command. Use for builds, tests, installs, or any shell operation. Supports background mode for servers.',
   check_terminal: 'Check output of a background process by PID. Use to monitor long-running commands started with run_in_background.',
@@ -164,7 +173,7 @@ interface RequestToolsArgs extends Record<string, unknown> {
   /** Search query (for 'search' action) */
   query?: string;
   /** Category to list (for 'list' action) */
-  category?: 'browser' | 'lsp' | 'file' | 'terminal' | 'task' | 'advanced' | 'all';
+  category?: 'browser' | 'lsp' | 'file' | 'search' | 'terminal' | 'task' | 'advanced' | 'all';
   /** Reason for requesting tools (helps with debugging) */
   reason?: string;
   /** Error message to get recovery suggestions for (for 'recover' action) */
@@ -227,7 +236,8 @@ action="reset_cache_stats"
 ## Categories
 - **browser**: Web automation, scraping, form filling, screenshots
 - **lsp**: Code intelligence, navigation, refactoring, diagnostics
-- **file**: File operations, search, diagnostics
+- **file**: File operations, bulk rename/move/copy/delete, diagnostics
+- **search**: Semantic vector search, BM25 keyword search, code queries, code similarity
 - **terminal**: Command execution, process management
 - **task**: Task tracking, planning, verification (always available)
 - **advanced**: Dynamic tool creation
@@ -261,7 +271,7 @@ action="reset_cache_stats"
       category: {
         type: 'string',
         description: 'Category to list (for "list" action)',
-        enum: ['browser', 'lsp', 'file', 'terminal', 'task', 'advanced', 'all'],
+        enum: ['browser', 'lsp', 'file', 'search', 'terminal', 'task', 'advanced', 'all'],
       },
       reason: {
         type: 'string',

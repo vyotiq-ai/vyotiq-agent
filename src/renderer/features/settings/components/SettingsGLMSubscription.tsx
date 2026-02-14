@@ -4,6 +4,11 @@ import { Spinner } from '../../../components/ui/LoadingState';
 import { Button } from '../../../components/ui/Button';
 import { Toggle } from '../../../components/ui/Toggle';
 import { cn } from '../../../utils/cn';
+import { NotificationBanner } from '../primitives';
+import type { Notification } from '../primitives';
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('GLMSubscription');
 
 interface SubscriptionStatus {
   connected: boolean;
@@ -21,7 +26,7 @@ export const SettingsGLMSubscription: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notification, setNotification] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
+  const [notification, setNotification] = useState<Notification | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [selectedTier, setSelectedTier] = useState<'lite' | 'pro'>('lite');
@@ -40,7 +45,7 @@ export const SettingsGLMSubscription: React.FC = () => {
       setUseCodingEndpoint(status.useCodingEndpoint);
       return status;
     } catch (err) {
-      console.error('Failed to fetch GLM subscription status:', err);
+      logger.error('Failed to fetch GLM subscription status', { error: err instanceof Error ? err.message : String(err) });
       return { connected: false, useCodingEndpoint: true };
     }
   }, []);
@@ -160,19 +165,7 @@ export const SettingsGLMSubscription: React.FC = () => {
       </header>
 
       {/* Notification banner */}
-      {notification && (
-        <div className={cn(
-          "text-[10px] px-2 py-1.5 border flex items-center gap-2",
-          notification.type === 'success' && "text-[var(--color-success)] bg-[var(--color-success)]/10 border-[var(--color-success)]/20",
-          notification.type === 'warning' && "text-[var(--color-warning)] bg-[var(--color-warning)]/10 border-[var(--color-warning)]/20",
-          notification.type === 'error' && "text-[var(--color-error)] bg-[var(--color-error)]/10 border-[var(--color-error)]/20",
-        )}>
-          {notification.type === 'success' && <CheckCircle size={10} />}
-          {notification.type === 'warning' && <AlertCircle size={10} />}
-          {notification.type === 'error' && <AlertCircle size={10} />}
-          {notification.message}
-        </div>
-      )}
+      <NotificationBanner notification={notification} />
 
       <div className="border border-[var(--color-border-subtle)] bg-[var(--color-surface-header)] p-3 space-y-3">
         {isChecking ? (

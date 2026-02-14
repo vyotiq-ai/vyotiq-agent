@@ -145,8 +145,12 @@ export function useChatAreaState({ activeSession }: UseChatAreaStateOptions): Ch
   // Get the last assistant message content length for scroll dependency
   const lastAssistantContentLength = useMemo(() => {
     if (!activeSession?.messages) return 0;
-    const lastAssistant = [...activeSession.messages].reverse().find(m => m.role === 'assistant');
-    return lastAssistant?.content?.length ?? 0;
+    // Backward loop avoids copying the entire messages array with .reverse()
+    const msgs = activeSession.messages;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'assistant') return msgs[i].content?.length ?? 0;
+    }
+    return 0;
   }, [activeSession?.messages]);
 
   // Toggle run collapse state

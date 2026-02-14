@@ -7,7 +7,6 @@ import type { ToolCallPayload, RendererEvent, AgentEvent, ChatMessage, SafetySet
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
 import type { ToolRegistry, TerminalManager, ToolExecutionContext } from '../../tools';
-import type { WorkspaceManager } from '../../workspaces/workspaceManager';
 import type { AccessCheckResult } from './types';
 import type { ProgressTracker } from './progressTracker';
 import type { DebugEmitter } from './debugEmitter';
@@ -21,7 +20,6 @@ import { randomUUID } from 'node:crypto';
 export class ToolExecutor {
   private readonly toolRegistry: ToolRegistry;
   private readonly terminalManager: TerminalManager;
-  private readonly workspaceManager: WorkspaceManager;
   private readonly logger: Logger;
   private readonly emitEvent: (event: RendererEvent | AgentEvent) => void;
   private readonly progressTracker: ProgressTracker;
@@ -35,7 +33,6 @@ export class ToolExecutor {
   constructor(
     toolRegistry: ToolRegistry,
     terminalManager: TerminalManager,
-    workspaceManager: WorkspaceManager,
     logger: Logger,
     emitEvent: (event: RendererEvent | AgentEvent) => void,
     progressTracker: ProgressTracker,
@@ -45,7 +42,6 @@ export class ToolExecutor {
   ) {
     this.toolRegistry = toolRegistry;
     this.terminalManager = terminalManager;
-    this.workspaceManager = workspaceManager;
     this.logger = logger;
     this.emitEvent = emitEvent;
     this.progressTracker = progressTracker;
@@ -93,17 +89,15 @@ export class ToolExecutor {
 
   /**
    * Build tool execution context
+   * Uses session workspace path to ensure agent operates within user's workspace,
+   * NOT the application's installation directory (process.cwd()).
    */
   buildToolContext(
     session: InternalSession,
     runId: string,
     signal?: AbortSignal
   ): ToolExecutionContext {
-    const workspace = session.state.workspaceId
-      ? this.workspaceManager.list().find(w => w.id === session.state.workspaceId)
-      : this.workspaceManager.getActive();
-
-    const workspacePath = workspace?.path ?? process.cwd();
+    const workspacePath = session.state.workspacePath || '';
 
     return {
       sessionId: session.state.id,

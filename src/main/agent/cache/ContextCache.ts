@@ -458,6 +458,9 @@ export class ContextCache<T = unknown> {
     this.cleanupTimer = setInterval(() => {
       this.cleanup();
     }, this.config.cleanupIntervalMs);
+    if (this.cleanupTimer && typeof this.cleanupTimer === 'object' && 'unref' in this.cleanupTimer) {
+      (this.cleanupTimer as NodeJS.Timeout).unref();
+    }
   }
 
   /**

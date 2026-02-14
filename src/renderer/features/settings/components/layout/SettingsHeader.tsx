@@ -7,7 +7,6 @@
 
 import React from 'react';
 import { X, Menu, ChevronRight } from 'lucide-react';
-import { Button } from '../../../../components/ui/Button';
 import type { SettingsTabId } from '../../config/tabConfig';
 
 interface SettingsHeaderProps {
@@ -25,8 +24,8 @@ export const SettingsHeader: React.FC<SettingsHeaderProps> = ({
 }) => {
   return (
     <header 
-      className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 bg-[var(--color-surface-header)] border-b border-[var(--color-border-subtle)]"
-      style={{ flexShrink: 0, minHeight: '48px' }}
+      className="w-full flex items-center justify-between px-3 sm:px-4 py-1.5 sm:py-2 bg-[var(--color-surface-header)] border-b border-[var(--color-border-subtle)]"
+      style={{ flexShrink: 0, minHeight: '36px' }}
     >
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
         {/* Mobile menu button */}

@@ -65,8 +65,6 @@ export {
   countMessageTokens,
   truncateToTokenLimit,
   fitsWithinTokenLimit,
-  useTokenCounter,
-  useTokenCount,
 } from './tokenCounter';
 
 export type {
@@ -105,3 +103,17 @@ export type {
   ToolAction,
   ToolGroup,
 } from './toolUtils';
+
+// Cost estimation utilities
+export {
+  calculateMessageCost,
+  calculateSessionCost,
+  formatCost,
+  formatTokenCount,
+  estimatePromptCost,
+} from './costEstimation';
+
+export type {
+  CostEstimate,
+  SessionCostSummary,
+} from './costEstimation';

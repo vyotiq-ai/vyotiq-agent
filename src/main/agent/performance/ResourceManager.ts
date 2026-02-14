@@ -131,6 +131,9 @@ export class ResourceManager extends EventEmitter {
       this.cleanupExpiredAllocations();
       this.resetRateLimitWindows();
     }, this.config.budgetCheckIntervalMs);
+    if (this.checkInterval && typeof this.checkInterval === 'object' && 'unref' in this.checkInterval) {
+      (this.checkInterval as NodeJS.Timeout).unref();
+    }
 
     this.deps.logger.info('ResourceManager: started');
   }

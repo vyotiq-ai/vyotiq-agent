@@ -1,7 +1,6 @@
 // Utilities barrel export
 export { cn } from './cn';
 export * from './constants';
-export * from './tools';
 export * from './styles';
 
 // Time formatting utilities
@@ -38,14 +37,12 @@ export {
   getProviderLabel,
 } from './theme';
 
-// Re-export formatPath from tools (originally from shared/utils/toolUtils)
-export { formatPath } from './tools';
-
 // Performance profiling utilities (development-time)
 export { 
   useRenderProfiler, 
   useLifecycleProfiler,
   useRenderGuard,
+  useProfilerKeyboard,
   withProfiler, 
   measureTime,
   getAllMetrics,

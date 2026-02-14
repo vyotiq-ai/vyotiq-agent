@@ -35,9 +35,6 @@ export {
   processContextRuleTemplate,
   buildTaskAnalysisContext,
   buildWorkspaceStructureContext,
-  CORE_IDENTITY,
-  CRITICAL_RULES,
-  TOOL_CHAINING,
   DEFAULT_PROMPT_SETTINGS,
 } from './systemPrompt';
 export type { 
@@ -206,7 +203,6 @@ export {
   initPerformance,
   getPerformanceMonitor,
   getCachingLayer,
-  getLazyLoader,
   getResourceManager,
   resetPerformance,
   isPerformanceInitialized,
@@ -222,7 +218,6 @@ export {
   BatchProcessor,
   createAPIBatchProcessor,
   createFileBatchProcessor,
-  LazyLoader,
   ResourceManager,
 } from './performance';
 
@@ -267,5 +262,4 @@ export type {
   SessionHealthStatus,
   SessionHealthIssue,
   SessionHealthConfig,
-  WorkspaceHealthStatus,
 } from './sessionHealth';

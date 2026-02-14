@@ -3,6 +3,11 @@ import { Download, LogOut, CheckCircle, AlertCircle, Crown, RefreshCw, Clock, Te
 import { Spinner } from '../../../components/ui/LoadingState';
 import { Button } from '../../../components/ui/Button';
 import { cn } from '../../../utils/cn';
+import { NotificationBanner } from '../primitives';
+import type { Notification } from '../primitives';
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('ClaudeSubscription');
 
 interface SubscriptionStatus {
   connected: boolean;
@@ -35,7 +40,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
   const [isChecking, setIsChecking] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notification, setNotification] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
+  const [notification, setNotification] = useState<Notification | null>(null);
   const [autoImportAttempted, setAutoImportAttempted] = useState(false);
 
   // Refs to avoid stale closures in effects
@@ -48,7 +53,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
       setStatus(result);
       return result;
     } catch (err) {
-      console.error('Failed to fetch subscription status:', err);
+      logger.error('Failed to fetch subscription status', { error: err instanceof Error ? err.message : String(err) });
       return { connected: false };
     }
   }, []);
@@ -75,7 +80,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
             setStatus(newStatus);
           }
         } catch (err) {
-          console.error('Auto-import failed:', err);
+          logger.error('Auto-import failed', { error: err instanceof Error ? err.message : String(err) });
         }
       }
     };
@@ -101,7 +106,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
             setStatus(newStatus);
           }
         } catch (err) {
-          console.error('Import after auth failed:', err);
+          logger.error('Import after auth failed', { error: err instanceof Error ? err.message : String(err) });
         }
       }
     }, 2000);
@@ -246,19 +251,7 @@ export const SettingsClaudeSubscription: React.FC = () => {
       </header>
 
       {/* Notification banner */}
-      {notification && (
-        <div className={cn(
-          "text-[10px] px-2 py-1.5 border flex items-center gap-2",
-          notification.type === 'success' && "text-[var(--color-success)] bg-[var(--color-success)]/10 border-[var(--color-success)]/20",
-          notification.type === 'warning' && "text-[var(--color-warning)] bg-[var(--color-warning)]/10 border-[var(--color-warning)]/20",
-          notification.type === 'error' && "text-[var(--color-error)] bg-[var(--color-error)]/10 border-[var(--color-error)]/20",
-        )}>
-          {notification.type === 'success' && <CheckCircle size={10} />}
-          {notification.type === 'warning' && <AlertCircle size={10} />}
-          {notification.type === 'error' && <AlertCircle size={10} />}
-          {notification.message}
-        </div>
-      )}
+      <NotificationBanner notification={notification} />
 
       <div className="border border-[var(--color-border-subtle)] bg-[var(--color-surface-header)] p-3 space-y-3">
         {isChecking ? (

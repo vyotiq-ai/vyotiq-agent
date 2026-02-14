@@ -73,16 +73,7 @@ const mockSettingsStore = {
   getProviderSettings: vi.fn(),
 };
 
-const mockWorkspaceManager = {
-  getActive: vi.fn().mockReturnValue({
-    id: 'workspace-1',
-    path: '/test/workspace',
-    label: 'Test Workspace',
-    lastOpenedAt: Date.now(),
-    isActive: true,
-  }),
-  list: vi.fn().mockReturnValue([]),
-};
+
 
 describe('AgentOrchestrator', () => {
   // Setup and teardown for event emitter tests
@@ -99,7 +90,6 @@ describe('AgentOrchestrator', () => {
     it('should initialize with required dependencies', () => {
       // Test that orchestrator can be constructed with minimal deps
       expect(mockSettingsStore.get).toBeDefined();
-      expect(mockWorkspaceManager.getActive).toBeDefined();
       expect(mockLogger.info).toBeDefined();
     });
 
@@ -132,12 +122,10 @@ describe('AgentOrchestrator', () => {
   });
 
   describe('Session Management', () => {
-    it('should create session with workspace binding', () => {
-      const workspace = mockWorkspaceManager.getActive();
+    it('should create session', () => {
       const session: {
         id: string;
         title: string;
-        workspaceId: string;
         status: string;
         messages: unknown[];
         config: typeof mockSettingsStore extends { get: () => { defaultConfig: infer T } } ? T : unknown;
@@ -146,7 +134,6 @@ describe('AgentOrchestrator', () => {
       } = {
         id: 'session-1',
         title: 'New Session',
-        workspaceId: workspace.id,
         status: 'idle',
         messages: [],
         config: mockSettingsStore.get().defaultConfig,
@@ -154,7 +141,6 @@ describe('AgentOrchestrator', () => {
         updatedAt: Date.now(),
       };
       
-      expect(session.workspaceId).toBe('workspace-1');
       expect(session.status).toBe('idle');
     });
 
@@ -178,70 +164,7 @@ describe('AgentOrchestrator', () => {
     });
   });
 
-  describe('Editor State Management', () => {
-    it('should track open files and active file', () => {
-      const editorState: {
-        openFiles: string[];
-        activeFile: string;
-        cursorPosition: { lineNumber: number; column: number };
-        diagnostics: unknown[];
-      } = {
-        openFiles: ['/src/app.ts', '/src/utils.ts'],
-        activeFile: '/src/app.ts',
-        cursorPosition: { lineNumber: 10, column: 5 },
-        diagnostics: [],
-      };
-      
-      expect(editorState.openFiles).toHaveLength(2);
-      expect(editorState.activeFile).toBe('/src/app.ts');
-    });
-
-    it('should track diagnostics from editor', () => {
-      const editorState: {
-        openFiles: string[];
-        activeFile: string;
-        cursorPosition: { lineNumber: number; column: number } | null;
-        diagnostics: Array<{
-          filePath: string;
-          message: string;
-          severity: 'error' | 'warning' | 'info';
-          line: number;
-          column: number;
-        }>;
-      } = {
-        openFiles: ['/src/app.ts'],
-        activeFile: '/src/app.ts',
-        cursorPosition: null,
-        diagnostics: [
-          {
-            filePath: '/src/app.ts',
-            message: 'Type error',
-            severity: 'error' as const,
-            line: 10,
-            column: 5,
-          },
-        ],
-      };
-      
-      expect(editorState.diagnostics).toHaveLength(1);
-      expect(editorState.diagnostics[0].severity).toBe('error');
-    });
-  });
-
   describe('Run Execution', () => {
-    it('should validate workspace before sending message', () => {
-      const workspace = mockWorkspaceManager.getActive();
-      const session = {
-        id: 'session-1',
-        workspaceId: workspace.id,
-        status: 'idle',
-      };
-      
-      // Workspace validation
-      const isValid = session.workspaceId === workspace.id;
-      expect(isValid).toBe(true);
-    });
-
     it('should reject message without available providers', () => {
       const settingsWithNoProviders = {
         ...mockSettingsStore.get(),
@@ -473,7 +396,6 @@ describe('Session State Validation', () => {
       title: string;
       createdAt: number;
       updatedAt: number;
-      workspaceId: string;
       config: {
         preferredProvider: string;
         fallbackProvider: string;
@@ -489,7 +411,6 @@ describe('Session State Validation', () => {
       title: 'Test Session',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      workspaceId: 'workspace-1',
       config: {
         preferredProvider: 'anthropic',
         fallbackProvider: 'openai',

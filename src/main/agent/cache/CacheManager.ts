@@ -65,6 +65,10 @@ export class CacheManager {
       openai: this.createEmptyStats(),
       deepseek: this.createEmptyStats(),
       gemini: this.createEmptyStats(),
+      xai: this.createEmptyStats(),
+      mistral: this.createEmptyStats(),
+      glm: this.createEmptyStats(),
+      openrouter: this.createEmptyStats(),
     };
   }
   

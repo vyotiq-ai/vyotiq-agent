@@ -41,6 +41,9 @@ export type { UseSecuritySettingsReturn } from './useSecuritySettings';
 export { useSystemSettings } from './useSystemSettings';
 export type { UseSystemSettingsReturn } from './useSystemSettings';
 
+export { useWorkspaceSettings } from './useWorkspaceSettings';
+export type { UseWorkspaceSettingsReturn } from './useWorkspaceSettings';
+
 export { useSettingsSave } from './useSettingsSave';
 export type { UseSettingsSaveReturn } from './useSettingsSave';
 

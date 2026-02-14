@@ -80,6 +80,9 @@ export class SessionQueueManager {
     }
 
     sessionQueueData.queue = [];
+    // Also mark as not processing and remove from map to prevent stale entries
+    sessionQueueData.isProcessing = false;
+    this.sessionQueues.delete(sessionId);
 
     this.logger.debug('Cleared session queue', {
       sessionId,

@@ -61,5 +61,3 @@ export function useFirstRun(): UseFirstRunResult {
     resetFirstRun,
   };
 }
-
-export default useFirstRun;

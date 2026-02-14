@@ -31,6 +31,7 @@ interface RunMetrics {
   contextMessageCount: number;
   hasContext: boolean;
   isCompressed: boolean;
+  tokensUsed: number;
 }
 
 interface RunResult {
@@ -53,7 +54,18 @@ class AgentMetrics {
 
   private activeRuns: Map<string, RunMetrics> = new Map();
 
+  /** Maximum age (ms) for an active run before it's evicted as stale (1 hour) */
+  private static readonly STALE_RUN_MAX_AGE_MS = 60 * 60 * 1000;
+  /** How often to check for stale runs (every 50 startRun calls) */
+  private startRunCallCount = 0;
+
   startRun(runId: string, sessionId: string, provider: string, maxIterations: number): void {
+    // Periodically evict stale runs that were never completed (e.g., due to crash)
+    this.startRunCallCount++;
+    if (this.startRunCallCount % 50 === 0) {
+      this.evictStaleRuns();
+    }
+
     this.activeRuns.set(runId, {
       runId,
       sessionId,
@@ -72,10 +84,11 @@ class AgentMetrics {
       contextMessageCount: 0,
       hasContext: false,
       isCompressed: false,
+      tokensUsed: 0,
     });
   }
 
-  completeRun(runId: string, status: 'completed' | 'error'): RunResult | null {
+  completeRun(runId: string, status: 'completed' | 'error', tokensUsed?: number): RunResult | null {
     const run = this.activeRuns.get(runId);
     if (!run) return null;
 
@@ -83,6 +96,7 @@ class AgentMetrics {
     this.data.totalRuns++;
     this.data.totalDurationMs += durationMs;
     this.data.toolCallsCount += run.toolsExecuted;
+    this.data.totalTokensUsed += tokensUsed ?? run.tokensUsed;
 
     if (status === 'completed') {
       this.data.successfulRuns++;
@@ -136,6 +150,11 @@ class AgentMetrics {
     run.isCompressed = isCompressed;
   }
 
+  recordTokenUsage(runId: string, tokens: number): void {
+    const run = this.activeRuns.get(runId);
+    if (run) run.tokensUsed += tokens;
+  }
+
   recordRun(success: boolean, durationMs: number, tokensUsed: number = 0, toolCalls: number = 0): void {
     this.data.totalRuns++;
     if (success) {
@@ -169,6 +188,23 @@ class AgentMetrics {
   getSuccessRate(): number {
     if (this.data.totalRuns === 0) return 0;
     return this.data.successfulRuns / this.data.totalRuns;
+  }
+
+  /** Evict active runs that have been stuck for longer than the max age.
+   *  This prevents memory leaks from runs that crashed before completing. */
+  private evictStaleRuns(): void {
+    const now = Date.now();
+    const maxAge = AgentMetrics.STALE_RUN_MAX_AGE_MS;
+    for (const [runId, run] of this.activeRuns) {
+      if (now - run.startTime > maxAge) {
+        this.activeRuns.delete(runId);
+      }
+    }
+  }
+
+  /** Clean up resources. Call on shutdown. */
+  dispose(): void {
+    this.activeRuns.clear();
   }
 }
 

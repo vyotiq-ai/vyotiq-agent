@@ -472,3 +472,4 @@ const TodoProgressComponent: React.FC<TodoProgressProps> = ({
 };
 
 export const TodoProgress = memo(TodoProgressComponent);
+TodoProgress.displayName = 'TodoProgress';

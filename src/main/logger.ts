@@ -55,13 +55,16 @@ export interface Logger {
   startTimer(label: string): () => number;
   trackToolInvocation(toolName: string, duration: number, success: boolean, details?: { args?: Record<string, unknown>; result?: string; sessionId?: string }): void;
   trackProviderCall(provider: string, duration: number, success: boolean, tokens?: number): void;
+  trackSessionActivity(sessionId: string, messageCount: number): void;
   trackDecision(type: DecisionRecord['type'], decision: string, details?: Omit<DecisionRecord, 'id' | 'timestamp' | 'type' | 'decision'>): void;
   getRecentLogs(count?: number, filter?: { level?: LogLevel; scope?: string; startTime?: number; endTime?: number }): LogEntry[];
   getToolExecutions(filter?: { toolName?: string; sessionId?: string; success?: boolean; limit?: number }): ToolExecutionRecord[];
   getDecisions(filter?: { type?: DecisionRecord['type']; limit?: number }): DecisionRecord[];
   getPerformanceMetrics(): PerformanceMetrics;
+  resetMetrics(type?: 'tool' | 'provider' | 'session'): void;
   searchLogs(query: string): LogEntry[];
   exportLogs(filter?: { startTime?: number; endTime?: number; levels?: LogLevel[] }): Promise<string>;
+  createChildLogger(scope: string): Logger;
 }
 
 class LogBuffer {
@@ -75,13 +78,15 @@ class LogBuffer {
   push(entry: LogEntry): void {
     this.entries.push(entry);
     if (this.entries.length > this.maxSize) {
+      // Use splice instead of slice to modify in-place, avoiding a full array copy
       const removeCount = Math.floor(this.maxSize * 0.2);
-      this.entries = this.entries.slice(removeCount);
+      this.entries.splice(0, removeCount);
     }
   }
 
-  getAll(): LogEntry[] {
-    return [...this.entries];
+  /** Returns the internal entries array (read-only). Do NOT mutate. */
+  getAll(): readonly LogEntry[] {
+    return this.entries;
   }
 
   getRecent(count: number): LogEntry[] {
@@ -91,10 +96,20 @@ class LogBuffer {
   search(query: string): LogEntry[] {
     const lowerQuery = query.toLowerCase();
     return this.entries.filter(
-      (entry) =>
-        entry.message.toLowerCase().includes(lowerQuery) ||
-        entry.scope.toLowerCase().includes(lowerQuery) ||
-        JSON.stringify(entry.meta).toLowerCase().includes(lowerQuery)
+      (entry) => {
+        // Check cheap fields first before falling back to expensive JSON.stringify
+        if (entry.message.toLowerCase().includes(lowerQuery)) return true;
+        if (entry.scope.toLowerCase().includes(lowerQuery)) return true;
+        // Only stringify meta if the cheap checks failed
+        if (entry.meta) {
+          try {
+            return JSON.stringify(entry.meta).toLowerCase().includes(lowerQuery);
+          } catch {
+            return false;
+          }
+        }
+        return false;
+      }
     );
   }
 
@@ -125,6 +140,8 @@ export class VyotiqLogger implements Logger {
   };
   private maxToolExecutions = 1000;
   private maxDecisions = 500;
+  /** Per-tool recent error tracking for O(1) error rate computation */
+  private toolRecentErrors = new Map<string, { calls: number; errors: number }>();
 
   constructor(scope: string, options?: { minLevel?: LogLevel; maxBufferSize?: number }) {
     this.scope = scope;
@@ -141,9 +158,38 @@ export class VyotiqLogger implements Logger {
     const dateStr = new Date().toISOString().split('T')[0];
     this.logFilePath = path.join(logsDir, `vyotiq-${dateStr}.log`);
     
-    fs.mkdir(logsDir, { recursive: true }).catch(() => {
+    fs.mkdir(logsDir, { recursive: true }).then(() => {
+      // Clean up old log files on startup (keep last 7 days)
+      this.rotateLogFiles(logsDir, 7).catch(() => {});
+    }).catch(() => {
       // Directory creation failed - continue without file logging
     });
+  }
+
+  /** Remove log files older than maxAgeDays */
+  private async rotateLogFiles(logsDir: string, maxAgeDays: number): Promise<void> {
+    try {
+      const files = await fs.readdir(logsDir);
+      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      
+      for (const file of files) {
+        if (!file.startsWith('vyotiq-') || !file.endsWith('.log')) continue;
+        const filePath = path.join(logsDir, file);
+        try {
+          const stat = await fs.stat(filePath);
+          if (stat.mtimeMs < cutoff) {
+            await fs.unlink(filePath);
+            this.log('info', `Rotated old log file: ${file}`, { file, ageMs: Date.now() - stat.mtimeMs });
+          }
+        } catch (rotErr) {
+          // Skip files we can't stat/delete — log to console since logger may be mid-rotation
+          console.debug('[logger] Failed to rotate log file:', file, rotErr instanceof Error ? rotErr.message : rotErr);
+        }
+      }
+    } catch (err) {
+      // Rotation failed — non-critical, but inform via console
+      console.warn('[logger] Log rotation failed:', err instanceof Error ? err.message : err);
+    }
   }
 
   private generateId(): string {
@@ -173,6 +219,11 @@ export class VyotiqLogger implements Logger {
   }
 
   private async queueWrite(entry: LogEntry): Promise<void> {
+    // Cap queue size to prevent unbounded memory growth during disk I/O bottlenecks.
+    // Drop oldest entries when the queue exceeds 10,000 entries.
+    if (this.writeQueue.length >= 10000) {
+      this.writeQueue.splice(0, this.writeQueue.length - 9000);
+    }
     this.writeQueue.push(entry);
     
     if (this.isWriting) return;
@@ -245,17 +296,22 @@ export class VyotiqLogger implements Logger {
     
     this.toolExecutions.push(record);
     
-    // Trim if exceeds max
+    // Trim if exceeds max - use splice for in-place modification
     if (this.toolExecutions.length > this.maxToolExecutions) {
-      this.toolExecutions = this.toolExecutions.slice(-this.maxToolExecutions);
+      const removeCount = this.toolExecutions.length - this.maxToolExecutions;
+      this.toolExecutions.splice(0, removeCount);
     }
 
-    // Calculate recent error rate (last 10 calls for this tool) for more accurate recent performance
-    const recentCalls = this.toolExecutions
-      .filter(r => r.toolName === toolName)
-      .slice(-10);
-    const recentErrors = recentCalls.filter(r => !r.success).length;
-    const recentErrorRate = recentCalls.length > 0 ? (recentErrors / recentCalls.length) * 100 : 0;
+    // O(1) per-tool recent error rate tracking (avoids O(n) filter on every invocation)
+    const recentStats = this.toolRecentErrors.get(toolName) ?? { calls: 0, errors: 0 };
+    recentStats.calls = Math.min(recentStats.calls + 1, 10); // Window of last ~10 calls
+    if (!success) recentStats.errors = Math.min(recentStats.errors + 1, 10);
+    // Decay: after 10 calls, start reducing old error count proportionally
+    if (recentStats.calls >= 10) {
+      recentStats.errors = Math.max(0, recentStats.errors - (success ? 0.1 : 0));
+    }
+    this.toolRecentErrors.set(toolName, recentStats);
+    const recentErrorRate = recentStats.calls > 0 ? (recentStats.errors / recentStats.calls) * 100 : 0;
 
     this.info('Tool invocation', {
       tool: toolName,
@@ -310,9 +366,10 @@ export class VyotiqLogger implements Logger {
     
     this.decisions.push(record);
     
-    // Trim if exceeds max
+    // Trim if exceeds max - use splice for in-place modification
     if (this.decisions.length > this.maxDecisions) {
-      this.decisions = this.decisions.slice(-this.maxDecisions);
+      const removeCount = this.decisions.length - this.maxDecisions;
+      this.decisions.splice(0, removeCount);
     }
 
     this.info(`Decision: ${type}`, {
@@ -526,6 +583,18 @@ export class ConsoleLogger implements Logger {
 
   exportLogs(filter?: { startTime?: number; endTime?: number; levels?: LogLevel[] }): Promise<string> {
     return this.vyotiqLogger.exportLogs(filter);
+  }
+
+  trackSessionActivity(sessionId: string, messageCount: number): void {
+    this.vyotiqLogger.trackSessionActivity(sessionId, messageCount);
+  }
+
+  resetMetrics(type?: 'tool' | 'provider' | 'session'): void {
+    this.vyotiqLogger.resetMetrics(type);
+  }
+
+  createChildLogger(scope: string): Logger {
+    return new ConsoleLogger(scope);
   }
 }
 

@@ -92,8 +92,17 @@ export function useVirtualizedList<T>({
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   
-  // Track measured heights for each item
-  const [measuredHeights, setMeasuredHeights] = useState<Map<number, number>>(new Map());
+  // Track measured heights using ref + version counter to batch measurement updates.
+  // Using a Map in state directly causes cascading re-renders on every item measurement.
+  // Instead, we store measurements in a ref and trigger a single re-render via version counter
+  // after batching all measurements within a requestAnimationFrame cycle.
+  const measuredHeightsRef = useRef<Map<number, number>>(new Map());
+  const [measureVersion, setMeasureVersion] = useState(0);
+  const pendingMeasureRef = useRef(false);
+  
+  // Expose a stable getter for the measured heights (used in memos)
+  const measuredHeights = measuredHeightsRef.current;
+  
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -124,7 +133,8 @@ export function useVirtualizedList<T>({
     }
 
     return { itemOffsets: offsets, totalHeight: currentOffset };
-  }, [items.length, measuredHeights, estimatedItemHeight, gap]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- measuredHeights is a ref that doesn't trigger re-renders; measureVersion tracks ref changes instead
+  }, [items.length, measureVersion, estimatedItemHeight, gap]);
 
   // Find visible range with binary search
   const findStartIndex = useCallback((scrollTop: number): number => {
@@ -182,7 +192,8 @@ export function useVirtualizedList<T>({
     prevRangeRef.current = { startIndex, endIndex, itemsLength: items.length };
 
     return result;
-  }, [items, containerHeight, scrollTop, findStartIndex, overscan, itemOffsets, measuredHeights, estimatedItemHeight, getItemKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- measuredHeights ref is tracked via measureVersion to batch measurement updates
+  }, [items, containerHeight, scrollTop, findStartIndex, overscan, itemOffsets, measureVersion, estimatedItemHeight, getItemKey]);
 
   // Handle scroll events with user intent tracking
   useEffect(() => {
@@ -382,14 +393,19 @@ export function useVirtualizedList<T>({
     container.scrollTo({ top: totalHeight, behavior });
   }, [totalHeight]);
 
-  // Update measured height for an item
+  // Update measured height for an item — batched via requestAnimationFrame
+  // to avoid cascading state updates during rapid measurement callbacks
   const measureItem = useCallback((index: number, height: number) => {
-    setMeasuredHeights((prev) => {
-      if (prev.get(index) === height) return prev;
-      const next = new Map(prev);
-      next.set(index, height);
-      return next;
-    });
+    if (measuredHeightsRef.current.get(index) === height) return;
+    measuredHeightsRef.current.set(index, height);
+    
+    if (!pendingMeasureRef.current) {
+      pendingMeasureRef.current = true;
+      requestAnimationFrame(() => {
+        pendingMeasureRef.current = false;
+        setMeasureVersion(v => v + 1);
+      });
+    }
   }, []);
 
   return {

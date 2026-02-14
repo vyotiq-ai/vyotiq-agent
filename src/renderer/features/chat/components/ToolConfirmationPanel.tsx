@@ -18,6 +18,7 @@ import type { ToolCallEvent } from '../../../../shared/types';
 import { getToolActionDescription } from '../utils/toolActionDescriptions';
 import { Button } from '../../../components/ui/Button';
 import { computeDiffStats, computeDiffHunks, computeInlineDiff } from './toolExecution/diffUtils';
+import { useAsync } from '../../../hooks/useAsync';
 
 function shortRunId(runId: string | undefined): string | undefined {
   if (!runId) return undefined;
@@ -103,47 +104,29 @@ function extractEditStrings(args: Record<string, unknown>): { oldString: string;
   return undefined;
 }
 
-/** Hook to fetch original file content for diff preview */
+/** Hook to fetch original file content for diff preview (using useAsync) */
 function useOriginalFileContent(filePath: string | undefined, isFileOp: boolean) {
-  const [originalContent, setOriginalContent] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!filePath || !isFileOp) {
-      setOriginalContent(null);
-      return;
+  const fetchContent = useCallback(async (): Promise<string> => {
+    if (!filePath || !isFileOp) return '';
+    try {
+      const results = await window.vyotiq?.files?.read([filePath]);
+      const result = results?.[0];
+      return result?.content !== undefined ? result.content : '';
+    } catch (err) {
+      // File doesn't exist - treat as new file
+      return '';
     }
-
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-
-    // Fetch original content via IPC - files.read takes an array and returns AttachmentPayload[]
-    window.vyotiq?.files?.read([filePath])
-      .then((results: Array<{ content?: string; error?: string }>) => {
-        if (cancelled) return;
-        const result = results?.[0];
-        if (result?.content !== undefined) {
-          setOriginalContent(result.content);
-        } else {
-          // File doesn't exist (new file) or error
-          setOriginalContent('');
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        // File doesn't exist - treat as new file
-        setOriginalContent('');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => { cancelled = true; };
   }, [filePath, isFileOp]);
 
-  return { originalContent, isLoading, error };
+  const { data: originalContent, isLoading, error } = useAsync(fetchContent, {
+    immediate: !!(filePath && isFileOp),
+  });
+
+  return {
+    originalContent: filePath && isFileOp ? (originalContent ?? null) : null,
+    isLoading,
+    error: error?.message ?? null,
+  };
 }
 
 // =============================================================================
@@ -353,7 +336,7 @@ const InlineDiffPreview: React.FC<InlineDiffPreviewProps> = memo(({
               if (line.type === 'expand') {
                 return (
                   <button
-                    key={idx}
+                    key={`expand-${line.expandInfo?.regionIdx ?? idx}`}
                     type="button"
                     onClick={() => line.expandInfo && toggleRegionExpanded(line.expandInfo.regionIdx)}
                     className={cn(
@@ -378,7 +361,7 @@ const InlineDiffPreview: React.FC<InlineDiffPreviewProps> = memo(({
 
               return (
                 <div
-                  key={idx}
+                  key={`${line.type}-${line.oldLineNum ?? ''}-${line.newLineNum ?? ''}`}
                   className={cn(
                     'flex items-stretch transition-colors duration-75 border-b border-[var(--color-border-subtle)]/10',
                     isRemoved && 'bg-[var(--color-diff-removed-bg)] hover:bg-[var(--color-diff-removed-bg)]/80',
@@ -779,10 +762,10 @@ const ToolConfirmationItem: React.FC<ToolConfirmationItemProps> = memo(({
           {/* Quick suggestions */}
           <div className="flex items-center gap-1.5 mb-2 flex-wrap">
             <span className="text-[9px] text-[var(--color-text-muted)]">quick:</span>
-            {quickSuggestions.map((suggestion, idx) => {
+            {quickSuggestions.map((suggestion) => {
               return (
                 <button
-                  key={idx}
+                  key={suggestion.label}
                   onClick={() => handleQuickSuggestion(suggestion.text)}
                   className={cn(
                     'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm',

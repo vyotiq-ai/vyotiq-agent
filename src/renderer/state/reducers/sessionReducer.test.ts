@@ -11,7 +11,6 @@ function createMockSession(overrides: Partial<AgentSessionState> = {}): AgentSes
   return {
     id: 'session-1',
     title: 'Test Session',
-    workspaceId: 'workspace-1',
     status: 'idle',
     messages: [],
     config: {
@@ -46,7 +45,6 @@ function createInitialState(overrides: Partial<AgentUIState> = {}): AgentUIState
   return {
     sessions: [],
     activeSessionId: undefined,
-    workspaces: [],
     sessionCost: {},
     streamingSessions: new Set(),
     progressGroups: {},
@@ -59,10 +57,13 @@ function createInitialState(overrides: Partial<AgentUIState> = {}): AgentUIState
     routingDecisions: {},
     terminalStreams: {},
     todos: {},
+    executingTools: {},
+    queuedTools: {},
     // Phase 4: Communication
     pendingQuestions: [],
     pendingDecisions: [],
     communicationProgress: [],
+    runErrors: {},
     settings: {
       apiKeys: {},
       rateLimits: {},
@@ -307,24 +308,6 @@ describe('sessionReducer', () => {
       expect(Object.keys(newState.pendingConfirmations)).toHaveLength(0);
       expect(Object.keys(newState.agentStatus)).toHaveLength(0);
       expect(newState.streamingSessions.size).toBe(0);
-    });
-  });
-  
-  describe('SESSIONS_CLEAR_FOR_WORKSPACE', () => {
-    it('should keep only sessions for the specified workspace', () => {
-      const session1 = createMockSession({ id: 'session-1', workspaceId: 'workspace-1' });
-      const session2 = createMockSession({ id: 'session-2', workspaceId: 'workspace-2' });
-      
-      const state = createInitialState({
-        sessions: [session1, session2],
-        activeSessionId: 'session-1',
-      });
-      
-      const action: SessionAction = { type: 'SESSIONS_CLEAR_FOR_WORKSPACE', payload: 'workspace-1' };
-      const newState = sessionReducer(state, action);
-      
-      expect(newState.sessions).toHaveLength(1);
-      expect(newState.sessions[0].workspaceId).toBe('workspace-1');
     });
   });
 });

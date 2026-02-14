@@ -16,7 +16,6 @@ import { DEFAULT_TOOL_CONFIG_SETTINGS } from '../../../shared/types';
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
 import type { ToolRegistry, TerminalManager, ToolExecutionContext } from '../../tools';
-import type { WorkspaceManager } from '../../workspaces/workspaceManager';
 import type { ProgressTracker } from './progressTracker';
 import type { DebugEmitter } from './debugEmitter';
 import type { AnnotatedToolCall } from './types';
@@ -34,11 +33,12 @@ import { getToolExecutionLogger, createToolSpecificLogger } from '../logging/Too
 import { getOutputTruncator } from '../output/OutputTruncator';
 import type { EnhancedToolResult } from '../../tools/types';
 import type { SafetySettings } from '../../../shared/types';
+import { getAuditLogger } from '../compliance';
+import type { SecurityActor } from '../security/SecurityAuditLog';
 
 export class ToolQueueProcessor {
   private readonly toolRegistry: ToolRegistry;
   private readonly terminalManager: TerminalManager;
-  private readonly workspaceManager: WorkspaceManager;
   private readonly logger: Logger;
   private readonly emitEvent: (event: RendererEvent | AgentEvent) => void;
   private readonly progressTracker: ProgressTracker;
@@ -54,7 +54,6 @@ export class ToolQueueProcessor {
   constructor(
     toolRegistry: ToolRegistry,
     terminalManager: TerminalManager,
-    workspaceManager: WorkspaceManager,
     logger: Logger,
     emitEvent: (event: RendererEvent | AgentEvent) => void,
     progressTracker: ProgressTracker,
@@ -68,7 +67,6 @@ export class ToolQueueProcessor {
   ) {
     this.toolRegistry = toolRegistry;
     this.terminalManager = terminalManager;
-    this.workspaceManager = workspaceManager;
     this.logger = logger;
     this.emitEvent = emitEvent;
     this.progressTracker = progressTracker;
@@ -378,7 +376,8 @@ export class ToolQueueProcessor {
       return;
     }
 
-    // Loop detection
+    // Loop detection — record the tool call BEFORE execution to detect loops early.
+    // On failure, we update the same record with failure info instead of double-recording.
     const loopDetector = getLoopDetector();
     const iteration = session.agenticContext?.iteration || 1;
     const loopResult = loopDetector.recordToolCall(runId, tool, iteration);
@@ -426,14 +425,16 @@ export class ToolQueueProcessor {
     const toolDetail = this.describeToolTarget(tool);
     const progressId = this.progressTracker.startToolProgress(session, runId, tool, toolDetail);
 
+    // Parse tool arguments once (reused below for compliance + execution)
+    const toolArgs = tool.arguments && typeof tool.arguments === 'object' ? tool.arguments : {};
+
     // Log tool execution start with structured logging
     const toolExecutionLogger = getToolExecutionLogger();
-    const args = tool.arguments && typeof tool.arguments === 'object' ? tool.arguments : {};
     toolExecutionLogger.logStart({
       sessionId: session.state.id,
       runId,
       toolName: tool.name,
-      args: args as Record<string, unknown>,
+      args: toolArgs as Record<string, unknown>,
       iteration: session.agenticContext?.iteration,
     });
 
@@ -469,15 +470,11 @@ export class ToolQueueProcessor {
     const startTime = Date.now();
 
     try {
-      const workspace = session.state.workspaceId
-        ? this.workspaceManager.list().find(w => w.id === session.state.workspaceId)
-        : this.workspaceManager.getActive();
+      // Use session workspace path — never fall back to process.cwd() as it exposes the app's own codebase
+      const workspacePath = session.state.workspacePath || '';
+      const workspace = { path: workspacePath };
 
-      if (session.state.workspaceId && !workspace) {
-        throw new Error(`Session workspace not found: ${session.state.workspaceId}`);
-      }
-
-      if (!workspace) {
+      if (!workspace.path) {
         throw new Error('No active workspace available for tool execution');
       }
 
@@ -506,10 +503,8 @@ export class ToolQueueProcessor {
         emitEvent: this.emitEvent,
       };
 
-      const args = tool.arguments && typeof tool.arguments === 'object' ? tool.arguments : {};
-
       // Compliance validation
-      const complianceResult = this.complianceValidator.validateToolCall(runId, tool.name, args, tool.callId);
+      const complianceResult = this.complianceValidator.validateToolCall(runId, tool.name, toolArgs, tool.callId);
 
       if (!complianceResult.isCompliant) {
         this.logger.warn('Compliance violations detected for tool call', {
@@ -535,6 +530,16 @@ export class ToolQueueProcessor {
           };
           session.state.messages.push(correctiveMessage);
           this.progressTracker.finishToolProgress(session, runId, progressId, toolLabel, toolDetail, 'error');
+
+          // Audit log: tool blocked by compliance
+          const auditLogger = getAuditLogger();
+          const actor: SecurityActor = { sessionId: session.state.id, runId };
+          auditLogger.log('tool_execution', 'tool_blocked', actor, {
+            toolName: tool.name,
+            reason: 'compliance_violation',
+            violations: complianceResult.violations.map(v => v.message),
+          }, { severity: 'warning', outcome: 'blocked' });
+
           this.updateSessionState(session.state.id, {
             messages: session.state.messages,
             updatedAt: Date.now(),
@@ -545,9 +550,9 @@ export class ToolQueueProcessor {
 
       // Access level validation
       const toolDef = this.toolRegistry.getDefinition(tool.name);
-      const filePath = (args as Record<string, unknown>).path as string
-        ?? (args as Record<string, unknown>).filePath as string
-        ?? (args as Record<string, unknown>).file as string
+      const filePath = (toolArgs as Record<string, unknown>).path as string
+        ?? (toolArgs as Record<string, unknown>).filePath as string
+        ?? (toolArgs as Record<string, unknown>).file as string
         ?? undefined;
 
       const accessCheck = checkAccessLevelPermission(
@@ -583,7 +588,7 @@ export class ToolQueueProcessor {
         return;
       }
 
-      const result = await this.toolRegistry.execute(tool.name, args, context);
+      const result = await this.toolRegistry.execute(tool.name, toolArgs, context);
       const duration = Date.now() - startTime;
 
       // Check if result was from cache
@@ -674,11 +679,42 @@ export class ToolQueueProcessor {
         );
       }
 
-      // Update loop detector with actual result (for failure pattern detection)
-      // Extract failure reason for specific error types (e.g., identical edit strings)
+      // Audit log: tool execution result
+      {
+        const auditLogger = getAuditLogger();
+        const actor: SecurityActor = { sessionId: session.state.id, runId };
+        auditLogger.log('tool_execution', result.success ? 'tool_success' : 'tool_failure', actor, {
+          toolName: tool.name,
+          duration,
+          fromCache,
+          truncated: truncationResult.wasTruncated,
+        }, {
+          severity: result.success ? 'info' : 'warning',
+          outcome: result.success ? 'success' : 'failure',
+          duration,
+        });
+      }
+
+      // Update the last recorded pattern's success status.
+      // The tool call was already recorded before execution for early loop detection.
+      // Instead of re-recording (which would inflate pattern counts), we update
+      // the last pattern entry and consecutiveFailures counters directly.
       if (!result.success) {
         const failureReason = result.output.includes('identical') ? 'identical' : undefined;
-        loopDetector.recordToolCall(runId, tool, iteration, false, failureReason);
+        const state = loopDetector.getState(runId);
+        if (state && state.patterns.length > 0) {
+          // Update the last recorded pattern with actual result
+          const lastPattern = state.patterns[state.patterns.length - 1];
+          lastPattern.success = false;
+          // Update consecutive failure tracking
+          state.consecutiveFailures++;
+          if (failureReason?.includes('identical')) {
+            const isEditTool = ['write_to_file', 'replace_in_file', 'edit_file', 'apply_diff', 'insert_code_block'].includes(tool.name.toLowerCase());
+            if (isEditTool) {
+              state.consecutiveIdenticalEditFailures++;
+            }
+          }
+        }
       }
 
       if (session.agenticContext) {
@@ -714,7 +750,7 @@ export class ToolQueueProcessor {
           sessionId: session.state.id,
           runId,
           toolName: tool.name,
-          args: args as Record<string, unknown>,
+          args: toolArgs as Record<string, unknown>,
           iteration: session.agenticContext?.iteration,
         },
         {
@@ -777,7 +813,7 @@ export class ToolQueueProcessor {
           sessionId: session.state.id,
           runId,
           toolName: tool.name,
-          args: args as Record<string, unknown>,
+          args: toolArgs as Record<string, unknown>,
           iteration: session.agenticContext?.iteration,
         },
         error instanceof Error ? error : new Error(errorMsg),

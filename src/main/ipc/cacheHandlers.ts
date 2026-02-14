@@ -10,6 +10,7 @@
 
 import { ipcMain } from 'electron';
 import { createLogger } from '../logger';
+import { withErrorGuard } from './guards';
 import type { IpcContext } from './types';
 
 const logger = createLogger('IPC:Cache');
@@ -151,8 +152,7 @@ export function registerCacheHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('cache:get-stats', async (): Promise<CacheStatsResponse> => {
-    try {
-      // Cleanup expired entries before reporting
+    return withErrorGuard('cache:get-stats', async () => {
       cleanupExpiredToolResults();
       updateHitRates();
 
@@ -165,13 +165,12 @@ export function registerCacheHandlers(context: IpcContext): void {
         promptCache: { ...promptCacheStats },
         toolCache: { ...toolCacheStats },
       };
-    } catch (error) {
-      logger.error('Failed to get cache stats', { error: error instanceof Error ? error.message : String(error) });
-      return {
+    }, {
+      returnOnError: {
         promptCache: { hits: 0, misses: 0, hitRate: 0, tokensSaved: 0, costSaved: 0 },
         toolCache: { size: 0, maxSize: 200, hits: 0, misses: 0, hitRate: 0, evictions: 0, expirations: 0 },
-      };
-    }
+      },
+    }) as Promise<CacheStatsResponse>;
   });
 
   // ==========================================================================
@@ -179,7 +178,7 @@ export function registerCacheHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('cache:clear', async (_event, type?: 'prompt' | 'tool' | 'context' | 'all'): Promise<{ success: boolean; cleared: string[] }> => {
-    try {
+    return withErrorGuard<{ success: boolean; cleared: string[] }>('cache:clear', async () => {
       const cleared: string[] = [];
       const clearType = type ?? 'all';
 
@@ -211,16 +210,12 @@ export function registerCacheHandlers(context: IpcContext): void {
       }
 
       if (clearType === 'context' || clearType === 'all') {
-        // Context cache is managed by settings, just reset stats
         cleared.push('context');
         logger.info('Context cache cleared');
       }
 
       return { success: true, cleared };
-    } catch (error) {
-      logger.error('Failed to clear cache', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, cleared: [] };
-    }
+    }, { returnOnError: { success: false, cleared: [] } }) as Promise<{ success: boolean; cleared: string[] }>;
   });
 
   // ==========================================================================
@@ -228,16 +223,15 @@ export function registerCacheHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('cache:update-tool-config', async (_event, config: { maxAge?: number; maxSize?: number }): Promise<{ success: boolean }> => {
-    try {
+    return withErrorGuard<{ success: boolean }>('cache:update-tool-config', async () => {
       if (config.maxAge !== undefined) {
-        toolCacheMaxAge = Math.max(1000, config.maxAge); // Min 1 second
+        toolCacheMaxAge = Math.max(1000, config.maxAge);
       }
       if (config.maxSize !== undefined) {
-        toolCacheMaxSize = Math.max(10, config.maxSize); // Min 10 entries
+        toolCacheMaxSize = Math.max(10, config.maxSize);
         toolCacheStats.maxSize = toolCacheMaxSize;
       }
 
-      // Update settings store
       const currentSettings = getSettingsStore().get();
       await getSettingsStore().update({
         cacheSettings: {
@@ -252,10 +246,7 @@ export function registerCacheHandlers(context: IpcContext): void {
 
       logger.info('Tool cache config updated', { maxAge: toolCacheMaxAge, maxSize: toolCacheMaxSize });
       return { success: true };
-    } catch (error) {
-      logger.error('Failed to update tool cache config', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false };
-    }
+    }, { returnOnError: { success: false } });
   });
 
   // ==========================================================================
@@ -263,14 +254,11 @@ export function registerCacheHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('cache:cleanup-tool-results', async (): Promise<{ success: boolean; removed: number }> => {
-    try {
+    return withErrorGuard<{ success: boolean; removed: number }>('cache:cleanup-tool-results', async () => {
       const removed = cleanupExpiredToolResults();
       logger.info('Tool cache cleanup completed', { removed });
       return { success: true, removed };
-    } catch (error) {
-      logger.error('Failed to cleanup tool cache', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, removed: 0 };
-    }
+    }, { returnOnError: { success: false, removed: 0 } }) as Promise<{ success: boolean; removed: number }>;
   });
 
   // ==========================================================================
@@ -278,22 +266,17 @@ export function registerCacheHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('cache:invalidate-path', async (_event, path: string): Promise<{ success: boolean; invalidated: number }> => {
-    try {
+    return withErrorGuard<{ success: boolean; invalidated: number }>('cache:invalidate-path', async () => {
       let invalidated = 0;
-
       for (const [key] of toolResultCache.entries()) {
         if (key.includes(path)) {
           toolResultCache.delete(key);
           invalidated++;
         }
       }
-
       toolCacheStats.size = toolResultCache.size;
       logger.info('Cache entries invalidated for path', { path, invalidated });
       return { success: true, invalidated };
-    } catch (error) {
-      logger.error('Failed to invalidate cache path', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, invalidated: 0 };
-    }
+    }, { returnOnError: { success: false, invalidated: 0 } }) as Promise<{ success: boolean; invalidated: number }>;
   });
 }

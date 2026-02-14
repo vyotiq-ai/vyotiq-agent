@@ -11,7 +11,7 @@ import { cn } from '../../../../utils/cn';
 import { Spinner } from '../../../../components/ui/LoadingState';
 import { SessionOption } from './SessionOption';
 import type { SessionDropdownProps, SessionViewMode } from './types';
-import { isSessionRunning, getSessionStats } from './utils';
+import { getSessionStats } from './utils';
 
 // =============================================================================
 // Sub-Components
@@ -188,7 +188,6 @@ export const SessionDropdown = memo<SessionDropdownProps & {
   sessionGroups,
   flatSessionList,
   activeSessionId,
-  activeWorkspaceId,
   focusedIndex,
   sessionCount,
   hasWorkspace,

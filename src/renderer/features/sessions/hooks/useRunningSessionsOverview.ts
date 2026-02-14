@@ -1,15 +1,14 @@
 /**
  * useRunningSessionsOverview Hook
  * 
- * Provides a summary of all running sessions across workspaces.
+ * Provides a summary of all running sessions.
  * Useful for status indicators and global session monitoring.
  */
 import { useMemo } from 'react';
 import { useAgentSelector } from '../../../state/AgentProvider';
-import type { AgentSessionState, WorkspaceEntry } from '../../../../shared/types';
+import type { AgentSessionState } from '../../../../shared/types';
 import {
   isSessionRunning,
-  getRunningCountByWorkspace,
   sortSessionsRunningFirst,
 } from '../utils';
 
@@ -19,12 +18,9 @@ import {
 
 export interface RunningSessionInfo {
   session: AgentSessionState;
-  workspaceLabel: string;
 }
 
 export interface WorkspaceRunningInfo {
-  workspaceId: string;
-  workspaceLabel: string;
   runningCount: number;
   sessions: AgentSessionState[];
 }
@@ -34,7 +30,7 @@ export interface RunningSessionsOverviewState {
   runningSessions: RunningSessionInfo[];
   /** Total running count */
   totalRunning: number;
-  /** Running sessions grouped by workspace */
+  /** Running sessions grouped by workspace (kept for API compatibility) */
   byWorkspace: WorkspaceRunningInfo[];
   /** Count of workspaces with running sessions */
   activeWorkspaceCount: number;
@@ -55,60 +51,29 @@ export function useRunningSessionsOverview(): RunningSessionsOverviewState {
     (a, b) => a === b
   );
 
-  // Get workspaces for labels
-  const workspaces = useAgentSelector(
-    s => s.workspaces ?? [],
-    (a, b) => a === b
-  );
-
-  // Build workspace labels map
-  const workspaceLabels = useMemo(() => {
-    const labels = new Map<string, string>();
-    workspaces.forEach(w => {
-      const label = w.label || w.path?.split(/[/\\]/).pop() || 'Unknown';
-      labels.set(w.id, label);
-    });
-    return labels;
-  }, [workspaces]);
-
-  // Filter running sessions and add workspace info
+  // Filter running sessions
   const runningSessions = useMemo<RunningSessionInfo[]>(() => {
     return allSessions
       .filter(s => isSessionRunning(s.status))
       .map(session => ({
         session,
-        workspaceLabel: workspaceLabels.get(session.workspaceId || '') || 'Unknown',
       }));
-  }, [allSessions, workspaceLabels]);
+  }, [allSessions]);
 
   // Awaiting confirmation sessions
   const awaitingSessions = useMemo<RunningSessionInfo[]>(() => {
     return runningSessions.filter(s => s.session.status === 'awaiting-confirmation');
   }, [runningSessions]);
 
-  // Group by workspace
+  // Single group for all running sessions
   const byWorkspace = useMemo<WorkspaceRunningInfo[]>(() => {
-    const groups = new Map<string, AgentSessionState[]>();
-    
-    allSessions
-      .filter(s => isSessionRunning(s.status))
-      .forEach(session => {
-        const wid = session.workspaceId || 'unknown';
-        if (!groups.has(wid)) {
-          groups.set(wid, []);
-        }
-        groups.get(wid)!.push(session);
-      });
-
-    return Array.from(groups.entries())
-      .map(([workspaceId, sessions]) => ({
-        workspaceId,
-        workspaceLabel: workspaceLabels.get(workspaceId) || 'Unknown',
-        runningCount: sessions.length,
-        sessions: sortSessionsRunningFirst(sessions),
-      }))
-      .sort((a, b) => b.runningCount - a.runningCount);
-  }, [allSessions, workspaceLabels]);
+    const running = allSessions.filter(s => isSessionRunning(s.status));
+    if (running.length === 0) return [];
+    return [{
+      runningCount: running.length,
+      sessions: sortSessionsRunningFirst(running),
+    }];
+  }, [allSessions]);
 
   // Build state
   return useMemo<RunningSessionsOverviewState>(() => ({

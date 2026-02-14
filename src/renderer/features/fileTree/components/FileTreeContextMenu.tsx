@@ -20,6 +20,8 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Search,
+  FileCode2,
+  GitCompareArrows,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import type { ContextMenuAction, ContextMenuPosition } from '../types';
@@ -46,6 +48,8 @@ interface FileTreeContextMenuProps {
 }
 
 const createMenuItems = (canPaste: boolean): ContextMenuItem[] => [
+  { action: 'openInEditor', label: 'open in editor', icon: <FileCode2 size={12} />, show: 'file' },
+  { action: 'openDiff', label: 'open diff', icon: <GitCompareArrows size={12} />, show: 'file', divider: true },
   { action: 'newFile', label: 'new file', icon: <FilePlus size={12} />, show: 'directory' },
   { action: 'newFolder', label: 'new folder', icon: <FolderPlus size={12} />, show: 'directory', divider: true },
   { action: 'newFile', label: 'new file', icon: <FilePlus size={12} />, show: 'file' },

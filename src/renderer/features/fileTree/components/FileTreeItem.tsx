@@ -250,8 +250,8 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = memo(({
       </span>
       
       {/* File/Folder icon */}
-      <span className={cn('w-4 h-4 flex items-center justify-center shrink-0 mr-1', iconColorClass)}>
-        <Icon size={14} />
+      <span className={cn('w-[18px] h-[18px] flex items-center justify-center shrink-0 mr-1', iconColorClass)}>
+        <Icon size={15} strokeWidth={1.75} />
       </span>
       
       {/* Name or rename input */}

@@ -7,7 +7,7 @@ export const STREAMING_MAX_BUFFER_SIZE = 100;
 // UI constants
 export const SIDEBAR_WIDTH = 280;
 export const SIDEBAR_COLLAPSED_WIDTH = 0;
-export const HEADER_HEIGHT = 40;
+export const HEADER_HEIGHT = 32;
 
 // UI Timing constants (in milliseconds)
 export const UI_TIMING = {

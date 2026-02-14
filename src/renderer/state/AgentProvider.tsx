@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, startTransition, useSyncExternalStore } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition, useSyncExternalStore } from 'react';
 import type {
   AgentConfig,
   AgentEvent,
@@ -21,6 +21,8 @@ import { combinedAgentReducer } from './reducers';
 import { useStreamingBuffer } from '../hooks/useStreamingBuffer';
 import { createLogger } from '../utils/logger';
 import { withIpcRetry } from '../utils/ipcRetry';
+import { computeSessionDelta } from './sessionDelta';
+import { getCurrentWorkspacePath } from './WorkspaceProvider';
 
 // Force full page reload on HMR to avoid React context identity issues
 // Context objects get new identity on module reload, breaking consumers using stale context
@@ -40,7 +42,6 @@ const initialDataLoadedRef = { current: false };
 const EVENT_BATCH_INTERVAL_MS = 16;
 const LOW_PRIORITY_EVENTS = new Set([
   // NOTE: These must match AgentAction['type'] values, not incoming event.type strings.
-  'WORKSPACES_UPDATE',
   'SETTINGS_UPDATE',
   'PROGRESS_UPDATE',
   'ARTIFACT_ADD',
@@ -48,13 +49,11 @@ const LOW_PRIORITY_EVENTS = new Set([
 ]);
 
 interface AgentActions {
-  startSession: (initialConfig?: Partial<AgentSettings['defaultConfig']>) => Promise<string | undefined>;
+  startSession: (initialConfig?: Partial<AgentSettings['defaultConfig']>, workspacePath?: string | null) => Promise<string | undefined>;
   createSession: () => Promise<string | undefined>;
   sendMessage: (content: string, attachments?: AttachmentPayload[], initialConfig?: Partial<AgentSettings['defaultConfig']>) => Promise<void>;
   confirmTool: (runId: string, approved: boolean, sessionId: string, feedback?: string) => Promise<void>;
   setActiveSession: (sessionId: string) => void;
-  openWorkspaceDialog: () => Promise<void>;
-  setActiveWorkspace: (workspaceId: string) => Promise<void>;
   updateSessionConfig: (sessionId: string, config: Partial<AgentSessionState['config']>) => Promise<void>;
   cancelRun: (sessionId: string) => Promise<void>;
   pauseRun: (sessionId: string) => Promise<boolean>;
@@ -84,18 +83,27 @@ export function useAgentSelector<T>(selector: (state: AgentUIState) => T, isEqua
     throw new Error('useAgentSelector must be used within AgentProvider');
   }
 
+  // Store selector/isEqual in refs so getSelectedSnapshot remains stable
+  // even when call sites pass inline lambdas (which are new refs each render).
+  // This prevents useSyncExternalStore from re-subscribing every render.
+  const selectorRef = useRef(selector);
+  selectorRef.current = selector;
+  const isEqualRef = useRef(isEqual);
+  isEqualRef.current = isEqual;
+
   const lastSelectionRef = useRef<T | undefined>(undefined);
   const lastHasSelectionRef = useRef(false);
 
+  // Stable getSelectedSnapshot — never recreated, reads selector from ref
   const getSelectedSnapshot = useCallback(() => {
-    const nextSelection = selector(store.getState());
-    if (lastHasSelectionRef.current && isEqual(lastSelectionRef.current as T, nextSelection)) {
+    const nextSelection = selectorRef.current(store.getState());
+    if (lastHasSelectionRef.current && isEqualRef.current(lastSelectionRef.current as T, nextSelection)) {
       return lastSelectionRef.current as T;
     }
     lastSelectionRef.current = nextSelection;
     lastHasSelectionRef.current = true;
     return nextSelection;
-  }, [store, selector, isEqual]);
+  }, [store]);
 
   return useSyncExternalStore(store.subscribe, getSelectedSnapshot, getSelectedSnapshot);
 }
@@ -187,27 +195,37 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     }
   }, []);
 
-  // Cleanup batch timer on unmount
+  // Cleanup batch timer on unmount — flush any pending events first
   useEffect(() => {
     return () => {
       if (batchTimerRef.current !== null) {
         clearTimeout(batchTimerRef.current);
+        batchTimerRef.current = null;
+      }
+      // Flush remaining batched events so they aren't silently dropped
+      const remaining = eventBatchRef.current;
+      if (remaining.length > 0) {
+        eventBatchRef.current = [];
+        for (const action of remaining) {
+          dispatchRef.current(action);
+        }
       }
     };
   }, []);
 
   // Use streaming buffer to batch delta updates for smooth rendering
-  // Using 33ms (~30fps) for a smooth typewriter effect without excessive re-renders
+  // Using 32ms (~30fps) — provides smooth word-by-word streaming while keeping React responsive.
+  // Stream deltas dispatch immediately (not via startTransition) for real-time text display.
   const { appendDelta, clearBuffer, flushSession } = useStreamingBuffer({
-    flushInterval: 33, // ~30 updates per second for smooth typewriter effect
-    maxBufferSize: 80, // Flush if buffer exceeds 80 chars for responsiveness
+    flushInterval: 32, // ~30 updates/sec — smooth word-by-word flow
+    maxBufferSize: 100, // Force-flush at 100 chars to keep display current
     onFlush: useCallback((sessionId: string, messageId: string, accumulatedDelta: string) => {
-      // Treat streaming UI updates as low-priority to keep input responsive
-      startTransition(() => {
-        dispatchRef.current({
-          type: 'STREAM_DELTA_BATCH',
-          payload: { sessionId, messageId, delta: accumulatedDelta },
-        });
+      // Dispatch stream deltas at normal priority for immediate rendering.
+      // The streaming buffer already throttles to ~30fps, so startTransition is
+      // unnecessary here and would delay text display by an additional frame.
+      dispatchRef.current({
+        type: 'STREAM_DELTA_BATCH',
+        payload: { sessionId, messageId, delta: accumulatedDelta },
       });
     }, []),
   });
@@ -252,13 +270,17 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     }, 33);
   }, [flushTerminalBuffers]);
 
+  // Cleanup terminal flush timer on unmount — flush remaining data first
   useEffect(() => {
     return () => {
       if (terminalFlushTimerRef.current !== null) {
         clearTimeout(terminalFlushTimerRef.current);
+        terminalFlushTimerRef.current = null;
       }
+      // Flush any remaining terminal output so data isn't lost
+      flushTerminalBuffers();
     };
-  }, []);
+  }, [flushTerminalBuffers]);
 
   const handleAgentEvent = useCallback(
     (event: AgentEvent | RendererEvent) => {
@@ -272,9 +294,35 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           // 4. Buffer flushes and appends content again → DUPLICATION
           flushSession(event.session.id, true);
 
-          // Session state updates need to be synchronous to ensure message structure
-          // is updated before stream-delta events try to append to messages
+          // Try delta-based update for existing sessions to reduce GC pressure.
+          // Falls back to full SESSION_UPSERT for new sessions or when delta fails.
+          const existingSession = store.getState().sessions.find(s => s.id === event.session.id);
+          if (existingSession) {
+            const delta = computeSessionDelta(existingSession, event.session);
+            if (delta) {
+              dispatchRef.current({ type: 'SESSION_APPLY_DELTA', payload: delta });
+              break;
+            }
+            // delta === null means no changes, skip dispatch entirely
+            break;
+          }
+
+          // New session — full upsert
           dispatchRef.current({ type: 'SESSION_UPSERT', payload: event.session });
+          break;
+        }
+        case 'session-patch': {
+          // Lightweight session update — O(1) patch for trivial field changes
+          // (rename, config, reaction) without serializing/deserializing all messages
+          const patchEvent = event as import('../../shared/types').SessionPatchEvent;
+          dispatchRef.current({
+            type: 'SESSION_PATCH',
+            payload: {
+              sessionId: patchEvent.sessionId,
+              patch: patchEvent.patch,
+              messagePatch: patchEvent.messagePatch,
+            },
+          });
           break;
         }
         case 'stream-delta': {
@@ -311,6 +359,8 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           if (event.status === 'running') {
             // Clear task state from previous runs when a new run starts
             dispatchRef.current({ type: 'CLEAR_SESSION_TASK_STATE', payload: event.sessionId });
+            // Clear any previous run error when a new run starts
+            dispatchRef.current({ type: 'RUN_ERROR_CLEAR', payload: event.sessionId });
           }
           if (event.status === 'idle' || event.status === 'error') {
             clearBuffer(event.sessionId);
@@ -319,6 +369,19 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
             type: 'RUN_STATUS',
             payload: { sessionId: event.sessionId, status: event.status, runId: event.runId },
           });
+          // Dispatch structured error info when run fails
+          if (event.status === 'error' && event.errorCode) {
+            dispatchRef.current({
+              type: 'RUN_ERROR',
+              payload: {
+                sessionId: event.sessionId,
+                errorCode: event.errorCode,
+                message: event.message || 'An unknown error occurred',
+                recoverable: event.recoverable ?? true,
+                recoveryHint: event.recoveryHint,
+              },
+            });
+          }
           if (event.status === 'idle' || event.status === 'error') {
             dispatchRef.current({ type: 'PENDING_TOOL_REMOVE', payload: event.runId });
             if (event.runId) {
@@ -385,7 +448,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
         case 'tool-queued': {
           // Track queued tools for immediate UI feedback
           // Shows users what tools are waiting to execute
-          const queuedEvent = event as import('../../../shared/types').ToolQueuedEvent;
+          const queuedEvent = event as import('../../shared/types').ToolQueuedEvent;
           dispatchRef.current({
             type: 'TOOL_QUEUED',
             payload: {
@@ -398,7 +461,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 
         case 'tool-started': {
           // Tool is now actively executing (distinct from tool-call which may require approval)
-          const startedEvent = event as import('../../../shared/types').ToolStartedEvent;
+          const startedEvent = event as import('../../shared/types').ToolStartedEvent;
           // Remove from queue and add to executing
           dispatchRef.current({
             type: 'TOOL_DEQUEUED',
@@ -419,10 +482,6 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           break;
         }
 
-        case 'workspace-update':
-          // Workspace updates are non-urgent - use batched dispatch
-          batchedDispatch({ type: 'WORKSPACES_UPDATE', payload: event.workspaces });
-          break;
         case 'media-output': {
           // Handle generated media (images, audio) from multimodal models
           // @see https://ai.google.dev/gemini-api/docs/image-generation
@@ -564,21 +623,13 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           // Clear existing sessions and reload from backend list
           dispatchRef.current({ type: 'SESSIONS_CLEAR' });
 
-          // Get active workspace to filter sessions
-          const activeWorkspaceId = currentState.workspaces?.find(w => w.isActive)?.id;
-
-          // Only load sessions for active workspace
-          if (activeWorkspaceId) {
-            const workspaceSessions = sessions.filter(s => s.workspaceId === activeWorkspaceId);
-            workspaceSessions.forEach((session) =>
-              dispatchRef.current({ type: 'SESSION_UPSERT', payload: session }),
-            );
-
-            // Auto-select the most recent session if none is active
-            if (!currentState.activeSessionId && workspaceSessions.length > 0) {
-              const sortedSessions = [...workspaceSessions].sort((a, b) => b.updatedAt - a.updatedAt);
-              dispatchRef.current({ type: 'SESSION_SET_ACTIVE', payload: sortedSessions[0].id });
-            }
+          if (sessions.length > 0) {
+            const sortedSessions = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+            const activeId = !currentState.activeSessionId ? sortedSessions[0].id : undefined;
+            dispatchRef.current({
+              type: 'SESSIONS_BULK_UPSERT',
+              payload: { sessions, activeSessionId: activeId },
+            });
           }
           break;
         }
@@ -596,7 +647,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
                 confidence: routingEvent.decision.confidence,
                 reason: routingEvent.decision.reason,
                 signals: routingEvent.decision.signals,
-                alternatives: routingEvent.decision.alternatives?.map(a => ({
+                alternatives: routingEvent.decision.alternatives?.map((a: { taskType: string; confidence: number }) => ({
                   taskType: a.taskType,
                   confidence: a.confidence,
                 })),
@@ -720,19 +771,19 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           break;
       }
     },
-    [appendDelta, clearBuffer, flushSession, batchedDispatch, getCurrentState, scheduleTerminalFlush],
+    [appendDelta, clearBuffer, flushSession, batchedDispatch, getCurrentState, scheduleTerminalFlush, store],
   );
 
   // Track if vyotiq API is ready
   const [apiReady, setApiReady] = useState(() => !!window.vyotiq?.agent);
-  const [_apiError, setApiError] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
   
   // Check for API readiness with better error handling
   useEffect(() => {
     if (apiReady) return;
     
     let attempts = 0;
-    const _maxAttempts = 100; // 5 seconds at 50ms intervals
+    const maxAttempts = 100; // 5 seconds at 50ms intervals
     
     // Poll for API availability
     const checkInterval = setInterval(() => {
@@ -742,6 +793,8 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
         setApiError(null);
         clearInterval(checkInterval);
         logger.info('window.vyotiq API became available', { attempts });
+      } else if (attempts >= maxAttempts) {
+        clearInterval(checkInterval);
       }
     }, 50);
     
@@ -784,7 +837,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       handleAgentEvent(event as AgentEvent);
     });
 
-    // Load initial data in sequence: workspaces first, then sessions for active workspace
+    // Load initial data
     // Use a flag to prevent duplicate loading in React StrictMode
     const loadInitialData = async () => {
       // Prevent duplicate loading in StrictMode
@@ -794,68 +847,45 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       initialDataLoadedRef.current = true;
 
       try {
-        // 1. Load workspaces first (with retry for IPC handler race condition)
-        const entries = await withIpcRetry(
-          () => window.vyotiq.workspace.list(),
-          { operationLabel: 'workspace:list', maxAttempts: 5, retryDelayMs: 300 }
-        );
-        dispatchRef.current({ type: 'WORKSPACES_UPDATE', payload: entries });
+        // 1. Load all sessions (with retry for IPC handler race condition)
+        dispatchRef.current({ type: 'SESSIONS_CLEAR' });
 
-        // 2. Load sessions for the active workspace only
-        const activeWorkspace = entries.find(w => w.isActive);
-        if (activeWorkspace) {
-          logger.info('Loading sessions for workspace', {
-            workspaceId: activeWorkspace.id,
-            workspacePath: activeWorkspace.path,
+        const sessions = await withIpcRetry(
+          () => window.vyotiq.agent.getSessions(),
+          { operationLabel: 'agent:get-sessions', maxAttempts: 5, retryDelayMs: 300 }
+        );
+        if (Array.isArray(sessions) && sessions.length > 0) {
+          // Debug: Log session usage data availability
+          const sessionsWithUsage = (sessions as AgentSessionState[]).filter(s =>
+            s.messages.some(m => m.usage)
+          );
+          logger.debug('Loading sessions with usage data', {
+            totalSessions: sessions.length,
+            sessionsWithUsage: sessionsWithUsage.length,
+            sampleSession: sessions[0] ? {
+              id: (sessions[0] as AgentSessionState).id,
+              messageCount: (sessions[0] as AgentSessionState).messages.length,
+              messagesWithUsage: (sessions[0] as AgentSessionState).messages.filter(m => m.usage).length,
+            } : null,
           });
 
-          // Clear any stale sessions first
-          dispatchRef.current({ type: 'SESSIONS_CLEAR' });
-
-          // Load workspace-specific sessions (with retry for IPC handler race condition)
-          const sessions = await withIpcRetry(
-            () => window.vyotiq.agent.getSessionsByWorkspace(activeWorkspace.id),
-            { operationLabel: 'agent:get-sessions-by-workspace', maxAttempts: 5, retryDelayMs: 300 }
+          // PERFORMANCE: Bulk-load all sessions in ONE dispatch instead of N individual ones.
+          const sortedSessions = [...sessions].sort((a, b) =>
+            (b as AgentSessionState).updatedAt - (a as AgentSessionState).updatedAt
           );
-          if (Array.isArray(sessions) && sessions.length > 0) {
-            // Debug: Log session usage data availability
-            const sessionsWithUsage = (sessions as AgentSessionState[]).filter(s =>
-              s.messages.some(m => m.usage)
-            );
-            logger.debug('Loading sessions with usage data', {
-              totalSessions: sessions.length,
-              sessionsWithUsage: sessionsWithUsage.length,
-              sampleSession: sessions[0] ? {
-                id: (sessions[0] as AgentSessionState).id,
-                messageCount: (sessions[0] as AgentSessionState).messages.length,
-                messagesWithUsage: (sessions[0] as AgentSessionState).messages.filter(m => m.usage).length,
-              } : null,
-            });
+          dispatchRef.current({
+            type: 'SESSIONS_BULK_UPSERT',
+            payload: {
+              sessions: sessions as AgentSessionState[],
+              activeSessionId: sortedSessions.length > 0 ? (sortedSessions[0] as AgentSessionState).id : undefined,
+            },
+          });
 
-            (sessions as AgentSessionState[]).forEach((session) =>
-              dispatchRef.current({ type: 'SESSION_UPSERT', payload: session }),
-            );
-
-            // Auto-select the most recent session
-            const sortedSessions = [...sessions].sort((a, b) =>
-              (b as AgentSessionState).updatedAt - (a as AgentSessionState).updatedAt
-            );
-            if (sortedSessions.length > 0) {
-              dispatchRef.current({ type: 'SESSION_SET_ACTIVE', payload: (sortedSessions[0] as AgentSessionState).id });
-            }
-
-            logger.info('Loaded sessions', {
-              count: sessions.length,
-              workspaceId: activeWorkspace.id,
-            });
-          } else {
-            logger.info('No sessions found for workspace', {
-              workspaceId: activeWorkspace.id,
-            });
-          }
+          logger.info('Loaded sessions', {
+            count: sessions.length,
+          });
         } else {
-          // This is expected when no workspace has been added yet - not an error
-          logger.debug('No active workspace found - user needs to select one');
+          logger.info('No sessions found');
         }
 
         // 3. Load settings (with guard and retry for IPC handler race condition)
@@ -881,38 +911,25 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     };
   }, [handleAgentEvent, apiReady]);
 
-  const startSession = useCallback(async (initialConfig?: Partial<AgentConfig>) => {
+  const startSession = useCallback(async (initialConfig?: Partial<AgentConfig>, workspacePath?: string | null) => {
     if (!window.vyotiq?.agent) return undefined;
-    const activeWorkspace = store.getState().workspaces.find((workspace) => workspace.isActive);
-
-    // STRICT: Require a workspace to be selected
-    if (!activeWorkspace) {
-      logger.error('Cannot start session without an active workspace');
-      return undefined;
-    }
 
     try {
       const session = (await window.vyotiq.agent.startSession({
-        workspaceId: activeWorkspace.id,
         initialConfig,
+        workspacePath: workspacePath ?? null,
       })) as AgentSessionState | undefined;
 
       if (session?.id) {
         dispatchRef.current({ type: 'SESSION_SET_ACTIVE', payload: session.id });
-
-        // Log session creation with workspace binding
-        logger.info('Created session bound to workspace', {
-          sessionId: session.id,
-          workspaceId: activeWorkspace.id,
-          workspacePath: activeWorkspace.path,
-        });
+        logger.info('Created session', { sessionId: session.id });
       }
       return session?.id;
     } catch (error) {
       logger.error('Failed to start session', { error: error instanceof Error ? error.message : String(error) });
       return undefined;
     }
-  }, [store]);
+  }, []);
 
   const sendMessage = useCallback(
     async (content: string, attachments: AttachmentPayload[], initialConfig?: Partial<AgentConfig>) => {
@@ -928,7 +945,9 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       if (!sessionId) {
         logger.info('No active session, creating new session');
         const latestState = store.getState();
-        sessionId = (await startSession(initialConfig)) ?? latestState.sessions?.[latestState.sessions?.length - 1]?.id;
+        // Pass the current workspace path so the backend has context for tool execution
+        const currentWorkspace = getCurrentWorkspacePath();
+        sessionId = (await startSession(initialConfig, currentWorkspace)) ?? latestState.sessions?.[latestState.sessions?.length - 1]?.id;
       }
 
       if (!sessionId) {
@@ -973,95 +992,6 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   const setActiveSession = useCallback((sessionId: string) => {
     dispatchRef.current({ type: 'SESSION_SET_ACTIVE', payload: sessionId });
   }, []);
-
-  const openWorkspaceDialog = useCallback(async () => {
-    if (!window.vyotiq?.workspace) return;
-    await window.vyotiq.workspace.add();
-  }, []);
-
-  const setActiveWorkspace = useCallback(async (workspaceId: string) => {
-    if (!window.vyotiq?.workspace) return;
-
-    logger.info('Switching to workspace', { workspaceId });
-
-    // Get workspace path for cache prewarming
-    const targetWorkspace = store.getState().workspaces.find(w => w.id === workspaceId);
-    const workspacePath = targetWorkspace?.path;
-
-    // Parallel operations for faster switching:
-    // 1. Prewarm file cache (background, non-blocking)
-    // 2. Set active workspace
-    // 3. Load sessions
-    const prewarmPromise = workspacePath && window.vyotiq?.files?.prewarmCache
-      ? window.vyotiq.files.prewarmCache(workspacePath).catch(err => {
-          logger.debug('Cache prewarm failed (non-critical)', { error: err });
-        })
-      : Promise.resolve();
-
-    // IMPORTANT: Instead of clearing ALL sessions, we now preserve running sessions
-    // from other workspaces to support multi-workspace concurrent execution.
-    // Only clear sessions that belong to other workspaces AND are not running.
-    // Running sessions from other workspaces remain visible to show global activity.
-    const currentState = store.getState();
-    const runningSessions = currentState.sessions.filter(
-      s => (s.status === 'running' || s.status === 'awaiting-confirmation') && s.workspaceId !== workspaceId
-    );
-    
-    // Use SESSIONS_CLEAR_FOR_WORKSPACE which keeps running sessions from other workspaces
-    // Note: We clear sessions not belonging to the workspace EXCEPT for running ones
-    dispatchRef.current({ type: 'SESSIONS_CLEAR_FOR_WORKSPACE_PRESERVE_RUNNING', payload: workspaceId });
-
-    // 2. Set the new active workspace (parallel with cache prewarm)
-    const [updatedWorkspaces] = await Promise.all([
-      window.vyotiq.workspace.setActive(workspaceId),
-      prewarmPromise,
-    ]);
-    dispatchRef.current({ type: 'WORKSPACES_UPDATE', payload: updatedWorkspaces });
-
-    // 3. Load sessions for the new workspace
-    if (window.vyotiq?.agent) {
-      try {
-        logger.info('Loading sessions for workspace', { workspaceId });
-        const sessions = await window.vyotiq.agent.getSessionsByWorkspace(workspaceId);
-
-        if (Array.isArray(sessions) && sessions.length > 0) {
-          // Load workspace-specific sessions
-          for (const session of sessions as AgentSessionState[]) {
-            // Double-check session belongs to this workspace (defensive)
-            if (session.workspaceId === workspaceId) {
-              dispatchRef.current({ type: 'SESSION_UPSERT', payload: session });
-            } else {
-              logger.warn('Skipping session with mismatched workspace', {
-                sessionId: session.id,
-                sessionWorkspace: session.workspaceId,
-                requestedWorkspace: workspaceId,
-              });
-            }
-          }
-
-          // Auto-select the most recent session that belongs to this workspace
-          const workspaceSessions = (sessions as AgentSessionState[])
-            .filter(s => s.workspaceId === workspaceId)
-            .sort((a, b) => b.updatedAt - a.updatedAt);
-
-          if (workspaceSessions.length > 0) {
-            dispatchRef.current({ type: 'SESSION_SET_ACTIVE', payload: workspaceSessions[0].id });
-          }
-
-          logger.info('Loaded sessions for new workspace', {
-            count: workspaceSessions.length,
-            workspaceId,
-          });
-        } else {
-          logger.info('No sessions found for new workspace', {
-            workspaceId,
-          });
-        }
-      } catch (error) {
-        logger.error('Failed to load sessions for workspace', { error: error instanceof Error ? error.message : String(error) });
-      }
-    }
-  }, [store]);
 
   const updateSessionConfig = useCallback(async (sessionId: string, config: Partial<AgentSessionState['config']>) => {
     if (!window.vyotiq?.agent) {
@@ -1129,7 +1059,8 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     if (!window.vyotiq?.agent) return false;
     try {
       return await window.vyotiq.agent.isRunPaused(sessionId);
-    } catch {
+    } catch (err) {
+      logger.debug('Failed to check if run is paused', { sessionId, error: err instanceof Error ? err.message : String(err) });
       return false;
     }
   }, []);
@@ -1146,7 +1077,8 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   }, []);
 
   const createSession = useCallback(async () => {
-    return startSession();
+    // Always pass the current workspace path so the session has context for tool execution
+    return startSession(undefined, getCurrentWorkspacePath());
   }, [startSession]);
 
   const renameSession = useCallback(async (sessionId: string, newTitle: string) => {
@@ -1170,8 +1102,6 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     sendMessage,
     confirmTool,
     setActiveSession,
-    openWorkspaceDialog,
-    setActiveWorkspace,
     updateSessionConfig,
     cancelRun,
     pauseRun,
@@ -1181,12 +1111,38 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     regenerate,
     renameSession,
     addReaction,
-  }), [cancelRun, pauseRun, resumeRun, isRunPaused, confirmTool, createSession, openWorkspaceDialog, renameSession, sendMessage, setActiveSession, setActiveWorkspace, startSession, updateSessionConfig, deleteSession, regenerate, addReaction]);
+  }), [cancelRun, pauseRun, resumeRun, isRunPaused, confirmTool, createSession, renameSession, sendMessage, setActiveSession, startSession, updateSessionConfig, deleteSession, regenerate, addReaction]);
 
-  // Populate the store's stable actions object
-  store.actions = value;
+  // Populate the store's stable actions object via useLayoutEffect so
+  // actions are available before the browser paints (and before any user
+  // interaction can fire).  We mutate the existing object with
+  // Object.assign instead of replacing the reference so that consumers
+  // who captured store.actions during render always see the latest
+  // functions without needing a re-render.
+  useLayoutEffect(() => {
+    Object.assign(store.actions, value);
+  }, [store, value]);
 
-  return <AgentContext.Provider value={store}>{children}</AgentContext.Provider>;
+  return (
+    <AgentContext.Provider value={store}>
+      {apiError && (
+        <div
+          role="alert"
+          style={{
+            padding: '12px 16px',
+            background: 'var(--color-error-bg, #2d1215)',
+            color: 'var(--color-error, #f87171)',
+            borderBottom: '1px solid var(--color-error-border, #5c2023)',
+            fontSize: '13px',
+            textAlign: 'center',
+          }}
+        >
+          {apiError}
+        </div>
+      )}
+      {children}
+    </AgentContext.Provider>
+  );
 };
 
 export const useAgent = () => {

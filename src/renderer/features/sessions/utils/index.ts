@@ -17,7 +17,6 @@ export {
   sortSessionsRunningFirst,
   // Filtering
   filterSessionsByQuery,
-  filterSessionsByWorkspace,
   filterRunningSessions,
   filterIdleSessions,
   filterAndSortSessions,
@@ -39,6 +38,5 @@ export type {
   SessionSortKey,
   SessionFilterOptions,
   SessionStats,
-  WorkspaceSessionStats,
   SessionGroup,
 } from './sessionUtils';

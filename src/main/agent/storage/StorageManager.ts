@@ -405,27 +405,31 @@ export class StorageManager {
    * Acquire a write lock for a file path
    */
   private async acquireWriteLock(filePath: string): Promise<void> {
+    // Wait until any existing lock for this file is released
     while (this.writeLocks.has(filePath)) {
       await this.writeLocks.get(filePath);
     }
-    const lock = new Promise<void>(resolve => {
-      // Lock will be released when releaseWriteLock is called
-      this.writeLocks.set(filePath, new Promise<void>(innerResolve => {
-        (this.writeLocks as Map<string, Promise<void> & { resolve?: () => void }>).get(filePath)!;
-        // Store the resolve function for later
-        setTimeout(() => {
-          innerResolve();
-          resolve();
-        }, 0);
-      }));
+    // Create a new lock that will be resolved when releaseWriteLock is called
+    let releaseLock: () => void;
+    const lockPromise = new Promise<void>(resolve => {
+      releaseLock = resolve;
     });
-    await lock;
+    // Store both the promise and its resolver
+    this.writeLocks.set(filePath, lockPromise);
+    (this as unknown as { _lockResolvers: Map<string, () => void> })._lockResolvers ??= new Map();
+    (this as unknown as { _lockResolvers: Map<string, () => void> })._lockResolvers.set(filePath, releaseLock!);
   }
 
   /**
    * Release a write lock
    */
   private releaseWriteLock(filePath: string): void {
+    const resolvers = (this as unknown as { _lockResolvers: Map<string, () => void> })._lockResolvers;
+    const resolver = resolvers?.get(filePath);
+    if (resolver) {
+      resolver();
+      resolvers.delete(filePath);
+    }
     this.writeLocks.delete(filePath);
   }
 

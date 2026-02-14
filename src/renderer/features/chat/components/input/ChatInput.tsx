@@ -26,7 +26,7 @@ import React, { useState, useCallback, useEffect, memo, useRef, useMemo } from '
 import { X, History } from 'lucide-react';
 import { useChatInput, useAgentStatus, useSessionCost, useAvailableProviders } from '../../../../hooks';
 import { useAgentActions } from '../../../../state/AgentProvider';
-import { useUI } from '../../../../state/UIProvider';
+import { useUIActions } from '../../../../state/UIProvider';
 import { useRenderProfiler } from '../../../../utils/profiler';
 import { cn } from '../../../../utils/cn';
 
@@ -242,7 +242,6 @@ export const ChatInput: React.FC = memo(() => {
     textareaRef,
     agentBusy,
     activeSession,
-    activeWorkspace,
     canSend,
     sessionWorkspaceValid,
     handleAddAttachments,
@@ -267,7 +266,7 @@ export const ChatInput: React.FC = memo(() => {
   } = useChatInput();
   
   const actions = useAgentActions();
-  const { openSettings } = useUI();
+  const { openSettings } = useUIActions();
   const { 
     isWorking, 
     statusMessage, 
@@ -292,7 +291,7 @@ export const ChatInput: React.FC = memo(() => {
   
   // === Derived State ===
   const hasProviders = availableProviders.length > 0;
-  const hasWorkspace = !!activeWorkspace;
+  const hasWorkspace = true; // No workspace concept
   const yoloEnabled = Boolean(activeSession?.config.yoloMode);
   const hasContent = message.length > 0;
   

@@ -199,7 +199,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = memo(
                 key={source.id}
                 onClick={() => handleSourceSelect(source.id)}
                 className={cn(
-                  'flex items-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg border text-left transition-all',
+                  'flex items-start gap-2 sm:gap-3 p-2.5 sm:p-3 border text-left transition-all',
                   'bg-[var(--color-surface-base)] border-[var(--color-border)]',
                   'hover:border-[var(--color-accent)] hover:bg-[var(--color-surface-elevated)]'
                 )}
@@ -285,7 +285,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = memo(
         </div>
 
         {/* Auto-start toggle */}
-        <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)]">
+        <div className="flex items-center justify-between p-3 bg-[var(--color-surface-base)] border border-[var(--color-border)]">
           <div>
             <div className="text-xs text-[var(--color-text-primary)]">Auto-start</div>
             <div className="text-[10px] text-[var(--color-text-muted)]">

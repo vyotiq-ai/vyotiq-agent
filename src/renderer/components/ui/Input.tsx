@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { cn } from '../../utils/cn';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -24,11 +24,16 @@ const iconSizes = {
 };
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-    ({ className, label, error, hint, leftIcon, rightIcon, inputSize = 'md', ...props }, ref) => {
+    ({ className, label, error, hint, leftIcon, rightIcon, inputSize = 'md', id: externalId, ...props }, ref) => {
+        const autoId = useId();
+        const inputId = externalId || autoId;
         return (
             <div className="space-y-1.5 w-full font-mono">
                 {label && (
-                    <label className="text-[10px] text-[var(--color-text-muted)] ml-0.5 flex items-center gap-1 transition-colors group-focus-within:text-[var(--color-accent-primary)]">
+                    <label
+                        htmlFor={inputId}
+                        className="text-[10px] text-[var(--color-text-muted)] ml-0.5 flex items-center gap-1 transition-colors group-focus-within:text-[var(--color-accent-primary)]"
+                    >
                         <span className="text-[var(--color-accent-primary)]">--</span>
                         {label.toLowerCase().replace(/\s+/g, '-')}
                     </label>
@@ -45,6 +50,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
                     )}
                     <input
                         ref={ref}
+                        id={inputId}
+                        aria-invalid={error ? 'true' : undefined}
+                        aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
                         className={cn(
                             'w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] outline-none transition-all duration-150 rounded-sm',
                             'placeholder:text-[var(--color-text-placeholder)]',
@@ -71,12 +79,12 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
                     <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[var(--color-accent-primary)] scale-x-0 group-focus-within:scale-x-100 transition-transform duration-200 origin-left" />
                 </div>
                 {hint && !error && (
-                    <p className="text-[9px] text-[var(--color-text-dim)] ml-0.5">
+                    <p id={`${inputId}-hint`} className="text-[9px] text-[var(--color-text-dim)] ml-0.5">
                         <span className="text-[var(--color-text-placeholder)]">#</span> {hint}
                     </p>
                 )}
                 {error && (
-                    <p className="text-[10px] text-[var(--color-error)] ml-0.5 animate-in slide-in-from-top-1 fade-in duration-200 flex items-center gap-1">
+                    <p id={`${inputId}-error`} role="alert" className="text-[10px] text-[var(--color-error)] ml-0.5 animate-in slide-in-from-top-1 fade-in duration-200 flex items-center gap-1">
                         <span className="text-[var(--color-error)]">[ERR]</span> {error}
                     </p>
                 )}
@@ -100,11 +108,16 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-    ({ className, label, error, hint, inputSize = 'md', ...props }, ref) => {
+    ({ className, label, error, hint, inputSize = 'md', id: externalId, ...props }, ref) => {
+        const autoId = useId();
+        const textareaId = externalId || autoId;
         return (
             <div className="space-y-1.5 w-full font-mono group">
                 {label && (
-                    <label className="text-[10px] text-[var(--color-text-muted)] ml-0.5 flex items-center gap-1 transition-colors group-focus-within:text-[var(--color-accent-primary)]">
+                    <label
+                        htmlFor={textareaId}
+                        className="text-[10px] text-[var(--color-text-muted)] ml-0.5 flex items-center gap-1 transition-colors group-focus-within:text-[var(--color-accent-primary)]"
+                    >
                         <span className="text-[var(--color-accent-primary)]">--</span>
                         {label.toLowerCase().replace(/\s+/g, '-')}
                     </label>
@@ -112,6 +125,9 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
                 <div className="relative">
                     <textarea
                         ref={ref}
+                        id={textareaId}
+                        aria-invalid={error ? 'true' : undefined}
+                        aria-describedby={error ? `${textareaId}-error` : hint ? `${textareaId}-hint` : undefined}
                         className={cn(
                             'w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] outline-none transition-all duration-150 rounded-sm',
                             'placeholder:text-[var(--color-text-placeholder)] resize-none',
@@ -129,12 +145,12 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
                     <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[var(--color-accent-primary)] scale-x-0 group-focus-within:scale-x-100 transition-transform duration-200 origin-left" />
                 </div>
                 {hint && !error && (
-                    <p className="text-[9px] text-[var(--color-text-dim)] ml-0.5">
+                    <p id={`${textareaId}-hint`} className="text-[9px] text-[var(--color-text-dim)] ml-0.5">
                         <span className="text-[var(--color-text-placeholder)]">#</span> {hint}
                     </p>
                 )}
                 {error && (
-                    <p className="text-[10px] text-[var(--color-error)] ml-0.5 animate-in slide-in-from-top-1 fade-in duration-200 flex items-center gap-1">
+                    <p id={`${textareaId}-error`} role="alert" className="text-[10px] text-[var(--color-error)] ml-0.5 animate-in slide-in-from-top-1 fade-in duration-200 flex items-center gap-1">
                         <span className="text-[var(--color-error)]">[ERR]</span> {error}
                     </p>
                 )}

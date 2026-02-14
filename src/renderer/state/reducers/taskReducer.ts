@@ -26,7 +26,7 @@ export type TaskAction =
   | { type: 'TOOL_QUEUED'; payload: { runId: string; tools: Array<{ callId: string; name: string; arguments?: Record<string, unknown>; queuePosition: number }> } }
   | { type: 'TOOL_DEQUEUED'; payload: { runId: string; callId: string } }
   // Tool result actions for rich content display
-  | { type: 'TOOL_RESULT_RECEIVE'; payload: { runId: string; callId: string; toolName: string; result: { success: boolean; output: string; metadata?: Record<string, unknown> } } }
+  | { type: 'TOOL_RESULT_RECEIVE'; payload: { runId: string; sessionId: string; callId: string; toolName: string; result: { success: boolean; output: string; metadata?: Record<string, unknown> } } }
   | { type: 'INLINE_ARTIFACT_ADD'; payload: { runId: string; artifact: InlineArtifactState } }
   | { type: 'RUN_CLEANUP'; payload: string }
   | { type: 'RUN_TOOLSTATE_CLEAR'; payload: string }
@@ -56,7 +56,10 @@ export type TaskAction =
   | { type: 'TERMINAL_CLEAR'; payload: { pid: number } }
   // Todo list actions
   | { type: 'TODO_UPDATE'; payload: { sessionId: string; runId: string; todos: TodoItem[]; timestamp: number } }
-  | { type: 'TODO_CLEAR'; payload: string };
+  | { type: 'TODO_CLEAR'; payload: string }
+  // Run error tracking for structured error recovery
+  | { type: 'RUN_ERROR'; payload: { sessionId: string; errorCode: string; message: string; recoverable: boolean; recoveryHint?: string } }
+  | { type: 'RUN_ERROR_CLEAR'; payload: string };
 
 /**
  * Handle progress group update (accumulates items per group)
@@ -145,6 +148,36 @@ export function taskReducer(
     case 'CLEAR_SESSION_TASK_STATE': {
       const sessionId = action.payload;
       const { [sessionId]: _removedTodos, ...remainingTodos } = state.todos;
+
+      // Also clean up run-keyed state for this session.
+      // Collect runIds from session messages to identify which run entries to purge.
+      const session = state.sessions.find(s => s.id === sessionId);
+      const sessionRunIds = new Set<string>();
+      if (session) {
+        for (const msg of session.messages) {
+          if (msg.runId) sessionRunIds.add(msg.runId);
+        }
+      }
+
+      // Filter out run-keyed entries belonging to this session
+      let toolResults = state.toolResults;
+      let inlineArtifacts = state.inlineArtifacts;
+      let executingTools = state.executingTools;
+      let queuedTools = state.queuedTools;
+
+      if (sessionRunIds.size > 0) {
+        toolResults = { ...toolResults };
+        inlineArtifacts = { ...inlineArtifacts };
+        executingTools = { ...executingTools };
+        queuedTools = { ...queuedTools };
+        for (const runId of sessionRunIds) {
+          delete toolResults[runId];
+          delete inlineArtifacts[runId];
+          delete executingTools[runId];
+          delete queuedTools[runId];
+        }
+      }
+
       return {
         ...state,
         progressGroups: {
@@ -156,6 +189,10 @@ export function taskReducer(
           [sessionId]: [],
         },
         todos: remainingTodos,
+        toolResults,
+        inlineArtifacts,
+        executingTools,
+        queuedTools,
       };
     }
 
@@ -295,7 +332,7 @@ export function taskReducer(
 
     // Tool result actions for rich content display
     case 'TOOL_RESULT_RECEIVE': {
-      const { runId, callId, toolName, result } = action.payload;
+      const { runId, sessionId, callId, toolName, result } = action.payload;
       const runResults = state.toolResults[runId] || {};
 
       // DEBUG: Log reducer state update
@@ -307,6 +344,25 @@ export function taskReducer(
         hasMetadata: !!result?.metadata,
         currentToolResultsKeys: Object.keys(state.toolResults),
       });
+
+      // Update the corresponding message in the session with resultMetadata
+      let updatedSessions = state.sessions;
+      if (sessionId && result.metadata) {
+        const sessionIndex = updatedSessions.findIndex(s => s.id === sessionId);
+        if (sessionIndex !== -1) {
+          const session = updatedSessions[sessionIndex];
+          const messageIndex = session.messages.findIndex(m => m.toolCallId === callId);
+          if (messageIndex !== -1) {
+            const newMessages = [...session.messages];
+            newMessages[messageIndex] = {
+              ...newMessages[messageIndex],
+              resultMetadata: result.metadata,
+            };
+            updatedSessions = [...updatedSessions];
+            updatedSessions[sessionIndex] = { ...session, messages: newMessages };
+          }
+        }
+      }
 
       // Also remove from executing tools when result is received
       let executingTools = state.executingTools;
@@ -356,6 +412,7 @@ export function taskReducer(
 
       return {
         ...state,
+        sessions: updatedSessions,
         executingTools,
         queuedTools,
         toolResults: {
@@ -375,7 +432,7 @@ export function taskReducer(
 
     case 'INLINE_ARTIFACT_ADD': {
       const { runId, artifact } = action.payload;
-      const existing = state.inlineArtifacts[runId] || {};
+      const existing = state.inlineArtifacts[runId] || [];
 
       return {
         ...state,
@@ -447,14 +504,14 @@ export function taskReducer(
           availableIds: session.messages.map(m => m.id),
         });
         // If message not found, try to add to the last assistant message
-        const lastAssistantIndex = session.messages.findIndex(
-          (m, i, arr) => m.role === 'assistant' && i === arr.length - 1
+        const lastAssistantIndex = session.messages.findLastIndex(
+          m => m.role === 'assistant'
         );
         if (lastAssistantIndex === -1) {
           logger.warn('MEDIA_OUTPUT_RECEIVE: no assistant message found');
           return state;
         }
-        targetIndex = session.messages.length - 1;
+        targetIndex = lastAssistantIndex;
       }
       
       const targetMessage = session.messages[targetIndex];
@@ -615,6 +672,33 @@ export function taskReducer(
       return {
         ...state,
         todos: remainingTodos,
+      };
+    }
+
+    case 'RUN_ERROR': {
+      const { sessionId, errorCode, message, recoverable, recoveryHint } = action.payload;
+      return {
+        ...state,
+        runErrors: {
+          ...state.runErrors,
+          [sessionId]: {
+            errorCode,
+            message,
+            recoverable,
+            recoveryHint,
+            timestamp: Date.now(),
+          },
+        },
+      };
+    }
+
+    case 'RUN_ERROR_CLEAR': {
+      const sessionId = action.payload;
+      if (!state.runErrors[sessionId]) return state;
+      const { [sessionId]: _removed, ...remainingErrors } = state.runErrors;
+      return {
+        ...state,
+        runErrors: remainingErrors,
       };
     }
 

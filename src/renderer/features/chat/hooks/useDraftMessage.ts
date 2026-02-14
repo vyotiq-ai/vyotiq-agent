@@ -21,7 +21,6 @@
  *   hasDraft 
  * } = useDraftMessage({
  *   sessionId: activeSession?.id,
- *   workspaceId: workspace?.id,
  * });
  * ```
  */
@@ -54,16 +53,12 @@ export interface DraftData {
   savedAt: number;
   /** Session ID this draft belongs to */
   sessionId?: string;
-  /** Workspace ID this draft belongs to */
-  workspaceId?: string;
 }
 
 /** Options for useDraftMessage hook */
 export interface UseDraftMessageOptions {
   /** Current session ID (null for new session drafts) */
   sessionId?: string | null;
-  /** Current workspace ID */
-  workspaceId?: string | null;
   /** Auto-save delay in ms (default: 1000) */
   autoSaveDelay?: number;
   /** Maximum age of drafts before cleanup in ms (default: 7 days) */
@@ -113,9 +108,8 @@ const STATUS_DISPLAY_DURATION = 2000;
 /**
  * Generate storage key for a draft
  */
-function getDraftKey(workspaceId?: string | null, sessionId?: string | null): string {
+function getDraftKey(sessionId?: string | null): string {
   const parts = [STORAGE_KEY_PREFIX];
-  if (workspaceId) parts.push(workspaceId);
   if (sessionId) parts.push(sessionId);
   else parts.push('new-session');
   return parts.join(':');
@@ -152,8 +146,8 @@ function cleanupOldDrafts(maxAge: number): void {
           logger.debug('Cleaned up old draft', { key });
         }
       }
-    } catch {
-      // Invalid data, remove it
+    } catch (err) {
+      logger.debug('Removing invalid draft data', { key, error: err instanceof Error ? err.message : String(err) });
       localStorage.removeItem(key);
     }
   }
@@ -181,7 +175,6 @@ function parseDraft(data: string | null): DraftData | null {
 export function useDraftMessage(options: UseDraftMessageOptions): UseDraftMessageReturn {
   const {
     sessionId,
-    workspaceId,
     autoSaveDelay = DEFAULT_AUTO_SAVE_DELAY,
     maxDraftAge = DEFAULT_MAX_DRAFT_AGE,
     enabled = true,
@@ -197,7 +190,7 @@ export function useDraftMessage(options: UseDraftMessageOptions): UseDraftMessag
   const lastSavedMessageRef = useRef<string>('');
 
   // Generate storage key for current context
-  const storageKey = getDraftKey(workspaceId, sessionId);
+  const storageKey = getDraftKey(sessionId);
 
   // Clear status timeout on unmount
   useEffect(() => {
@@ -255,7 +248,6 @@ export function useDraftMessage(options: UseDraftMessageOptions): UseDraftMessag
         })),
         savedAt: Date.now(),
         sessionId: sessionId ?? undefined,
-        workspaceId: workspaceId ?? undefined,
       };
 
       localStorage.setItem(storageKey, JSON.stringify(draftData));
@@ -276,7 +268,7 @@ export function useDraftMessage(options: UseDraftMessageOptions): UseDraftMessag
       logger.error('Failed to save draft', { error });
       setDraftStatus('error');
     }
-  }, [enabled, storageKey, sessionId, workspaceId]);
+  }, [enabled, storageKey, sessionId]);
 
   // Load draft from localStorage
   const loadDraft = useCallback((): DraftData | null => {

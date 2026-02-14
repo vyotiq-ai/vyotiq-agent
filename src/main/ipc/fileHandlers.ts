@@ -16,10 +16,43 @@ import { minimatch } from 'minimatch';
 import { guessMimeType } from '../utils/mime';
 import { resolvePath } from '../utils/fileSystem';
 import { createLogger } from '../logger';
+import { validateSafePath } from './guards';
 import type { AttachmentPayload } from '../../shared/types';
 import type { IpcContext } from './types';
 
 const logger = createLogger('IPC:Files');
+
+// ---------------------------------------------------------------------------
+// Recent workspaces persistence
+// ---------------------------------------------------------------------------
+const RECENT_FILE_PATH = path.join(
+  process.env.APPDATA || process.env.HOME || '',
+  '.vyotiq',
+  'recent-workspaces.json',
+);
+const MAX_RECENT = 10;
+
+async function loadRecentWorkspaces(): Promise<string[]> {
+  try {
+    const data = await fs.readFile(RECENT_FILE_PATH, 'utf-8');
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function addRecentWorkspace(workspacePath: string): Promise<string[]> {
+  const recent = await loadRecentWorkspaces();
+  const updated = [workspacePath, ...recent.filter((p) => p !== workspacePath)].slice(0, MAX_RECENT);
+  try {
+    await fs.mkdir(path.dirname(RECENT_FILE_PATH), { recursive: true });
+    await fs.writeFile(RECENT_FILE_PATH, JSON.stringify(updated, null, 2), 'utf-8');
+  } catch (err) {
+    logger.debug('Failed to persist recent workspaces', { error: (err as Error).message });
+  }
+  return updated;
+}
 
 /**
  * Get the language identifier from a file path
@@ -65,8 +98,96 @@ export function setDiagnosticsNotifier(notifier: (filePath: string, changeType: 
   diagnosticsNotifier = notifier;
 }
 
+// Track the active workspace path — empty until the user explicitly opens a folder
+let activeWorkspacePath: string = '';
+
+export function getWorkspacePath(): string {
+  return activeWorkspacePath;
+}
+
+export function setWorkspacePath(newPath: string): void {
+  activeWorkspacePath = newPath;
+}
+
 export function registerFileHandlers(context: IpcContext): void {
-  const { getMainWindow, getActiveWorkspacePath } = context;
+  const { getMainWindow } = context;
+  const getActiveWorkspacePath = (): string => activeWorkspacePath;
+
+  // ========================================================================
+  // Workspace Path Management
+  // ========================================================================
+
+  ipcMain.handle('workspace:get-path', async () => {
+    const p = getActiveWorkspacePath();
+    return { success: true, path: p || '' };
+  });
+
+  ipcMain.handle('workspace:close', async () => {
+    activeWorkspacePath = '';
+    logger.info('Workspace closed');
+    const mainWindow = getMainWindow();
+    if (mainWindow) {
+      mainWindow.webContents.send('workspace:changed', { path: '' });
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('workspace:set-path', async (_event, newPath: string) => {
+    try {
+      const stat = await fs.stat(newPath);
+      if (!stat.isDirectory()) {
+        return { success: false, error: 'Path is not a directory' };
+      }
+      activeWorkspacePath = newPath;
+      logger.info('Workspace path changed', { path: newPath });
+
+      // Persist to recent workspaces
+      addRecentWorkspace(newPath).catch(() => {});
+      
+      const mainWindow = getMainWindow();
+      if (mainWindow) {
+        mainWindow.webContents.send('workspace:changed', { path: newPath });
+      }
+      
+      return { success: true, path: newPath };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle('workspace:select-folder', async () => {
+    const mainWindow = getMainWindow();
+    if (!mainWindow) return { success: false, error: 'No window' };
+    
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select Workspace Folder',
+    });
+    
+    if (result.canceled || !result.filePaths.length) {
+      return { success: false, error: 'Cancelled' };
+    }
+    
+    const selectedPath = result.filePaths[0];
+    activeWorkspacePath = selectedPath;
+    logger.info('Workspace folder selected', { path: selectedPath });
+
+    // Persist to recent workspaces
+    addRecentWorkspace(selectedPath).catch(() => {});
+    
+    mainWindow.webContents.send('workspace:changed', { path: selectedPath });
+    
+    return { success: true, path: selectedPath };
+  });
+
+  ipcMain.handle('workspace:get-recent', async () => {
+    try {
+      const paths = await loadRecentWorkspaces();
+      return { success: true, paths };
+    } catch {
+      return { success: true, paths: [] };
+    }
+  });
 
   /**
    * Emit file change event to renderer for real-time file tree updates
@@ -168,6 +289,21 @@ export function registerFileHandlers(context: IpcContext): void {
 
   ipcMain.handle('files:open', async (_event, filePath: string) => {
     try {
+      // Validate path safety - block dangerous system paths and executables
+      const pathError = validateSafePath(filePath, 'filePath', { allowAbsolute: true });
+      if (pathError) {
+        logger.warn('files:open blocked unsafe path', { filePath: filePath?.substring(0, 100) });
+        return { success: false, error: pathError.error };
+      }
+
+      // Block executable file extensions from being directly opened
+      const ext = path.extname(filePath).toLowerCase();
+      const blockedExtensions = ['.exe', '.bat', '.cmd', '.msi', '.com', '.scr', '.pif', '.vbs', '.wsf', '.ps1', '.sh', '.app'];
+      if (blockedExtensions.includes(ext)) {
+        logger.warn('files:open blocked executable file', { filePath: filePath?.substring(0, 100), ext });
+        return { success: false, error: `Cannot open executable files directly (${ext})` };
+      }
+
       await shell.openPath(filePath);
       return { success: true };
     } catch (error) {
@@ -214,9 +350,13 @@ export function registerFileHandlers(context: IpcContext): void {
 
   ipcMain.handle('files:create', async (_event, filePath: string, content: string = '') => {
     try {
-      const resolvedPath = path.isAbsolute(filePath)
-        ? filePath
-        : resolvePath(filePath, getActiveWorkspacePath() ?? undefined);
+      const pathError = validateSafePath(filePath, 'filePath', { allowAbsolute: true });
+      if (pathError) {
+        logger.warn('files:create blocked unsafe path', { filePath: filePath?.substring(0, 100) });
+        return { success: false, error: pathError.error };
+      }
+
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, filePath);
 
       try {
         await fs.access(resolvedPath);
@@ -250,9 +390,13 @@ export function registerFileHandlers(context: IpcContext): void {
 
   ipcMain.handle('files:write', async (_event, filePath: string, content: string = '') => {
     try {
-      const resolvedPath = path.isAbsolute(filePath)
-        ? filePath
-        : resolvePath(filePath, getActiveWorkspacePath() ?? undefined);
+      const pathError = validateSafePath(filePath, 'filePath', { allowAbsolute: true });
+      if (pathError) {
+        logger.warn('files:write blocked unsafe path', { filePath: filePath?.substring(0, 100) });
+        return { success: false, error: pathError.error };
+      }
+
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, filePath);
 
       const dir = path.dirname(resolvedPath);
       await fs.mkdir(dir, { recursive: true });
@@ -279,9 +423,13 @@ export function registerFileHandlers(context: IpcContext): void {
 
   ipcMain.handle('files:createDir', async (_event, dirPath: string) => {
     try {
-      const resolvedPath = path.isAbsolute(dirPath)
-        ? dirPath
-        : resolvePath(dirPath, getActiveWorkspacePath() ?? undefined);
+      const pathError = validateSafePath(dirPath, 'dirPath', { allowAbsolute: true });
+      if (pathError) {
+        logger.warn('files:createDir blocked unsafe path', { dirPath: dirPath?.substring(0, 100) });
+        return { success: false, error: pathError.error };
+      }
+
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, dirPath);
 
       await fs.mkdir(resolvedPath, { recursive: true });
       logger.info('Directory created', { path: resolvedPath });
@@ -297,9 +445,13 @@ export function registerFileHandlers(context: IpcContext): void {
 
   ipcMain.handle('files:delete', async (_event, filePath: string) => {
     try {
-      const resolvedPath = path.isAbsolute(filePath)
-        ? filePath
-        : resolvePath(filePath, getActiveWorkspacePath() ?? undefined);
+      const pathError = validateSafePath(filePath, 'filePath', { allowAbsolute: true });
+      if (pathError) {
+        logger.warn('files:delete blocked unsafe path', { filePath: filePath?.substring(0, 100) });
+        return { success: false, error: pathError.error };
+      }
+
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, filePath);
 
       const stats = await fs.stat(resolvedPath);
 
@@ -329,12 +481,19 @@ export function registerFileHandlers(context: IpcContext): void {
 
   ipcMain.handle('files:rename', async (_event, oldPath: string, newPath: string) => {
     try {
-      const resolvedOldPath = path.isAbsolute(oldPath)
-        ? oldPath
-        : resolvePath(oldPath, getActiveWorkspacePath() ?? undefined);
-      const resolvedNewPath = path.isAbsolute(newPath)
-        ? newPath
-        : resolvePath(newPath, getActiveWorkspacePath() ?? undefined);
+      const oldPathError = validateSafePath(oldPath, 'oldPath', { allowAbsolute: true });
+      if (oldPathError) {
+        logger.warn('files:rename blocked unsafe oldPath', { oldPath: oldPath?.substring(0, 100) });
+        return { success: false, error: oldPathError.error };
+      }
+      const newPathError = validateSafePath(newPath, 'newPath', { allowAbsolute: true });
+      if (newPathError) {
+        logger.warn('files:rename blocked unsafe newPath', { newPath: newPath?.substring(0, 100) });
+        return { success: false, error: newPathError.error };
+      }
+
+      const resolvedOldPath = resolvePath(getActiveWorkspacePath() ?? undefined, oldPath);
+      const resolvedNewPath = resolvePath(getActiveWorkspacePath() ?? undefined, newPath);
 
       await fs.rename(resolvedOldPath, resolvedNewPath);
 
@@ -353,9 +512,7 @@ export function registerFileHandlers(context: IpcContext): void {
 
   ipcMain.handle('files:stat', async (_event, filePath: string) => {
     try {
-      const resolvedPath = path.isAbsolute(filePath)
-        ? filePath
-        : resolvePath(filePath, getActiveWorkspacePath() ?? undefined);
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, filePath);
 
       const stats = await fs.stat(resolvedPath);
 
@@ -391,9 +548,7 @@ export function registerFileHandlers(context: IpcContext): void {
     useCache?: boolean;
   }) => {
     try {
-      const resolvedPath = path.isAbsolute(dirPath) 
-        ? dirPath 
-        : resolvePath(dirPath, getActiveWorkspacePath() ?? undefined);
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, dirPath);
 
       try {
         const stat = await fs.stat(resolvedPath);
@@ -411,30 +566,9 @@ export function registerFileHandlers(context: IpcContext): void {
       const showHidden = options?.showHidden ?? false;
       const recursive = options?.recursive ?? false;
       const maxDepth = options?.maxDepth ?? 20;
-      const useCache = options?.useCache ?? true;
       const ignorePatterns = options?.ignorePatterns ?? [];
 
-      // Use workspace file cache for instant loading when recursive
-      if (recursive && useCache) {
-        try {
-          const { getWorkspaceFileCache } = await import('../workspaces/WorkspaceFileCache');
-          const cache = getWorkspaceFileCache();
-          const cachedTree = await cache.getFileTree(resolvedPath, {
-            showHidden,
-            maxDepth,
-          });
-          
-          if (cachedTree?.children) {
-            return { success: true, files: cachedTree.children, cached: true };
-          }
-        } catch (cacheError) {
-          logger.debug('Cache unavailable, falling back to direct listing', {
-            error: cacheError instanceof Error ? cacheError.message : String(cacheError),
-          });
-        }
-      }
-
-      // Fallback to direct listing (or when cache is disabled)
+      // Direct listing
       const defaultIgnorePatterns = ['node_modules', '__pycache__', '.git', 'dist', 'build', '.next', '.cache'];
       const allIgnorePatterns = [...defaultIgnorePatterns, ...ignorePatterns];
 
@@ -501,30 +635,13 @@ export function registerFileHandlers(context: IpcContext): void {
     }
   });
 
-  // Pre-warm cache for a workspace (for instant switching)
-  ipcMain.handle('files:prewarm-cache', async (_event, workspacePath: string) => {
-    try {
-      const { getWorkspaceFileCache } = await import('../workspaces/WorkspaceFileCache');
-      const cache = getWorkspaceFileCache();
-      await cache.prewarmCache(workspacePath);
-      return { success: true };
-    } catch (error) {
-      logger.debug('Failed to prewarm cache', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return { success: false, error: (error as Error).message };
-    }
+  // Pre-warm cache (no-op - workspace file cache removed)
+  ipcMain.handle('files:prewarm-cache', async () => {
+    return { success: true };
   });
 
-  // Invalidate cache for a workspace
-  ipcMain.handle('files:invalidate-cache', async (_event, workspacePath: string) => {
-    try {
-      const { getWorkspaceFileCache } = await import('../workspaces/WorkspaceFileCache');
-      const cache = getWorkspaceFileCache();
-      cache.invalidateCache(workspacePath);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
-    }
+  // Invalidate cache (no-op - workspace file cache removed)
+  ipcMain.handle('files:invalidate-cache', async () => {
+    return { success: true };
   });
 }

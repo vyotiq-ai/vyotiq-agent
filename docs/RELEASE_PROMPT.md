@@ -129,7 +129,7 @@ Release: vX.X.X
 **Scopes for Vyotiq AI:**
 - `agent` - Agent orchestrator, run executor
 - `tools` - Tool system, implementations
-- `editor` - Monaco editor, file handling
+- `editor` - File handling, inline viewers
 - `terminal` - Terminal, pty integration
 - `browser` - Browser automation, Playwright
 - `mcp` - Model Context Protocol
@@ -289,7 +289,7 @@ gh release list
 
 **Project Stack:**
 - Electron 39.2 + React 19.2 + TypeScript 5.9
-- Tailwind CSS 4.1 + Monaco Editor
+- Tailwind CSS 4.1
 - Playwright for browser automation
 - SQLite for persistence
 - Transformers.js for local embeddings

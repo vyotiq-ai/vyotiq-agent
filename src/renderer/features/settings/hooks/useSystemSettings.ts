@@ -102,7 +102,7 @@ export function useSystemSettings(settingsState: UseSettingsStateReturn) {
         if (!prev) return prev;
         const currentMappings = prev.taskRoutingSettings?.taskMappings ?? [];
         // Find and update or add the mapping
-        const existingIndex = currentMappings.findIndex(m => m.taskType === taskType);
+        const existingIndex = currentMappings.findIndex((m: TaskModelMapping) => m.taskType === taskType);
         let newMappings: TaskModelMapping[];
         if (existingIndex >= 0) {
           newMappings = [...currentMappings];

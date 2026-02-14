@@ -1284,10 +1284,29 @@ export class BrowserManager extends EventEmitter {
   }
 
   /**
-   * Execute custom JavaScript
+   * Execute custom JavaScript with safety checks
    */
   async evaluate<T>(script: string): Promise<T> {
     const view = this.ensureBrowserView();
+
+    // Block dangerous patterns that could compromise security
+    const dangerousPatterns = [
+      /require\s*\(/i,
+      /process\s*\.\s*(env|exit|kill)/i,
+      /child_process/i,
+      /\bexec\s*\(/i,
+      /\bspawn\s*\(/i,
+      /__dirname|__filename/i,
+      /globalThis\s*\.\s*require/i,
+      /import\s*\(\s*['"`](?:fs|child_process|os|path|net|http|https|crypto|cluster|dgram|dns|domain|events|module|readline|repl|stream|tls|tty|url|util|v8|vm|zlib)/i,
+    ];
+
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(script)) {
+        throw new Error(`Script blocked: contains potentially dangerous pattern matching ${pattern.source}`);
+      }
+    }
+
     return await view.webContents.executeJavaScript(script);
   }
 

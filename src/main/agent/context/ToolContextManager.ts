@@ -24,6 +24,9 @@ import { getCapabilityMatcher } from '../../tools/discovery/CapabilityMatcher';
 import { createLogger } from '../../logger';
 import { getToolExecutionLogger } from '../logging/ToolExecutionLogger';
 import { getToolResultCache } from '../cache/ToolResultCache';
+import * as fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
+import * as path from 'node:path';
 
 const logger = createLogger('ToolContextManager');
 
@@ -835,12 +838,12 @@ function getToolsForIntent(intent: TaskIntent): string[] {
       return [...CORE_TOOLS, ...DIAGNOSTICS_TOOLS, 'check_terminal'];
 
     case 'research':
-      // Research: minimal core + essential browser tools
-      return ['read', 'ls', 'grep', 'glob', ...ESSENTIAL_BROWSER_TOOLS, 'browser_extract'];
+      // Research: minimal core + essential browser tools + search tools
+      return ['read', 'ls', 'grep', 'glob', 'semantic_search', 'full_text_search', ...ESSENTIAL_BROWSER_TOOLS, 'browser_extract'];
 
     case 'file-exploration':
-      // File exploration: minimal set for understanding codebase
-      return ['read', 'ls', 'glob', 'grep'];
+      // File exploration: minimal set for understanding codebase + search tools
+      return ['read', 'ls', 'glob', 'grep', 'semantic_search', 'full_text_search', 'code_query'];
 
     case 'terminal-operations':
       // Terminal: minimal core + terminal tools
@@ -1091,8 +1094,9 @@ export function selectToolsForContext(
           boostedToolNames.push(tool.name);
         }
       }
-    } catch {
+    } catch (err) {
       // ToolUsageTracker may not be initialized
+      logger.debug('ToolUsageTracker access failed in selection', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -1152,8 +1156,9 @@ function getChainableTools(lastToolName: string): string[] {
     const matcher = getCapabilityMatcher();
     const chains = matcher.findChain(lastToolName, 'any');
     return chains.slice(0, 5).map(c => c.toolName);
-  } catch {
+  } catch (err) {
     // CapabilityMatcher may not be initialized
+    logger.debug('CapabilityMatcher not available for tool chaining', { lastToolName, error: err instanceof Error ? err.message : String(err) });
     return [];
   }
 }
@@ -1177,8 +1182,9 @@ function boostBySuccessRate(tools: ToolDefinition[]): ToolDefinition[] {
     toolsWithScores.sort((a, b) => b.score - a.score);
     
     return toolsWithScores.map(t => t.tool);
-  } catch {
+  } catch (err) {
     // ToolUsageTracker may not be initialized
+    logger.debug('ToolUsageTracker not available for success rate boost', { error: err instanceof Error ? err.message : String(err) });
     return tools;
   }
 }
@@ -1298,10 +1304,6 @@ function getErrorRecoveryTools(errors: Array<{ toolName: string; error: string }
 // Workspace Detection
 // =============================================================================
 
-import * as fs from 'node:fs';
-import * as fsPromises from 'node:fs/promises';
-import * as path from 'node:path';
-
 /**
  * Detect workspace type from workspace path by checking for common project files
  * Uses caching to avoid redundant filesystem operations
@@ -1386,7 +1388,8 @@ export function detectWorkspaceType(workspacePath: string | null): WorkspaceType
     };
 
     return detectedType;
-  } catch {
+  } catch (err) {
+    logger.debug('detectWorkspaceType failed', { workspacePath, error: err instanceof Error ? err.message : String(err) });
     return 'unknown';
   }
 }
@@ -1506,7 +1509,8 @@ export async function detectWorkspaceTypeAsync(workspacePath: string | null): Pr
     };
 
     return detectedType;
-  } catch {
+  } catch (err) {
+    logger.debug('detectWorkspaceTypeAsync failed', { workspacePath, error: err instanceof Error ? err.message : String(err) });
     return 'unknown';
   }
 }

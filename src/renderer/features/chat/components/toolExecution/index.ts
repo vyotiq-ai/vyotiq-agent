@@ -15,4 +15,4 @@ export { ToolExecutionHeader } from './ToolExecutionHeader';
 export { ToolItem } from './ToolItem';
 
 export type { ToolCall } from './types';
-export type { DiffViewMode, DiffViewerProps, DiffActionState } from './DiffViewer';
+export type { DiffViewerProps, DiffActionState } from './DiffViewer';

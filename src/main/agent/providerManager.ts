@@ -85,12 +85,19 @@ export class ProviderManager {
         this.runExecutor.updateProviders(this.providers);
 
         const availableProviders: string[] = [];
+        const configuredProviderSet = new Set<LLMProviderName>();
         for (const [name, info] of this.providers) {
             if (info.hasApiKey && info.enabled) {
                 availableProviders.push(name);
+                configuredProviderSet.add(name as LLMProviderName);
                 this.logger.debug('Provider available', { provider: name });
             }
         }
+
+        // Update failover manager with currently configured providers
+        // This also resets circuit breakers since provider config has changed
+        this.failoverManager.updateConfiguredProviders(configuredProviderSet);
+
         if (availableProviders.length === 0) {
             this.logger.warn('No LLM providers are configured. Please add at least one API key in settings.');
         } else {
@@ -114,9 +121,28 @@ export class ProviderManager {
     }
 
     public getAvailableProviders(): string[] {
-        return Array.from(this.providers.entries())
-            .filter(([, info]) => info.hasApiKey && info.enabled)
-            .sort((a, b) => (a[1].priority ?? 99) - (b[1].priority ?? 99))
+        const available = Array.from(this.providers.entries())
+            .filter(([, info]) => info.hasApiKey && info.enabled);
+
+        // Use health monitor to sort: healthy providers first, then by static priority
+        const bestProvider = this.healthMonitor.getBestProvider(
+            available.map(([name]) => name as LLMProviderName)
+        );
+
+        return available
+            .sort((a, b) => {
+                const aName = a[0] as LLMProviderName;
+                const bName = b[0] as LLMProviderName;
+
+                // Prefer the health-monitor's best pick
+                if (bestProvider) {
+                    if (aName === bestProvider && bName !== bestProvider) return -1;
+                    if (bName === bestProvider && aName !== bestProvider) return 1;
+                }
+
+                // Fall back to static priority
+                return (a[1].priority ?? 99) - (b[1].priority ?? 99);
+            })
             .map(([name]) => name);
     }
 

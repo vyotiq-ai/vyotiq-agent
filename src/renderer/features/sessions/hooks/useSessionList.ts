@@ -4,50 +4,52 @@ import { createLogger } from '../../../utils/logger';
 
 const logger = createLogger('SessionList');
 
+// Module-level cache for sessionsMeta to avoid O(n) object allocation per snapshot
+let lastSessionsRef: unknown = null;
+let lastSessionsMeta: Array<{ id: string; title: string; updatedAt: number; status: string; messageCount: number; workspacePath?: string | null }> = [];
+
 /**
- * Hook to manage session list with workspace-aware filtering.
+ * Hook to manage session list.
  * 
- * Sessions are STRICTLY filtered to only show those belonging to the active workspace.
- * This ensures users only see relevant sessions for their current context and
- * the agent always operates in the correct workspace.
- * 
- * Sessions without a workspaceId (legacy sessions) are NOT shown by default to prevent
- * workspace confusion. They can be shown by setting `showLegacySessions: true`.
+ * When filterByWorkspace is true and workspacePath is provided,
+ * only sessions associated with the current workspace are shown.
+ * Sessions with no workspace (global) are always included.
  * 
  * Session switching while agent is running:
  * - When user switches to a different session while agent is running,
  *   the previous session's run is automatically cancelled for clean state transition.
  * 
- * @param options.filterByWorkspace - If true (default), only shows sessions for active workspace
- * @param options.showLegacySessions - If true, shows sessions without workspaceId (default: false)
  * @returns Session list management utilities
  */
-export const useSessionList = (options?: { 
+export const useSessionList = (_options?: { 
   filterByWorkspace?: boolean;
   showLegacySessions?: boolean;
+  workspacePath?: string | null;
 }) => {
-  const { filterByWorkspace = true, showLegacySessions = false } = options ?? {};
   const actions = useAgentActions();
+  const workspacePath = _options?.workspacePath ?? null;
+  const filterByWorkspace = _options?.filterByWorkspace ?? false;
 
   const snapshot = useAgentSelector(
     (state) => {
-      const activeWorkspaceId = state.workspaces.find((w) => w.isActive)?.id;
-      const sessionsMeta = (state.sessions ?? []).map((s) => ({
-        id: s.id,
-        title: s.title,
-        updatedAt: s.updatedAt,
-        status: s.status,
-        workspaceId: s.workspaceId,
-        messageCount: s.messages?.length ?? 0,
-      }));
+      // Cache the .map() — only recompute when sessions array reference changes
+      if (state.sessions !== lastSessionsRef) {
+        lastSessionsRef = state.sessions;
+        lastSessionsMeta = (state.sessions ?? []).map((s) => ({
+          id: s.id,
+          title: s.title,
+          updatedAt: s.updatedAt,
+          status: s.status,
+          messageCount: s.messages?.length ?? 0,
+          workspacePath: s.workspacePath ?? null,
+        }));
+      }
       return {
-        activeWorkspaceId,
         activeSessionId: state.activeSessionId,
-        sessionsMeta,
+        sessionsMeta: lastSessionsMeta,
       };
     },
     (a, b) => {
-      if (a.activeWorkspaceId !== b.activeWorkspaceId) return false;
       if (a.activeSessionId !== b.activeSessionId) return false;
       if (a.sessionsMeta.length !== b.sessionsMeta.length) return false;
       for (let i = 0; i < a.sessionsMeta.length; i++) {
@@ -58,7 +60,6 @@ export const useSessionList = (options?: {
           x.title !== y.title ||
           x.updatedAt !== y.updatedAt ||
           x.status !== y.status ||
-          x.workspaceId !== y.workspaceId ||
           x.messageCount !== y.messageCount
         ) {
           return false;
@@ -70,64 +71,37 @@ export const useSessionList = (options?: {
   
   // Ref to track if we're already handling selection to prevent loops
   const isSelectingRef = useRef(false);
-  
-  // Get the active workspace ID
-  const activeWorkspaceId = snapshot.activeWorkspaceId;
 
-  // STRICTLY filter sessions by active workspace
-  // Sessions without a workspaceId are hidden by default to prevent workspace confusion
+  // Show sessions sorted by most recent, optionally filtered by workspace
   const sessions = useMemo(() => {
-    const allSessions = snapshot.sessionsMeta;
-    
-    if (!filterByWorkspace) {
-      // Show all sessions when filtering is disabled (admin/debug mode)
-      return [...allSessions].sort((a, b) => b.updatedAt - a.updatedAt);
+    const sorted = [...snapshot.sessionsMeta].sort((a, b) => b.updatedAt - a.updatedAt);
+
+    // If filtering by workspace is enabled and a workspace is active,
+    // only show sessions for this workspace + global (null) sessions
+    if (filterByWorkspace && workspacePath) {
+      const normPath = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+      const normalizedWs = normPath(workspacePath);
+      return sorted.filter((s) => {
+        if (!s.workspacePath) return true; // global sessions always shown
+        return normPath(s.workspacePath) === normalizedWs;
+      });
     }
-    
-    if (!activeWorkspaceId) {
-      // No active workspace - show nothing to prevent confusion
-      return [];
-    }
-    
-    return allSessions
-      .filter((session) => {
-        // Only show sessions that explicitly belong to the active workspace
-        if (session.workspaceId === activeWorkspaceId) {
-          return true;
-        }
-        // Optionally show legacy sessions (without workspaceId)
-        if (!session.workspaceId && showLegacySessions) {
-          return true;
-        }
-        return false;
-      })
-        .sort((a, b) => b.updatedAt - a.updatedAt);
-      }, [snapshot.sessionsMeta, activeWorkspaceId, filterByWorkspace, showLegacySessions]);
+
+    return sorted;
+  }, [snapshot.sessionsMeta, filterByWorkspace, workspacePath]);
   
-      const activeSessionId = snapshot.activeSessionId;
+  const activeSessionId = snapshot.activeSessionId;
   
-  // Check if active session belongs to current workspace
+  // Check if the active session belongs to the current workspace
   const activeSessionBelongsToWorkspace = useMemo(() => {
-    if (!activeSessionId || !activeWorkspaceId) return false;
-    
-    const activeSession = snapshot.sessionsMeta.find((s) => s.id === activeSessionId);
-    if (!activeSession) return false;
-    
-    // Strict check: session must have matching workspaceId
-    return activeSession.workspaceId === activeWorkspaceId;
-  }, [activeSessionId, activeWorkspaceId, snapshot.sessionsMeta]);
+    if (!activeSessionId) return false;
+    return sessions.some((s) => s.id === activeSessionId);
+  }, [activeSessionId, sessions]);
 
   const handleStartSession = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    
-    // Prevent starting session without workspace
-    if (!activeWorkspaceId) {
-      logger.warn('Cannot start session: no active workspace');
-      return undefined;
-    }
-    
-    return actions.startSession();
-  }, [actions, activeWorkspaceId]);
+    return actions.startSession(undefined, workspacePath);
+  }, [actions, workspacePath]);
 
   const handleSelectSession = useCallback(async (sessionId: string) => {
     // Prevent re-entry during selection
@@ -141,17 +115,7 @@ export const useSessionList = (options?: {
       actions.setActiveSession('');
       return;
     }
-    
-    // Verify session belongs to current workspace before selecting
-    const session = snapshot.sessionsMeta.find(s => s.id === sessionId);
-    if (session && activeWorkspaceId && session.workspaceId !== activeWorkspaceId) {
-      logger.warn('Cannot select session from different workspace', {
-        sessionWorkspace: session.workspaceId,
-        activeWorkspace: activeWorkspaceId,
-      });
-      return;
-    }
-    
+
     isSelectingRef.current = true;
     try {
       // Check if current session is running and cancel it before switching
@@ -177,7 +141,7 @@ export const useSessionList = (options?: {
         isSelectingRef.current = false;
       }, 50);
     }
-  }, [actions, activeSessionId, activeWorkspaceId, snapshot.sessionsMeta]);
+  }, [actions, activeSessionId, snapshot.sessionsMeta]);
 
   const handleDeleteSession = useCallback((e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
@@ -187,7 +151,6 @@ export const useSessionList = (options?: {
   return {
     sessions,
     activeSessionId,
-    activeWorkspaceId,
     activeSessionBelongsToWorkspace,
     handleStartSession,
     handleSelectSession,

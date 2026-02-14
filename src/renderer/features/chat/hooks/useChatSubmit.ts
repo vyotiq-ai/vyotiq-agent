@@ -29,7 +29,6 @@ interface ChatSubmitOptions {
   clearMessage: () => void;
   activeSession: { id: string; config: { yoloMode: boolean } } | undefined;
   agentBusy: boolean;
-  activeWorkspace: { id: string } | undefined;
   sessionWorkspaceValid: boolean;
   selectedProvider: LLMProviderName | 'auto';
   selectedModelId: string | undefined;
@@ -58,7 +57,6 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
     clearMessage,
     activeSession,
     agentBusy,
-    activeWorkspace,
     sessionWorkspaceValid,
     selectedProvider,
     selectedModelId,
@@ -131,8 +129,8 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
   // Memoize canSend to avoid unnecessary recalculations
   const canSend = useMemo(() => {
     const hasContent = message.trim().length > 0 || attachments.length > 0;
-    return hasContent && !agentBusy && !!activeWorkspace && sessionWorkspaceValid;
-  }, [message, attachments.length, agentBusy, activeWorkspace, sessionWorkspaceValid]);
+    return hasContent && !agentBusy && sessionWorkspaceValid;
+  }, [message, attachments.length, agentBusy, sessionWorkspaceValid]);
 
   const handleSendMessage = useCallback(async () => {
     if (!canSend || isSending) return;

@@ -338,9 +338,15 @@ const MessageLineComponent: React.FC<MessageLineProps> = ({
 
   const displayContent = message.content;
 
+  // Memoize expensive markdown detection — avoids running 20+ regex tests per render
+  const isMarkdownContent = useMemo(
+    () => Boolean(displayContent && looksLikeMarkdown(displayContent)),
+    [displayContent]
+  );
+
   // User message - terminal/CLI style, right-aligned
   if (type === 'user') {
-    const renderMarkdownUser = Boolean(displayContent && looksLikeMarkdown(displayContent));
+    const renderMarkdownUser = isMarkdownContent;
 
     return (
       <div 
@@ -714,3 +720,4 @@ const ContentRenderer: React.FC<{
 ContentRenderer.displayName = 'ContentRenderer';
 
 export const MessageLine = memo(MessageLineComponent);
+MessageLine.displayName = 'MessageLine';

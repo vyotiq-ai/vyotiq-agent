@@ -33,6 +33,7 @@ import { cn } from '../../../../utils/cn';
 import { Modal } from '../../../../components/ui/Modal';
 import { Button } from '../../../../components/ui/Button';
 import { EnvVarEditor } from './EnvVarEditor';
+import { createLogger } from '../../../../utils/logger';
 import type {
   MCPServerConfig,
   MCPServerState,
@@ -49,6 +50,8 @@ interface ServerDetailModalProps {
 
 type TabId = 'overview' | 'tools' | 'resources' | 'prompts' | 'config';
 
+const logger = createLogger('ServerDetailModal');
+
 interface Tab {
   id: TabId;
   label: string;
@@ -61,7 +64,7 @@ const ToolSchemaViewer: React.FC<{ tool: MCPToolDefinition }> = memo(({ tool }) 
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="border border-[var(--color-border)] rounded-lg overflow-hidden">
+    <div className="border border-[var(--color-border)] overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-3 p-3 text-left hover:bg-[var(--color-surface-elevated)] transition-colors"
@@ -133,7 +136,7 @@ ToolSchemaViewer.displayName = 'ToolSchemaViewer';
 
 // Resource item component
 const ResourceItem: React.FC<{ resource: MCPResourceDefinition }> = memo(({ resource }) => (
-  <div className="flex items-start gap-3 p-3 border border-[var(--color-border)] rounded-lg">
+  <div className="flex items-start gap-3 p-3 border border-[var(--color-border)]">
     <div className="w-8 h-8 rounded flex items-center justify-center bg-[var(--color-info)]/10">
       <Database className="w-4 h-4 text-[var(--color-info)]" />
     </div>
@@ -160,7 +163,7 @@ ResourceItem.displayName = 'ResourceItem';
 
 // Prompt item component
 const PromptItem: React.FC<{ prompt: MCPPromptDefinition }> = memo(({ prompt }) => (
-  <div className="flex items-start gap-3 p-3 border border-[var(--color-border)] rounded-lg">
+  <div className="flex items-start gap-3 p-3 border border-[var(--color-border)]">
     <div className="w-8 h-8 rounded flex items-center justify-center bg-[var(--color-success)]/10">
       <MessageSquare className="w-4 h-4 text-[var(--color-success)]" />
     </div>
@@ -220,7 +223,7 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
             setEnvVars((serverConfig.transport as { env?: Record<string, string> }).env || {});
           }
         } catch (err) {
-          console.error('Failed to load server details:', err);
+          logger.error('Failed to load server details', { error: err instanceof Error ? err.message : String(err) });
         } finally {
           setLoading(false);
         }
@@ -247,7 +250,7 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
           {/* Status banner */}
           <div
             className={cn(
-              'flex items-center gap-3 p-3 rounded-lg border',
+              'flex items-center gap-3 p-3 border',
               isConnected
                 ? 'bg-[var(--color-success)]/5 border-[var(--color-success)]/30'
                 : 'bg-[var(--color-surface-base)] border-[var(--color-border)]'
@@ -274,7 +277,7 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
 
           {/* Info grid */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)]">
+            <div className="p-3 bg-[var(--color-surface-base)] border border-[var(--color-border)]">
               <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)] mb-1">
                 <Package className="w-3 h-3" />
                 Source
@@ -285,7 +288,7 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
               )}
             </div>
 
-            <div className="p-3 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)]">
+            <div className="p-3 bg-[var(--color-surface-base)] border border-[var(--color-border)]">
               <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)] mb-1">
                 <Tag className="w-3 h-3" />
                 Category
@@ -295,7 +298,7 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)]">
+            <div className="p-3 bg-[var(--color-surface-base)] border border-[var(--color-border)]">
               <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)] mb-1">
                 <Globe className="w-3 h-3" />
                 Protocol
@@ -305,7 +308,7 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)]">
+            <div className="p-3 bg-[var(--color-surface-base)] border border-[var(--color-border)]">
               <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)] mb-1">
                 <Clock className="w-3 h-3" />
                 Installed
@@ -522,7 +525,7 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
         ) : (
           <div className="space-y-4">
             {/* Tabs */}
-            <div className="flex gap-1 p-1 rounded-lg bg-[var(--color-surface-base)]">
+            <div className="flex gap-1 p-1 bg-[var(--color-surface-base)]">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}

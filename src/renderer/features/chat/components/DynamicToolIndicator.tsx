@@ -155,3 +155,4 @@ const DynamicToolIndicatorComponent: React.FC<DynamicToolIndicatorProps> = ({
 };
 
 export const DynamicToolIndicator = memo(DynamicToolIndicatorComponent);
+DynamicToolIndicator.displayName = 'DynamicToolIndicator';

@@ -186,4 +186,5 @@ const ConversationSearchBarComponent: React.FC<ConversationSearchBarProps> = ({
 };
 
 export const ConversationSearchBar = memo(ConversationSearchBarComponent);
+ConversationSearchBar.displayName = 'ConversationSearchBar';
 export default ConversationSearchBar;

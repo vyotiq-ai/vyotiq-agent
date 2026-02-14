@@ -10,6 +10,7 @@ import type { AgentSettings } from '../../../../../shared/types';
 import type { SettingsTabId } from '../../config/tabConfig';
 import type { UseSettingsComposedReturn } from '../../hooks/useSettingsComposed';
 import { Spinner } from '../../../../components/ui/LoadingState';
+import { SkeletonCard } from '../../../../components/ui/Skeleton';
 
 // Settings components
 import { SettingsProviders } from '../SettingsProviders';
@@ -17,10 +18,10 @@ import { SettingsModels } from '../SettingsModels';
 import { SettingsRouting } from '../SettingsRouting';
 import { SettingsAgent } from '../SettingsAgent';
 import { SettingsPrompts } from '../SettingsPrompts';
-import { SettingsEditorAI } from '../SettingsEditorAI';
 import { SettingsBrowser } from '../SettingsBrowser';
 import { SettingsMCP } from '../SettingsMCP';
 import { SettingsAutonomous } from '../SettingsAutonomous';
+import { SettingsWorkspace } from '../SettingsWorkspace';
 import { SettingsAccess } from '../SettingsAccess';
 import { SettingsSafety } from '../SettingsSafety';
 import { SettingsCompliance } from '../SettingsCompliance';
@@ -39,8 +40,11 @@ interface SettingsContentProps {
  * Loading placeholder component
  */
 const LoadingPlaceholder: React.FC<{ section: string }> = ({ section }) => (
-  <div className="text-[10px] text-[var(--color-text-muted)] font-mono">
-    loading {section} settings...
+  <div className="space-y-3">
+    <div className="text-[10px] text-[var(--color-text-muted)] font-mono">
+      loading {section} settings...
+    </div>
+    <SkeletonCard />
   </div>
 );
 
@@ -110,14 +114,6 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
           <LoadingPlaceholder section="prompt" />
         );
         
-      case 'editor-ai':
-        return (
-          <SettingsEditorAI
-            settings={localSettings.editorAISettings}
-            onChange={settingsActions.updateEditorAISetting}
-          />
-        );
-        
       case 'browser':
         return localSettings.browserSettings ? (
           <SettingsBrowser
@@ -136,6 +132,14 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
           <SettingsAutonomous
             settings={localSettings.autonomousFeatureFlags}
             onChange={settingsActions.updateAutonomousSetting}
+          />
+        );
+
+      case 'workspace':
+        return (
+          <SettingsWorkspace
+            settings={localSettings.workspaceSettings}
+            onChange={settingsActions.updateWorkspaceSetting}
           />
         );
         
@@ -214,12 +218,10 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   };
 
   return (
-    <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-3 sm:px-4 md:px-6 py-3 sm:py-4 scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent bg-[var(--color-surface-1)] transition-colors">
-      <div className="max-w-4xl mx-auto w-full">
+    <main id="settings-content-panel" role="tabpanel" className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-3 sm:px-4 md:px-6 py-3 sm:py-4 scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent bg-[var(--color-surface-1)] transition-colors">
+      <div className="max-w-4xl mx-auto w-full animate-in fade-in duration-150" key={activeTab}>
         {renderContent()}
       </div>
     </main>
   );
 };
-
-export default SettingsContent;

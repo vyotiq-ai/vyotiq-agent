@@ -272,15 +272,23 @@ export function useProfiledCallback<T extends (...args: unknown[]) => unknown>(
 }
 
 /**
- * Keyboard shortcut to log metrics (Ctrl+Shift+P in development)
+ * Hook to register a keyboard shortcut for logging metrics (Ctrl+Shift+P).
+ * Must be called from a React component so the listener is cleaned up properly.
  */
-if (IS_DEV && typeof window !== 'undefined') {
-  window.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'P') {
-      e.preventDefault();
-      logMetricsSummary();
-    }
-  });
+export function useProfilerKeyboard(): void {
+  useEffect(() => {
+    if (!IS_DEV) return;
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        logMetricsSummary();
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 }
 
 // Export dev-only console command

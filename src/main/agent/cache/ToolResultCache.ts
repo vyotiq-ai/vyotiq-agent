@@ -99,7 +99,7 @@ const DEFAULT_CONFIG: ToolResultCacheConfig = {
   maxAge: 60000,
   maxSize: 200,
   enableLRU: true,
-  compressionThreshold: 4096, // 4KB
+  compressionThreshold: 65536, // 64KB - raised from 16KB to reduce main-thread gzipSync blocking
   enableCompression: true,
 };
 
@@ -136,9 +136,13 @@ export interface CacheStats {
 export class ToolResultCache {
   private cache = new Map<string, CachedToolResult>();
   private config: ToolResultCacheConfig;
-  private accessOrder: string[] = []; // For LRU tracking
+  // LRU tracking: Map preserves insertion order and has O(1) delete + re-insert
+  // Using Map<string, true> instead of string[] for O(1) updateAccessOrder
+  private accessOrderMap = new Map<string, true>();
   /** Index of cache keys by session ID for fast session clearing */
   private sessionIndex = new Map<string, Set<string>>();
+  /** Secondary index: path -> Set<cache keys> for fast path-based invalidation */
+  private pathIndex = new Map<string, Set<string>>();
   
   // Statistics
   private totalHits = 0;
@@ -294,25 +298,78 @@ export class ToolResultCache {
       sessionKeys.add(key);
     }
 
+    // Track path index for fast path-based invalidation
+    this.indexPathsForKey(key, args);
+
     if (this.config.enableLRU) {
       this.updateAccessOrder(key);
     }
   }
 
   /**
+   * Extract file paths from tool arguments and index them for fast invalidation
+   */
+  private indexPathsForKey(key: string, args: Record<string, unknown>): void {
+    const paths: string[] = [];
+    // Common argument names that contain file paths
+    for (const argName of ['path', 'file', 'filePath', 'file_path', 'directory', 'dir']) {
+      const val = args[argName];
+      if (typeof val === 'string' && val.length > 0) {
+        paths.push(val);
+      }
+    }
+    for (const p of paths) {
+      let pathKeys = this.pathIndex.get(p);
+      if (!pathKeys) {
+        pathKeys = new Set();
+        this.pathIndex.set(p, pathKeys);
+      }
+      pathKeys.add(key);
+    }
+  }
+
+  /**
+   * Remove a key from the path index
+   */
+  private removeFromPathIndex(key: string): void {
+    for (const [, keys] of this.pathIndex) {
+      keys.delete(key);
+    }
+  }
+
+  /**
    * Invalidate cache for a specific path
-   * Called when a file is modified
+   * Called when a file is modified.
+   * Uses the path index for O(1) lookup instead of scanning all entries.
    */
   invalidatePath(path: string): number {
     let invalidated = 0;
     
-    for (const [key, cached] of this.cache.entries()) {
-      // Check if this cache entry references the path
-      if (cached.argsHash.includes(path)) {
-        this.removeFromSessionIndex(key);
-        this.cache.delete(key);
-        this.removeFromAccessOrder(key);
-        invalidated++;
+    // Use path index for fast lookup
+    const indexedKeys = this.pathIndex.get(path);
+    if (indexedKeys) {
+      for (const key of indexedKeys) {
+        if (this.cache.has(key)) {
+          this.removeFromSessionIndex(key);
+          this.cache.delete(key);
+          this.removeFromAccessOrder(key);
+          invalidated++;
+        }
+      }
+      this.pathIndex.delete(path);
+    }
+    
+    // Fallback: also check argsHash for entries not caught by path index
+    // (e.g., paths embedded in complex argument structures)
+    if (invalidated === 0) {
+      for (const [key, cached] of this.cache.entries()) {
+        if (cached.argsHash.includes(path)) {
+          this.removeFromSessionIndex(key);
+          this.removeFromPathIndex(key);
+          this.cache.delete(key);
+          this.removeFromAccessOrder(key);
+          invalidated++;
+        }
       }
     }
 
@@ -343,8 +400,9 @@ export class ToolResultCache {
    */
   invalidateAll(): void {
     this.cache.clear();
-    this.accessOrder = [];
+    this.accessOrderMap.clear();
     this.sessionIndex.clear();
+    this.pathIndex.clear();
   }
 
   /**
@@ -404,9 +462,11 @@ export class ToolResultCache {
    * Evict the oldest entry (LRU)
    */
   private evictOldest(): void {
-    if (this.config.enableLRU && this.accessOrder.length > 0) {
-      const oldest = this.accessOrder.shift();
+    if (this.config.enableLRU && this.accessOrderMap.size > 0) {
+      // Map.keys().next() returns the oldest (first inserted) key
+      const oldest = this.accessOrderMap.keys().next().value;
       if (oldest) {
+        this.accessOrderMap.delete(oldest);
         this.removeFromSessionIndex(oldest);
         this.cache.delete(oldest);
       }
@@ -438,24 +498,18 @@ export class ToolResultCache {
   }
 
   /**
-   * Update access order for LRU
+   * Update access order for LRU — O(1) with Map (delete + set preserves order)
    */
   private updateAccessOrder(key: string): void {
-    const index = this.accessOrder.indexOf(key);
-    if (index !== -1) {
-      this.accessOrder.splice(index, 1);
-    }
-    this.accessOrder.push(key);
+    this.accessOrderMap.delete(key);
+    this.accessOrderMap.set(key, true);
   }
 
   /**
-   * Remove from access order
+   * Remove from access order — O(1) with Map
    */
   private removeFromAccessOrder(key: string): void {
-    const index = this.accessOrder.indexOf(key);
-    if (index !== -1) {
-      this.accessOrder.splice(index, 1);
-    }
+    this.accessOrderMap.delete(key);
   }
 
   /**
@@ -553,8 +607,8 @@ export class ToolResultCache {
     const originalSize = result.output.length;
     
     try {
-      // Compress the output using gzip
-      const compressed = gzipSync(Buffer.from(result.output, 'utf-8'));
+      // Use sync gzip with level 1 (fastest) to minimize main-thread blocking
+      const compressed = gzipSync(Buffer.from(result.output, 'utf-8'), { level: 1 });
       // Encode as base64 for safe storage
       const compressedOutput = compressed.toString('base64');
       

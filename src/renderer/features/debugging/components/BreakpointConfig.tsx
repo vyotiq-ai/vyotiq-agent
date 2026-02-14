@@ -10,6 +10,9 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Plus, Trash2, Pause, AlertTriangle, Wrench } from 'lucide-react';
 import { Spinner } from '../../../components/ui/LoadingState';
 import { cn } from '../../../utils/cn';
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('BreakpointConfig');
 
 interface BreakpointConfigProps {
   sessionId: string;
@@ -41,7 +44,7 @@ export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
           setBreakpoints(bps);
         }
       } catch (error) {
-        console.error('Failed to fetch breakpoints:', error);
+        logger.error('Failed to fetch breakpoints', { error: error instanceof Error ? error.message : String(error) });
       } finally {
         setIsLoading(false);
       }
@@ -59,7 +62,7 @@ export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
         );
       }
     } catch (error) {
-      console.error('Failed to toggle breakpoint:', error);
+      logger.error('Failed to toggle breakpoint', { error: error instanceof Error ? error.message : String(error) });
     }
   }, []);
 
@@ -70,7 +73,7 @@ export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
         setBreakpoints(prev => prev.filter(bp => bp.id !== id));
       }
     } catch (error) {
-      console.error('Failed to remove breakpoint:', error);
+      logger.error('Failed to remove breakpoint', { error: error instanceof Error ? error.message : String(error) });
     }
   }, []);
 
@@ -90,7 +93,7 @@ export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
         setNewToolName('');
       }
     } catch (error) {
-      console.error('Failed to add tool breakpoint:', error);
+      logger.error('Failed to add tool breakpoint', { error: error instanceof Error ? error.message : String(error) });
     } finally {
       setIsSaving(false);
     }
@@ -111,7 +114,7 @@ export const BreakpointConfig: React.FC<BreakpointConfigProps> = ({
         setBreakpoints(prev => [...prev, result.breakpoint as Breakpoint]);
       }
     } catch (error) {
-      console.error('Failed to add error breakpoint:', error);
+      logger.error('Failed to add error breakpoint', { error: error instanceof Error ? error.message : String(error) });
     } finally {
       setIsSaving(false);
     }

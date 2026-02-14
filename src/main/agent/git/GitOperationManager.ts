@@ -51,6 +51,7 @@ export interface GitOperationResult {
   data?: unknown;
   error?: string;
   duration: number;
+  queued?: boolean;
 }
 
 export interface GitOperationEvent {
@@ -180,9 +181,10 @@ export class GitOperationManager extends EventEmitter {
 
       this.logger.debug('Git operation queued', { operationId, agentId, operation });
       return {
-        success: false,
+        success: true,
         operationId,
-        error: 'Operation queued - max concurrent operations reached',
+        queued: true,
+        error: undefined,
         duration: Date.now() - startTime,
       };
     }

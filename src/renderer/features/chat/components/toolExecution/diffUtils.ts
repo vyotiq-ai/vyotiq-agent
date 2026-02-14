@@ -469,31 +469,48 @@ export function buildSemanticDiffLines(
       }
     }
     
-    // Match removed lines with added lines by similarity
+    // Match removed lines with added lines by similarity.
+    // For large hunks, limit the pairing search window to avoid O(n²) Levenshtein calls.
     const pairedRemoved = new Set<number>();
     const pairedAdded = new Set<number>();
     const pairs: Array<{ removed: typeof removedInHunk[0]; added: typeof addedInHunk[0]; similarity: number }> = [];
     
-    for (let ri = 0; ri < removedInHunk.length; ri++) {
-      let bestMatch = -1;
-      let bestSimilarity = 0.35; // Minimum threshold
+    // Cap: only attempt pairing when the product of removed×added is manageable.
+    // Beyond this, the O(n²) Levenshtein cost exceeds real-time budgets.
+    const MAX_PAIRING_PRODUCT = 100_000;
+    const shouldPair = removedInHunk.length * addedInHunk.length <= MAX_PAIRING_PRODUCT;
+    
+    if (shouldPair) {
+      // Use a sliding window for very large one-sided hunks to keep pairing local
+      const WINDOW_SIZE = Math.min(addedInHunk.length, 50);
       
-      for (let ai = 0; ai < addedInHunk.length; ai++) {
-        if (pairedAdded.has(ai)) continue;
+      for (let ri = 0; ri < removedInHunk.length; ri++) {
+        let bestMatch = -1;
+        let bestSimilarity = 0.35; // Minimum threshold
         
-        const similarity = stringSimilarity(removedInHunk[ri].line, addedInHunk[ai].line);
-        if (similarity > bestSimilarity) {
-          bestSimilarity = similarity;
-          bestMatch = ai;
+        // Search within a window around the proportional position
+        const center = Math.floor((ri / removedInHunk.length) * addedInHunk.length);
+        const windowStart = Math.max(0, center - WINDOW_SIZE);
+        const windowEnd = Math.min(addedInHunk.length, center + WINDOW_SIZE);
+        
+        for (let ai = windowStart; ai < windowEnd; ai++) {
+          if (pairedAdded.has(ai)) continue;
+          
+          const similarity = stringSimilarity(removedInHunk[ri].line, addedInHunk[ai].line);
+          if (similarity > bestSimilarity) {
+            bestSimilarity = similarity;
+            bestMatch = ai;
+          }
+        }
+        
+        if (bestMatch !== -1) {
+          pairs.push({ removed: removedInHunk[ri], added: addedInHunk[bestMatch], similarity: bestSimilarity });
+          pairedRemoved.add(ri);
+          pairedAdded.add(bestMatch);
         }
       }
-      
-      if (bestMatch !== -1) {
-        pairs.push({ removed: removedInHunk[ri], added: addedInHunk[bestMatch], similarity: bestSimilarity });
-        pairedRemoved.add(ri);
-        pairedAdded.add(bestMatch);
-      }
     }
+    // When shouldPair is false, all lines are emitted as unpaired removed/added
     
     // Build output using sorted pairs for consistent ordering
     // Sort pairs by their position in the original file for predictable output

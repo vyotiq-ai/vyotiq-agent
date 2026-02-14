@@ -20,7 +20,6 @@
 import React, { memo, useMemo, useState, useCallback, useRef } from 'react';
 import type { ChatMessage, ToolResultEvent } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
-import { useEditor } from '../../../state/EditorProvider';
 
 import { ToolItem } from './toolExecution/ToolItem';
 import { buildToolCalls } from '../utils/buildToolCalls';
@@ -151,7 +150,6 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
   const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const runningStartTimesRef = useRef<Map<string, number>>(new Map());
-  const { showEditor, openFile } = useEditor();
 
   // Extract tool calls and their results
   const toolCalls = useMemo(() => {
@@ -231,11 +229,10 @@ const ToolExecutionComponent: React.FC<ToolExecutionProps> = ({
     });
   }, []);
 
-  // Handle opening file in editor
+  // Handle opening file - opens with system default application
   const handleOpenFile = useCallback((path: string) => {
-    openFile(path);
-    showEditor();
-  }, [openFile, showEditor]);
+    window.vyotiq.files.open(path);
+  }, []);
 
   // Group consecutive file operations
   const groupedTools = useMemo(() => groupToolCalls(toolCalls), [toolCalls]);
@@ -335,6 +332,7 @@ const ToolOperationGroup: React.FC<{
           'hover:bg-[var(--color-surface-1)]/30 rounded-sm px-1 -mx-1',
           'transition-colors duration-100',
           'outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/25',
+          hasErrors && 'bg-[var(--color-error)]/5',
         )}
         onClick={onToggle}
       >
@@ -500,3 +498,4 @@ const FileOperationGroup: React.FC<{
 FileOperationGroup.displayName = 'FileOperationGroup';
 
 export const ToolExecution = memo(ToolExecutionComponent);
+ToolExecution.displayName = 'ToolExecution';

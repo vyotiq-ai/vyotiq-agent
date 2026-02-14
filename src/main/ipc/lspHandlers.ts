@@ -9,110 +9,131 @@
 
 import { ipcMain } from 'electron';
 import { createLogger } from '../logger';
+import { withErrorGuard } from './guards';
+import { getWorkspacePath } from './fileHandlers';
 import type { IpcContext } from './types';
 
 const logger = createLogger('IPC:LSP');
 
+// Cache module imports to avoid repeated dynamic import overhead per IPC call
+let cachedLSPModule: typeof import('../lsp') | null = null;
+let cachedTSModule: typeof import('../agent/workspace/TypeScriptDiagnosticsService') | null = null;
+
+const getLSPModuleCached = async () => {
+  if (!cachedLSPModule) {
+    cachedLSPModule = await import('../lsp');
+  }
+  return cachedLSPModule;
+};
+
+const getTSModuleCached = async () => {
+  if (!cachedTSModule) {
+    cachedTSModule = await import('../agent/workspace/TypeScriptDiagnosticsService');
+  }
+  return cachedTSModule;
+};
+
+// ---------------------------------------------------------------------------
+// LSP Manager guard – DRYs the repeated get-module / get-manager / null-check
+// pattern shared by 18+ handlers.
+// ---------------------------------------------------------------------------
+type LSPManager = NonNullable<Awaited<ReturnType<typeof getLSPModuleCached>>['getLSPManager'] extends (...args: unknown[]) => infer R ? R : never>;
+
+/**
+ * Wraps an LSP handler that requires a ready manager.
+ * Handles module caching, null-check, try/catch and error logging in one place.
+ *
+ * @param operationName  Human-readable label for error logs
+ * @param handler        Receives the non-null manager and returns the success payload
+ * @param defaults       Extra fields merged into the error response (e.g. `{ clients: [] }`)
+ */
+async function withLSPManager<T extends Record<string, unknown>>(
+  operationName: string,
+  handler: (manager: LSPManager) => T | Promise<T>,
+  defaults?: Partial<T>,
+): Promise<(T & { success: true }) | { success: false; error: string } & Partial<T>> {
+  try {
+    const { getLSPManager } = await getLSPModuleCached();
+    const manager = getLSPManager();
+    if (!manager) {
+      return { success: false as const, error: 'LSP manager not initialized', ...defaults } as { success: false; error: string } & Partial<T>;
+    }
+    const result = await handler(manager);
+    return { success: true as const, ...result };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to ${operationName}`, { error: errorMessage });
+    return { success: false as const, error: errorMessage, ...defaults } as { success: false; error: string } & Partial<T>;
+  }
+}
+
 export function registerLspHandlers(context: IpcContext): void {
-  const { getMainWindow, getActiveWorkspacePath } = context;
+  const { getMainWindow } = context;
+  const getActiveWorkspacePath = (): string => getWorkspacePath() || '';
 
   // ==========================================================================
   // LSP Manager
   // ==========================================================================
 
+  // Initialize has special logic: creates manager if needed
   ipcMain.handle('lsp:initialize', async (_event, workspacePath: string) => {
-    try {
-      const { initLSPManager, getLSPManager } = await import('../lsp');
-      
+    return withErrorGuard('lsp:initialize', async () => {
+      const { initLSPManager, getLSPManager } = await getLSPModuleCached();
       let manager = getLSPManager();
       if (!manager) {
         manager = initLSPManager(logger);
       }
-      
       await manager.initialize(workspacePath);
-      
-      return { 
-        success: true, 
-        availableServers: manager.getAvailableServers(),
-      };
-    } catch (error) {
-      logger.error('Failed to initialize LSP manager', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { success: true, availableServers: manager.getAvailableServers() };
+    });
   });
 
+  // Returns empty arrays when manager is null (not an error)
   ipcMain.handle('lsp:get-clients', async () => {
-    try {
-      const { getLSPManager } = await import('../lsp');
+    return withErrorGuard<{ success: boolean; clients: unknown[]; error?: string }>('lsp:get-clients', async () => {
+      const { getLSPManager } = await getLSPModuleCached();
       const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: true, clients: [] };
-      }
-      
-      return { success: true, clients: manager.getClientInfo() };
-    } catch (error) {
-      logger.error('Failed to get LSP clients', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, clients: [] };
-    }
+      return { success: true, clients: manager ? manager.getClientInfo() : [] };
+    }, { returnOnError: { success: false, error: 'Failed to get LSP clients', clients: [] } });
   });
 
   ipcMain.handle('lsp:get-available-servers', async () => {
-    try {
-      const { getLSPManager } = await import('../lsp');
+    return withErrorGuard<{ success: boolean; servers: unknown[]; error?: string }>('lsp:get-available-servers', async () => {
+      const { getLSPManager } = await getLSPModuleCached();
       const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: true, servers: [] };
-      }
-      
-      return { success: true, servers: manager.getAvailableServers() };
-    } catch (error) {
-      logger.error('Failed to get available servers', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, servers: [] };
-    }
+      return { success: true, servers: manager ? manager.getAvailableServers() : [] };
+    }, { returnOnError: { success: false, error: 'Failed to get available servers', servers: [] } });
   });
 
+  // Start/stop-server have extra isLanguageSupported check
   ipcMain.handle('lsp:start-server', async (_event, language: string) => {
-    try {
-      const { getLSPManager, isLanguageSupported } = await import('../lsp');
+    return withErrorGuard('lsp:start-server', async () => {
+      const { getLSPManager, isLanguageSupported } = await getLSPModuleCached();
       const manager = getLSPManager();
-      
       if (!manager) {
         return { success: false, error: 'LSP manager not initialized' };
       }
-      
       if (!isLanguageSupported(language)) {
         return { success: false, error: `Language not supported: ${language}` };
       }
-      
       const started = await manager.startServer(language as Parameters<typeof manager.startServer>[0]);
       return { success: started, error: started ? undefined : 'Failed to start server' };
-    } catch (error) {
-      logger.error('Failed to start LSP server', { language, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('lsp:stop-server', async (_event, language: string) => {
-    try {
-      const { getLSPManager, isLanguageSupported } = await import('../lsp');
+    return withErrorGuard('lsp:stop-server', async () => {
+      const { getLSPManager, isLanguageSupported } = await getLSPModuleCached();
       const manager = getLSPManager();
-      
       if (!manager) {
         return { success: false, error: 'LSP manager not initialized' };
       }
-      
       if (!isLanguageSupported(language)) {
         return { success: false, error: `Language not supported: ${language}` };
       }
-      
       await manager.stopServer(language as Parameters<typeof manager.stopServer>[0]);
       return { success: true };
-    } catch (error) {
-      logger.error('Failed to stop LSP server', { language, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   // ==========================================================================
@@ -120,244 +141,103 @@ export function registerLspHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('lsp:hover', async (_event, filePath: string, line: number, column: number) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('get hover', async (manager) => {
       const hover = await manager.getHover(filePath, line, column);
-      return { success: true, hover };
-    } catch (error) {
-      logger.error('Failed to get hover', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { hover };
+    });
   });
 
   ipcMain.handle('lsp:definition', async (_event, filePath: string, line: number, column: number) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('get definition', async (manager) => {
       const locations = await manager.getDefinition(filePath, line, column);
-      return { success: true, locations };
-    } catch (error) {
-      logger.error('Failed to get definition', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { locations };
+    });
   });
 
   ipcMain.handle('lsp:type-definition', async (_event, filePath: string, line: number, column: number) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('get type definition', async (manager) => {
       const locations = await manager.getTypeDefinition(filePath, line, column);
-      return { success: true, locations };
-    } catch (error) {
-      logger.error('Failed to get type definition', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { locations };
+    });
   });
 
   ipcMain.handle('lsp:implementations', async (_event, filePath: string, line: number, column: number) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('get implementations', async (manager) => {
       const locations = await manager.getImplementation(filePath, line, column);
-      return { success: true, locations };
-    } catch (error) {
-      logger.error('Failed to get implementations', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { locations };
+    });
   });
 
   ipcMain.handle('lsp:prepare-rename', async (_event, filePath: string, line: number, column: number) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('prepare rename', async (manager) => {
       const result = await manager.prepareRename(filePath, line, column);
-      return { success: true, result };
-    } catch (error) {
-      logger.error('Failed to prepare rename', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { result };
+    });
   });
 
   ipcMain.handle('lsp:references', async (_event, filePath: string, line: number, column: number, includeDeclaration?: boolean) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('get references', async (manager) => {
       const locations = await manager.getReferences(filePath, line, column, includeDeclaration ?? true);
-      return { success: true, locations };
-    } catch (error) {
-      logger.error('Failed to get references', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { locations };
+    });
   });
 
   ipcMain.handle('lsp:document-symbols', async (_event, filePath: string) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('get document symbols', async (manager) => {
       const symbols = await manager.getDocumentSymbols(filePath);
-      return { success: true, symbols };
-    } catch (error) {
-      logger.error('Failed to get document symbols', { filePath, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { symbols };
+    });
   });
 
   ipcMain.handle('lsp:workspace-symbols', async (_event, query: string) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('search workspace symbols', async (manager) => {
       const symbols = await manager.searchWorkspaceSymbols(query);
-      return { success: true, symbols };
-    } catch (error) {
-      logger.error('Failed to search workspace symbols', { query, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { symbols };
+    });
   });
 
   ipcMain.handle('lsp:completions', async (_event, filePath: string, line: number, column: number) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('get completions', async (manager) => {
       const completions = await manager.getCompletions(filePath, line, column);
-      return { success: true, completions };
-    } catch (error) {
-      logger.error('Failed to get completions', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { completions };
+    });
   });
 
   ipcMain.handle('lsp:diagnostics', async (_event, filePath?: string) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
-      const diagnostics = filePath 
+    return withLSPManager('get diagnostics', async (manager) => {
+      const diagnostics = filePath
         ? await manager.getDiagnostics(filePath)
         : manager.getAllDiagnostics();
-      
-      return { success: true, diagnostics };
-    } catch (error) {
-      logger.error('Failed to get diagnostics', { filePath, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { diagnostics };
+    });
   });
 
   ipcMain.handle('lsp:code-actions', async (_event, filePath: string, startLine: number, startColumn: number, endLine: number, endColumn: number) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('get code actions', async (manager) => {
       const actions = await manager.getCodeActions(filePath, startLine, startColumn, endLine, endColumn);
-      return { success: true, actions };
-    } catch (error) {
-      logger.error('Failed to get code actions', { filePath, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { actions };
+    });
   });
 
   ipcMain.handle('lsp:signature-help', async (_event, filePath: string, line: number, column: number) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('get signature help', async (manager) => {
       const signatureHelp = await manager.getSignatureHelp(filePath, line, column);
-      return { success: true, signatureHelp };
-    } catch (error) {
-      logger.error('Failed to get signature help', { filePath, line, column, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { signatureHelp };
+    });
   });
 
   ipcMain.handle('lsp:format', async (_event, filePath: string) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('format document', async (manager) => {
       const edits = await manager.formatDocument(filePath);
-      return { success: true, edits };
-    } catch (error) {
-      logger.error('Failed to format document', { filePath, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { edits };
+    });
   });
 
   ipcMain.handle('lsp:rename', async (_event, filePath: string, line: number, column: number, newName: string) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('rename symbol', async (manager) => {
       const edits = await manager.renameSymbol(filePath, line, column, newName);
-      return { success: true, edits };
-    } catch (error) {
-      logger.error('Failed to rename symbol', { filePath, line, column, newName, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return { edits };
+    });
   });
 
   // ==========================================================================
@@ -365,65 +245,32 @@ export function registerLspHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('lsp:open-document', async (_event, filePath: string, content?: string) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('open document', async (manager) => {
       await manager.openDocument(filePath, content);
-      return { success: true };
-    } catch (error) {
-      logger.error('Failed to open document', { filePath, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return {};
+    });
   });
 
   ipcMain.handle('lsp:update-document', async (_event, filePath: string, content: string) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('update document', (manager) => {
       manager.updateDocument(filePath, content);
-      return { success: true };
-    } catch (error) {
-      logger.error('Failed to update document', { filePath, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return {};
+    });
   });
 
   ipcMain.handle('lsp:close-document', async (_event, filePath: string) => {
-    try {
-      const { getLSPManager } = await import('../lsp');
-      const manager = getLSPManager();
-      
-      if (!manager) {
-        return { success: false, error: 'LSP manager not initialized' };
-      }
-      
+    return withLSPManager('close document', (manager) => {
       manager.closeDocument(filePath);
-      return { success: true };
-    } catch (error) {
-      logger.error('Failed to close document', { filePath, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+      return {};
+    });
   });
 
   ipcMain.handle('lsp:shutdown', async () => {
-    try {
-      const { shutdownLSPManager } = await import('../lsp');
+    return withErrorGuard('lsp:shutdown', async () => {
+      const { shutdownLSPManager } = await getLSPModuleCached();
       await shutdownLSPManager();
       return { success: true };
-    } catch (error) {
-      logger.error('Failed to shutdown LSP manager', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   // ==========================================================================
@@ -431,20 +278,20 @@ export function registerLspHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('lsp:refresh-diagnostics', async () => {
-    try {
+    return withErrorGuard('lsp:refresh-diagnostics', async () => {
       const workspacePath = getActiveWorkspacePath();
       if (!workspacePath) {
         return { success: false, error: 'No active workspace' };
       }
 
-      const { getTypeScriptDiagnosticsService } = await import('../agent/workspace/TypeScriptDiagnosticsService');
+      const { getTypeScriptDiagnosticsService } = await getTSModuleCached();
       const tsService = getTypeScriptDiagnosticsService();
       let tsSnapshot = null;
       if (tsService?.isReady()) {
         tsSnapshot = await tsService.refreshAll();
       }
 
-      const { getLSPManager } = await import('../lsp');
+      const { getLSPManager } = await getLSPModuleCached();
       const lspManager = getLSPManager();
       const lspDiagnostics = lspManager?.getAllDiagnostics() ?? [];
 
@@ -459,14 +306,11 @@ export function registerLspHandlers(context: IpcContext): void {
           diagnosticsCount: lspDiagnostics.length,
         },
       };
-    } catch (error) {
-      logger.error('Failed to refresh diagnostics', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('lsp:restart-typescript-server', async () => {
-    try {
+    return withErrorGuard('lsp:restart-typescript-server', async () => {
       const workspacePath = getActiveWorkspacePath();
       if (!workspacePath) {
         return { success: false, error: 'No active workspace' };
@@ -474,7 +318,7 @@ export function registerLspHandlers(context: IpcContext): void {
 
       logger.info('Restarting TypeScript Language Server');
 
-      const { getTypeScriptDiagnosticsService } = await import('../agent/workspace/TypeScriptDiagnosticsService');
+      const { getTypeScriptDiagnosticsService } = await getTSModuleCached();
       const tsService = getTypeScriptDiagnosticsService();
       
       if (!tsService) {
@@ -512,9 +356,6 @@ export function registerLspHandlers(context: IpcContext): void {
           diagnosticsCount: snapshot.diagnostics.length,
         },
       };
-    } catch (error) {
-      logger.error('Failed to restart TypeScript server', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 }

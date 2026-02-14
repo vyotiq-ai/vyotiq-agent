@@ -43,12 +43,12 @@ Vyotiq AI is a desktop application built with **Electron** and **React** that pr
 │  │   (Node.js)          │◄────────►│  (React/Chromium)    │ │
 │  │                      │   IPC    │                      │ │
 │  │ • Agent Orchestrator │          │ • Chat Interface     │ │
-│  │ • Tool System        │          │ • Editor             │ │
-│  │ • Terminal Manager   │          │ • Terminal Panel     │ │
-│  │ • File Operations    │          │ • Browser Panel      │ │
-│  │ • LSP Integration    │          │ • Settings Panel     │ │
-│  │ • Git Integration    │          │ • Session Manager    │ │
-│  │ • Database (SQLite)  │          │ • State Management   │ │
+│  │ • Tool System        │          │ • Terminal Panel     │ │
+│  │ • Terminal Manager   │          │ • Browser Panel      │ │
+│  │ • File Operations    │          │ • Settings Panel     │ │
+│  │ • LSP Integration    │          │ • Session Manager    │ │
+│  │ • Git Integration    │          │ • State Management   │ │
+│  │ • Database (SQLite)  │          │                      │ │
 │  │                      │          │                      │ │
 │  └──────────────────────┘          └──────────────────────┘ │
 │                                                               │
@@ -370,7 +370,7 @@ const staticPrompt = cache.getStaticPrompt();
 
 Key features:
 - **Modular Architecture**: Separated static sections (cached) from dynamic sections (per-request)
-- **Dynamic Context Injection**: Workspace, terminal, editor, and diagnostics context
+- **Dynamic Context Injection**: Workspace, terminal, and diagnostics context
 - **Provider-Level Caching**: Static content cached with hash-based invalidation
 - **XML-Structured Output**: Clear parsing for LLM consumption
 
@@ -384,7 +384,6 @@ Renderer Directory Structure
 src/renderer/
 ├── features/                 # Feature modules
 │   ├── chat/                 # Chat interface
-│   ├── editor/               # Monaco code editor
 │   ├── terminal/             # Terminal emulator (xterm.js)
 │   ├── browser/              # Browser panel
 │   ├── settings/             # Settings panel
@@ -396,7 +395,6 @@ src/renderer/
 │
 ├── state/                    # State management
 │   ├── AgentProvider.tsx     # Agent state context
-│   ├── EditorProvider.tsx    # Editor state context
 │   ├── UIProvider.tsx        # UI state context
 │   └── WorkspaceContextProvider.tsx
 │
@@ -440,22 +438,7 @@ const {
 } = useAgent();
 ```
 
-#### 2. EditorProvider (Editor State)
-
-Manages:
-- Open tabs and active tab
-- File content and dirty state
-- Undo/redo history
-
-```typescript
-const { 
-  tabs, 
-  activeTabId, 
-  actions: { openFile, saveFile }
-} = useEditor();
-```
-
-#### 3. UIProvider (UI-Only State)
+#### 2. UIProvider (UI-Only State)
 
 Manages:
 - Panel visibility (browser, settings)
@@ -493,11 +476,6 @@ features/
 │   ├── ChatPanel.tsx         # Main chat component
 │   ├── MessageList.tsx       # Message rendering
 │   ├── ChatInput.tsx         # Input component
-│   └── hooks/                # Feature-specific hooks
-│
-├── editor/
-│   ├── EditorPanel.tsx       # Editor container
-│   ├── TabBar.tsx            # Tab management
 │   └── hooks/                # Feature-specific hooks
 │
 └── ... (other features)
@@ -679,7 +657,6 @@ Main ↔ Renderer communication uses typed IPC channels:
 // Renderer → Main
 ipc.invoke('agent:sendMessage', payload)
 ipc.invoke('agent:confirmTool', payload)
-ipc.invoke('editor:saveFile', payload)
 ipc.invoke('terminal:run', payload)
 
 // Main → Renderer (events)
@@ -743,15 +720,7 @@ UI updates
 ### File Operation Flow Diagram
 
 ```text
-User edits file in editor
-    ↓
-EditorProvider updates state
-    ↓
-User clicks "Save"
-    ↓
-IPC: editor:saveFile
-    ↓
-Main process writes to disk
+File changed on disk
     ↓
 File watcher detects change
     ↓
@@ -760,8 +729,6 @@ LSP bridge notifies LSP servers
 Diagnostics updated
     ↓
 IPC: diagnostics:updated
-    ↓
-EditorProvider updates diagnostics
     ↓
 UI shows updated diagnostics
 ```
@@ -776,7 +743,7 @@ UI shows updated diagnostics
 2. **Memoization**: Prevent unnecessary re-renders with `useMemo` and `useCallback`
 3. **Virtualization**: Virtualize long lists (messages, file tree)
 4. **Caching**: Cache tool results, context, and LLM responses
-5. **Debouncing**: Debounce editor state updates and file watcher events
+5. **Debouncing**: Debounce file watcher events
 
 ### Memory Management
 

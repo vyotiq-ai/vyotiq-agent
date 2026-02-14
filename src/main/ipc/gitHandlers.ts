@@ -15,8 +15,18 @@ import type { IpcContext } from './types';
 
 const logger = createLogger('IPC:Git');
 
+// Cache agent/git module imports to avoid repeated dynamic import overhead per IPC call
+let cachedGitModule: typeof import('../agent/git') | null = null;
+
+const getGitModuleCached = async () => {
+  if (!cachedGitModule) {
+    cachedGitModule = await import('../agent/git');
+  }
+  return cachedGitModule;
+};
+
 export function registerGitHandlers(context: IpcContext): void {
-  const { getWorkspaceManager, getMainWindow } = context;
+  const { getMainWindow } = context;
 
   // Helper to emit git events to renderer
   const emitGitEvent = (channel: string, data: unknown) => {
@@ -36,12 +46,12 @@ export function registerGitHandlers(context: IpcContext): void {
     }
   };
 
-  // Initialize git for active workspace
+  // Initialize git for the active workspace directory
   const initGitForWorkspace = async () => {
-    const workspaces = getWorkspaceManager().list();
-    const active = workspaces.find(w => w.isActive);
-    if (active) {
-      await getGitService().init(active.path);
+    const { getWorkspacePath } = await import('./fileHandlers');
+    const cwd = getWorkspacePath();
+    if (cwd) {
+      await getGitService().init(cwd);
     }
   };
 
@@ -242,7 +252,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:request-access', async (_event, agentId: string, operation: string, params?: Record<string, unknown>, priority?: number) => {
     try {
-      const { getGitOperationManager } = await import('../agent/git');
+      const { getGitOperationManager } = await getGitModuleCached();
       const manager = getGitOperationManager();
       if (!manager) {
         return { success: false, error: 'Git operation manager not initialized' };
@@ -256,7 +266,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:set-agent-permissions', async (_event, agentId: string, permissions: Partial<import('../agent/git').AgentGitPermissions>) => {
     try {
-      const { getGitOperationManager } = await import('../agent/git');
+      const { getGitOperationManager } = await getGitModuleCached();
       const manager = getGitOperationManager();
       if (!manager) {
         return { success: false, error: 'Git operation manager not initialized' };
@@ -271,7 +281,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:get-operation-history', async (_event, agentId?: string, limit?: number) => {
     try {
-      const { getGitOperationManager } = await import('../agent/git');
+      const { getGitOperationManager } = await getGitModuleCached();
       const manager = getGitOperationManager();
       if (!manager) return [];
       return manager.getOperationHistory(agentId, limit);
@@ -287,7 +297,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:create-task-branch', async (_event, taskId: string, agentId: string, description?: string) => {
     try {
-      const { getBranchManager } = await import('../agent/git');
+      const { getBranchManager } = await getGitModuleCached();
       const manager = getBranchManager();
       if (!manager) {
         return { success: false, error: 'Branch manager not initialized' };
@@ -301,7 +311,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:create-agent-branch', async (_event, agentId: string, baseBranch?: string) => {
     try {
-      const { getBranchManager } = await import('../agent/git');
+      const { getBranchManager } = await getGitModuleCached();
       const manager = getBranchManager();
       if (!manager) {
         return { success: false, error: 'Branch manager not initialized' };
@@ -315,7 +325,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:merge-branch', async (_event, branchName: string, agentId: string, options?: { squash?: boolean; deleteAfter?: boolean }) => {
     try {
-      const { getBranchManager } = await import('../agent/git');
+      const { getBranchManager } = await getGitModuleCached();
       const manager = getBranchManager();
       if (!manager) {
         return { success: false, error: 'Branch manager not initialized' };
@@ -329,7 +339,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:get-agent-branches', async (_event, agentId: string) => {
     try {
-      const { getBranchManager } = await import('../agent/git');
+      const { getBranchManager } = await getGitModuleCached();
       const manager = getBranchManager();
       if (!manager) return [];
       return manager.getAgentBranches(agentId);
@@ -345,7 +355,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:queue-change', async (_event, agentId: string, filePath: string, changeType: string, description?: string, priority?: number) => {
     try {
-      const { getCommitCoordinator } = await import('../agent/git');
+      const { getCommitCoordinator } = await getGitModuleCached();
       const coordinator = getCommitCoordinator();
       if (!coordinator) return null;
       return coordinator.queueChange(agentId, filePath, changeType as import('../agent/git').PendingChange['changeType'], description, priority);
@@ -357,7 +367,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:create-commit', async (_event, agentId: string, message: string, options?: { files?: string[]; all?: boolean }) => {
     try {
-      const { getCommitCoordinator } = await import('../agent/git');
+      const { getCommitCoordinator } = await getGitModuleCached();
       const coordinator = getCommitCoordinator();
       if (!coordinator) {
         return { success: false, error: 'Commit coordinator not initialized' };
@@ -371,7 +381,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:get-pending-changes', async (_event, agentId?: string) => {
     try {
-      const { getCommitCoordinator } = await import('../agent/git');
+      const { getCommitCoordinator } = await getGitModuleCached();
       const coordinator = getCommitCoordinator();
       if (!coordinator) return [];
       return agentId ? coordinator.getAgentPendingChanges(agentId) : coordinator.getAllPendingChanges();
@@ -387,7 +397,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:detect-conflicts', async () => {
     try {
-      const { getGitConflictResolver } = await import('../agent/git');
+      const { getGitConflictResolver } = await getGitModuleCached();
       const resolver = getGitConflictResolver();
       if (!resolver) return [];
       return await resolver.detectConflicts();
@@ -399,7 +409,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:resolve-conflict', async (_event, conflictId: string, agentId: string, strategy?: string) => {
     try {
-      const { getGitConflictResolver } = await import('../agent/git');
+      const { getGitConflictResolver } = await getGitModuleCached();
       const resolver = getGitConflictResolver();
       if (!resolver) {
         return { success: false, error: 'Conflict resolver not initialized' };
@@ -413,7 +423,7 @@ export function registerGitHandlers(context: IpcContext): void {
 
   ipcMain.handle('git:get-active-conflicts', async () => {
     try {
-      const { getGitConflictResolver } = await import('../agent/git');
+      const { getGitConflictResolver } = await getGitModuleCached();
       const resolver = getGitConflictResolver();
       if (!resolver) return [];
       return resolver.getActiveConflicts();

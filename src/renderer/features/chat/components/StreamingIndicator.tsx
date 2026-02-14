@@ -8,6 +8,7 @@
  */
 import React, { memo } from 'react';
 import { cn } from '../../../utils/cn';
+import { SkeletonText } from '../../../components/ui/Skeleton';
 
 export interface StreamingIndicatorProps {
   /** Whether the agent is currently streaming */
@@ -39,11 +40,15 @@ export const StreamingIndicator: React.FC<StreamingIndicatorProps> = memo(({
 
   if (variant === 'minimal') {
     return (
-      <span className={cn(
-        'inline-flex items-center gap-1 font-mono',
-        sizeClasses[size],
-        'text-[var(--color-accent-primary)]'
-      )}>
+      <span
+        aria-live="polite"
+        aria-atomic="true"
+        className={cn(
+          'inline-flex items-center gap-1 font-mono',
+          sizeClasses[size],
+          'text-[var(--color-accent-primary)]'
+        )}
+      >
         <span>{message}</span>
       </span>
     );
@@ -51,11 +56,16 @@ export const StreamingIndicator: React.FC<StreamingIndicatorProps> = memo(({
 
   if (variant === 'pulse') {
     return (
-      <span className={cn(
-        'inline-flex items-center gap-1.5 font-mono',
-        sizeClasses[size],
-        'text-[var(--color-text-muted)]'
-      )}>
+      <span
+        aria-live="polite"
+        aria-atomic="true"
+        className={cn(
+          'inline-flex items-center gap-1.5 font-mono',
+          sizeClasses[size],
+          'text-[var(--color-text-muted)]'
+        )}
+      >
+        <span className="w-1 h-1 rounded-full bg-[var(--color-accent-primary)] animate-pulse" />
         <span>{message}</span>
       </span>
     );
@@ -63,11 +73,15 @@ export const StreamingIndicator: React.FC<StreamingIndicatorProps> = memo(({
 
   // Default variant - static indicator
   return (
-    <span className={cn(
-      'inline-flex items-center gap-1.5 font-mono',
-      sizeClasses[size],
-      'text-[var(--color-text-muted)]'
-    )}>
+    <span
+      aria-live="polite"
+      aria-atomic="true"
+      className={cn(
+        'inline-flex items-center gap-1.5 font-mono',
+        sizeClasses[size],
+        'text-[var(--color-text-muted)]'
+      )}
+    >
       <span>{message}</span>
     </span>
   );
@@ -121,11 +135,15 @@ export const AgentStatusIndicator: React.FC<AgentStatusIndicatorProps> = memo(({
   const config = statusConfig[status];
 
   return (
-    <div className={cn(
-      'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full',
-      `${config.bgColor}/10`,
-      className
-    )}>
+    <div
+      aria-live="polite"
+      aria-atomic="true"
+      className={cn(
+        'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full',
+        `${config.bgColor}/10`,
+        className
+      )}
+    >
       {/* Minimal status dot */}
       <span className={cn('w-1.5 h-1.5 rounded-full', config.bgColor)} />
       <span className={cn('text-[10px] font-mono', config.color)}>
@@ -153,20 +171,8 @@ export const MessageSkeleton: React.FC<MessageSkeletonProps> = memo(({
   lines = 3,
   className,
 }) => {
-  return (
-    <div className={cn('space-y-2 animate-pulse', className)}>
-      {Array.from({ length: lines }).map((_, i) => (
-        <div 
-          key={i}
-          className={cn(
-            'h-3 bg-[var(--color-surface-2)] rounded',
-            // Vary widths for more natural appearance
-            i === lines - 1 ? 'w-2/3' : i % 2 === 0 ? 'w-full' : 'w-5/6'
-          )}
-        />
-      ))}
-    </div>
-  );
+  // Delegate to the shared SkeletonText from UI library
+  return <SkeletonText lines={lines} lastLineWidth="66%" className={className} />;
 });
 MessageSkeleton.displayName = 'MessageSkeleton';
 

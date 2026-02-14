@@ -11,13 +11,18 @@
 import { useCallback } from 'react';
 import { useAgentSelector, useAgentActions } from '../state/AgentProvider';
 import type { AgentUIState } from '../state/agentReducer';
-import type { ChatMessage, AgentSessionState, ConfirmToolPayload } from '../../shared/types';
+import type { ChatMessage, AgentSessionState } from '../../shared/types';
 import type { TodoItem } from '../../shared/types/todo';
 
 // Re-export for backward compatibility
 export { useAgentActions };
-export type { ConfirmToolPayload };
 
+// =============================================================================
+// Stable Empty Constants (avoid new reference on every selector call)
+// =============================================================================
+const EMPTY_MESSAGES: ChatMessage[] = [];
+const EMPTY_TODOS: TodoItem[] = [];
+const EMPTY_SESSION_INFO = { sessionId: undefined as string | undefined, title: undefined as string | undefined, status: undefined as AgentSessionState['status'] | undefined, messageCount: 0 };
 // =============================================================================
 // Shallow Comparison Utilities
 // =============================================================================
@@ -130,9 +135,9 @@ export function useActiveSessionMessages(): ChatMessage[] {
   return useAgentSelector(
     useCallback(
       (state: AgentUIState) => {
-        if (!sessionId) return [];
+        if (!sessionId) return EMPTY_MESSAGES;
         const session = state.sessions.find(s => s.id === sessionId);
-        return session?.messages ?? [];
+        return session?.messages ?? EMPTY_MESSAGES;
       },
       [sessionId]
     ),
@@ -147,9 +152,9 @@ export function useSessionMessages(sessionId: string | undefined): ChatMessage[]
   return useAgentSelector(
     useCallback(
       (state: AgentUIState) => {
-        if (!sessionId) return [];
+        if (!sessionId) return EMPTY_MESSAGES;
         const session = state.sessions.find(s => s.id === sessionId);
-        return session?.messages ?? [];
+        return session?.messages ?? EMPTY_MESSAGES;
       },
       [sessionId]
     ),
@@ -302,7 +307,7 @@ export function useActiveSessionTodos(): { runId: string; todos: TodoItem[]; tim
  */
 export function useActiveSessionTodoItems(): TodoItem[] {
   const todoData = useActiveSessionTodos();
-  return todoData?.todos ?? [];
+  return todoData?.todos ?? EMPTY_TODOS;
 }
 
 /**
@@ -313,35 +318,6 @@ export function useTodoCompletionPercentage(): number {
   if (items.length === 0) return 0;
   const completed = items.filter(item => item.status === 'completed').length;
   return Math.round((completed / items.length) * 100);
-}
-
-// =============================================================================
-// Workspace Selectors
-// =============================================================================
-
-/**
- * Get the active workspace
- */
-export function useActiveWorkspaceFromState() {
-  return useAgentSelector(
-    (state: AgentUIState) => state.workspaces.find(w => w.isActive)
-  );
-}
-
-/**
- * Get the active workspace path
- */
-export function useActiveWorkspacePath(): string | null {
-  const workspace = useActiveWorkspaceFromState();
-  return workspace?.path ?? null;
-}
-
-/**
- * Get the active workspace name (label)
- */
-export function useActiveWorkspaceName(): string | null {
-  const workspace = useActiveWorkspaceFromState();
-  return workspace?.label ?? null;
 }
 
 // =============================================================================
@@ -407,7 +383,7 @@ export function useActiveSessionInfo(): {
     useCallback(
       (state: AgentUIState) => {
         if (!sessionId) {
-          return { sessionId: undefined, title: undefined, status: undefined, messageCount: 0 };
+          return EMPTY_SESSION_INFO;
         }
         const session = state.sessions.find(s => s.id === sessionId);
         return {
@@ -420,5 +396,26 @@ export function useActiveSessionInfo(): {
       [sessionId]
     ),
     shallowObjectEqual
+  );
+}
+
+// =============================================================================
+// Run Error Selectors
+// =============================================================================
+
+/**
+ * Get structured run error info for the active session
+ */
+export function useActiveSessionRunError() {
+  const sessionId = useActiveSessionId();
+  
+  return useAgentSelector(
+    useCallback(
+      (state: AgentUIState) => {
+        if (!sessionId) return undefined;
+        return state.runErrors[sessionId];
+      },
+      [sessionId]
+    )
   );
 }

@@ -97,8 +97,9 @@ export class CostManager {
   private readonly emitEvent: (event: CostThresholdEvent) => void;
   private budget: CostBudget;
 
-  // Cost records
+  // Cost records (capped to prevent unbounded growth)
   private readonly records: CostRecord[] = [];
+  private readonly maxRecords = 10000;
 
   // Per-agent totals
   private readonly agentCosts = new Map<string, number>();
@@ -192,6 +193,11 @@ export class CostManager {
     };
 
     this.records.push(record);
+
+    // Evict oldest records if exceeding cap
+    if (this.records.length > this.maxRecords) {
+      this.records.splice(0, this.records.length - this.maxRecords);
+    }
 
     // Update totals
     this.sessionCost += cost;

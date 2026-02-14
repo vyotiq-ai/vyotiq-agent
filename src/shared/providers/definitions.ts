@@ -116,17 +116,3 @@ export const PROVIDER_ORDER: LLMProviderName[] = ['anthropic', 'openai', 'deepse
 export function getProvider(provider: LLMProviderName): ProviderInfo {
   return PROVIDERS[provider];
 }
-
-/**
- * Get all provider IDs
- */
-export function getAllProviderIds(): LLMProviderName[] {
-  return [...PROVIDER_ORDER];
-}
-
-/**
- * Check if a provider ID is valid
- */
-export function isValidProvider(providerId: string): providerId is LLMProviderName {
-  return PROVIDER_ORDER.includes(providerId as LLMProviderName);
-}

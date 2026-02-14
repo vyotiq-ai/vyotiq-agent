@@ -5,7 +5,7 @@
  * Features:
  * - Always shows diffs by default (no collapse on initial render)
  * - Semantic word-level inline diffs with character-level highlighting  
- * - Split (Monaco) and unified view modes with smooth transitions
+ * - Unified view mode with smooth transitions
  * - GitHub-style line highlighting with refined One Dark colors
  * - Expandable context regions with smart collapse
  * - Inline syntax highlighting for changed words
@@ -17,17 +17,15 @@
  * - Copy to clipboard with visual feedback
  */
 import React, { memo, useRef, useEffect, useState, useCallback, useMemo, useTransition } from 'react';
-import * as monaco from 'monaco-editor';
 import { 
-  Check, X, Pencil, Columns2, AlignLeft,
-  ChevronDown, ChevronUp, ChevronRight, Copy, ExternalLink,
+  Check, X, Pencil,
+  ChevronDown, ChevronUp, ChevronRight, Copy,
   RotateCcw, FileCode2
 } from 'lucide-react';
 import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
-import { useEditor } from '../../../../state/EditorProvider';
-import { getLanguageFromPath } from '../../../editor/utils/languageUtils';
-import { registerCustomThemes } from '../../../editor/utils/themeUtils';
+import { createLogger } from '../../../../utils/logger';
+import { detectLanguage } from '../../../../../shared/utils/pathUtils';
 import { 
   computeDiffStats, 
   buildSemanticDiffLines, 
@@ -35,43 +33,20 @@ import {
   type InlineDiffPart
 } from './diffUtils';
 
-// Ensure theme is registered once
-let themeRegistered = false;
-function ensureThemeRegistered() {
-  if (!themeRegistered) {
-    registerCustomThemes(monaco);
-    themeRegistered = true;
-  }
-}
-
 // ============================================================================
 // Persistence
 // ============================================================================
 
-const DIFF_VIEW_MODE_KEY = 'vyotiq-diff-view-mode';
 const DIFF_ACTIONS_KEY = 'vyotiq-diff-actions';
 
-export type DiffViewMode = 'split' | 'unified';
+const logger = createLogger('DiffViewer');
+
 export type DiffActionState = 'pending' | 'accepted' | 'rejected';
 
 interface DiffActionRecord {
   filePath: string;
   state: DiffActionState;
   timestamp: number;
-}
-
-function getStoredViewMode(): DiffViewMode {
-  try {
-    const stored = localStorage.getItem(DIFF_VIEW_MODE_KEY);
-    if (stored === 'split' || stored === 'unified') return stored;
-  } catch { /* ignore */ }
-  return 'unified';
-}
-
-function setStoredViewMode(mode: DiffViewMode): void {
-  try {
-    localStorage.setItem(DIFF_VIEW_MODE_KEY, mode);
-  } catch { /* ignore */ }
 }
 
 function getStoredDiffAction(diffId: string): DiffActionRecord | null {
@@ -198,20 +173,15 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
   maxHeight = 450,
   diffId: providedDiffId,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
   const diffContainerRef = useRef<HTMLDivElement>(null);
   
   // State
-  const [viewMode, setViewMode] = useState<DiffViewMode>(getStoredViewMode);
   // Initialize collapsed state from prop - respects caller's preference
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [copied, setCopied] = useState(false);
   const [expandedRegions, setExpandedRegions] = useState<Set<number>>(new Set());
   const [focusedLineIdx, setFocusedLineIdx] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
-  
-  const { openFile, showEditor, revertFile, tabs, updateContent } = useEditor();
   
   // Computed values
   const diffId = useMemo(
@@ -224,7 +194,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
     return stored?.state || 'pending';
   });
   
-  const language = useMemo(() => getLanguageFromPath(filePath), [filePath]);
+  const language = useMemo(() => detectLanguage(filePath), [filePath]);
   const stats = useMemo(() => computeDiffStats(originalContent, modifiedContent), [originalContent, modifiedContent]);
   const fileName = useMemo(() => getFileName(filePath), [filePath]);
   
@@ -234,19 +204,21 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
     // For very large files, computation is expensive - but useMemo handles caching
     return buildSemanticDiffLines(originalContent, modifiedContent, 3);
   }, [originalContent, modifiedContent]);
+
+  // Auto-scroll to first change when diff is expanded
+  useEffect(() => {
+    if (!isCollapsed && diffContainerRef.current && diffLines.length > 0) {
+      const firstChange = diffContainerRef.current.querySelector('[role="row"]');
+      if (firstChange) {
+        firstChange.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+  }, [isCollapsed, diffLines.length]);
   
   // Track if file is large for performance warnings
   const isLargeFile = originalContent.length > 50000 || modifiedContent.length > 50000;
   
   // Handlers - use startTransition for non-urgent updates to prevent UI blocking
-  const handleViewModeToggle = useCallback(() => {
-    startTransition(() => {
-      const newMode = viewMode === 'split' ? 'unified' : 'split';
-      setViewMode(newMode);
-      setStoredViewMode(newMode);
-    });
-  }, [viewMode, startTransition]);
-  
   const toggleRegionExpanded = useCallback((regionIdx: number) => {
     startTransition(() => {
       setExpandedRegions(prev => {
@@ -274,11 +246,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
     setTimeout(() => setCopied(false), 1500);
   }, [modifiedContent]);
   
-  const handleOpenFile = useCallback(() => {
-    openFile(filePath);
-    showEditor();
-  }, [filePath, openFile, showEditor]);
-  
   const handleAccept = useCallback(async () => {
     setActionState('accepted');
     setStoredDiffAction(diffId, { filePath, state: 'accepted', timestamp: Date.now() });
@@ -286,10 +253,10 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
     try {
       const result = await window.vyotiq.files.write(filePath, modifiedContent);
       if (!result.success) {
-        console.error('Failed to write file:', result.error);
+        logger.error('Failed to write file', { filePath, error: result.error });
       }
     } catch (err) {
-      console.error('Failed to accept changes:', err);
+      logger.error('Failed to accept changes', { filePath, error: err instanceof Error ? err.message : String(err) });
     }
     
     onAccept?.();
@@ -300,23 +267,17 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
     setStoredDiffAction(diffId, { filePath, state: 'rejected', timestamp: Date.now() });
     
     try {
-      const openTab = tabs.find(t => t.path === filePath);
-      if (openTab) {
-        updateContent(openTab.id, originalContent);
-        revertFile(openTab.id);
-      }
-      
       if (!isNewFile && originalContent) {
         await window.vyotiq.files.write(filePath, originalContent);
       } else if (isNewFile) {
         await window.vyotiq.files.delete(filePath);
       }
     } catch (err) {
-      console.error('Failed to reject changes:', err);
+      logger.error('Failed to reject changes', { filePath, error: err instanceof Error ? err.message : String(err) });
     }
     
     onReject?.();
-  }, [diffId, filePath, originalContent, isNewFile, tabs, updateContent, revertFile, onReject]);
+  }, [diffId, filePath, originalContent, isNewFile, onReject]);
   
   const handleUndo = useCallback(() => {
     setActionState('pending');
@@ -325,7 +286,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
   
   // Keyboard navigation for diff lines (accessibility)
   const handleKeyNavigation = useCallback((e: React.KeyboardEvent) => {
-    if (viewMode !== 'unified' || isCollapsed) return;
+    if (isCollapsed) return;
     
     const changeLines = diffLines.filter(l => l.type === 'added' || l.type === 'removed');
     if (changeLines.length === 0) return;
@@ -341,90 +302,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
       const prevIdx = Math.max(currentIdx - 1, 0);
       setFocusedLineIdx(prevIdx);
     }
-  }, [viewMode, isCollapsed, diffLines, focusedLineIdx]);
-
-  // Monaco editor for split view
-  useEffect(() => {
-    if (!containerRef.current || isCollapsed || viewMode === 'unified') return;
-    
-    ensureThemeRegistered();
-    
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(7);
-    const originalUri = monaco.Uri.parse(`inmemory://diff/original-${timestamp}-${random}.${language}`);
-    const modifiedUri = monaco.Uri.parse(`inmemory://diff/modified-${timestamp}-${random}.${language}`);
-    
-    const originalModel = monaco.editor.createModel(originalContent, language, originalUri);
-    const modifiedModel = monaco.editor.createModel(modifiedContent, language, modifiedUri);
-    
-    const editor = monaco.editor.createDiffEditor(containerRef.current, {
-      theme: 'vyotiq-dark',
-      readOnly: true,
-      renderSideBySide: true,
-      enableSplitViewResizing: true,
-      ignoreTrimWhitespace: false,
-      renderIndicators: true,
-      renderMarginRevertIcon: false,
-      originalEditable: false,
-      automaticLayout: true,
-      scrollBeyondLastLine: false,
-      minimap: { enabled: false },
-      lineNumbers: 'on',
-      glyphMargin: false,
-      folding: true,
-      lineDecorationsWidth: 0,
-      lineNumbersMinChars: 3,
-      scrollbar: {
-        vertical: 'auto',
-        horizontal: 'auto',
-        verticalScrollbarSize: 6,
-        horizontalScrollbarSize: 6,
-      },
-      fontSize: 11,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace",
-      padding: { top: 8, bottom: 8 },
-      diffWordWrap: 'on',
-      renderWhitespace: 'none',
-      useInlineViewWhenSpaceIsLimited: false,
-      diffAlgorithm: 'advanced',
-      // Unicode highlighting - consistent with MonacoEditor
-      unicodeHighlight: {
-        ambiguousCharacters: false,
-        invisibleCharacters: true,
-        nonBasicASCII: false,
-        includeComments: false,
-        includeStrings: false,
-        allowedCharacters: {
-          '\u251C': true, '\u2502': true, '\u2514': true, '\u2500': true, '\u250C': true, '\u2510': true,
-          '\u2518': true, '\u2524': true, '\u252C': true, '\u2534': true, '\u253C': true,
-          '\u2554': true, '\u2557': true, '\u255A': true, '\u255D': true, '\u2551': true, '\u2550': true,
-          '\u2192': true, '\u2190': true, '\u2191': true, '\u2193': true, '\u21D2': true, '\u21D0': true,
-          '\u2713': true, '\u2717': true, '\u2714': true, '\u2718': true,
-          '\u2022': true, '\u25E6': true, '\u25AA': true, '\u25AB': true,
-          '\u00A9': true, '\u00AE': true, '\u2122': true,
-          '\u00B0': true, '\u00B1': true, '\u00D7': true, '\u00F7': true,
-          '\u2026': true, '\u2014': true, '\u2013': true,
-          '\u2018': true, '\u2019': true, '\u201C': true, '\u201D': true,
-          '\u00AB': true, '\u00BB': true,
-          '\u20AC': true, '\u00A3': true, '\u00A5': true,
-        },
-        allowedLocales: { _os: true, _vscode: true },
-      },
-    });
-    
-    try {
-      editor.setModel({ original: originalModel, modified: modifiedModel });
-    } catch { /* Diff computation failed */ }
-    
-    editorRef.current = editor;
-    
-    return () => {
-      editor.dispose();
-      originalModel.dispose();
-      modifiedModel.dispose();
-      editorRef.current = null;
-    };
-  }, [originalContent, modifiedContent, language, viewMode, isCollapsed]);
+  }, [isCollapsed, diffLines, focusedLineIdx]);
 
   // Render unified diff view
   const renderUnifiedDiff = useCallback(() => {
@@ -531,7 +409,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
           
           return (
             <div
-              key={idx}
+              key={`${line.type}-${line.oldLineNum ?? ''}-${line.newLineNum ?? ''}`}
               className={cn(
                 'flex items-stretch group/line border-b border-[var(--color-border-subtle)]/10',
                 // Line background colors using CSS variables
@@ -670,6 +548,13 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
           {isNewFile ? 'new' : 'modified'}
         </span>
         
+        {/* Language badge */}
+        {language && language !== 'text' && (
+          <span className="text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 text-[var(--color-text-dim)] bg-[var(--color-surface-2)]/60 ring-1 ring-inset ring-[var(--color-border-subtle)]/30">
+            {language}
+          </span>
+        )}
+        
         {/* Diff stats - clean monospace display */}
         {hasChanges && (
           <span className="text-[10px] flex-shrink-0 flex items-center gap-2 font-mono tabular-nums">
@@ -693,21 +578,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
         >
           <button
             type="button"
-            onClick={handleViewModeToggle}
-            className={cn(
-              'p-1.5 rounded transition-colors duration-100',
-              'text-[var(--color-text-dim)] hover:text-[var(--color-text-primary)]',
-              'hover:bg-[var(--color-surface-2)]/60',
-              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
-            )}
-            title={viewMode === 'split' ? 'Switch to unified view' : 'Switch to split view'}
-            aria-label={viewMode === 'split' ? 'Switch to unified view' : 'Switch to split view'}
-          >
-            {viewMode === 'split' ? <AlignLeft size={12} /> : <Columns2 size={12} />}
-          </button>
-          
-          <button
-            type="button"
             onClick={handleCopy}
             className={cn(
               'p-1.5 rounded transition-colors duration-100',
@@ -720,21 +590,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
           >
             {copied ? <Check size={12} className="text-[var(--color-diff-added-text)]" /> : <Copy size={12} />}
           </button>
-          
-          <button
-            type="button"
-            onClick={handleOpenFile}
-            className={cn(
-              'p-1.5 rounded transition-colors duration-100',
-              'text-[var(--color-text-dim)] hover:text-[var(--color-text-primary)]',
-              'hover:bg-[var(--color-surface-2)]/60',
-              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
-            )}
-            title="Open in editor"
-            aria-label="Open file in editor"
-          >
-            <ExternalLink size={12} />
-          </button>
         </div>
       </div>
       
@@ -743,7 +598,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
         <div
           ref={diffContainerRef}
           onKeyDown={handleKeyNavigation}
-          tabIndex={viewMode === 'unified' ? 0 : -1}
+          tabIndex={0}
           role="region"
           aria-label="File diff content"
           className="outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30 focus-visible:ring-inset"
@@ -754,11 +609,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = memo(({
               <span>Computing diff...</span>
             </div>
           )}
-          {viewMode === 'unified' ? (
-            renderUnifiedDiff()
-          ) : (
-            <div ref={containerRef} style={{ height: maxHeight }} className="w-full" />
-          )}
+          {renderUnifiedDiff()}
         </div>
       )}
       

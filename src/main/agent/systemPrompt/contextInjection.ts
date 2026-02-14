@@ -28,7 +28,8 @@ export function evaluateContextInjectionCondition(
 
     case 'workspace-pattern': {
       if (!condition.value) return false;
-      const workspacePath = session.state.workspaceId || '';
+      // Use session workspace path, NOT process.cwd() which points to app install dir
+      const workspacePath = session.state.workspacePath || '';
       try {
         const regex = new RegExp(condition.value.replace(/\*/g, '.*'), 'i');
         return regex.test(workspacePath);
@@ -65,7 +66,10 @@ export function evaluateContextInjectionCondition(
     }
 
     case 'custom':
-      logger?.debug('Custom context injection conditions not supported at runtime');
+      logger?.debug('Custom context injection condition skipped - runtime evaluation of custom functions is not supported', {
+        conditionValue: condition.value,
+        hasCustomFn: !!condition.customFn,
+      });
       return false;
 
     default:
@@ -83,8 +87,6 @@ export function evaluateContextInjectionCondition(
  * - {{provider}} - Current provider name
  * - {{modelId}} - Current model ID
  * - {{activeFile}} - Currently active file
- * - {{openFiles}} - Comma-separated list of open files
- * - {{openFilesCount}} - Number of open files
  * - {{diagnosticsCount}} - Total number of diagnostics
  * - {{errorCount}} - Number of errors
  * - {{warningCount}} - Number of warnings
@@ -115,8 +117,6 @@ export function processContextRuleTemplate(
   
   // Editor context
   result = result.replace(/\{\{activeFile\}\}/g, editorContext?.activeFile || 'None');
-  result = result.replace(/\{\{openFiles\}\}/g, editorContext?.openFiles.join(', ') || 'None');
-  result = result.replace(/\{\{openFilesCount\}\}/g, String(editorContext?.openFiles.length ?? 0));
   
   // Diagnostics context
   const diagnostics = editorContext?.diagnostics ?? [];

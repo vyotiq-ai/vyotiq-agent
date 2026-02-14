@@ -90,6 +90,9 @@ export function buildSystemPrompt(context: SystemPromptContext): string {
     buildEditorContext(context.editorContext),
     buildWorkspaceDiagnostics(context.workspaceDiagnostics),
 
+    // Semantically relevant code context from workspace vector index
+    context.workspaceCodeContext || '',
+
     // User customizations
     buildPersona(promptSettings),
     buildCustomPrompt(promptSettings),

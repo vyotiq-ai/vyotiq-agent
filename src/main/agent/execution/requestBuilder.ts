@@ -12,7 +12,6 @@ import type { LLMProviderName, PromptSettings, RoutingDecision } from '../../../
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
 import type { ToolRegistry } from '../../tools';
-import type { WorkspaceManager } from '../../workspaces/workspaceManager';
 import type { LLMProvider, ProviderRequest, ProviderToolDefinition } from '../providers/baseProvider';
 import type { EditorState, WorkspaceDiagnostics } from './types';
 import type { ContextBuilder } from './contextBuilder';
@@ -29,6 +28,7 @@ import { buildSystemPrompt, DEFAULT_PROMPT_SETTINGS, type SystemPromptContext } 
 import { buildImageGenerationSystemPrompt } from '../imageGenerationPrompt';
 import { buildMCPContextInfo } from '../../mcp';
 import { getAgentsMdReader } from '../workspace/AgentsMdReader';
+import { getWorkspacePath } from '../../ipc/fileHandlers';
 import { AGGRESSIVE_CACHE_CONFIG, CONSERVATIVE_CACHE_CONFIG, DEFAULT_CACHE_CONFIG } from '../cache';
 import { normalizeStrictJsonSchema } from '../../utils';
 import { getSharedModelById, getProviderConfig } from '../providers/registry';
@@ -39,7 +39,6 @@ import type { RendererEvent, AgentEvent, CacheSettings, AccessLevelSettings, Pro
 
 export class RequestBuilder {
   private readonly toolRegistry: ToolRegistry;
-  private readonly workspaceManager: WorkspaceManager;
   private readonly logger: Logger;
   private readonly contextBuilder: ContextBuilder;
   private readonly complianceValidator: ComplianceValidator;
@@ -62,7 +61,6 @@ export class RequestBuilder {
 
   constructor(
     toolRegistry: ToolRegistry,
-    workspaceManager: WorkspaceManager,
     logger: Logger,
     contextBuilder: ContextBuilder,
     complianceValidator: ComplianceValidator,
@@ -76,7 +74,6 @@ export class RequestBuilder {
     getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>
   ) {
     this.toolRegistry = toolRegistry;
-    this.workspaceManager = workspaceManager;
     this.logger = logger;
     this.contextBuilder = contextBuilder;
     this.complianceValidator = complianceValidator;
@@ -209,10 +206,7 @@ export class RequestBuilder {
     // Build selection context with session ID for proper state tracking
     const recentMessages = session.state.messages.slice(-10);
     const recentToolUsage = extractRecentToolUsage(session.state.messages);
-    const workspace = session.state.workspaceId
-      ? this.workspaceManager.list().find(w => w.id === session.state.workspaceId)
-      : this.workspaceManager.getActive();
-    const workspaceType = detectWorkspaceType(workspace?.path || null);
+    const workspaceType = detectWorkspaceType(session.state.workspacePath || getWorkspacePath() || '');
 
     const selectionContext: ToolSelectionContext = {
       recentMessages,
@@ -296,12 +290,17 @@ export class RequestBuilder {
     provider: LLMProvider,
     updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void
   ): Promise<ProviderRequest> {
-    const workspace = session.state.workspaceId
-      ? this.workspaceManager.list().find(w => w.id === session.state.workspaceId)
-      : this.workspaceManager.getActive();
+    const workspacePath = session.state.workspacePath || getWorkspacePath() || '';
+    const workspace = workspacePath ? { id: 'default', path: workspacePath } : undefined;
 
-    if (session.state.workspaceId && !workspace) {
-      throw new Error(`Provider request failed: workspace not found for session ${session.state.id}`);
+    // Ensure workspace is indexed in the Rust backend (awaited on first call
+    // to ensure vector index is ready for semantic context injection)
+    if (workspacePath) {
+      try {
+        await this.contextBuilder.ensureWorkspaceIndexed(workspacePath);
+      } catch {
+        // Non-critical — agent can still function without indexed workspace
+      }
     }
 
     const providerSettings = this.getProviderSettings(provider.name);
@@ -491,6 +490,24 @@ export class RequestBuilder {
     const workspaceStructure = await this.contextBuilder.buildWorkspaceStructureContext(workspace?.path);
     const workspaceDiagnostics = await this.getWorkspaceDiagnostics?.();
 
+    // Retrieve semantically relevant code snippets for the latest user message
+    let workspaceCodeContext: string | undefined;
+    if (workspace?.path && session.state.messages.length > 0) {
+      const lastUserMessage = [...session.state.messages]
+        .reverse()
+        .find((m) => m.role === 'user');
+      if (lastUserMessage?.content) {
+        const queryText = typeof lastUserMessage.content === 'string'
+          ? lastUserMessage.content
+          : lastUserMessage.content;
+        workspaceCodeContext = await this.contextBuilder.buildWorkspaceCodeContext(
+          workspace.path,
+          String(queryText).slice(0, 1000), // Allow longer query for better semantic search relevance
+          10, // Max snippets
+        );
+      }
+    }
+
     // Build MCP context for available external tools
     const mcpContext = buildMCPContextInfo({ enabled: true });
 
@@ -517,6 +534,7 @@ export class RequestBuilder {
       workspaceStructure,
       mcpContext,
       agentsMdContext,
+      workspaceCodeContext,
       logger: this.logger,
     };
 

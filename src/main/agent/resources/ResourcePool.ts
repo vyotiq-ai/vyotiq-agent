@@ -56,6 +56,9 @@ export class ResourcePool<T = unknown> {
       this.healthCheckInterval = setInterval(() => {
         this.performHealthCheck();
       }, this.config.healthCheckIntervalMs);
+      if (this.healthCheckInterval && typeof this.healthCheckInterval === 'object' && 'unref' in this.healthCheckInterval) {
+        (this.healthCheckInterval as NodeJS.Timeout).unref();
+      }
     }
   }
 

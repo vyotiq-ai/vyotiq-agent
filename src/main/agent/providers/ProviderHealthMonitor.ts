@@ -333,6 +333,9 @@ export class ProviderHealthMonitor {
         }
       }
     }, this.config.checkIntervalMs);
+    if (this.healthCheckInterval && typeof this.healthCheckInterval === 'object' && 'unref' in this.healthCheckInterval) {
+      (this.healthCheckInterval as NodeJS.Timeout).unref();
+    }
 
     this.logger.debug('Started health checks', {
       intervalMs: this.config.checkIntervalMs,

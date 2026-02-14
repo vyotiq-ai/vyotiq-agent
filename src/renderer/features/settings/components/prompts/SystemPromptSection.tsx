@@ -180,9 +180,9 @@ const PromptStructurePreview: React.FC<PromptStructurePreviewProps> = ({ setting
           <p className="text-[9px] text-[var(--color-text-dim)] mb-2">
             # Sections marked "ALWAYS" cannot be disabled.
           </p>
-          {sections.map((section, index) => (
+          {sections.map((section) => (
             <div
-              key={index}
+              key={section.name}
               className={cn(
                 "flex items-start gap-2 py-1 px-2 text-[9px]",
                 section.status === 'always' && "bg-[var(--color-success)]/10 border-l-2 border-[var(--color-success)]",

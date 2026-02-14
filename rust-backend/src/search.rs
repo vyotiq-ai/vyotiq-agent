@@ -1,0 +1,479 @@
+use crate::error::{AppError, AppResult};
+use crate::indexer::IndexManager;
+use globset::{Glob, GlobMatcher};
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use tantivy::collector::TopDocs;
+use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser};
+use tantivy::schema::Value;
+use tantivy::TantivyDocument;
+use tracing::{debug, info, warn};
+use crate::embedder::{EmbeddingManager, SemanticSearchResponse};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchQuery {
+    pub query: String,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub file_pattern: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub fuzzy: bool,
+}
+
+fn default_limit() -> usize {
+    20
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub path: String,
+    pub relative_path: String,
+    pub filename: String,
+    pub language: String,
+    pub score: f32,
+    pub snippet: String,
+    pub line_number: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResponse {
+    pub results: Vec<SearchResult>,
+    pub total_hits: usize,
+    pub query_time_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GrepQuery {
+    pub pattern: String,
+    #[serde(default)]
+    pub is_regex: bool,
+    #[serde(default)]
+    pub case_sensitive: bool,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub file_pattern: Option<String>,
+    #[serde(default)]
+    pub include_context: bool,
+    #[serde(default = "default_context_lines")]
+    pub context_lines: usize,
+    /// Optional sub-directory path (relative to workspace root) to scope the search.
+    /// When set, only files under this directory are searched.
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+fn default_context_lines() -> usize {
+    2
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GrepResult {
+    pub path: String,
+    pub relative_path: String,
+    pub line_number: usize,
+    pub line_content: String,
+    pub match_start: usize,
+    pub match_end: usize,
+    pub context_before: Vec<String>,
+    pub context_after: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GrepResponse {
+    pub results: Vec<GrepResult>,
+    pub total_matches: usize,
+    pub files_searched: usize,
+    pub query_time_ms: u64,
+}
+
+/// Perform semantic/full-text search within an indexed workspace
+pub fn search_workspace(
+    index_manager: &IndexManager,
+    workspace_id: &str,
+    query: &SearchQuery,
+) -> AppResult<SearchResponse> {
+    let start = std::time::Instant::now();
+
+    debug!(
+        workspace_id,
+        query = %query.query,
+        limit = query.limit,
+        fuzzy = query.fuzzy,
+        file_pattern = ?query.file_pattern,
+        language = ?query.language,
+        "Full-text search starting"
+    );
+
+    let state = index_manager.get_or_create_index(workspace_id)?;
+    let searcher = state.reader.searcher();
+    let schema = &state.schema;
+
+    // Build file pattern matcher if specified
+    let file_pattern_matcher: Option<GlobMatcher> = query.file_pattern.as_ref().and_then(|pattern| {
+        Glob::new(pattern).ok().map(|g| g.compile_matcher())
+    });
+
+    // Build query — use fuzzy term queries when fuzzy is enabled
+    let parsed_query: Box<dyn tantivy::query::Query> = if query.fuzzy {
+        // Build fuzzy boolean query across fields
+        let fields = vec![schema.content, schema.filename, schema.symbols];
+        let mut subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
+        for word in query.query.split_whitespace() {
+            for &field in &fields {
+                let term = tantivy::Term::from_field_text(field, &word.to_lowercase());
+                let fuzzy = FuzzyTermQuery::new(term, 2, true); // distance=2, transpositions=true
+                subqueries.push((Occur::Should, Box::new(fuzzy)));
+            }
+        }
+
+        Box::new(BooleanQuery::new(subqueries))
+    } else {
+        let query_parser = QueryParser::for_index(
+            &state.index,
+            vec![schema.content, schema.filename, schema.symbols],
+        );
+        Box::new(
+            query_parser
+                .parse_query(&query.query)
+                .map_err(|e| AppError::SearchError(format!("Invalid query: {}", e)))?,
+        )
+    };
+
+    let top_docs = searcher
+        .search(&*parsed_query, &TopDocs::with_limit(query.limit * 2)) // Over-fetch for filtering
+        .map_err(|e| AppError::SearchError(format!("Search failed: {}", e)))?;
+
+    let mut results = Vec::new();
+
+    for (score, doc_address) in top_docs {
+        if results.len() >= query.limit {
+            break;
+        }
+
+        let doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
+            AppError::SearchError(format!("Failed to retrieve doc: {}", e))
+        })?;
+
+        let path = doc
+            .get_first(schema.path)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let relative_path = doc
+            .get_first(schema.relative_path)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let filename = doc
+            .get_first(schema.filename)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let language = doc
+            .get_first(schema.language)
+            .and_then(|v| v.as_str())
+            .unwrap_or("plaintext")
+            .to_string();
+
+        let content = doc
+            .get_first(schema.content)
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Filter by file pattern if specified
+        if let Some(ref matcher) = file_pattern_matcher {
+            if !matcher.is_match(&relative_path) && !matcher.is_match(&filename) {
+                continue;
+            }
+        }
+
+        // Filter by language if specified
+        if let Some(ref lang) = query.language {
+            if language != *lang {
+                continue;
+            }
+        }
+
+        // Generate snippet around matching text
+        let (snippet, line_number) = generate_snippet(content, &query.query, 200);
+
+        results.push(SearchResult {
+            path,
+            relative_path,
+            filename,
+            language,
+            score,
+            snippet,
+            line_number,
+        });
+    }
+
+    let duration = start.elapsed();
+
+    info!(
+        workspace_id,
+        query = %query.query,
+        results = results.len(),
+        query_time_ms = duration.as_millis() as u64,
+        "Full-text search completed"
+    );
+
+    Ok(SearchResponse {
+        total_hits: results.len(),
+        results,
+        query_time_ms: duration.as_millis() as u64,
+    })
+}
+
+/// Generate a snippet around the first match
+fn generate_snippet(content: &str, query: &str, max_len: usize) -> (String, Option<usize>) {
+    let lower_content = content.to_lowercase();
+    let lower_query = query.to_lowercase();
+
+    // Find first occurrence of any query word
+    let query_words: Vec<&str> = lower_query.split_whitespace().collect();
+    let mut best_pos = None;
+
+    for word in &query_words {
+        if let Some(pos) = lower_content.find(word) {
+            if best_pos.is_none() || pos < best_pos.unwrap() {
+                best_pos = Some(pos);
+            }
+        }
+    }
+
+    let pos = best_pos.unwrap_or(0);
+
+    // Calculate line number
+    let line_number = content[..pos].matches('\n').count() + 1;
+
+    // Extract snippet around the match
+    let start = pos.saturating_sub(max_len / 2);
+    let end = (pos + max_len / 2).min(content.len());
+
+    // Align to line boundaries
+    let snippet_start = if start > 0 {
+        content[start..].find('\n').map(|p| start + p + 1).unwrap_or(start)
+    } else {
+        0
+    };
+
+    let snippet_end = if end < content.len() {
+        content[..end].rfind('\n').unwrap_or(end)
+    } else {
+        content.len()
+    };
+
+    let snippet = content[snippet_start..snippet_end].trim().to_string();
+
+    (snippet, Some(line_number))
+}
+
+/// Grep search within indexed workspace using the actual files.
+/// Supports sub-directory scoping via `query.path` and parallel file reading via rayon.
+pub fn grep_workspace(
+    workspace_path: &str,
+    query: &GrepQuery,
+) -> AppResult<GrepResponse> {
+    use rayon::prelude::*;
+    
+    let start = std::time::Instant::now();
+
+    debug!(
+        workspace_path,
+        pattern = %query.pattern,
+        is_regex = query.is_regex,
+        case_sensitive = query.case_sensitive,
+        limit = query.limit,
+        path = ?query.path,
+        "Grep search starting"
+    );
+
+    // Determine the actual search root: workspace root or sub-directory
+    let search_root = if let Some(ref sub_path) = query.path {
+        let sub = std::path::PathBuf::from(workspace_path).join(sub_path);
+        if !sub.exists() || !sub.is_dir() {
+            return Err(AppError::BadRequest(format!(
+                "Scoped path '{}' does not exist or is not a directory",
+                sub_path
+            )));
+        }
+        sub
+    } else {
+        std::path::PathBuf::from(workspace_path)
+    };
+
+    let walker = ignore::WalkBuilder::new(&search_root)
+        .hidden(false)
+        .git_ignore(true)
+        .max_depth(Some(20))
+        .build();
+
+    // Build regex once outside the loop
+    let regex = if query.is_regex {
+        let pattern = if query.case_sensitive {
+            query.pattern.clone()
+        } else {
+            format!("(?i){}", query.pattern)
+        };
+        match Regex::new(&pattern) {
+            Ok(re) => Some(re),
+            Err(e) => {
+                return Err(AppError::BadRequest(format!(
+                    "Invalid regex pattern '{}': {}",
+                    query.pattern, e
+                )));
+            }
+        }
+    } else {
+        None
+    };
+
+    // Phase 1: collect file paths (fast sequential directory walk)
+    let paths: Vec<std::path::PathBuf> = walker
+        .filter_map(|e| e.ok())
+        .filter(|entry| entry.file_type().is_some_and(|ft| ft.is_file()))
+        .filter(|entry| !IndexManager::is_build_or_output_dir(entry.path()))
+        .filter(|entry| {
+            if let Some(ref fp) = query.file_pattern {
+                let name = entry.path().file_name().unwrap_or_default().to_string_lossy();
+                name.contains(fp.as_str())
+            } else {
+                true
+            }
+        })
+        .map(|entry| entry.into_path())
+        .collect();
+
+    let pattern_lower = if !query.case_sensitive {
+        query.pattern.to_lowercase()
+    } else {
+        query.pattern.clone()
+    };
+    
+    let limit = query.limit;
+    let include_context = query.include_context;
+    let context_lines = query.context_lines;
+    let case_sensitive = query.case_sensitive;
+
+    // Phase 2: parallel file reading and matching with rayon
+    let all_results: Vec<GrepResult> = paths
+        .par_iter()
+        .flat_map(|path| {
+            let content = match std::fs::read_to_string(path) {
+                Ok(c) => c,
+                Err(_) => return Vec::new(),
+            };
+
+            let lines: Vec<&str> = content.lines().collect();
+            let mut file_results = Vec::new();
+
+            for (line_idx, line) in lines.iter().enumerate() {
+                let matches = if let Some(ref re) = regex {
+                    re.find(line).map(|m: regex::Match<'_>| (m.start(), m.end()))
+                } else if case_sensitive {
+                    line.find(&pattern_lower).map(|s| (s, s + pattern_lower.len()))
+                } else {
+                    line.to_lowercase()
+                        .find(&pattern_lower)
+                        .map(|s| (s, s + pattern_lower.len()))
+                };
+
+                if let Some((match_start, match_end)) = matches {
+                    let relative = path
+                        .strip_prefix(workspace_path)
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .replace('\\', "/");
+
+                    let context_before = if include_context {
+                        let start = line_idx.saturating_sub(context_lines);
+                        lines[start..line_idx]
+                            .iter()
+                            .map(|l| l.to_string())
+                            .collect()
+                    } else {
+                        vec![]
+                    };
+
+                    let context_after = if include_context {
+                        let end = (line_idx + 1 + context_lines).min(lines.len());
+                        lines[line_idx + 1..end]
+                            .iter()
+                            .map(|l| l.to_string())
+                            .collect()
+                    } else {
+                        vec![]
+                    };
+
+                    file_results.push(GrepResult {
+                        path: path.to_string_lossy().to_string(),
+                        relative_path: relative,
+                        line_number: line_idx + 1,
+                        line_content: line.to_string(),
+                        match_start,
+                        match_end,
+                        context_before,
+                        context_after,
+                    });
+
+                    // Per-file limit to avoid overwhelming results from one file
+                    if file_results.len() >= limit {
+                        break;
+                    }
+                }
+            }
+
+            file_results
+        })
+        .collect();
+
+    // Truncate to limit (rayon may produce more than limit across all files)
+    let results: Vec<GrepResult> = all_results.into_iter().take(limit).collect();
+    let files_searched = paths.len();
+    let duration = start.elapsed();
+
+    info!(
+        pattern = %query.pattern,
+        total_matches = results.len(),
+        files_searched,
+        query_time_ms = duration.as_millis() as u64,
+        "Grep search completed"
+    );
+
+    Ok(GrepResponse {
+        total_matches: results.len(),
+        results,
+        files_searched,
+        query_time_ms: duration.as_millis() as u64,
+    })
+}
+
+/// True vector-based semantic search using embeddings
+pub fn vector_semantic_search(
+    embedding_manager: &EmbeddingManager,
+    workspace_id: &str,
+    query: &str,
+    limit: usize,
+) -> AppResult<SemanticSearchResponse> {
+    debug!(workspace_id, query = %query, limit, "Semantic vector search starting");
+    let result = embedding_manager.semantic_search(workspace_id, query, limit);
+    match &result {
+        Ok(resp) => info!(
+            workspace_id,
+            results = resp.results.len(),
+            query_time_ms = resp.query_time_ms,
+            "Semantic vector search completed"
+        ),
+        Err(e) => warn!(workspace_id, error = %e, "Semantic vector search failed"),
+    }
+    result
+}

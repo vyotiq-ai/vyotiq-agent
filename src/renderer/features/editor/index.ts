@@ -1,16 +1,8 @@
 /**
- * Editor Feature Module
+ * Editor Feature
  * 
- * Monaco Editor integration with:
- * - Tab management
- * - Syntax highlighting
- * - File editing and saving
- * - Custom themes
+ * Built-in code editor with tabs for viewing and editing files.
  */
 
-export * from './EditorPanel';
-export * from './EditorView';
-export * from './types';
-export * from './hooks';
-export * from './components';
-export * from './utils';
+export { EditorPanel, openFileInEditor } from './components/EditorPanel';
+export { useEditorStore, openFileImperative, type EditorTab, type EditorViewMode } from './store/editorStore';

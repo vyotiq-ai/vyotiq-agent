@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Shield, Check, Plus, X, Server } from 'lucide-react';
 import type { BrowserSettings } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
-import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsListManager } from '../primitives';
+import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsListManager, SettingsInfoBox } from '../primitives';
 
 interface SettingsBrowserProps {
   settings: BrowserSettings;
@@ -134,15 +134,9 @@ export const SettingsBrowser: React.FC<SettingsBrowserProps> = ({ settings, onCh
       </SettingsGroup>
 
       {/* Info box */}
-      <div className="p-2 border border-[var(--color-info)]/20 bg-[var(--color-info)]/5">
-        <div className="flex gap-2">
-          <Shield size={12} className="text-[var(--color-info)] flex-shrink-0 mt-0.5" />
-          <div className="text-[9px] text-[var(--color-text-secondary)] space-y-1">
-            <p className="text-[var(--color-info)]">[INFO] browser security active</p>
-            <p># the embedded browser protects against phishing, malware, and threats. use localhost ports list to trust your development servers.</p>
-          </div>
-        </div>
-      </div>
+      <SettingsInfoBox variant="info" icon={<Shield size={12} />} title="[INFO] browser security active">
+        # the embedded browser protects against phishing, malware, and threats. use localhost ports list to trust your development servers.
+      </SettingsInfoBox>
     </SettingsSection>
   );
 };

@@ -5,6 +5,7 @@ import { SETTINGS_CONSTRAINTS } from '../../../../shared/types';
 import { PROVIDERS, PROVIDER_ORDER, isProviderConfigured } from '../../../../shared/providers';
 import type { ModelInfo } from '../../../../shared/providers/types';
 import { fetchProviderModels } from '../../../utils/models';
+import { createLogger } from '../../../utils/logger';
 import { cn } from '../../../utils/cn';
 import {
   SettingsSection,
@@ -23,6 +24,9 @@ interface SettingsAgentProps {
 export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, onChange }) => {
   const configuredProviders = PROVIDER_ORDER.filter(p => isProviderConfigured(p, apiKeys));
   
+  // Logger is created once per component instance (stable across renders)
+  const [logger] = useState(() => createLogger('SettingsAgent'));
+  
   // State for default model selection
   const [allModels, setAllModels] = useState<ModelInfo[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
@@ -39,7 +43,8 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
         try {
           const models = await fetchProviderModels(provider);
           return models;
-        } catch {
+        } catch (err) {
+          logger.warn('Failed to fetch models for provider', { provider, error: err instanceof Error ? err.message : String(err) });
           return [];
         }
       });
@@ -59,7 +64,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
     } finally {
       setLoadingModels(false);
     }
-  }, [configuredProviders]);
+  }, [configuredProviders, logger]);
   
   // Load models when configured providers change
   useEffect(() => {
@@ -156,23 +161,23 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
         
         <SettingsToggleRow
           label="--auto-switch"
-          description="# switch providers mid-run on failure"
+          description="switch providers mid-run on failure"
           checked={config.allowAutoSwitch}
           onToggle={() => onChange('allowAutoSwitch', !config.allowAutoSwitch)}
         />
 
         <SettingsToggleRow
           label="--enable-fallback"
-          description="# fallback to another provider on error"
-          checked={config.enableProviderFallback !== false}
-          onToggle={() => onChange('enableProviderFallback', !(config.enableProviderFallback !== false))}
+          description="fallback to another provider on error"
+          checked={config.enableProviderFallback ?? true}
+          onToggle={() => onChange('enableProviderFallback', !(config.enableProviderFallback ?? true))}
         />
 
         <SettingsToggleRow
           label="--auto-model"
-          description="# auto-select model based on task (when provider=auto)"
-          checked={config.enableAutoModelSelection !== false}
-          onToggle={() => onChange('enableAutoModelSelection', !(config.enableAutoModelSelection !== false))}
+          description="auto-select model based on task (when provider=auto)"
+          checked={config.enableAutoModelSelection ?? true}
+          onToggle={() => onChange('enableAutoModelSelection', !(config.enableAutoModelSelection ?? true))}
         />
       </SettingsGroup>
 
@@ -284,6 +289,12 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
                       placeholder="Search models..."
                       value={modelSearchQuery}
                       onChange={(e) => setModelSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setShowModelDropdown(false);
+                          setModelSearchQuery('');
+                        }
+                      }}
                       className="w-full bg-[var(--color-surface-2)] text-[var(--color-text-primary)] border-none pl-6 pr-2 py-1 text-[10px] font-mono outline-none placeholder:text-[var(--color-text-placeholder)]"
                       autoFocus
                     />
@@ -399,7 +410,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
       <SettingsGroup title="safety" icon={<Shield size={11} />}>
         <SettingsToggleRow
           label="--yolo"
-          description="# skip all confirmation prompts"
+          description="skip all confirmation prompts"
           checked={config.yoloMode}
           onToggle={() => onChange('yoloMode', !config.yoloMode)}
         />
@@ -458,9 +469,9 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
       <SettingsGroup title="context">
         <SettingsToggleRow
           label="--summarize"
-          description="# auto-summarize long conversations"
-          checked={config.enableContextSummarization !== false}
-          onToggle={() => onChange('enableContextSummarization', !(config.enableContextSummarization !== false))}
+          description="auto-summarize long conversations"
+          checked={config.enableContextSummarization ?? true}
+          onToggle={() => onChange('enableContextSummarization', !(config.enableContextSummarization ?? true))}
         />
         
         {config.enableContextSummarization !== false && (

@@ -4,7 +4,6 @@
  * Manages agent configuration settings:
  * - Default config (temperature, maxOutputTokens, etc.)
  * - Prompt settings
- * - Editor AI settings
  * - Autonomous feature flags
  */
 
@@ -12,7 +11,6 @@ import { useCallback } from 'react';
 import type { 
   AgentSettings, 
   PromptSettings, 
-  EditorAISettings, 
   AutonomousFeatureFlags 
 } from '../../../../shared/types';
 import type { UseSettingsStateReturn } from './useSettingsState';
@@ -58,23 +56,6 @@ export function useAgentConfigSettings(settingsState: UseSettingsStateReturn) {
     [setLocalSettings],
   );
 
-  // Update editor AI settings
-  const updateEditorAISetting = useCallback(
-    (field: keyof EditorAISettings, value: EditorAISettings[keyof EditorAISettings]) => {
-      setLocalSettings((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          editorAISettings: {
-            ...prev.editorAISettings,
-            [field]: value,
-          } as EditorAISettings,
-        };
-      });
-    },
-    [setLocalSettings],
-  );
-
   // Update autonomous feature flags
   const updateAutonomousSetting = useCallback(
     <K extends keyof AutonomousFeatureFlags>(field: K, value: AutonomousFeatureFlags[K]) => {
@@ -95,7 +76,6 @@ export function useAgentConfigSettings(settingsState: UseSettingsStateReturn) {
   return {
     updateConfig,
     updatePromptSetting,
-    updateEditorAISetting,
     updateAutonomousSetting,
   };
 }

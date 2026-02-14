@@ -13,7 +13,7 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { powerMonitor, BrowserWindow, app } from 'electron';
+import { powerMonitor, BrowserWindow } from 'electron';
 import type { Logger } from '../../logger';
 import { createLogger } from '../../logger';
 

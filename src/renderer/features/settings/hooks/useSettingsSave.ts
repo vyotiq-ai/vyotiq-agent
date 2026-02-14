@@ -2,14 +2,35 @@
  * useSettingsSave Hook
  * 
  * Handles saving settings to the main process and syncing browser settings.
+ * Also propagates relevant defaultConfig changes to all existing sessions
+ * so that settings like enableAutoModelSelection take effect immediately.
  */
 
 import { useCallback } from 'react';
-import type { AgentSettings } from '../../../../shared/types';
+import type { AgentSettings, AgentConfig } from '../../../../shared/types';
 import { createLogger } from '../../../utils/logger';
+import { useAgentSelector } from '../../../state/AgentProvider';
 import type { UseSettingsStateReturn } from './useSettingsState';
 
 const logger = createLogger('SettingsSave');
+
+/**
+ * Config keys that should be propagated to existing sessions when changed.
+ * These are the keys from defaultConfig that affect runtime behavior.
+ */
+const PROPAGATABLE_CONFIG_KEYS: (keyof AgentConfig)[] = [
+  'enableAutoModelSelection',
+  'enableProviderFallback',
+  'allowAutoSwitch',
+  'temperature',
+  'maxOutputTokens',
+  'yoloMode',
+  'maxIterations',
+  'maxRetries',
+  'enableContextSummarization',
+  'preferredProvider',
+  'fallbackProvider',
+];
 
 /**
  * Settings save management hook
@@ -26,6 +47,12 @@ export function useSettingsSave(settingsState: UseSettingsStateReturn) {
     syncBaseline,
   } = settingsState;
 
+  // Get all session IDs to propagate config changes
+  const sessionIds = useAgentSelector(
+    state => state.sessions.map(s => s.id),
+    (a, b) => a.length === b.length && a.every((id, i) => id === b[i])
+  );
+
   // Save settings to the store
   const saveSettings = useCallback(async () => {
     if (!localSettings) {
@@ -35,8 +62,40 @@ export function useSettingsSave(settingsState: UseSettingsStateReturn) {
     try {
       setIsSaving(true);
       
-      const updated = await window.vyotiq.settings.update(localSettings);
-      const nextSnapshot = (updated || localSettings) as AgentSettings;
+      const result = await window.vyotiq.settings.update(localSettings);
+      if (result && !result.success) {
+        throw new Error(result.error || 'Settings update failed');
+      }
+      const nextSnapshot = (result?.data || localSettings) as AgentSettings;
+      
+      // Propagate relevant defaultConfig changes to all existing sessions
+      // so settings like enableAutoModelSelection take effect immediately
+      if (localSettings.defaultConfig && window.vyotiq?.agent) {
+        const configPatch: Partial<AgentConfig> = {};
+        let hasPatch = false;
+        
+        for (const key of PROPAGATABLE_CONFIG_KEYS) {
+          if (key in localSettings.defaultConfig && localSettings.defaultConfig[key] !== undefined) {
+            (configPatch as Record<string, unknown>)[key] = localSettings.defaultConfig[key];
+            hasPatch = true;
+          }
+        }
+        
+        if (hasPatch && sessionIds.length > 0) {
+          // Fire-and-forget: propagate to all sessions in parallel
+          Promise.all(
+            sessionIds.map(sessionId =>
+              window.vyotiq.agent.updateConfig({ sessionId, config: configPatch })
+                .catch(err => logger.warn('Failed to propagate config to session', { sessionId, error: err }))
+            )
+          ).then(() => {
+            logger.info('Propagated config changes to existing sessions', {
+              sessionCount: sessionIds.length,
+              keys: Object.keys(configPatch),
+            });
+          });
+        }
+      }
       
       // Sync browser settings to BrowserSecurity and BrowserManager
       if (localSettings.browserSettings) {
@@ -82,7 +141,7 @@ export function useSettingsSave(settingsState: UseSettingsStateReturn) {
     } finally {
       setIsSaving(false);
     }
-  }, [localSettings, setLocalSettings, setIsSaving, markSaveSuccess, markSaveError, syncBaseline]);
+  }, [localSettings, setLocalSettings, setIsSaving, markSaveSuccess, markSaveError, syncBaseline, sessionIds]);
 
   return {
     saveSettings,

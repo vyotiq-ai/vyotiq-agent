@@ -488,8 +488,8 @@ export function useMCPStore(): UseMCPStoreResult {
       try {
         const categoriesResult = await window.vyotiq.mcp.storeGetCategories();
         setCategories(categoriesResult);
-      } catch {
-        // ignore
+      } catch (err) {
+        logger.debug('Failed to load MCP categories', { error: err instanceof Error ? err.message : String(err) });
       }
 
       // Load registry stats and set total
@@ -499,8 +499,8 @@ export function useMCPStore(): UseMCPStoreResult {
         if (stats?.total) {
           setTotal(stats.total);
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        logger.debug('Failed to load MCP registry stats', { error: err instanceof Error ? err.message : String(err) });
       }
 
       window.vyotiq.mcp.registryGetSources().then(setEnabledSources).catch(() => { });

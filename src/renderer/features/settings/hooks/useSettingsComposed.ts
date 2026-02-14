@@ -24,6 +24,7 @@ import { useProviderSettings } from './useProviderSettings';
 import { useAgentConfigSettings } from './useAgentConfigSettings';
 import { useSecuritySettings } from './useSecuritySettings';
 import { useSystemSettings } from './useSystemSettings';
+import { useWorkspaceSettings } from './useWorkspaceSettings';
 import { useSettingsSave } from './useSettingsSave';
 
 /**
@@ -44,6 +45,7 @@ export function useSettingsComposed(open: boolean) {
   const agentConfigSettings = useAgentConfigSettings(settingsState);
   const securitySettings = useSecuritySettings(settingsState);
   const systemSettings = useSystemSettings(settingsState);
+  const workspaceSettings = useWorkspaceSettings(settingsState);
   const { saveSettings } = useSettingsSave(settingsState);
 
   return {
@@ -65,6 +67,9 @@ export function useSettingsComposed(open: boolean) {
     
     // System settings
     ...systemSettings,
+    
+    // Workspace settings
+    ...workspaceSettings,
     
     // Save function
     saveSettings,

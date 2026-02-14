@@ -72,6 +72,9 @@ export class CachingLayer extends EventEmitter {
       this.cleanupInterval = setInterval(() => {
         this.cleanupExpired();
       }, this.config.evictionCheckIntervalMs);
+      if (this.cleanupInterval && typeof this.cleanupInterval === 'object' && 'unref' in this.cleanupInterval) {
+        (this.cleanupInterval as NodeJS.Timeout).unref();
+      }
     }
 
     this.deps.logger.info('CachingLayer: started');

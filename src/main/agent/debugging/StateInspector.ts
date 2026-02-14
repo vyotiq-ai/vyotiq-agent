@@ -125,6 +125,9 @@ export class StateInspector extends EventEmitter {
       this.periodicSnapshotInterval = setInterval(() => {
         this.capturePeriodicSnapshots();
       }, this.config.snapshotIntervalMs);
+      if (this.periodicSnapshotInterval && typeof this.periodicSnapshotInterval === 'object' && 'unref' in this.periodicSnapshotInterval) {
+        (this.periodicSnapshotInterval as NodeJS.Timeout).unref();
+      }
     }
 
     this.logger.info('StateInspector initialized');

@@ -37,7 +37,6 @@ export {
   PROVIDERS, 
   PROVIDER_ORDER,
   getProvider,
-  getAllProviderIds 
 } from './definitions';
 
 // Provider capabilities
@@ -87,6 +86,7 @@ export {
   getFirstConfiguredProvider,
   getProviderInfo,
   getAvailableProviders,
+  getAllProviderIds,
   isValidProvider,
   getProviderDisplayName,
   getProviderWebsite,

@@ -53,14 +53,10 @@ export function registerFormatter(provider: string, formatter: MessageFormatter)
  */
 export function convertMessages(
   messages: InternalMessage[],
-  fromProvider: LLMProviderName,
+  _fromProvider: LLMProviderName,
   toProvider: LLMProviderName
 ): unknown[] {
-  if (fromProvider === toProvider) {
-    return getFormatter(toProvider).formatMessages(messages);
-  }
-  
-  // Messages are already in internal format, just format for target
+  // Messages are stored in internal format; format for the target provider
   return getFormatter(toProvider).formatMessages(messages);
 }
 

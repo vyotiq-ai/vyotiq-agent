@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { TriangleAlert, RefreshCw, Copy, Check, TerminalSquare } from 'lucide-react';
+import { TriangleAlert, RefreshCw, Copy, Check, TerminalSquare, ExternalLink } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { createLogger } from '../../utils/logger';
 import { captureComponentError } from '../../utils/telemetry';
@@ -13,6 +13,8 @@ interface Props {
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
   /** Whether to show a compact error display */
   compact?: boolean;
+  /** Custom help link for the error boundary */
+  helpUrl?: string;
 }
 
 interface State {
@@ -44,8 +46,18 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     this.setState({ errorInfo });
     
-    // Log error
+    // Log error to renderer logger
     logger.error('ErrorBoundary caught an error', { error, componentStack: errorInfo?.componentStack });
+
+    // Forward to main process for persistent logging
+    try {
+      window.vyotiq?.log?.report('error', `[ErrorBoundary] ${error.message}`, {
+        stack: error.stack,
+        componentStack: errorInfo?.componentStack,
+      });
+    } catch (err) {
+      logger.debug('IPC bridge not available for error reporting', { error: err instanceof Error ? err.message : String(err) });
+    }
 
     // Capture into structured telemetry (best-effort)
     try {
@@ -166,6 +178,17 @@ export class ErrorBoundary extends Component<Props, State> {
               >
                 --retry
               </Button>
+              {this.props.helpUrl && (
+                <a
+                  href={this.props.helpUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+                >
+                  <ExternalLink size={10} />
+                  --help
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -178,13 +201,30 @@ export class ErrorBoundary extends Component<Props, State> {
 
 /**
  * Wrapper component for feature-level error boundaries with a simpler UI
+ * and recovery capability via a reset/retry mechanism.
+ * Uses a key-based remount pattern to allow retrying after errors.
  */
-export const FeatureErrorBoundary: React.FC<{ children: ReactNode; featureName?: string }> = ({ 
+export const FeatureErrorBoundary: React.FC<{ children: ReactNode; featureName?: string; helpUrl?: string }> = ({ 
   children, 
-  featureName = 'component' 
+  featureName = 'component',
+  helpUrl,
 }) => {
+  const [resetKey, setResetKey] = React.useState(0);
+  const [errorCount, setErrorCount] = React.useState(0);
+  
+  const handleRetry = React.useCallback(() => {
+    setResetKey((k) => k + 1);
+  }, []);
+
+  const handleError = React.useCallback((_error: Error) => {
+    setErrorCount((c) => c + 1);
+  }, []);
+
   return (
     <ErrorBoundary
+      key={resetKey}
+      onError={handleError}
+      helpUrl={helpUrl}
       fallback={
         <div className="flex items-center gap-2 p-3 bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)] font-mono">
           <span className="text-[var(--color-error)] text-[9px]">[ERR]</span>
@@ -194,8 +234,27 @@ export const FeatureErrorBoundary: React.FC<{ children: ReactNode; featureName?:
               {featureName} --status=failed
             </p>
             <p className="text-[9px] text-[var(--color-text-placeholder)]">
-              # try refreshing or contact support
+              {errorCount > 2
+                ? '# persistent error detected, try reloading the app'
+                : '# try refreshing or contact support'}
             </p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleRetry}
+              className="flex items-center gap-1 px-2 py-1 text-[9px] text-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary)]/10 rounded-sm transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/50"
+            >
+              <RefreshCw size={10} />
+              --retry
+            </button>
+            {errorCount > 2 && (
+              <button
+                onClick={() => window.location.reload()}
+                className="flex items-center gap-1 px-2 py-1 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+              >
+                --reload
+              </button>
+            )}
           </div>
         </div>
       }

@@ -31,7 +31,6 @@ export interface SessionStorageConfig {
  */
 interface SessionFileMetadata {
   sessionId: string;
-  workspaceId?: string;
   createdAt: number;
   updatedAt: number;
   fileName: string;
@@ -177,7 +176,6 @@ export class SessionStorage {
             const { file, session } = result.value;
             this.sessionIndex.set(session.id, {
               sessionId: session.id,
-              workspaceId: session.workspaceId,
               createdAt: session.createdAt,
               updatedAt: session.updatedAt,
               fileName: file,
@@ -209,7 +207,7 @@ export class SessionStorage {
    */
   private async persistIndex(): Promise<void> {
     const indexData = Array.from(this.sessionIndex.values());
-    await this.atomicWrite(this.indexFile, JSON.stringify(indexData, null, 2));
+    await this.atomicWrite(this.indexFile, JSON.stringify(indexData));
   }
 
   /**
@@ -238,20 +236,16 @@ export class SessionStorage {
    * Acquire write lock for a session
    */
   private async acquireLock(sessionId: string): Promise<void> {
+    // Wait for any existing lock on this session to be released
     while (this.writeLock.has(sessionId)) {
       await this.writeLock.get(sessionId);
     }
     
     let resolve: () => void;
     const lockPromise = new Promise<void>(r => { resolve = r; });
+    // Attach the release function to the promise so releaseLock can call it
+    (lockPromise as Promise<void> & { release: () => void }).release = resolve!;
     this.writeLock.set(sessionId, lockPromise);
-    
-    // Return the resolve function to release the lock
-    return new Promise(r => {
-      r();
-      // Store resolve to be called later
-      (lockPromise as Promise<void> & { release: () => void }).release = resolve!;
-    });
   }
 
   /**
@@ -261,7 +255,7 @@ export class SessionStorage {
     const lock = this.writeLock.get(sessionId);
     if (lock) {
       this.writeLock.delete(sessionId);
-      // Trigger any waiting operations
+      // Resolve the lock promise so any waiters in acquireLock() can proceed
       (lock as Promise<void> & { release?: () => void }).release?.();
     }
   }
@@ -281,12 +275,11 @@ export class SessionStorage {
       };
       
       const filePath = this.getSessionFilePath(session.id);
-      await this.atomicWrite(filePath, JSON.stringify(validatedSession, null, 2));
+      await this.atomicWrite(filePath, JSON.stringify(validatedSession));
       
       // Update index
       this.sessionIndex.set(session.id, {
         sessionId: session.id,
-        workspaceId: session.workspaceId,
         createdAt: session.createdAt,
         updatedAt: validatedSession.updatedAt,
         fileName: path.basename(filePath),
@@ -321,14 +314,10 @@ export class SessionStorage {
    * Get session summaries (without full message content) for faster loading
    * This enables lazy loading by only loading metadata for the sidebar
    */
-  async getSessionSummaries(workspaceId?: string): Promise<SessionSummary[]> {
+  async getSessionSummaries(): Promise<SessionSummary[]> {
     const summaries: SessionSummary[] = [];
     
     for (const metadata of this.sessionIndex.values()) {
-      // Filter by workspace if specified
-      if (workspaceId && metadata.workspaceId !== workspaceId) {
-        continue;
-      }
       
       try {
         const filePath = this.getSessionFilePath(metadata.sessionId);
@@ -353,10 +342,10 @@ export class SessionStorage {
           title: session.title,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt,
-          workspaceId: session.workspaceId,
           status: session.status,
           messageCount: session.messages.length,
           lastMessagePreview,
+          workspacePath: session.workspacePath ?? null,
         });
       } catch (error) {
         logger.error('Error reading session summary', {
@@ -402,10 +391,9 @@ export class SessionStorage {
    * Load all sessions (optionally filtered by workspace)
    * Uses parallel loading with batching to prevent blocking
    */
-  async loadAllSessions(workspaceId?: string): Promise<AgentSessionState[]> {
-    // Get filtered metadata first (fast, in-memory)
-    const metadataList = Array.from(this.sessionIndex.values())
-      .filter(m => !workspaceId || m.workspaceId === workspaceId);
+  async loadAllSessions(): Promise<AgentSessionState[]> {
+    // Get all metadata (fast, in-memory)
+    const metadataList = Array.from(this.sessionIndex.values());
     
     const sessions: AgentSessionState[] = [];
     const BATCH_SIZE = 10;
@@ -437,12 +425,6 @@ export class SessionStorage {
   /**
    * Get sessions by workspace ID (fast lookup from index)
    */
-  getSessionMetadataByWorkspace(workspaceId: string): SessionFileMetadata[] {
-    return Array.from(this.sessionIndex.values())
-      .filter(m => m.workspaceId === workspaceId)
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-  }
-
   /**
    * Get all session metadata
    */
@@ -475,21 +457,6 @@ export class SessionStorage {
     } finally {
       this.releaseLock(sessionId);
     }
-  }
-
-  /**
-   * Delete all sessions for a workspace
-   */
-  async deleteSessionsByWorkspace(workspaceId: string): Promise<number> {
-    const metadata = this.getSessionMetadataByWorkspace(workspaceId);
-    let deletedCount = 0;
-    
-    for (const m of metadata) {
-      const success = await this.deleteSession(m.sessionId);
-      if (success) deletedCount++;
-    }
-    
-    return deletedCount;
   }
 
   /**
@@ -531,17 +498,6 @@ export class SessionStorage {
    */
   getSessionCount(): number {
     return this.sessionIndex.size;
-  }
-
-  /**
-   * Get session count by workspace
-   */
-  getSessionCountByWorkspace(workspaceId: string): number {
-    let count = 0;
-    for (const m of this.sessionIndex.values()) {
-      if (m.workspaceId === workspaceId) count++;
-    }
-    return count;
   }
 
   /** Track orphan tool messages we've already logged to avoid spam */

@@ -44,33 +44,6 @@ export { SystemPromptCache, getSystemPromptCache } from './cache';
 // Sections - PRIMARY EXPORTS (use these)
 export { PROMPT_SECTIONS, getStaticSections, getStaticContent } from './sections';
 
-// =============================================================================
-// DEPRECATED LEGACY EXPORTS
-// =============================================================================
-// These are kept for backward compatibility only. Use getStaticContent() instead.
-// All these exports point to the same unified prompt content.
-
-/** @deprecated Use getStaticContent() */
-export { CORE_IDENTITY } from './sections';
-/** @deprecated Use getStaticContent() */
-export { CRITICAL_RULES_CONTENT as CRITICAL_RULES } from './sections';
-/** @deprecated Use getStaticContent() */
-export { TOOL_CHAINING } from './sections';
-/** @deprecated Use getStaticContent() */
-export { TOOL_WORKFLOWS } from './sections';
-/** @deprecated Use getStaticContent() */
-export { TOOL_HINTS } from './sections';
-/** @deprecated Use getStaticContent() */
-export { EDIT_TOOL_GUIDE_CONTENT as EDIT_TOOL_GUIDE } from './sections';
-/** @deprecated Use getStaticContent() */
-export { COMMON_TASKS } from './sections';
-/** @deprecated Use getStaticContent() */
-export { TASK_MANAGEMENT_CONTENT as TASK_MANAGEMENT } from './sections';
-/** @deprecated Use getStaticContent() */
-export { OUTPUT_FORMATTING_CONTENT as OUTPUT_FORMATTING } from './sections';
-/** @deprecated Use getStaticContent() */
-export { SAFETY_GUIDELINES } from './sections';
-
 // Types
 export type {
   PromptSection,

@@ -3,68 +3,74 @@
  * 
  * Centralized theme configuration for consistent Terminal/CLI styling
  * across the entire application.
+ * 
+ * Color values are sourced from the dynamic theme system (themeMode.tsx)
+ * to ensure consistency between the terminal theme and the app's light/dark modes.
+ * The darkTheme is used as the canonical color source.
  */
 
+import { darkTheme } from './themeMode';
+
 // ============================================================================
-// Terminal Color Palette
+// Terminal Color Palette (sourced from dynamic theme)
 // ============================================================================
 
 export const terminalColors = {
   // Backgrounds
   bg: {
-    base: '#050506',        // Deepest background
-    surface: '#0a0a0c',     // Terminal surface
-    elevated: '#0f0f11',    // Elevated panels
-    header: '#0b0b0d',      // Header bar
-    input: '#0a0a0c',       // Input backgrounds
+    base: darkTheme.bg.base,
+    surface: darkTheme.bg.surface,
+    elevated: darkTheme.bg.elevated,
+    header: darkTheme.bg.header,
+    input: darkTheme.bg.input,
   },
   
   // Borders
   border: {
-    subtle: '#1a1a1d',      // Subtle borders
-    default: '#1f1f24',     // Default borders
-    strong: '#27272a',      // Strong borders
-    focus: 'rgba(52, 211, 153, 0.3)', // Focus state
+    subtle: darkTheme.border.subtle,
+    default: darkTheme.border.default,
+    strong: darkTheme.border.strong,
+    focus: darkTheme.border.focus,
   },
   
   // Text colors
   text: {
-    primary: '#e4e4e7',     // Primary text (zinc-200)
-    secondary: '#a1a1aa',   // Secondary text (zinc-400)
-    muted: '#71717a',       // Muted text (zinc-500)
-    dim: '#52525b',         // Dim text (zinc-600)
-    placeholder: '#3f3f46', // Placeholder text (zinc-700)
+    primary: darkTheme.text.primary,
+    secondary: darkTheme.text.secondary,
+    muted: darkTheme.text.muted,
+    dim: darkTheme.text.dim,
+    placeholder: darkTheme.text.placeholder,
   },
   
   // Terminal-specific colors
   terminal: {
-    prompt: '#34d399',      // Lambda/prompt color (emerald-400)
-    command: '#e4e4e7',     // Command text
-    flag: '#34d399',        // CLI flags (emerald)
-    value: '#a1a1aa',       // Flag values (zinc-400)
-    path: '#60a5fa',        // File paths (blue-400)
-    string: '#fbbf24',      // Strings (amber-400)
-    comment: '#52525b',     // Comments (zinc-600)
-    error: '#f87171',       // Errors (red-400)
-    warning: '#fbbf24',     // Warnings (amber-400)
-    success: '#34d399',     // Success (emerald-400)
-    info: '#60a5fa',        // Info (blue-400)
+    prompt: darkTheme.terminal.prompt,
+    command: darkTheme.terminal.command,
+    flag: darkTheme.terminal.flag,
+    value: darkTheme.terminal.value,
+    path: darkTheme.terminal.path,
+    string: darkTheme.terminal.string,
+    comment: darkTheme.terminal.comment,
+    error: darkTheme.terminal.error,
+    warning: darkTheme.terminal.warning,
+    success: darkTheme.terminal.success,
+    info: darkTheme.terminal.info,
   },
   
   // Provider colors
   providers: {
     anthropic: '#fb923c',   // Orange-400
-    openai: '#34d399',      // Emerald-400
-    deepseek: '#60a5fa',    // Blue-400
+    openai: darkTheme.terminal.success,
+    deepseek: darkTheme.terminal.info,
     gemini: '#a78bfa',      // Violet-400
   },
   
   // Status colors
   status: {
-    ready: '#34d399',       // Emerald
-    busy: '#fbbf24',        // Amber
-    error: '#f87171',       // Red
-    idle: '#52525b',        // Zinc-600
+    ready: darkTheme.status.ready,
+    busy: darkTheme.status.busy,
+    error: darkTheme.status.error,
+    idle: darkTheme.status.idle,
   },
   
   // Traffic light dots (macOS style)

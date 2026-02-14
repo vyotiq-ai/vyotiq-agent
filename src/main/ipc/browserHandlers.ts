@@ -11,97 +11,106 @@
 import { ipcMain } from 'electron';
 import { createLogger } from '../logger';
 import type { IpcContext } from './types';
+import { withErrorGuard } from './guards';
 
 const logger = createLogger('IPC:Browser');
 
+// Cache browser module imports to avoid repeated dynamic import overhead per IPC call
+let cachedBrowserModule: typeof import('../browser') | null = null;
+
+const getBrowserManagerCached = async () => {
+  if (!cachedBrowserModule) {
+    cachedBrowserModule = await import('../browser');
+  }
+  return cachedBrowserModule.getBrowserManager();
+};
+
+const getBrowserSecurityCached = async () => {
+  if (!cachedBrowserModule) {
+    cachedBrowserModule = await import('../browser');
+  }
+  return cachedBrowserModule.getBrowserSecurity();
+};
+
 export function registerBrowserHandlers(_context: IpcContext): void {
+  logger.info('Registering browser IPC handlers');
+
+  // NOTE: Browser state-changed events are forwarded to the renderer in main.ts
+  // via the emitToRenderer → eventBatcher path. No need to duplicate here.
+
   // ==========================================================================
   // Browser Navigation & Control
   // ==========================================================================
 
   ipcMain.handle('browser:navigate', async (_event, url: string) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      const browser = getBrowserManager();
-      return await browser.navigate(url);
-    } catch (error) {
-      logger.error('Browser navigation failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, url, title: '' };
+    // Validate URL format
+    if (!url || typeof url !== 'string') {
+      return { success: false, error: 'URL is required', url: url ?? '', title: '' };
     }
+    try {
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return { success: false, error: `Unsupported protocol: ${parsed.protocol}`, url, title: '' };
+      }
+    } catch {
+      return { success: false, error: 'Invalid URL format', url, title: '' };
+    }
+
+    return withErrorGuard('browser:navigate', async () => {
+      const browser = await getBrowserManagerCached();
+      return await browser.navigate(url);
+    });
   });
 
   ipcMain.handle('browser:extract', async (_event, options?: { includeHtml?: boolean; maxLength?: number }) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      const browser = getBrowserManager();
+    return withErrorGuard('browser:extract', async () => {
+      const browser = await getBrowserManagerCached();
       return await browser.extractContent(options);
-    } catch (error) {
-      logger.error('Browser extract failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, content: null, title: '', url: '' };
-    }
+    });
   });
 
   ipcMain.handle('browser:screenshot', async (_event, options?: { fullPage?: boolean; selector?: string; format?: 'png' | 'jpeg' }) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      const browser = getBrowserManager();
+    return withErrorGuard('browser:screenshot', async () => {
+      const browser = await getBrowserManagerCached();
       return await browser.screenshot(options);
-    } catch (error) {
-      logger.error('Browser screenshot failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, data: null };
-    }
+    });
   });
 
   ipcMain.handle('browser:back', async () => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return await getBrowserManager().goBack();
-    } catch (error) {
-      logger.error('Browser back failed', { error: error instanceof Error ? error.message : String(error) });
-      return false;
-    }
+    return withErrorGuard('browser:back', async () => {
+      const browser = await getBrowserManagerCached();
+      return await browser.goBack();
+    });
   });
 
   ipcMain.handle('browser:forward', async () => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return await getBrowserManager().goForward();
-    } catch (error) {
-      logger.error('Browser forward failed', { error: error instanceof Error ? error.message : String(error) });
-      return false;
-    }
+    return withErrorGuard('browser:forward', async () => {
+      const browser = await getBrowserManagerCached();
+      return await browser.goForward();
+    });
   });
 
   ipcMain.handle('browser:reload', async () => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      await getBrowserManager().reload();
+    return withErrorGuard('browser:reload', async () => {
+      const browser = await getBrowserManagerCached();
+      await browser.reload();
       return { success: true };
-    } catch (error) {
-      logger.error('Browser reload failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:stop', async () => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      getBrowserManager().stop();
+    return withErrorGuard('browser:stop', async () => {
+      const browser = await getBrowserManagerCached();
+      browser.stop();
       return { success: true };
-    } catch (error) {
-      logger.error('Browser stop failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:state', async () => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return getBrowserManager().getState();
-    } catch (error) {
-      logger.error('Browser state failed', { error: error instanceof Error ? error.message : String(error) });
-      return { url: '', title: '', isLoading: false, canGoBack: false, canGoForward: false };
-    }
+    return withErrorGuard('browser:state', async () => {
+      const browser = await getBrowserManagerCached();
+      return browser.getState();
+    });
   });
 
   // ==========================================================================
@@ -109,37 +118,27 @@ export function registerBrowserHandlers(_context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('browser:attach', async (_event, bounds: { x: number; y: number; width: number; height: number }) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      const browser = getBrowserManager();
+    return withErrorGuard('browser:attach', async () => {
+      const browser = await getBrowserManagerCached();
       browser.attach(bounds);
       return { success: true };
-    } catch (error) {
-      logger.error('Browser attach failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:detach', async () => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      getBrowserManager().detach();
+    return withErrorGuard('browser:detach', async () => {
+      const browser = await getBrowserManagerCached();
+      browser.detach();
       return { success: true };
-    } catch (error) {
-      logger.error('Browser detach failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:setBounds', async (_event, bounds: { x: number; y: number; width: number; height: number }) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      getBrowserManager().setBounds(bounds);
+    return withErrorGuard('browser:setBounds', async () => {
+      const browser = await getBrowserManagerCached();
+      browser.setBounds(bounds);
       return { success: true };
-    } catch (error) {
-      logger.error('Browser setBounds failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   // ==========================================================================
@@ -147,95 +146,91 @@ export function registerBrowserHandlers(_context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('browser:click', async (_event, selector: string) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return await getBrowserManager().click(selector);
-    } catch (error) {
-      logger.error('Browser click failed', { error: error instanceof Error ? error.message : String(error) });
-      return false;
-    }
+    return withErrorGuard('browser:click', async () => {
+      const browser = await getBrowserManagerCached();
+      return await browser.click(selector);
+    });
   });
 
   ipcMain.handle('browser:type', async (_event, selector: string, text: string) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return await getBrowserManager().type(selector, text);
-    } catch (error) {
-      logger.error('Browser type failed', { error: error instanceof Error ? error.message : String(error) });
-      return false;
-    }
+    return withErrorGuard('browser:type', async () => {
+      const browser = await getBrowserManagerCached();
+      return await browser.type(selector, text);
+    });
   });
 
   ipcMain.handle('browser:hover', async (_event, selector: string) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return await getBrowserManager().hover(selector);
-    } catch (error) {
-      logger.error('Browser hover failed', { error: error instanceof Error ? error.message : String(error) });
-      return false;
-    }
+    return withErrorGuard('browser:hover', async () => {
+      const browser = await getBrowserManagerCached();
+      return await browser.hover(selector);
+    });
   });
 
   ipcMain.handle('browser:fill', async (_event, selector: string, value: string) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return await getBrowserManager().fill(selector, value);
-    } catch (error) {
-      logger.error('Browser fill failed', { error: error instanceof Error ? error.message : String(error) });
-      return false;
-    }
+    return withErrorGuard('browser:fill', async () => {
+      const browser = await getBrowserManagerCached();
+      return await browser.fill(selector, value);
+    });
   });
 
   ipcMain.handle('browser:scroll', async (_event, direction: 'up' | 'down' | 'top' | 'bottom', amount?: number) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      await getBrowserManager().scroll(direction, amount);
+    return withErrorGuard('browser:scroll', async () => {
+      const browser = await getBrowserManagerCached();
+      browser.scroll(direction, amount);
       return { success: true };
-    } catch (error) {
-      logger.error('Browser scroll failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:evaluate', async (_event, script: string) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return await getBrowserManager().evaluate(script);
-    } catch (error) {
-      logger.error('Browser evaluate failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message, result: null };
-    }
+    return withErrorGuard('browser:evaluate', async () => {
+      // Validate script to prevent dangerous operations
+      if (typeof script !== 'string' || script.length === 0) {
+        throw new Error('Script must be a non-empty string');
+      }
+      if (script.length > 100_000) {
+        throw new Error('Script exceeds maximum length (100KB)');
+      }
+      // Block known dangerous patterns
+      const dangerousPatterns = [
+        /\brequire\s*\(/i,
+        /\bprocess\s*\.\s*(env|exit|kill|binding)/i,
+        /\b__dirname\b/i,
+        /\b__filename\b/i,
+        /\bchild_process\b/i,
+        /\bfs\s*\.\s*(readFile|writeFile|unlink|rmdir|mkdir)/i,
+        /\beval\s*\(/i,
+        /\bFunction\s*\(/i,
+      ];
+      for (const pattern of dangerousPatterns) {
+        if (pattern.test(script)) {
+          throw new Error(`Script contains blocked pattern: ${pattern.source}`);
+        }
+      }
+      const browser = await getBrowserManagerCached();
+      return await browser.evaluate(script);
+    });
   });
 
   ipcMain.handle('browser:query', async (_event, selector: string, limit?: number) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return await getBrowserManager().queryElements(selector, limit);
-    } catch (error) {
-      logger.error('Browser query failed', { error: error instanceof Error ? error.message : String(error) });
-      return [];
-    }
+    return withErrorGuard('browser:query', async () => {
+      const browser = await getBrowserManagerCached();
+      return await browser.queryElements(selector, limit);
+    });
   });
 
   ipcMain.handle('browser:waitForElement', async (_event, selector: string, timeout?: number) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      return await getBrowserManager().waitForElement(selector, timeout);
-    } catch (error) {
-      logger.error('Browser waitForElement failed', { error: error instanceof Error ? error.message : String(error) });
-      return false;
-    }
+    return withErrorGuard('browser:waitForElement', async () => {
+      const browser = await getBrowserManagerCached();
+      return await browser.waitForElement(selector, timeout);
+    });
   });
 
   ipcMain.handle('browser:clearData', async () => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      await getBrowserManager().clearData();
+    return withErrorGuard('browser:clearData', async () => {
+      const browser = await getBrowserManagerCached();
+      browser.clearData();
       return { success: true };
-    } catch (error) {
-      logger.error('Browser clearData failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   // ==========================================================================
@@ -243,109 +238,79 @@ export function registerBrowserHandlers(_context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('browser:security:getConfig', async () => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      return getBrowserSecurity().getConfig();
-    } catch (error) {
-      logger.error('Browser security getConfig failed', { error: error instanceof Error ? error.message : String(error) });
-      return {};
-    }
+    return withErrorGuard('browser:security:getConfig', async () => {
+      const security = await getBrowserSecurityCached();
+      return security.getConfig();
+    });
   });
 
   ipcMain.handle('browser:security:updateConfig', async (_event, config: Record<string, unknown>) => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      getBrowserSecurity().updateConfig(config);
+    return withErrorGuard('browser:security:updateConfig', async () => {
+      const security = await getBrowserSecurityCached();
+      security.updateConfig(config);
       return { success: true };
-    } catch (error) {
-      logger.error('Browser security updateConfig failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:security:getStats', async () => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      return getBrowserSecurity().getStats();
-    } catch (error) {
-      logger.error('Browser security getStats failed', { error: error instanceof Error ? error.message : String(error) });
-      return { blockedRequests: 0, securityEvents: [] };
-    }
+    return withErrorGuard('browser:security:getStats', async () => {
+      const security = await getBrowserSecurityCached();
+      return security.getStats();
+    });
   });
 
   ipcMain.handle('browser:security:getEvents', async (_event, limit?: number) => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      return getBrowserSecurity().getEvents(limit);
-    } catch (error) {
-      logger.error('Browser security getEvents failed', { error: error instanceof Error ? error.message : String(error) });
-      return [];
-    }
+    return withErrorGuard('browser:security:getEvents', async () => {
+      const security = await getBrowserSecurityCached();
+      return security.getEvents(limit);
+    });
   });
 
   ipcMain.handle('browser:security:checkUrl', async (_event, url: string) => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      return getBrowserSecurity().checkUrlSafety(url);
-    } catch (error) {
-      logger.error('Browser security checkUrl failed', { error: error instanceof Error ? error.message : String(error) });
-      return { safe: false, reason: (error as Error).message };
-    }
+    return withErrorGuard('browser:security:checkUrl', async () => {
+      const security = await getBrowserSecurityCached();
+      return security.checkUrlSafety(url);
+    });
   });
 
   ipcMain.handle('browser:security:addToAllowList', async (_event, url: string) => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      getBrowserSecurity().addToAllowList(url);
+    return withErrorGuard('browser:security:addToAllowList', async () => {
+      const security = await getBrowserSecurityCached();
+      security.addToAllowList(url);
       return { success: true };
-    } catch (error) {
-      logger.error('Browser security addToAllowList failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:security:removeFromAllowList', async (_event, url: string) => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      getBrowserSecurity().removeFromAllowList(url);
+    return withErrorGuard('browser:security:removeFromAllowList', async () => {
+      const security = await getBrowserSecurityCached();
+      security.removeFromAllowList(url);
       return { success: true };
-    } catch (error) {
-      logger.error('Browser security removeFromAllowList failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:security:addToBlockList', async (_event, url: string) => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      getBrowserSecurity().addToBlockList(url);
+    return withErrorGuard('browser:security:addToBlockList', async () => {
+      const security = await getBrowserSecurityCached();
+      security.addToBlockList(url);
       return { success: true };
-    } catch (error) {
-      logger.error('Browser security addToBlockList failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:security:removeFromBlockList', async (_event, url: string) => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      getBrowserSecurity().removeFromBlockList(url);
+    return withErrorGuard('browser:security:removeFromBlockList', async () => {
+      const security = await getBrowserSecurityCached();
+      security.removeFromBlockList(url);
       return { success: true };
-    } catch (error) {
-      logger.error('Browser security removeFromBlockList failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:security:resetStats', async () => {
-    try {
-      const { getBrowserSecurity } = await import('../browser');
-      getBrowserSecurity().resetStats();
+    return withErrorGuard('browser:security:resetStats', async () => {
+      const security = await getBrowserSecurityCached();
+      security.resetStats();
       return { success: true };
-    } catch (error) {
-      logger.error('Browser security resetStats failed', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   // ==========================================================================
@@ -357,24 +322,18 @@ export function registerBrowserHandlers(_context: IpcContext): void {
     limit?: number;
     filter?: string;
   }) => {
-    try {
+    return withErrorGuard('browser:console:getLogs', async () => {
       const { getConsoleLogs } = await import('../tools/implementations/browser/console');
       return { success: true, logs: getConsoleLogs(options) };
-    } catch (error) {
-      logger.error('Failed to get console logs', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, logs: [], error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:console:clear', async () => {
-    try {
+    return withErrorGuard('browser:console:clear', async () => {
       const { clearConsoleLogs } = await import('../tools/implementations/browser/console');
       clearConsoleLogs();
       return { success: true };
-    } catch (error) {
-      logger.error('Failed to clear console logs', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:network:getRequests', async (_event, options?: {
@@ -383,24 +342,18 @@ export function registerBrowserHandlers(_context: IpcContext): void {
     limit?: number;
     urlPattern?: string;
   }) => {
-    try {
+    return withErrorGuard('browser:network:getRequests', async () => {
       const { getNetworkRequests } = await import('../tools/implementations/browser/network');
       return { success: true, requests: getNetworkRequests(options) };
-    } catch (error) {
-      logger.error('Failed to get network requests', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, requests: [], error: (error as Error).message };
-    }
+    });
   });
 
   ipcMain.handle('browser:network:clear', async () => {
-    try {
+    return withErrorGuard('browser:network:clear', async () => {
       const { clearNetworkRequests } = await import('../tools/implementations/browser/network');
       clearNetworkRequests();
       return { success: true };
-    } catch (error) {
-      logger.error('Failed to clear network requests', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 
   // ==========================================================================
@@ -415,14 +368,10 @@ export function registerBrowserHandlers(_context: IpcContext): void {
     enableCookies?: boolean;
     clearDataOnExit?: boolean;
   }) => {
-    try {
-      const { getBrowserManager } = await import('../browser');
-      const browser = getBrowserManager();
+    return withErrorGuard('browser:applyBehaviorSettings', async () => {
+      const browser = await getBrowserManagerCached();
       browser.applyBehaviorSettings(settings);
       return { success: true };
-    } catch (error) {
-      logger.error('Failed to apply browser behavior settings', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    });
   });
 }

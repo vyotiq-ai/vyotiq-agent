@@ -29,14 +29,6 @@ export {
   getStaticContent,
 } from '../systemPrompt';
 
-// Deprecated re-exports (kept for backward compatibility)
-/** @deprecated Use getStaticContent() from '../systemPrompt' */
-export { CORE_IDENTITY } from '../systemPrompt';
-/** @deprecated Use getStaticContent() from '../systemPrompt' */
-export { CRITICAL_RULES } from '../systemPrompt';
-/** @deprecated Use getStaticContent() from '../systemPrompt' */
-export { TOOL_CHAINING } from '../systemPrompt';
-
 // Tool creation prompts - dynamic tool creation guidance
 export {
   DYNAMIC_TOOL_CREATION_PROMPT,

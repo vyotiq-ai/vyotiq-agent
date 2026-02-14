@@ -11,55 +11,13 @@
 
 import type { AgentSessionState, StreamDeltaEvent } from '../../../shared/types';
 import type { AgentUIState } from '../agentReducer';
-import { safeCreateSet, updateAssistantMessageToolCall } from '../agentReducerUtils';
+import { safeCreateSet, updateAssistantMessageToolCall, updateAssistantMessageById } from '../agentReducerUtils';
 
 export type StreamingAction =
   | { type: 'STREAM_DELTA'; payload: { sessionId: string; messageId?: string; delta?: string; toolCall?: StreamDeltaEvent['toolCall'] } }
   | { type: 'STREAM_DELTA_BATCH'; payload: { sessionId: string; messageId?: string; delta?: string; toolCall?: StreamDeltaEvent['toolCall'] } }
   | { type: 'STREAM_THINKING_DELTA'; payload: { sessionId: string; messageId?: string; delta: string } }
   | { type: 'RUN_STATUS'; payload: { sessionId: string; status: AgentSessionState['status']; runId: string } };
-
-/**
- * OPTIMIZATION: Update assistant message by ID with last-message-first check
- */
-function updateAssistantMessageById(
-  sessions: AgentSessionState[],
-  sessionId: string,
-  messageId: string,
-  updater: (message: AgentSessionState['messages'][number]) => AgentSessionState['messages'][number]
-): AgentSessionState[] {
-  const sessionIndex = sessions.findIndex(s => s.id === sessionId);
-  if (sessionIndex === -1) return sessions;
-
-  const session = sessions[sessionIndex];
-  const messages = session.messages;
-  
-  // OPTIMIZATION: Check last message first (most common case for streaming)
-  let messageIndex = -1;
-  const lastIdx = messages.length - 1;
-  if (lastIdx >= 0 && messages[lastIdx].id === messageId) {
-    messageIndex = lastIdx;
-  } else {
-    messageIndex = messages.findIndex(m => m.id === messageId);
-  }
-  
-  if (messageIndex === -1) return sessions;
-
-  const message = messages[messageIndex];
-  if (!message || message.role !== 'assistant') return sessions;
-
-  const newMessage = updater(message);
-  if (newMessage === message) return sessions;
-
-  // Use slice() for slightly better performance
-  const newMessages = messages.slice();
-  newMessages[messageIndex] = newMessage;
-
-  const newSession = { ...session, messages: newMessages };
-  const newSessions = sessions.slice();
-  newSessions[sessionIndex] = newSession;
-  return newSessions;
-}
 
 /**
  * Update the last assistant message content efficiently

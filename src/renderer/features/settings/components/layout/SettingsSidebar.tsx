@@ -97,7 +97,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
       {/* Mobile overlay backdrop */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 md:hidden animate-in fade-in duration-200"
+          className="fixed top-[32px] left-0 right-0 bottom-0 bg-black/50 z-40 md:hidden animate-in fade-in duration-200"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -112,7 +112,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
           // Scrollbar styling
           "scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent",
           // Mobile: slide-in drawer
-          "fixed md:relative inset-y-0 left-0 z-50 md:z-auto",
+          "fixed md:relative top-[32px] md:top-0 bottom-0 left-0 z-50 md:z-auto",
           "w-[70vw] max-w-[200px] sm:w-48 md:w-44 lg:w-48",
           // Mobile visibility with slide animation
           isOpen 
@@ -149,6 +149,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                     data-tab-id={tab.id}
                     role="tab"
                     aria-selected={activeTab === tab.id}
+                    aria-controls="settings-content-panel"
                     tabIndex={activeTab === tab.id ? 0 : -1}
                     className={cn(
                       "flex items-center px-3 md:px-4 py-1.5 md:py-1.5 text-left transition-all duration-100 text-[10px] md:text-[11px]",

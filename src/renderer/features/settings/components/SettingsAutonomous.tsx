@@ -12,8 +12,7 @@
 import React, { useState, useMemo } from 'react';
 import { Shield, Wrench, AlertTriangle, X, Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import type { AutonomousFeatureFlags, ToolConfigSettings } from '../../../../shared/types';
-import { cn } from '../../../utils/cn';
-import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsListManager } from '../primitives';
+import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsInfoBox } from '../primitives';
 
 interface SettingsAutonomousProps {
   settings?: AutonomousFeatureFlags;
@@ -45,8 +44,14 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
   const [expandedToolSection, setExpandedToolSection] = useState<'confirm' | 'disabled' | null>(null);
 
   const toolSettings = settings?.toolSettings || {};
-  const alwaysConfirmTools = toolSettings.alwaysConfirmTools ?? ['run', 'write', 'edit', 'delete'];
-  const disabledTools = toolSettings.disabledTools ?? [];
+  const alwaysConfirmTools = useMemo(
+    () => toolSettings.alwaysConfirmTools ?? ['run', 'write', 'edit', 'delete'],
+    [toolSettings.alwaysConfirmTools]
+  );
+  const disabledTools = useMemo(
+    () => toolSettings.disabledTools ?? [],
+    [toolSettings.disabledTools]
+  );
 
   // Tools available for adding to confirm/disable lists
   const availableForConfirm = useMemo(() => 
@@ -73,7 +78,7 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
   const handleRemoveConfirmTool = (toolId: string) => {
     onChange('toolSettings', { 
       ...toolSettings, 
-      alwaysConfirmTools: alwaysConfirmTools.filter(t => t !== toolId) 
+      alwaysConfirmTools: alwaysConfirmTools.filter((t: string) => t !== toolId) 
     });
   };
 
@@ -87,7 +92,7 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
   const handleRemoveDisabledTool = (toolId: string) => {
     onChange('toolSettings', { 
       ...toolSettings, 
-      disabledTools: disabledTools.filter(t => t !== toolId) 
+      disabledTools: disabledTools.filter((t: string) => t !== toolId) 
     });
   };
 
@@ -189,6 +194,7 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
           <button
             type="button"
             onClick={() => setExpandedToolSection(expandedToolSection === 'confirm' ? null : 'confirm')}
+            aria-expanded={expandedToolSection === 'confirm'}
             className="w-full flex items-center justify-between text-left py-1 group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
           >
             <div className="flex items-center gap-1.5">
@@ -210,7 +216,7 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
               {/* Current confirm list */}
               {alwaysConfirmTools.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {alwaysConfirmTools.map((toolId) => {
+                  {alwaysConfirmTools.map((toolId: string) => {
                     const tool = CORE_TOOLS.find(t => t.id === toolId);
                     return (
                       <span 
@@ -258,6 +264,7 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
           <button
             type="button"
             onClick={() => setExpandedToolSection(expandedToolSection === 'disabled' ? null : 'disabled')}
+            aria-expanded={expandedToolSection === 'disabled'}
             className="w-full flex items-center justify-between text-left py-1 group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
           >
             <div className="flex items-center gap-1.5">
@@ -279,7 +286,7 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
               {/* Current disabled list */}
               {disabledTools.length > 0 ? (
                 <div className="flex flex-wrap gap-1">
-                  {disabledTools.map((toolId) => {
+                  {disabledTools.map((toolId: string) => {
                     const tool = CORE_TOOLS.find(t => t.id === toolId);
                     return (
                       <span 
@@ -326,13 +333,12 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
       </SettingsGroup>
 
       {/* Info Box */}
-      <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-3 space-y-2">
-        <div className="text-[10px] text-[var(--color-text-secondary)]"># about autonomous mode</div>
-        <p className="text-[9px] text-[var(--color-text-dim)] leading-relaxed">
+      <SettingsInfoBox title="# about autonomous mode">
+        <p>
           Autonomous mode enables the AI agent to make multi-step decisions and execute complex tasks without constant user confirmation. 
           The safety framework provides guardrails to prevent unintended actions.
         </p>
-        <ul className="text-[9px] text-[var(--color-text-dim)] space-y-1 ml-2">
+        <ul className="space-y-1 ml-2 mt-1">
           <li className="flex items-start gap-1.5">
             <span className="text-[var(--color-accent-primary)]">•</span>
             <span><strong className="text-[var(--color-text-muted)]">Task planning:</strong> Breaks complex requests into manageable steps</span>
@@ -346,7 +352,7 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
             <span><strong className="text-[var(--color-text-muted)]">Safety framework:</strong> Monitors and limits potentially dangerous operations</span>
           </li>
         </ul>
-      </div>
+      </SettingsInfoBox>
     </SettingsSection>
   );
 };

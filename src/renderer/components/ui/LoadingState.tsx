@@ -6,6 +6,7 @@
  */
 import React, { memo } from 'react';
 import { cn } from '../../utils/cn';
+import { useLoading } from '../../state/LoadingProvider';
 
 // =============================================================================
 // Types
@@ -502,28 +503,19 @@ export const ConnectedLoadingIndicator: React.FC<{
   variant?: 'bar' | 'indicator' | 'overlay';
   className?: string;
 }> = memo(({ position = 'top', variant = 'bar', className }) => {
-  // Try to use the loading context if available
-  // This component can be used outside the provider with a fallback
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { useLoading } = require('../../state/LoadingProvider');
-    const { isLoading, currentLabel, currentDetail, overallProgress } = useLoading();
+  const { isLoading, currentLabel, currentDetail, overallProgress } = useLoading();
     
-    return (
-      <GlobalLoadingIndicator
-        isLoading={isLoading}
-        label={currentLabel}
-        detail={currentDetail}
-        progress={overallProgress}
-        position={position}
-        variant={variant}
-        className={className}
-      />
-    );
-  } catch {
-    // If no provider is available, render nothing
-    return null;
-  }
+  return (
+    <GlobalLoadingIndicator
+      isLoading={isLoading}
+      label={currentLabel}
+      detail={currentDetail}
+      progress={overallProgress}
+      position={position}
+      variant={variant}
+      className={className}
+    />
+  );
 });
 
 ConnectedLoadingIndicator.displayName = 'ConnectedLoadingIndicator';

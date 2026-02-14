@@ -7,6 +7,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync, mkdirSync } from 'node:fs';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import { minimatch } from 'minimatch';
 import type { 
@@ -247,19 +248,44 @@ export class SafetyManager {
    * Get the backup directory path
    */
   private getBackupDir(): string {
-    const baseDir = process.env.VYOTIQ_DATA_DIR || path.join(process.env.HOME || process.env.USERPROFILE || '.', '.vyotiq');
+    const baseDir = process.env.VYOTIQ_DATA_DIR
+      || (process.env.HOME ? path.join(process.env.HOME, '.vyotiq') : null)
+      || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, '.vyotiq') : null)
+      || path.join(os.tmpdir(), 'vyotiq');
     return path.join(baseDir, 'backups');
   }
 
   /**
-   * Ensure backup directory exists
+   * Ensure backup directory exists.
+   * Falls back to a temp-directory path if the primary location is not writable.
    */
   private ensureBackupDir(): string {
     const backupDir = this.getBackupDir();
-    if (!existsSync(backupDir)) {
-      mkdirSync(backupDir, { recursive: true });
+    try {
+      if (!existsSync(backupDir)) {
+        mkdirSync(backupDir, { recursive: true });
+      }
+      return backupDir;
+    } catch (primaryError) {
+      // Primary path failed (permissions, disk full, etc.) — try OS temp dir
+      logger.warn('Primary backup directory creation failed, falling back to temp directory', {
+        backupDir,
+        error: primaryError instanceof Error ? primaryError.message : String(primaryError),
+      });
+      const fallbackDir = path.join(os.tmpdir(), 'vyotiq-backups');
+      try {
+        if (!existsSync(fallbackDir)) {
+          mkdirSync(fallbackDir, { recursive: true });
+        }
+        return fallbackDir;
+      } catch (fallbackError) {
+        logger.error('Fallback backup directory creation also failed', {
+          fallbackDir,
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        });
+        throw primaryError;
+      }
     }
-    return backupDir;
   }
 
   /**

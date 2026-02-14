@@ -10,8 +10,8 @@
  * disables background throttling when sessions are running.
  */
 
-import { useMemo, useCallback, useRef, useEffect, useContext } from 'react';
-import { useAgentSelector, AgentContext } from '../state/AgentProvider';
+import { useMemo, useCallback, useRef, useEffect, useContext, useSyncExternalStore } from 'react';
+import { AgentContext } from '../state/AgentProvider';
 
 export interface ThrottleControlState {
   /** Whether any agent session is currently running */
@@ -44,33 +44,52 @@ const DEFAULT_THROTTLE_STATE: ThrottleControlState = {
 export function useThrottleControl(): ThrottleControlState {
   // Check if we're inside AgentProvider context
   const store = useContext(AgentContext);
-  
-  // If not inside AgentProvider, return default state
-  if (!store) {
-    return DEFAULT_THROTTLE_STATE;
-  }
-  
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const state = useAgentSelector(
-    (state) => {
-      // Count sessions that are actively running
-      const runningSessions = state.sessions.filter(
-        (session) => session.status === 'running' || session.status === 'awaiting-confirmation'
-      );
-      
-      return {
-        activeSessionCount: runningSessions.length,
-        isAgentRunning: runningSessions.length > 0,
-      };
-    },
-    (a, b) => a.activeSessionCount === b.activeSessionCount && a.isAgentRunning === b.isAgentRunning
+
+  // Memoized snapshot ref to return stable references when data hasn't changed.
+  // useSyncExternalStore compares by Object.is, so returning a new object each
+  // call causes infinite re-renders.
+  const lastSnapshotRef = useRef<{ activeSessionCount: number; isAgentRunning: boolean }>({
+    activeSessionCount: 0,
+    isAgentRunning: false,
+  });
+
+  // Stable subscribe — noop when outside AgentProvider
+  const subscribe = useCallback(
+    (cb: () => void) => (store ? store.subscribe(cb) : () => {}),
+    [store]
   );
-  
-  return useMemo(() => ({
-    ...state,
-    // Bypass throttle when agent is running for responsive streaming
-    shouldBypassThrottle: state.isAgentRunning,
-  }), [state]);
+
+  // Stable getSnapshot that returns a referentially-equal object when unchanged
+  const getSnapshot = useCallback(() => {
+    if (!store) return lastSnapshotRef.current;
+
+    const sessions = store.getState().sessions;
+    let count = 0;
+    for (const s of sessions) {
+      if (s.status === 'running' || s.status === 'awaiting-confirmation') count++;
+    }
+
+    const prev = lastSnapshotRef.current;
+    if (prev.activeSessionCount === count && prev.isAgentRunning === (count > 0)) {
+      return prev; // same reference — no re-render
+    }
+
+    const next = { activeSessionCount: count, isAgentRunning: count > 0 };
+    lastSnapshotRef.current = next;
+    return next;
+  }, [store]);
+
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  return useMemo<ThrottleControlState>(() => {
+    if (!store) {
+      return DEFAULT_THROTTLE_STATE;
+    }
+    return {
+      ...state,
+      shouldBypassThrottle: state.isAgentRunning,
+    };
+  }, [store, state]);
 }
 
 /**

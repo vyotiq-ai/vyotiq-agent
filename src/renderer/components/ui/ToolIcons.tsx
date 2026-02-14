@@ -63,6 +63,17 @@ const TOOL_CATEGORIES: Record<string, ToolIconConfig['category']> = {
   search: 'search',
   find: 'search',
   code_search: 'search',
+  semantic_search: 'search',
+  semantic: 'search',
+  vector_search: 'search',
+  embedding_search: 'search',
+  code_query: 'search',
+  find_code: 'search',
+  ask_code: 'search',
+  code_similarity: 'analysis',
+  similar_code: 'analysis',
+  find_similar: 'analysis',
+  code_clone: 'analysis',
   
   // Web operations
   fetch: 'web',
@@ -164,6 +175,17 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   search: 'Search files',
   find: 'Find files',
   code_search: 'Search code',
+  semantic_search: 'Semantic code search',
+  semantic: 'Semantic code search',
+  vector_search: 'Vector similarity search',
+  embedding_search: 'Embedding-based search',
+  code_query: 'Natural language code query',
+  find_code: 'Find code by description',
+  ask_code: 'Query codebase',
+  code_similarity: 'Find similar code',
+  similar_code: 'Find similar code',
+  find_similar: 'Find similar code',
+  code_clone: 'Detect code clones',
   fetch: 'Fetch web content',
   web_fetch: 'Fetch from web',
   browse: 'Open URL',
@@ -245,11 +267,6 @@ export function getToolCategory(toolName: string): ToolIconConfig['category'] {
   return 'system';
 }
 
-/** @deprecated Use getToolCategory and getToolDescription instead */
-export function getToolConfig(toolName: string): ToolIconConfig {
-  return { category: getToolCategory(toolName) };
-}
-
 export function getToolDescription(toolName: string): string {
   const name = toolName.toLowerCase();
   
@@ -289,25 +306,4 @@ export function getToolColorClass(
   }
 }
 
-// =============================================================================
-// Backwards Compatibility Stubs
-// =============================================================================
 
-/** @deprecated Icons have been removed for minimalist UI */
-export function getToolIcon(_toolName: string): null {
-  return null;
-}
-
-/** @deprecated Icons have been removed for minimalist UI */
-export const ToolIconDisplay: React.FC<ToolIconProps & { toolName: string; status?: string; showTooltip?: boolean }> = () => null;
-
-/** @deprecated Use getToolCategory instead */
-export const TOOL_ICON_MAP: Record<string, ToolIconConfig> = new Proxy({} as Record<string, ToolIconConfig>, {
-  get(_target, prop: string | symbol) {
-    // Only handle string properties, return undefined for symbols and special properties
-    if (typeof prop !== 'string') {
-      return undefined;
-    }
-    return { category: getToolCategory(prop) };
-  },
-});

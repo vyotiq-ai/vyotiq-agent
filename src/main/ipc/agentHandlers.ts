@@ -12,7 +12,7 @@
 import { ipcMain } from 'electron';
 import { createLogger } from '../logger';
 import type { IpcContext } from './types';
-import { withSafeHandler, sessionCreationMutex, validateNonEmptyString as _validateNonEmptyString, validateIpcPayload } from './guards';
+import { withSafeHandler, withErrorGuard, withOrchestratorGuard, sessionCreationMutex, validateIpcPayload } from './guards';
 
 const logger = createLogger('IPC:Agent');
 
@@ -27,11 +27,11 @@ export function registerAgentHandlers(context: IpcContext): void {
     // Use mutex to prevent race conditions in concurrent session creation
     return sessionCreationMutex.withLock(async () => {
       return withSafeHandler(context, 'agent:start-session', async (orchestrator) => {
-        logger.info('Starting session', { workspaceId: payload.workspaceId });
+        logger.info('Starting session');
         const session = await orchestrator.startSession(payload);
         logger.info('Session started successfully', { sessionId: session?.id });
         return session;
-      }, { additionalContext: { workspaceId: payload?.workspaceId } });
+      });
     });
   });
 
@@ -75,8 +75,9 @@ export function registerAgentHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle('agent:get-sessions', () => {
-    const orchestrator = getOrchestrator();
-    return orchestrator?.getSessions() ?? [];
+    return withOrchestratorGuard(context, (orchestrator) => {
+      return orchestrator.getSessions();
+    }, { operationName: 'agent:get-sessions', returnOnError: [] as never[] });
   });
 
   ipcMain.handle('agent:has-available-providers', () => {
@@ -91,61 +92,28 @@ export function registerAgentHandlers(context: IpcContext): void {
     return getOrchestrator()?.getProvidersCooldownStatus() ?? {};
   });
 
-  ipcMain.handle('agent:get-sessions-by-workspace', (_event, workspaceId: string) => {
-    try {
-      logger.info('Getting sessions for workspace', { workspaceId });
-      const sessions = getOrchestrator()?.getSessionsByWorkspace(workspaceId);
-      logger.info('Retrieved sessions', { count: sessions?.length ?? 0, workspaceId });
-      return sessions ?? [];
-    } catch (error) {
-      logger.error('Failed to get sessions by workspace', { workspaceId, error: error instanceof Error ? error.message : String(error) });
-      return [];
-    }
-  });
-
-  ipcMain.handle('agent:get-session-summaries', async (_event, workspaceId?: string) => {
-    try {
-      const summaries = await getOrchestrator()?.getSessionSummaries(workspaceId);
-      return summaries ?? [];
-    } catch (error) {
-      logger.error('Failed to get session summaries', { workspaceId, error: error instanceof Error ? error.message : String(error) });
-      return [];
-    }
-  });
-
-  ipcMain.handle('agent:get-active-workspace-sessions', () => {
-    return getOrchestrator()?.getActiveWorkspaceSessions() ?? [];
+  ipcMain.handle('agent:get-session-summaries', async () => {
+    return withSafeHandler(context, 'agent:get-session-summaries', async (orchestrator) => {
+      return await orchestrator.getSessionSummaries();
+    }, { returnOnError: [] as never[] });
   });
 
   ipcMain.handle('agent:delete-session', async (_event, sessionId: string) => {
-    const orchestrator = getOrchestrator();
-    if (!orchestrator) {
-      logger.warn('agent:delete-session called but orchestrator not initialized');
-      return { success: false, error: 'Orchestrator not initialized' };
-    }
-    return orchestrator.deleteSession(sessionId);
+    return withSafeHandler(context, 'agent:delete-session', async (orchestrator) => {
+      return orchestrator.deleteSession(sessionId);
+    }, { additionalContext: { sessionId } });
   });
 
   ipcMain.handle('agent:regenerate', async (_event, sessionId: string) => {
-    const orchestrator = getOrchestrator();
-    if (!orchestrator) {
-      logger.warn('agent:regenerate called but orchestrator not initialized');
-      return { success: false, error: 'Orchestrator not initialized' };
-    }
-    return orchestrator.regenerate(sessionId);
+    return withSafeHandler(context, 'agent:regenerate', async (orchestrator) => {
+      return orchestrator.regenerate(sessionId);
+    }, { additionalContext: { sessionId } });
   });
 
   ipcMain.handle('agent:rename-session', async (_event, sessionId: string, title: string) => {
-    const orchestrator = getOrchestrator();
-    if (!orchestrator) {
-      return { success: false, error: 'Orchestrator not initialized' };
-    }
-    return orchestrator.renameSession(sessionId, title);
-  });
-
-  ipcMain.handle('agent:update-editor-state', (_event, state) => {
-    getOrchestrator()?.updateEditorState(state);
-    return { success: true };
+    return withSafeHandler(context, 'agent:rename-session', async (orchestrator) => {
+      return orchestrator.renameSession(sessionId, title);
+    }, { additionalContext: { sessionId } });
   });
 
   // ==========================================================================
@@ -153,38 +121,29 @@ export function registerAgentHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('agent:cancel-run', async (_event, sessionId: string) => {
-    logger.info('IPC agent:cancel-run received', { sessionId });
-    try {
-      await getOrchestrator()?.cancelRun(sessionId);
+    return withSafeHandler(context, 'agent:cancel-run', async (orchestrator) => {
+      logger.info('IPC agent:cancel-run received', { sessionId });
+      await orchestrator.cancelRun(sessionId);
       logger.info('IPC agent:cancel-run completed', { sessionId });
-    } catch (error) {
-      logger.error('IPC agent:cancel-run failed', { sessionId, error: error instanceof Error ? error.message : String(error) });
-      throw error;
-    }
+    }, { additionalContext: { sessionId } });
   });
 
   ipcMain.handle('agent:pause-run', (_event, sessionId: string) => {
-    logger.info('IPC agent:pause-run received', { sessionId });
-    try {
-      const result = getOrchestrator()?.pauseRun(sessionId) ?? false;
+    return withSafeHandler(context, 'agent:pause-run', async (orchestrator) => {
+      logger.info('IPC agent:pause-run received', { sessionId });
+      const result = orchestrator.pauseRun(sessionId) ?? false;
       logger.info('IPC agent:pause-run completed', { sessionId, result });
       return { success: result };
-    } catch (error) {
-      logger.error('IPC agent:pause-run failed', { sessionId, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    }, { returnOnError: { success: false } as { success: boolean }, additionalContext: { sessionId } });
   });
 
   ipcMain.handle('agent:resume-run', (_event, sessionId: string) => {
-    logger.info('IPC agent:resume-run received', { sessionId });
-    try {
-      const result = getOrchestrator()?.resumeRun(sessionId) ?? false;
+    return withSafeHandler(context, 'agent:resume-run', async (orchestrator) => {
+      logger.info('IPC agent:resume-run received', { sessionId });
+      const result = orchestrator.resumeRun(sessionId) ?? false;
       logger.info('IPC agent:resume-run completed', { sessionId, result });
       return { success: result };
-    } catch (error) {
-      logger.error('IPC agent:resume-run failed', { sessionId, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    }, { returnOnError: { success: false } as { success: boolean }, additionalContext: { sessionId } });
   });
 
   ipcMain.handle('agent:is-run-paused', (_event, sessionId: string) => {
@@ -196,11 +155,7 @@ export function registerAgentHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('agent:edit-message', async (_event, sessionId: string, messageIndex: number, newContent: string) => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) {
-        return { success: false, error: 'Orchestrator not initialized' };
-      }
+    return withSafeHandler(context, 'agent:edit-message', async (orchestrator) => {
       const sessions = orchestrator.getSessions();
       const session = sessions.find(s => s.id === sessionId);
       if (!session) {
@@ -211,21 +166,13 @@ export function registerAgentHandlers(context: IpcContext): void {
         return { success: false, error: `Message at index ${messageIndex} not found` };
       }
       return await orchestrator.editMessageAndResend(sessionId, message.id, newContent);
-    } catch (error) {
-      logger.error('Failed to edit message', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    }, { returnOnError: { success: false, error: 'Operation failed' }, additionalContext: { sessionId } });
   });
 
   ipcMain.handle('agent:add-reaction', async (_event, sessionId: string, messageId: string, reaction: 'up' | 'down' | null) => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return { success: false, error: 'Orchestrator not available' };
+    return withSafeHandler(context, 'agent:add-reaction', async (orchestrator) => {
       return await orchestrator.addReaction(sessionId, messageId, reaction);
-    } catch (error) {
-      logger.error('Failed to add reaction', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    }, { returnOnError: { success: false, error: 'Operation failed' }, additionalContext: { sessionId } });
   });
 
   // ==========================================================================
@@ -233,107 +180,84 @@ export function registerAgentHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('agent:create-branch', async (_event, sessionId: string, messageId: string, name?: string) => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return { success: false, error: 'Orchestrator not available' };
+    return withSafeHandler(context, 'agent:create-branch', async (orchestrator) => {
       return orchestrator.createBranch(sessionId, messageId, name);
-    } catch (error) {
-      logger.error('Failed to create branch', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    }, { returnOnError: { success: false, error: 'Operation failed' }, additionalContext: { sessionId } });
   });
 
   ipcMain.handle('agent:switch-branch', async (_event, sessionId: string, branchId: string | null) => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return { success: false, error: 'Orchestrator not available' };
+    return withSafeHandler(context, 'agent:switch-branch', async (orchestrator) => {
       return orchestrator.switchBranch(sessionId, branchId);
-    } catch (error) {
-      logger.error('Failed to switch branch', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    }, { returnOnError: { success: false, error: 'Operation failed' }, additionalContext: { sessionId } });
   });
 
   ipcMain.handle('agent:delete-branch', async (_event, sessionId: string, branchId: string) => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return { success: false, error: 'Orchestrator not available' };
+    return withSafeHandler(context, 'agent:delete-branch', async (orchestrator) => {
       return orchestrator.deleteBranch(sessionId, branchId);
-    } catch (error) {
-      logger.error('Failed to delete branch', { error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    }, { returnOnError: { success: false, error: 'Operation failed' }, additionalContext: { sessionId } });
   });
 
-  // ==========================================================================
-  // Session Health & Quality Monitoring
-  // ==========================================================================
+  // Cache module imports to avoid repeated dynamic import overhead
+  let cachedSessionHealth: typeof import('../agent/sessionHealth') | null = null;
+  let cachedModelQuality: typeof import('../agent/modelQuality') | null = null;
+  let cachedLoopDetection: typeof import('../agent/loopDetection') | null = null;
+
+  const getSessionHealthCached = async () => {
+    if (!cachedSessionHealth) cachedSessionHealth = await import('../agent/sessionHealth');
+    return cachedSessionHealth.getSessionHealthMonitor();
+  };
+
+  const getModelQualityCached = async () => {
+    if (!cachedModelQuality) cachedModelQuality = await import('../agent/modelQuality');
+    return cachedModelQuality.getModelQualityTracker();
+  };
+
+  const getLoopDetectorCached = async () => {
+    if (!cachedLoopDetection) cachedLoopDetection = await import('../agent/loopDetection');
+    return cachedLoopDetection.getLoopDetector();
+  };
 
   ipcMain.handle('agent:get-session-health', async (_event, sessionId: string) => {
-    try {
-      const { getSessionHealthMonitor } = await import('../agent/sessionHealth');
-      const monitor = getSessionHealthMonitor();
+    return withErrorGuard('agent:get-session-health', async () => {
+      const monitor = await getSessionHealthCached();
       return monitor.getHealthStatus(sessionId);
-    } catch (error) {
-      logger.error('Failed to get session health', { sessionId, error: error instanceof Error ? error.message : String(error) });
-      return null;
-    }
+    }, { returnOnError: null, additionalContext: { sessionId } });
   });
 
   ipcMain.handle('agent:get-active-health-sessions', async () => {
-    try {
-      const { getSessionHealthMonitor } = await import('../agent/sessionHealth');
-      const monitor = getSessionHealthMonitor();
+    return withErrorGuard('agent:get-active-health-sessions', async () => {
+      const monitor = await getSessionHealthCached();
       return monitor.getActiveSessions();
-    } catch (error) {
-      logger.error('Failed to get active health sessions', { error: error instanceof Error ? error.message : String(error) });
-      return [];
-    }
+    }, { returnOnError: [] as never[] });
   });
 
   ipcMain.handle('agent:get-model-quality', async (_event, modelId: string, provider: string) => {
-    try {
-      const { getModelQualityTracker } = await import('../agent/modelQuality');
-      const tracker = getModelQualityTracker();
+    return withErrorGuard('agent:get-model-quality', async () => {
+      const tracker = await getModelQualityCached();
       return tracker.getMetrics(modelId, provider as import('../../shared/types').LLMProviderName);
-    } catch (error) {
-      logger.error('Failed to get model quality', { modelId, provider, error: error instanceof Error ? error.message : String(error) });
-      return null;
-    }
+    }, { returnOnError: null, additionalContext: { modelId, provider } });
   });
 
   ipcMain.handle('agent:get-ranked-models', async () => {
-    try {
-      const { getModelQualityTracker } = await import('../agent/modelQuality');
-      const tracker = getModelQualityTracker();
+    return withErrorGuard('agent:get-ranked-models', async () => {
+      const tracker = await getModelQualityCached();
       return tracker.getRankedModels();
-    } catch (error) {
-      logger.error('Failed to get ranked models', { error: error instanceof Error ? error.message : String(error) });
-      return [];
-    }
+    }, { returnOnError: [] as never[] });
   });
 
   ipcMain.handle('agent:get-model-quality-stats', async () => {
-    try {
-      const { getModelQualityTracker } = await import('../agent/modelQuality');
-      const tracker = getModelQualityTracker();
+    return withErrorGuard('agent:get-model-quality-stats', async () => {
+      const tracker = await getModelQualityCached();
       return tracker.getGlobalStats();
-    } catch (error) {
-      logger.error('Failed to get model quality stats', { error: error instanceof Error ? error.message : String(error) });
-      return null;
-    }
+    }, { returnOnError: null });
   });
 
   ipcMain.handle('agent:record-model-reaction', async (_event, modelId: string, provider: string, reaction: 'up' | 'down') => {
-    try {
-      const { getModelQualityTracker } = await import('../agent/modelQuality');
-      const tracker = getModelQualityTracker();
+    return withErrorGuard('agent:record-model-reaction', async () => {
+      const tracker = await getModelQualityCached();
       tracker.recordUserReaction(modelId, provider as import('../../shared/types').LLMProviderName, reaction);
       return { success: true };
-    } catch (error) {
-      logger.error('Failed to record model reaction', { modelId, provider, reaction, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, error: (error as Error).message };
-    }
+    }, { returnOnError: { success: false } as { success: boolean }, additionalContext: { modelId, provider, reaction } });
   });
 
   // ==========================================================================
@@ -341,164 +265,20 @@ export function registerAgentHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('agent:get-loop-detection-state', async (_event, runId: string) => {
-    try {
-      const { getLoopDetector } = await import('../agent/loopDetection');
-      const detector = getLoopDetector();
+    return withErrorGuard('agent:get-loop-detection-state', async () => {
+      const detector = await getLoopDetectorCached();
       return detector.getState(runId) ?? null;
-    } catch (error) {
-      logger.error('Failed to get loop detection state', { runId, error: error instanceof Error ? error.message : String(error) });
-      return null;
-    }
+    }, { returnOnError: null, additionalContext: { runId } });
   });
 
   ipcMain.handle('agent:is-circuit-breaker-triggered', async (_event, runId: string) => {
-    try {
-      const { getLoopDetector } = await import('../agent/loopDetection');
-      const detector = getLoopDetector();
+    return withErrorGuard('agent:is-circuit-breaker-triggered', async () => {
+      const detector = await getLoopDetectorCached();
       return detector.shouldTriggerCircuitBreaker(runId);
-    } catch (error) {
-      logger.error('Failed to check circuit breaker', { runId, error: error instanceof Error ? error.message : String(error) });
-      return false;
-    }
+    }, { returnOnError: false, additionalContext: { runId } });
   });
 
   // ==========================================================================
-  // Multi-Workspace Session Operations
+  // Session Health & Quality Monitoring
   // ==========================================================================
-
-  /**
-   * Get all running sessions across all workspaces
-   * Useful for showing global activity indicators
-   */
-  ipcMain.handle('agent:get-all-running-sessions', () => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return [];
-      
-      const sessions = orchestrator.getSessions();
-      return sessions.filter(s => s.status === 'running' || s.status === 'awaiting-confirmation');
-    } catch (error) {
-      logger.error('Failed to get running sessions', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      return [];
-    }
-  });
-
-  /**
-   * Get running session count per workspace
-   * Returns a map of workspaceId -> running count
-   */
-  ipcMain.handle('agent:get-running-sessions-by-workspace', () => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return {};
-      
-      const sessions = orchestrator.getSessions();
-      const runningByWorkspace: Record<string, number> = {};
-      
-      for (const session of sessions) {
-        if (session.status === 'running' || session.status === 'awaiting-confirmation') {
-          const workspaceId = session.workspaceId ?? 'unknown';
-          runningByWorkspace[workspaceId] = (runningByWorkspace[workspaceId] ?? 0) + 1;
-        }
-      }
-      
-      return runningByWorkspace;
-    } catch (error) {
-      logger.error('Failed to get running sessions by workspace', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      return {};
-    }
-  });
-
-  /**
-   * Get global session statistics for multi-workspace concurrent execution
-   */
-  ipcMain.handle('agent:get-global-session-stats', () => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return null;
-      
-      return orchestrator.getGlobalSessionStats();
-    } catch (error) {
-      logger.error('Failed to get global session stats', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      return null;
-    }
-  });
-
-  /**
-   * Get detailed running session information across all workspaces
-   */
-  ipcMain.handle('agent:get-detailed-running-sessions', () => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return [];
-      
-      return orchestrator.getDetailedRunningSessions();
-    } catch (error) {
-      logger.error('Failed to get detailed running sessions', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      return [];
-    }
-  });
-
-  /**
-   * Check if a new session can be started in a workspace
-   */
-  ipcMain.handle('agent:can-start-session', (_event, workspaceId: string) => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return { allowed: true };
-      
-      return orchestrator.canStartNewSession(workspaceId);
-    } catch (error) {
-      logger.error('Failed to check if can start session', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      return { allowed: true };
-    }
-  });
-
-  /**
-   * Get workspace resource metrics for multi-workspace management
-   */
-  ipcMain.handle('agent:get-workspace-resources', async () => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return null;
-      
-      // Get resource metrics from the orchestrator
-      const metrics = orchestrator.getWorkspaceResourceMetrics?.();
-      return metrics ?? null;
-    } catch (error) {
-      logger.error('Failed to get workspace resources', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      return null;
-    }
-  });
-
-  /**
-   * Get concurrent execution statistics
-   */
-  ipcMain.handle('agent:get-concurrent-stats', async () => {
-    try {
-      const orchestrator = getOrchestrator();
-      if (!orchestrator) return null;
-      
-      // Get execution stats if available
-      const stats = orchestrator.getConcurrentExecutionStats?.();
-      return stats ?? null;
-    } catch (error) {
-      logger.error('Failed to get concurrent stats', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      return null;
-    }
-  });
 }

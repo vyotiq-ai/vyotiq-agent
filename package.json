@@ -9,10 +9,14 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx .",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "rust:build": "cd rust-backend && cargo build --release",
+    "rust:dev": "cd rust-backend && cargo build",
+    "rust:check": "cd rust-backend && cargo check",
+    "build:all": "npm run rust:build && electron-forge make"
   },
   "keywords": [
     "vyotiq ai",
@@ -81,10 +85,10 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.4",
     "vite-plugin-native": "^2.2.2",
-    "vitest": "^4.0.14"
+    "vitest": "^4.0.14",
+    "@vitest/coverage-v8": "^4.0.14"
   },
   "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
     "@tailwindcss/vite": "^4.1.17",
     "@vitejs/plugin-react": "^5.1.1",
     "@xterm/addon-clipboard": "^0.1.0",
@@ -108,6 +112,7 @@
     "pdf-parse": "^2.4.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",

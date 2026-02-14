@@ -9,32 +9,12 @@ import {
   SettingsListManager,
   SettingsSelect,
 } from '../primitives';
+import { formatBytes } from '../utils/formatters';
 
 interface SettingsSafetyProps {
   settings: SafetySettings;
   onChange: (field: keyof SafetySettings, value: SafetySettings[keyof SafetySettings]) => void;
 }
-
-// Format bytes for display
-const formatBytes = (bytes: number): string => {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  }
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-  }
-  if (bytes >= 1024) {
-    return `${(bytes / 1024).toFixed(0)} KB`;
-  }
-  return `${bytes} B`;
-};
-
-// Network policy options
-const networkPolicyOptions = [
-  { value: 'none' as const, label: 'none (no network)' },
-  { value: 'localhost' as const, label: 'localhost only' },
-  { value: 'allowlist' as const, label: 'allowlist' },
-];
 
 export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChange }) => {
   return (
@@ -49,7 +29,7 @@ export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChan
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <SettingsSlider
-            label="Max Files"
+            label="max-files"
             description="max files modified per run"
             value={settings.maxFilesPerRun}
             onChange={(value) => onChange('maxFilesPerRun', value)}
@@ -58,7 +38,7 @@ export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChan
             step={5}
           />
           <SettingsSlider
-            label="Max Bytes"
+            label="max-bytes"
             description="max data written per run"
             value={settings.maxBytesPerRun}
             onChange={(value) => onChange('maxBytesPerRun', value)}
@@ -106,7 +86,7 @@ export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChan
         icon={<Shield size={11} className="text-[var(--color-info)]" />}
       >
         <SettingsToggleRow
-          label="Auto Backup"
+          label="auto-backup"
           description="create backups before file modifications"
           checked={settings.enableAutoBackup}
           onToggle={() => onChange('enableAutoBackup', !settings.enableAutoBackup)}
@@ -115,7 +95,7 @@ export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChan
         {settings.enableAutoBackup && (
           <div className="animate-in slide-in-from-top-1 duration-150">
             <SettingsSlider
-              label="Backup Retention"
+              label="backup-retention"
               description="max backups to keep per file"
               value={settings.backupRetentionCount}
               onChange={(value) => onChange('backupRetentionCount', value)}
@@ -133,7 +113,7 @@ export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChan
         icon={<Shield size={11} className="text-[var(--color-warning)]" />}
       >
         <SettingsToggleRow
-          label="Confirm Dangerous"
+          label="confirm-dangerous"
           description="always prompt before destructive operations"
           checked={settings.alwaysConfirmDangerous}
           onToggle={() => onChange('alwaysConfirmDangerous', !settings.alwaysConfirmDangerous)}
@@ -160,7 +140,7 @@ export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChan
         icon={<Shield size={11} className="text-[var(--color-success)]" />}
       >
         <SettingsToggleRow
-          label="Sandbox"
+          label="sandbox"
           description="run code in isolated environment"
           checked={settings.enableSandbox}
           onToggle={() => onChange('enableSandbox', !settings.enableSandbox)}
@@ -169,10 +149,14 @@ export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChan
         {settings.enableSandbox && (
           <div className="space-y-3 animate-in slide-in-from-top-1 duration-150">
             <SettingsSelect
-              label="Network Policy"
+              label="network-policy"
               description="control network access in sandbox"
               value={settings.sandboxNetworkPolicy}
-              options={networkPolicyOptions}
+              options={[
+                { value: 'none' as const, label: 'none (no network)' },
+                { value: 'localhost' as const, label: 'localhost only' },
+                { value: 'allowlist' as const, label: 'allowlist' },
+              ]}
               onChange={(value) => onChange('sandboxNetworkPolicy', value as 'none' | 'localhost' | 'allowlist')}
             />
 

@@ -1,125 +1,240 @@
 /**
  * Home Page
  * 
- * Main workspace view with chat interface and code editor.
- * Features responsive split-pane layout with resizable panels.
+ * Main workspace view with chat interface.
+ * Shows workspace selection prompt when no workspace is active.
  */
-import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import React, { useCallback, useState, useEffect, memo } from 'react';
 import { ChatArea, ChatInput } from '../features/chat';
-import { useEditor } from '../state/EditorProvider';
-import { cn } from '../utils/cn';
-import { Spinner } from '../components/ui/LoadingState';
 import { FeatureErrorBoundary } from '../components/layout/ErrorBoundary';
-import { MOBILE_BREAKPOINT } from '../utils/constants';
+import { useWorkspaceState, useWorkspaceActions } from '../state/WorkspaceProvider';
+import { cn } from '../utils/cn';
 
-// Lazy load EditorView to defer Monaco bundle loading until editor is shown
-// Monaco is ~1.5MB and should not block initial chat UI
-// Wrapped in FeatureErrorBoundary to handle HMR context issues gracefully
-const EditorView = lazy(() =>
-  import('../features/editor').then(module => ({ default: module.EditorView }))
-);
+// =============================================================================
+// Animated typing text for terminal feel
+// =============================================================================
 
-const EditorLoader: React.FC = () => (
-  <div className="h-full flex items-center justify-center bg-[var(--color-surface-base)]">
-    <div className="flex items-center gap-3 text-[var(--color-text-secondary)]">
-      <Spinner size="sm" />
-      <span className="text-xs font-medium">Loading editor...</span>
+const TypingText: React.FC<{ text: string; delay?: number }> = memo(({ text, delay = 0 }) => {
+  const [displayed, setDisplayed] = useState('');
+  const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    const startTimer = setTimeout(() => setStarted(true), delay);
+    return () => clearTimeout(startTimer);
+  }, [delay]);
+
+  useEffect(() => {
+    if (!started) return;
+    if (displayed.length >= text.length) return;
+    const timer = setTimeout(() => {
+      setDisplayed(text.slice(0, displayed.length + 1));
+    }, 18 + Math.random() * 12);
+    return () => clearTimeout(timer);
+  }, [started, displayed, text]);
+
+  return (
+    <span>
+      {displayed}
+      {displayed.length < text.length && (
+        <span className="inline-block w-[5px] h-[11px] bg-[var(--color-accent-primary)] ml-px animate-blink align-middle" />
+      )}
+    </span>
+  );
+});
+TypingText.displayName = 'TypingText';
+
+// =============================================================================
+// WorkspacePrompt – shown when no workspace is selected
+// =============================================================================
+
+const WorkspacePrompt: React.FC = () => {
+  const { recentPaths } = useWorkspaceState();
+  const { selectWorkspaceFolder, setWorkspacePath } = useWorkspaceActions();
+  const [hoveredPath, setHoveredPath] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), 100);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleRecent = useCallback(async (path: string) => {
+    await setWorkspacePath(path);
+  }, [setWorkspacePath]);
+
+  const handleOpen = useCallback(async () => {
+    await selectWorkspaceFolder();
+  }, [selectWorkspaceFolder]);
+
+  return (
+    <div className="flex items-center justify-center h-full w-full bg-[var(--color-surface-base)] font-mono select-none">
+      <div className={cn(
+        'max-w-lg w-full mx-auto px-8 py-12 flex flex-col gap-0',
+        'transition-opacity duration-500',
+        ready ? 'opacity-100' : 'opacity-0'
+      )}>
+        {/* Terminal-style header block */}
+        <div className="flex flex-col gap-3 mb-8">
+          {/* Brand line */}
+          <div className="flex items-center gap-2.5">
+            <span className="text-[var(--color-accent-primary)] text-lg font-semibold leading-none opacity-90">λ</span>
+            <span className="text-[13px] font-medium text-[var(--color-text-primary)] tracking-tight">
+              Vyotiq AI
+            </span>
+            <span className="text-[9px] text-[var(--color-text-dim)] ml-1 tabular-nums">v1.0</span>
+          </div>
+
+          {/* Description as terminal output lines */}
+          <div className="flex flex-col gap-0.5 pl-6">
+            <span className="text-[10px] text-[var(--color-text-tertiary)] leading-relaxed">
+              <TypingText text="Open a workspace folder to get started." delay={200} />
+            </span>
+            <span className="text-[10px] text-[var(--color-text-dim)] leading-relaxed">
+              <TypingText text="The agent will index your codebase for intelligent code search," delay={1200} />
+            </span>
+            <span className="text-[10px] text-[var(--color-text-dim)] leading-relaxed">
+              <TypingText text="navigation, and context-aware assistance." delay={2400} />
+            </span>
+          </div>
+
+          {/* Status line */}
+          <div className="flex items-center gap-3 pl-6 mt-1">
+            <div className="flex items-center gap-1.5">
+              <div className="w-[5px] h-[5px] rounded-full bg-[var(--color-success)] shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
+              <span className="text-[9px] text-[var(--color-success)]">ready</span>
+            </div>
+            <span className="text-[9px] text-[var(--color-text-dim)]">workspace: none</span>
+            <span className="text-[9px] text-[var(--color-text-dim)]">session: idle</span>
+          </div>
+        </div>
+
+        {/* Open folder action — styled as terminal command */}
+        <button
+          onClick={handleOpen}
+          className={cn(
+            'group flex items-center gap-2 w-full px-3 py-2.5',
+            'bg-[var(--color-accent-primary)]/8 border border-[var(--color-accent-primary)]/20',
+            'hover:bg-[var(--color-accent-primary)]/15 hover:border-[var(--color-accent-primary)]/40',
+            'transition-all duration-150 rounded-sm',
+            'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/50',
+            'active:scale-[0.995]'
+          )}
+        >
+          <span className="text-[var(--color-accent-primary)] text-xs font-medium opacity-80">λ</span>
+          <span className="text-[11px] text-[var(--color-text-primary)] font-medium tracking-tight">
+            Open Folder
+          </span>
+          <span className="ml-auto text-[9px] text-[var(--color-text-dim)] opacity-0 group-hover:opacity-100 transition-opacity">
+            Ctrl+O
+          </span>
+        </button>
+
+        {/* Recent workspaces — terminal list style */}
+        {recentPaths.length > 0 && (
+          <div className="flex flex-col mt-6">
+            <div className="flex items-center gap-2 mb-2 pl-0.5">
+              <span className="text-[9px] text-[var(--color-text-dim)] uppercase tracking-widest">
+                recent workspaces
+              </span>
+              <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+            </div>
+
+            <div className="flex flex-col gap-px">
+              {recentPaths.slice(0, 6).map((recentPath, index) => {
+                const name = recentPath.split(/[/\\]/).pop() || recentPath;
+                const isHovered = hoveredPath === recentPath;
+                return (
+                  <button
+                    key={recentPath}
+                    onClick={() => handleRecent(recentPath)}
+                    onMouseEnter={() => setHoveredPath(recentPath)}
+                    onMouseLeave={() => setHoveredPath(null)}
+                    className={cn(
+                      'group flex items-center gap-2.5 px-3 py-1.5 text-left rounded-sm',
+                      'transition-all duration-100',
+                      isHovered
+                        ? 'bg-[var(--color-surface-2)] border-l-2 border-[var(--color-accent-primary)]'
+                        : 'bg-transparent border-l-2 border-transparent',
+                      'hover:bg-[var(--color-surface-2)]'
+                    )}
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    <span className={cn(
+                      'text-[10px] tabular-nums w-3 text-right shrink-0 transition-colors',
+                      isHovered ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-dim)]'
+                    )}>
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1 flex items-baseline gap-2">
+                      <span className={cn(
+                        'text-[11px] font-medium truncate transition-colors',
+                        isHovered ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-primary)]'
+                      )}>
+                        {name}
+                      </span>
+                      <span className="text-[9px] text-[var(--color-text-dim)] truncate hidden sm:inline">
+                        {recentPath}
+                      </span>
+                    </div>
+                    <span className={cn(
+                      'text-[9px] shrink-0 transition-all duration-150',
+                      isHovered ? 'text-[var(--color-accent-primary)] opacity-100' : 'text-[var(--color-text-dim)] opacity-0'
+                    )}>
+                      open
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Bottom terminal cursor line */}
+        <div className="flex items-center gap-2 mt-8 pl-0.5">
+          <span className="text-[var(--color-accent-primary)] text-xs opacity-60">λ</span>
+          <span className="inline-block w-[6px] h-[12px] bg-[var(--color-accent-primary)]/70 animate-blink" />
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
+// =============================================================================
+// Home Page
+// =============================================================================
 
 export const Home: React.FC = () => {
-  const { tabs, isEditorVisible, bottomPanelOpen } = useEditor();
-  const [editorWidth, setEditorWidth] = useState(50); // percentage
-  const [isResizing, setIsResizing] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  
-  // Responsive breakpoint detection
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-  
-  // Show editor panel when there are open tabs OR when bottom panel is open
-  // On mobile, always prioritize chat (editor can be shown in a modal or bottom sheet)
-  const showEditor = !isMobile && ((isEditorVisible && tabs.length > 0) || bottomPanelOpen);
-  
-  // Handle resize
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  }, []);
-  
-  useEffect(() => {
-    if (!isResizing) return;
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      const container = document.getElementById('home-split-container');
-      if (!container) return;
-      
-      const rect = container.getBoundingClientRect();
-      const percentage = ((e.clientX - rect.left) / rect.width) * 100;
-      const clampedPercentage = Math.max(20, Math.min(80, percentage));
-      setEditorWidth(clampedPercentage);
-    };
-    
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizing]);
-  
+  const { workspacePath, isLoading } = useWorkspaceState();
+
+  // Show loading placeholder briefly — terminal style
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-[var(--color-surface-base)] font-mono">
+        <div className="flex items-center gap-2">
+          <span className="text-[var(--color-accent-primary)] text-sm opacity-60">λ</span>
+          <span className="text-[10px] text-[var(--color-text-dim)]">loading</span>
+          <span className="flex gap-0.5">
+            <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
+            <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
+            <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show workspace prompt when no workspace is selected
+  if (!workspacePath) {
+    return <WorkspacePrompt />;
+  }
+
   return (
     <div 
       id="home-split-container"
-      className="flex h-full w-full min-h-0 min-w-0 overflow-hidden"
+      className="flex flex-col h-full w-full min-h-0 min-w-0 overflow-hidden"
     >
-      {/* Editor panel - left side when visible */}
-      {showEditor && (
-        <>
-          <div 
-            className="flex flex-col min-w-0 min-h-0 overflow-hidden border-r border-[var(--color-border-subtle)]"
-            style={{ width: `${editorWidth}%` }}
-          >
-            <FeatureErrorBoundary featureName="Editor">
-              <Suspense fallback={<EditorLoader />}>
-                <EditorView />
-              </Suspense>
-            </FeatureErrorBoundary>
-          </div>
-          
-          {/* Resize handle */}
-          <div
-            className={cn(
-              'w-1 cursor-col-resize hover:bg-[var(--color-accent-primary)]/20 transition-colors flex-shrink-0',
-              isResizing && 'bg-[var(--color-accent-primary)]/30'
-            )}
-            onMouseDown={handleResizeStart}
-          />
-        </>
-      )}
-      
-      {/* Chat panel - takes full width or remaining width */}
-      <div 
-        className={cn(
-          "flex flex-col min-w-0 min-h-0 overflow-hidden",
-          showEditor ? 'flex-1' : 'flex-1 w-full'
-        )}
-        style={showEditor ? { width: `${100 - editorWidth}%` } : undefined}
-      >
+      {/* Chat panel - full width */}
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden w-full">
         <FeatureErrorBoundary featureName="Chat">
           <ChatArea />
         </FeatureErrorBoundary>

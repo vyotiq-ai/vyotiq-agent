@@ -6,8 +6,10 @@
  */
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { DiffViewer } from './DiffViewer';
-import { useEditor } from '../../../../state/EditorProvider';
+import { createLogger } from '../../../../utils/logger';
 import type { ToolCall } from './types';
+
+const logger = createLogger('FileChangeDiff');
 
 interface FileChangeDiffProps {
   tool: ToolCall;
@@ -49,19 +51,10 @@ export const FileChangeDiff: React.FC<FileChangeDiffProps> = memo(({
   showActions = false,
   defaultCollapsed = false,
 }) => {
-  const { openFile, showEditor } = useEditor();
   const [isAccepted, setIsAccepted] = useState(false);
   const [isRejected, setIsRejected] = useState(false);
   
   const fileData = useMemo(() => extractFileChangeData(tool), [tool]);
-  
-  // Handle edit - open file in editor (must be before conditional return)
-  const handleEdit = useCallback(() => {
-    if (fileData) {
-      openFile(fileData.filePath);
-      showEditor();
-    }
-  }, [fileData, openFile, showEditor]);
   
   // Handle accept - mark the change as accepted (change is already applied)
   const handleAccept = useCallback(() => {
@@ -78,8 +71,8 @@ export const FileChangeDiff: React.FC<FileChangeDiffProps> = memo(({
       if (result?.success) {
         setIsRejected(true);
       }
-    } catch {
-      // Silently fail - user can try again or use undo panel
+    } catch (err) {
+      logger.warn('Failed to reject file change', { filePath: fileData.filePath, error: err instanceof Error ? err.message : String(err) });
     }
   }, [fileData]);
   
@@ -99,7 +92,7 @@ export const FileChangeDiff: React.FC<FileChangeDiffProps> = memo(({
       diffId={diffId}
       onAccept={showActions ? handleAccept : undefined}
       onReject={showActions && !isNewFile ? handleReject : undefined}
-      onEdit={showActions ? handleEdit : undefined}
+      onEdit={undefined}
       defaultCollapsed={defaultCollapsed}
     />
   );

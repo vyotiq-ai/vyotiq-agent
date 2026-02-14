@@ -737,6 +737,9 @@ export function startBackgroundRefresh(subscription: ClaudeSubscription): void {
       }
     }
   }, REFRESH_CHECK_INTERVAL_MS);
+  if (refreshTimer && typeof refreshTimer === 'object' && 'unref' in refreshTimer) {
+    (refreshTimer as NodeJS.Timeout).unref();
+  }
   
   logger.debug('Background token refresh started');
 }

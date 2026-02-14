@@ -90,10 +90,13 @@ export class IterationRunner {
 
     const modelId = getEffectiveModelId(session, provider, runId, session.agenticContext?.routingDecision);
 
+    // Determine if this message was auto-routed (provider=auto with intelligent routing)
+    const isAutoRouted = session.state.config.preferredProvider === 'auto' && !!session.agenticContext?.routingDecision;
+
     let assistantMessage: ChatMessage;
 
     const existingRunMessage = session.state.messages.find(
-      (m) => m.role === 'assistant' && m.runId === runId && !m.toolCalls?.length
+      (m) => m.role === 'assistant' && m.runId === runId && (!m.toolCalls || m.toolCalls.length === 0)
     );
 
     if (existingRunMessage && iteration > 1) {
@@ -104,6 +107,7 @@ export class IterationRunner {
       if (modelId) {
         assistantMessage.modelId = modelId;
       }
+      assistantMessage.isAutoRouted = isAutoRouted;
     } else {
       assistantMessage = {
         id: randomUUID(),
@@ -114,6 +118,7 @@ export class IterationRunner {
         modelId,
         runId,
         thinking: undefined,
+        isAutoRouted,
       };
     }
 
@@ -170,20 +175,23 @@ export class IterationRunner {
       if (!initialSessionStateSent) {
         initialSessionStateSent = true;
 
-        const sessionStateForEvent = {
-          ...session.state,
-          messages: session.state.messages.map(m =>
-            m.id === assistantMessage.id
-              ? { ...m, content: contentBeforeAppend, thinking: thinkingBeforeAppend }
-              : m
-          )
-        };
+        // Emit session state with the assistant message's content before this chunk.
+        // OPTIMIZATION: Instead of mapping ALL messages (O(n) allocation), we temporarily
+        // patch the assistant message in-place and restore after emit.
+        const savedContent = assistantMessage.content;
+        const savedThinking = assistantMessage.thinking;
+        assistantMessage.content = contentBeforeAppend;
+        assistantMessage.thinking = thinkingBeforeAppend;
 
         this.updateSessionState(session.state.id, {
           messages: session.state.messages,
           updatedAt: Date.now(),
         });
-        this.emitEvent({ type: 'session-state', session: sessionStateForEvent });
+        this.emitEvent({ type: 'session-state', session: session.state });
+
+        // Restore current content
+        assistantMessage.content = savedContent;
+        assistantMessage.thinking = savedThinking;
       }
 
       if (isThinking) {
@@ -568,7 +576,25 @@ export class IterationRunner {
         }
 
         if (isContextOverflowError(error) && attempt <= 2) {
-          this.logger.warn('Context overflow detected', { provider: provider.name, runId, attempt });
+          this.logger.warn('Context overflow detected, pruning context before retry', { provider: provider.name, runId, attempt });
+          
+          // Prune older messages from the middle of the conversation to reduce context size.
+          // Keep the system prompt (first message) and the most recent messages intact.
+          const msgs = session.state.messages;
+          const keepRecent = Math.max(6, Math.floor(msgs.length * 0.3));
+          if (msgs.length > keepRecent + 2) {
+            const pruneCount = Math.ceil((msgs.length - keepRecent - 1) * (0.3 * attempt));
+            if (pruneCount > 0) {
+              // Remove messages from just after the system message
+              msgs.splice(1, pruneCount);
+              this.logger.info('Pruned messages for context overflow retry', {
+                prunedCount: pruneCount,
+                remainingMessages: msgs.length,
+                attempt,
+              });
+            }
+          }
+          
           await this.delay(500);
           continue;
         }

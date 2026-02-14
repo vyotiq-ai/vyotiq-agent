@@ -8,7 +8,7 @@ import { ChevronDown, ChevronRight, Server, TriangleAlert } from 'lucide-react';
 import type { AgentSettings, LLMProviderName } from '../../../../shared/types';
 import { PROVIDERS, PROVIDER_ORDER, isProviderConfigured } from '../../../../shared/providers';
 import { cn } from '../../../utils/cn';
-import { SettingsGroup } from '../primitives';
+import { SettingsSection, SettingsGroup } from '../primitives';
 
 interface SettingsAdvancedProps {
   rateLimits: AgentSettings['rateLimits'];
@@ -28,23 +28,22 @@ export const SettingsAdvanced: React.FC<SettingsAdvancedProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <section className="space-y-3 font-mono">
+    <SettingsSection title="advanced" description="Rate limits, timeouts, custom endpoints">
       <button
         className={cn(
           "w-full flex items-center justify-between text-left group",
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
         )}
         onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
       >
-        <header>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[var(--color-warning)] text-[11px]">!</span>
-            <h3 className="text-[11px] text-[var(--color-text-primary)] group-hover:text-[var(--color-accent-primary)] transition-colors">
-              advanced
-            </h3>
-          </div>
-          <p className="text-[10px] text-[var(--color-text-dim)]"># Rate limits, timeouts, custom endpoints</p>
-        </header>
+        <div className="flex items-center gap-2">
+          <span className="text-[var(--color-warning)] text-[11px]">!</span>
+          <span className="text-[11px] text-[var(--color-text-primary)] group-hover:text-[var(--color-accent-primary)] transition-colors">
+            expert settings
+          </span>
+          <span className="text-[10px] text-[var(--color-text-dim)]"># modify with caution</span>
+        </div>
         {isExpanded ? (
           <ChevronDown size={12} className="text-[var(--color-text-muted)]" />
         ) : (
@@ -183,8 +182,6 @@ export const SettingsAdvanced: React.FC<SettingsAdvancedProps> = ({
           </SettingsGroup>
         </div>
       )}
-    </section>
+    </SettingsSection>
   );
 };
-
-export default SettingsAdvanced;

@@ -13,7 +13,7 @@ export interface DynamicToolInfoIPC {
   id: string;
   name: string;
   description: string;
-  status: 'active' | 'disabled' | 'deprecated';
+  status: 'active' | 'disabled' | 'expired';
   category?: string;
   usageCount: number;
   successRate: number;
@@ -38,8 +38,10 @@ export interface DynamicToolSpecResponse {
   spec?: {
     name: string;
     description: string;
-    parameters: Record<string, unknown>;
-    implementation?: string;
+    inputSchema: Record<string, unknown>;
+    executionType: string;
+    requiredCapabilities: string[];
+    riskLevel: string;
   };
   error?: string;
 }

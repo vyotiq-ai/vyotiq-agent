@@ -37,7 +37,6 @@
 
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useAgentActions, useAgentSelector } from '../../../state/AgentProvider';
-import { useActiveWorkspace } from '../../../hooks/useActiveWorkspace';
 import type { ChatMessage } from '../../../../shared/types';
 
 // Import composable hooks
@@ -60,7 +59,6 @@ import { useWorkspaceFiles } from './useWorkspaceFiles';
  */
 export const useChatInput = () => {
   const actions = useAgentActions();
-  const activeWorkspace = useActiveWorkspace();
 
   const sessionSnapshot = useAgentSelector(
     (state) => {
@@ -95,7 +93,6 @@ export const useChatInput = () => {
       return {
         activeSessionId: state.activeSessionId,
         activeSessionStatus: activeSession?.status,
-        activeSessionWorkspaceId: activeSession?.workspaceId,
         activeSessionConfig: {
           yoloMode: activeSession?.config?.yoloMode ?? false,
           preferredProvider: activeSession?.config?.preferredProvider ?? 'auto',
@@ -109,7 +106,6 @@ export const useChatInput = () => {
     (a, b) => {
       if (a.activeSessionId !== b.activeSessionId) return false;
       if (a.activeSessionStatus !== b.activeSessionStatus) return false;
-      if (a.activeSessionWorkspaceId !== b.activeSessionWorkspaceId) return false;
       if (a.activeSessionConfig.yoloMode !== b.activeSessionConfig.yoloMode) return false;
       if (a.activeSessionConfig.preferredProvider !== b.activeSessionConfig.preferredProvider) return false;
       if (a.activeSessionConfig.selectedModelId !== b.activeSessionConfig.selectedModelId) return false;
@@ -135,7 +131,6 @@ export const useChatInput = () => {
     return {
       id: sessionSnapshot.activeSessionId,
       status: sessionSnapshot.activeSessionStatus,
-      workspaceId: sessionSnapshot.activeSessionWorkspaceId,
       config: {
         yoloMode: sessionSnapshot.activeSessionConfig.yoloMode,
         preferredProvider: sessionSnapshot.activeSessionConfig.preferredProvider,
@@ -145,7 +140,6 @@ export const useChatInput = () => {
   }, [
     sessionSnapshot.activeSessionId,
     sessionSnapshot.activeSessionStatus,
-    sessionSnapshot.activeSessionWorkspaceId,
     sessionSnapshot.activeSessionConfig.yoloMode,
     sessionSnapshot.activeSessionConfig.preferredProvider,
     sessionSnapshot.activeSessionConfig.selectedModelId,
@@ -153,12 +147,8 @@ export const useChatInput = () => {
 
   const agentBusy = sessionSnapshot.activeSessionStatus === 'running' || sessionSnapshot.activeSessionStatus === 'awaiting-confirmation';
   
-  // Check if session workspace matches active workspace
-  const sessionWorkspaceValid = useMemo(() => {
-    if (!activeWorkspace) return false;
-    if (!activeSession) return true; // No session is valid - will create new one with correct workspace
-    return activeSession.workspaceId === activeWorkspace.id;
-  }, [activeSession, activeWorkspace]);
+  // No workspace filtering - always valid
+  const sessionWorkspaceValid = true;
 
   // === Compose the focused hooks ===
   
@@ -170,7 +160,7 @@ export const useChatInput = () => {
 
   // Workspace files for @ mentions
   const workspaceFiles = useWorkspaceFiles({
-    workspacePath: activeWorkspace?.path,
+    workspacePath: undefined,
     autoLoad: true,
   });
 
@@ -179,7 +169,7 @@ export const useChatInput = () => {
     message: messageState.message,
     cursorPosition,
     workspaceFiles: workspaceFiles.filesWithType,
-    workspacePath: activeWorkspace?.path ?? undefined,
+    workspacePath: undefined,
     enabled: true,
     isLoading: workspaceFiles.isLoading,
   });
@@ -187,7 +177,6 @@ export const useChatInput = () => {
   // Draft auto-save
   const draft = useDraftMessage({
     sessionId: activeSession?.id,
-    workspaceId: activeWorkspace?.id,
     enabled: true,
   });
 
@@ -204,7 +193,7 @@ export const useChatInput = () => {
         draftRestoredRef.current = true;
       }
     }
-  }, [activeSession?.id, activeWorkspace?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSession?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset draft restored flag when session changes
   useEffect(() => {
@@ -263,7 +252,6 @@ export const useChatInput = () => {
     clearMessage: clearMessageAndDraft,
     activeSession,
     agentBusy: agentBusy ?? false,
-    activeWorkspace,
     sessionWorkspaceValid,
     selectedProvider: providerSelection.selectedProvider,
     selectedModelId: providerSelection.selectedModelId,
@@ -358,7 +346,6 @@ export const useChatInput = () => {
     // Context state
     agentBusy,
     activeSession,
-    activeWorkspace,
     sessionWorkspaceValid,
     
     // Handlers - message

@@ -502,10 +502,10 @@ describe('Error Recovery E2E', () => {
       expect(flags.enableSafetyFramework).toBe(false);
     });
 
-    it('should respect custom dynamic tools limit', () => {
-      const flags = createDefaultFeatureFlags({ maxDynamicToolsPerSession: 5 });
+    it('should respect custom tool settings', () => {
+      const flags = createDefaultFeatureFlags({ toolSettings: { maxConcurrentTools: 5 } });
       
-      expect(flags.maxDynamicToolsPerSession).toBe(5);
+      expect(flags.toolSettings?.maxConcurrentTools).toBe(5);
     });
   });
 

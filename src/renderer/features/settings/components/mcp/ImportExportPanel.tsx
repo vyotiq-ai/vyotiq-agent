@@ -183,7 +183,7 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
 
         <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
           {/* Export section */}
-          <div className="p-3 sm:p-4 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)] space-y-2 sm:space-y-3">
+          <div className="p-3 sm:p-4 bg-[var(--color-surface-base)] border border-[var(--color-border)] space-y-2 sm:space-y-3">
             <h4 className="text-[10px] sm:text-[11px] font-medium text-[var(--color-text-primary)]">Export</h4>
             <p className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)]">
               Download your server configurations as JSON. Environment variables are excluded for
@@ -227,7 +227,7 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
           </div>
 
           {/* Import section */}
-          <div className="p-3 sm:p-4 rounded-lg bg-[var(--color-surface-base)] border border-[var(--color-border)] space-y-2 sm:space-y-3">
+          <div className="p-3 sm:p-4 bg-[var(--color-surface-base)] border border-[var(--color-border)] space-y-2 sm:space-y-3">
             <h4 className="text-[10px] sm:text-[11px] font-medium text-[var(--color-text-primary)]">Import</h4>
             <p className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)]">
               Import server configurations from a JSON file or clipboard. You'll need to
@@ -273,7 +273,7 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
         {importResult && (
           <div
             className={cn(
-              'flex items-start gap-3 p-3 rounded-lg border',
+              'flex items-start gap-3 p-3 border',
               importResult.success
                 ? 'bg-[var(--color-success)]/5 border-[var(--color-success)]/30'
                 : 'bg-[var(--color-error)]/5 border-[var(--color-error)]/30'

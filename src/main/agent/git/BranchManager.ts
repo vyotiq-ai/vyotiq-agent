@@ -509,6 +509,9 @@ export class BranchManager extends EventEmitter {
         }
       }
     }, this.config.checkpointIntervalMs);
+    if (this.checkpointInterval && typeof this.checkpointInterval === 'object' && 'unref' in this.checkpointInterval) {
+      (this.checkpointInterval as NodeJS.Timeout).unref();
+    }
   }
 
   private getAgentBranchCount(agentId: string): number {

@@ -92,6 +92,9 @@ export class FailoverManager {
   // Custom failover chains
   private failoverChains: Record<string, LLMProviderName[]>;
 
+  // Set of providers that have valid API keys configured
+  private configuredProviders = new Set<LLMProviderName>();
+
   constructor(
     logger: Logger,
     healthMonitor?: ProviderHealthMonitor,
@@ -250,9 +253,34 @@ export class FailoverManager {
   }
 
   /**
+   * Update the set of providers that have valid API keys configured.
+   * Called when settings change so failover targets are accurate.
+   */
+  updateConfiguredProviders(providers: Set<LLMProviderName>): void {
+    this.configuredProviders = new Set(providers);
+    // Reset circuit breakers when provider configuration changes -
+    // old failures may no longer be relevant with updated API keys/settings
+    this.resetAllCircuitBreakers();
+  }
+
+  /**
+   * Reset all circuit breakers (e.g., after provider settings change)
+   */
+  resetAllCircuitBreakers(): void {
+    for (const provider of this.circuitBreakerState.keys()) {
+      this.resetCircuitBreaker(provider);
+    }
+  }
+
+  /**
    * Check if a provider is available for failover
    */
   private isProviderAvailable(provider: LLMProviderName): boolean {
+    // Check if provider has a configured API key
+    if (this.configuredProviders.size > 0 && !this.configuredProviders.has(provider)) {
+      return false;
+    }
+
     // Check circuit breaker
     const circuitBreaker = this.circuitBreakerState.get(provider);
     if (circuitBreaker?.isOpen) {
@@ -302,12 +330,19 @@ export class FailoverManager {
   }
 
   /**
-   * Record a successful request (resets failure count)
+   * Record a successful request (resets failure count and closes circuit breaker)
    */
   recordSuccess(provider: LLMProviderName): void {
     const state = this.circuitBreakerState.get(provider);
     if (state) {
+      const wasOpen = state.isOpen;
       state.failures = 0;
+      state.isOpen = false;
+      state.openUntil = 0;
+
+      if (wasOpen) {
+        this.logger.info('Circuit breaker closed after successful request', { provider });
+      }
     }
   }
 

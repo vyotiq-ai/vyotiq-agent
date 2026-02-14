@@ -16,12 +16,12 @@ import type {
   TokenUsage,
   RoutingDecision,
   TaskRoutingSettings,
+  ToolConfigSettings,
 } from '../../../shared/types';
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
 import type { ProviderMap } from '../providers';
 import type { ToolRegistry, TerminalManager } from '../../tools';
-import type { WorkspaceManager } from '../../workspaces/workspaceManager';
 import type { LLMProvider } from '../providers/baseProvider';
 import type { DebugSettings, AccessLevelSettings } from '../../../shared/types';
 
@@ -41,7 +41,6 @@ export interface RunExecutorDeps {
   providers: ProviderMap;
   toolRegistry: ToolRegistry;
   terminalManager: TerminalManager;
-  workspaceManager: WorkspaceManager;
   logger: Logger;
   emitEvent: (event: RendererEvent | AgentEvent) => void;
   getRateLimit: (provider: LLMProviderName) => number;
@@ -53,6 +52,7 @@ export interface RunExecutorDeps {
   getPromptSettings?: () => PromptSettings | undefined;
   getComplianceSettings?: () => ComplianceSettings | undefined;
   getAccessLevelSettings?: () => AccessLevelSettings | undefined;
+  getToolSettings?: () => ToolConfigSettings | undefined;
   getTaskRoutingSettings?: () => TaskRoutingSettings | undefined;
   getEditorState?: () => EditorState;
   getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>;
@@ -64,7 +64,6 @@ export interface RunExecutorDeps {
  * Editor state for context injection
  */
 export interface EditorState {
-  openFiles: string[];
   activeFile: string | null;
   cursorPosition: { lineNumber: number; column: number } | null;
   diagnostics?: Array<{
@@ -93,7 +92,7 @@ export interface WorkspaceDiagnostics {
     endColumn?: number;
     message: string;
     severity: 'error' | 'warning' | 'info' | 'hint';
-    source: 'typescript' | 'eslint';
+    source: string;
     code?: string | number;
   }>;
   errorCount: number;

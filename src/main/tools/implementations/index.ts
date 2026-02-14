@@ -15,12 +15,18 @@ import { runTerminalTool } from './runTerminal';
 import { checkTerminalTool } from './checkTerminal';
 import { killTerminalTool } from './killTerminal';
 import { readLintsTool } from './readLints';
+// Semantic search tools (vector embeddings + NL queries + code similarity)
+import { semanticSearchTool } from './semanticSearch';
+import { codeQueryTool } from './codeQuery';
+import { codeSimilarityTool } from './codeSimilarity';
+// Full-text search tool (BM25 ranked keyword search via Tantivy)
+import { fullTextSearchTool } from './fullTextSearch';
 
 import { createToolTool } from './createTool';
 import { requestToolsTool } from './requestTools';
 // Todo/Task tracking tools
 import { todoWriteTool } from './todoWrite';
-import { createPlanTool as _createPlanTool, verifyTasksTool as _verifyTasksTool, getActivePlanTool as _getActivePlanTool, listPlansTool as _listPlansTool, deletePlanTool as _deletePlanTool } from './todo';
+import { createPlanTool, verifyTasksTool, getActivePlanTool, listPlansTool, deletePlanTool } from './todo';
 // Browser tools - now modular (separate tools for each action)
 import { BROWSER_TOOLS } from './browser';
 // LSP tools - multi-language code intelligence
@@ -48,13 +54,8 @@ export function markAsDeferred<T extends ToolDefinition>(tool: T, keywords: stri
 
 // Task tools are always available - they're essential for autonomous task management
 // The agent should use these tools for any multi-step task to track progress
-const createPlanTool = _createPlanTool;
-const verifyTasksTool = _verifyTasksTool;
-const getActivePlanTool = _getActivePlanTool;
-const listPlansTool = _listPlansTool;
-const deletePlanTool = _deletePlanTool;
 
-// Re-export the modified tools
+// Re-export the tools
 export { createPlanTool, verifyTasksTool, getActivePlanTool, listPlansTool, deletePlanTool };
 
 // Re-export individual tools
@@ -69,6 +70,14 @@ export { runTerminalTool } from './runTerminal';
 export { checkTerminalTool } from './checkTerminal';
 export { killTerminalTool } from './killTerminal';
 export { readLintsTool } from './readLints';
+
+// Semantic search tools
+export { semanticSearchTool } from './semanticSearch';
+export { codeQueryTool } from './codeQuery';
+export { codeSimilarityTool } from './codeSimilarity';
+
+// Full-text search tool (BM25 ranked keyword search)
+export { fullTextSearchTool } from './fullTextSearch';
 
 // Dynamic tool creation
 export { createToolTool } from './createTool';
@@ -151,6 +160,12 @@ export const ALL_TOOLS: ToolDefinition[] = [
   killTerminalTool,
   // Code intelligence (legacy)
   readLintsTool,
+  // Semantic search (vector embeddings + NL queries + code similarity)
+  semanticSearchTool,
+  codeQueryTool,
+  codeSimilarityTool,
+  // Full-text search (BM25 ranked keyword search via Tantivy)
+  fullTextSearchTool,
   // Dynamic tool creation
   createToolTool,
   // Agent tool control

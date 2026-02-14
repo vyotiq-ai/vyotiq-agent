@@ -8,15 +8,9 @@
  */
 
 // Main component
-// Note: previous versions referenced a separate "ChatInputRedesigned" module.
-// The current codebase ships a single implementation in `ChatInput.tsx`.
 export { ChatInput } from './ChatInput';
 
-// Backwards-compatible aliases
-export { ChatInput as ChatInputLegacy } from './ChatInput';
-export { ChatInput as ChatInputRedesigned } from './ChatInput';
-
-// Legacy sub-components (still used internally)
+// Sub-components (used internally and for custom layouts)
 export { InputHeader } from './InputHeader';
 export { InputTextarea } from './InputTextarea';
 export { InputToolbar } from './InputToolbar';

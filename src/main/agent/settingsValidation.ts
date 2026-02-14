@@ -16,10 +16,10 @@ import type {
   PromptSettings,
   SafetySettings,
   ToolConfigSettings,
-  EditorAISettings,
   AppearanceSettings,
   DebugSettings,
   CacheSettings,
+  WorkspaceIndexingSettings,
   LLMProviderName,
 } from '../../shared/types';
 import type {
@@ -27,21 +27,9 @@ import type {
 } from '../../shared/types/mcp';
 import {
   DEFAULT_BROWSER_SETTINGS,
-  // These defaults are imported for reference - some are used in sanitize functions
-  DEFAULT_COMPLIANCE_SETTINGS as _DEFAULT_COMPLIANCE_SETTINGS,
-  DEFAULT_ACCESS_LEVEL_SETTINGS as _DEFAULT_ACCESS_LEVEL_SETTINGS,
-  DEFAULT_TASK_ROUTING_SETTINGS as _DEFAULT_TASK_ROUTING_SETTINGS,
-  DEFAULT_PROMPT_SETTINGS as _DEFAULT_PROMPT_SETTINGS,
   DEFAULT_TOOL_CONFIG_SETTINGS,
-  DEFAULT_EDITOR_AI_SETTINGS as _DEFAULT_EDITOR_AI_SETTINGS,
-  DEFAULT_APPEARANCE_SETTINGS as _DEFAULT_APPEARANCE_SETTINGS,
-  DEFAULT_DEBUG_SETTINGS as _DEFAULT_DEBUG_SETTINGS,
-  DEFAULT_CACHE_SETTINGS as _DEFAULT_CACHE_SETTINGS,
   SETTINGS_CONSTRAINTS,
 } from '../../shared/types';
-import {
-  DEFAULT_MCP_SETTINGS as _DEFAULT_MCP_SETTINGS,
-} from '../../shared/types/mcp';
 
 const logger = createLogger('SettingsValidation');
 
@@ -89,29 +77,6 @@ function validateRange(
       message: `${field} must be between ${min} and ${max}`,
       value,
     });
-  }
-}
-
-// Note: These validation functions are available for future validation rules
-function _validatePositive(
-  value: number | undefined,
-  field: string,
-  errors: ValidationError[]
-): void {
-  if (value === undefined) return;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    errors.push({ field, message: `${field} must be a positive number`, value });
-  }
-}
-
-function _validateNonNegative(
-  value: number | undefined,
-  field: string,
-  errors: ValidationError[]
-): void {
-  if (value === undefined) return;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    errors.push({ field, message: `${field} must be a non-negative number`, value });
   }
 }
 
@@ -608,54 +573,11 @@ export function validateSafetySettings(settings: Partial<SafetySettings>): Valid
 }
 
 // =============================================================================
-// Editor AI Settings Validation
-// =============================================================================
-
-const VALID_PROVIDERS: readonly (LLMProviderName | 'auto')[] = [
-  'anthropic', 'openai', 'deepseek', 'gemini', 'openrouter', 'xai', 'mistral', 'glm', 'auto'
-] as const;
-
-export function validateEditorAISettings(settings: Partial<EditorAISettings>): ValidationResult {
-  const errors: ValidationError[] = [];
-  const warnings: ValidationWarning[] = [];
-  // Note: defaults available as DEFAULT_EDITOR_AI_SETTINGS if needed for validation reference
-
-  // Validate debounce delay (50ms to 2000ms)
-  validateRange(settings.inlineCompletionDebounceMs, 50, 2000, 'inlineCompletionDebounceMs', errors);
-
-  // Validate max tokens (16 to 2048)
-  validateRange(settings.inlineCompletionMaxTokens, 16, 2048, 'inlineCompletionMaxTokens', errors);
-
-  // Validate temperature (0 to 1 for completions)
-  validateRange(settings.completionTemperature, 0, 1, 'completionTemperature', errors);
-
-  // Validate context lines (1 to 500)
-  validateRange(settings.contextLinesBefore, 1, 500, 'contextLinesBefore', errors);
-  validateRange(settings.contextLinesAfter, 1, 200, 'contextLinesAfter', errors);
-
-  // Validate provider
-  validateEnum(settings.preferredProvider, VALID_PROVIDERS, 'preferredProvider', errors);
-
-  // Warn if all features are disabled
-  if (settings.enableInlineCompletions === false && 
-      settings.enableQuickFixes === false && 
-      settings.enableCodeActions === false) {
-    warnings.push({
-      field: 'editorAISettings',
-      message: 'All Editor AI features are disabled',
-      suggestion: 'Enable at least one feature to use Editor AI capabilities',
-    });
-  }
-
-  return { valid: errors.length === 0, errors, warnings };
-}
-
-// =============================================================================
 // Appearance Settings Validation
 // =============================================================================
 
 const VALID_FONT_SIZE_SCALES = ['compact', 'default', 'comfortable', 'large'] as const;
-const VALID_ACCENT_COLORS = ['emerald', 'blue', 'purple', 'amber', 'rose', 'custom'] as const;
+const VALID_ACCENT_COLORS = ['emerald', 'violet', 'blue', 'amber', 'rose', 'cyan', 'custom'] as const;
 const VALID_TERMINAL_FONTS = ['JetBrains Mono', 'Fira Code', 'Source Code Pro', 'Cascadia Code', 'Monaco', 'Menlo', 'Consolas', 'system'] as const;
 // Must match LoadingIndicatorStyle type: 'spinner' | 'dots' | 'pulse' | 'minimal'
 const VALID_LOADING_INDICATOR_STYLES = ['spinner', 'dots', 'pulse', 'minimal'] as const;
@@ -849,6 +771,95 @@ export function validateMCPSettings(settings: Partial<MCPSettings>): ValidationR
 }
 
 // =============================================================================
+// Rate Limits Validation
+// =============================================================================
+
+/**
+ * Validate rate limits settings.
+ * rateLimits is a map of provider name to requests-per-minute number.
+ */
+export function validateRateLimits(
+  rateLimits: Partial<Record<LLMProviderName, number>> | undefined
+): ValidationResult {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
+
+  if (!rateLimits || typeof rateLimits !== 'object') {
+    return { valid: true, errors, warnings };
+  }
+
+  for (const [provider, value] of Object.entries(rateLimits)) {
+    if (value === undefined || value === null) continue;
+
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      errors.push({
+        field: `rateLimits.${provider}`,
+        message: `Rate limit for ${provider} must be a valid number`,
+        value,
+      });
+      continue;
+    }
+
+    if (value < 1 || value > 10000) {
+      errors.push({
+        field: `rateLimits.${provider}`,
+        message: `Rate limit for ${provider} must be between 1 and 10000 requests per minute`,
+        value,
+      });
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+// =============================================================================
+// Workspace Indexing Settings Validation
+// =============================================================================
+
+export function validateWorkspaceSettings(settings: Partial<WorkspaceIndexingSettings>): ValidationResult {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
+
+  // Validate ranges
+  validateRange(settings.watcherDebounceMs, 100, 5000, 'watcherDebounceMs', errors);
+  validateRange(settings.maxFileSizeBytes, 512 * 1024, 50 * 1024 * 1024, 'maxFileSizeBytes', errors);
+  validateRange(settings.maxIndexSizeMb, 64, 2048, 'maxIndexSizeMb', errors);
+  validateRange(settings.indexBatchSize, 10, 500, 'indexBatchSize', errors);
+  validateRange(settings.embeddingChunkSize, 256, 4096, 'embeddingChunkSize', errors);
+  validateRange(settings.embeddingChunkOverlap, 0, 512, 'embeddingChunkOverlap', errors);
+  validateRange(settings.maxChunksPerFile, 10, 1000, 'maxChunksPerFile', errors);
+  validateRange(settings.embeddingBatchSize, 16, 512, 'embeddingBatchSize', errors);
+  validateRange(settings.maxContextResults, 1, 50, 'maxContextResults', errors);
+  validateRange(settings.minSimilarityScore, 0, 1, 'minSimilarityScore', errors);
+
+  // Validate arrays
+  validateStringArray(settings.excludePatterns, 'excludePatterns', errors);
+  validateStringArray(settings.includePatterns, 'includePatterns', errors);
+
+  // Warn if chunk overlap >= chunk size
+  if (settings.embeddingChunkOverlap !== undefined && settings.embeddingChunkSize !== undefined) {
+    if (settings.embeddingChunkOverlap >= settings.embeddingChunkSize) {
+      warnings.push({
+        field: 'embeddingChunkOverlap',
+        message: 'Chunk overlap should be less than chunk size for meaningful chunking',
+        suggestion: 'Set embeddingChunkOverlap to less than embeddingChunkSize',
+      });
+    }
+  }
+
+  // Warn if similarity score is too low
+  if (settings.minSimilarityScore !== undefined && settings.minSimilarityScore < 0.1) {
+    warnings.push({
+      field: 'minSimilarityScore',
+      message: 'Very low similarity threshold may inject irrelevant code into agent context',
+      suggestion: 'Consider setting minSimilarityScore to at least 0.2',
+    });
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+// =============================================================================
 // Combined Settings Validation
 // =============================================================================
 
@@ -863,11 +874,12 @@ export interface FullValidationResult {
     prompt?: ValidationResult;
     tool?: ValidationResult;
     safety?: ValidationResult;
-    editorAI?: ValidationResult;
     appearance?: ValidationResult;
     debug?: ValidationResult;
     cache?: ValidationResult;
     mcp?: ValidationResult;
+    workspace?: ValidationResult;
+    rateLimits?: ValidationResult;
   };
   totalErrors: number;
   totalWarnings: number;
@@ -882,15 +894,22 @@ export function validateAllSettings(settings: {
   promptSettings?: Partial<PromptSettings>;
   toolSettings?: Partial<ToolConfigSettings>;
   safetySettings?: Partial<SafetySettings>;
-  editorAISettings?: Partial<EditorAISettings>;
   appearanceSettings?: Partial<AppearanceSettings>;
   debugSettings?: Partial<DebugSettings>;
   cacheSettings?: Partial<CacheSettings>;
   mcpSettings?: Partial<MCPSettings>;
+  workspaceSettings?: Partial<WorkspaceIndexingSettings>;
+  rateLimits?: Partial<Record<LLMProviderName, number>>;
 }): FullValidationResult {
   const sections: FullValidationResult['sections'] = {};
   let totalErrors = 0;
   let totalWarnings = 0;
+
+  if (settings.rateLimits) {
+    sections.rateLimits = validateRateLimits(settings.rateLimits);
+    totalErrors += sections.rateLimits.errors.length;
+    totalWarnings += sections.rateLimits.warnings.length;
+  }
 
   if (settings.defaultConfig) {
     sections.defaultConfig = validateAgentConfig(settings.defaultConfig);
@@ -940,12 +959,6 @@ export function validateAllSettings(settings: {
     totalWarnings += sections.safety.warnings.length;
   }
 
-  if (settings.editorAISettings) {
-    sections.editorAI = validateEditorAISettings(settings.editorAISettings);
-    totalErrors += sections.editorAI.errors.length;
-    totalWarnings += sections.editorAI.warnings.length;
-  }
-
   if (settings.appearanceSettings) {
     sections.appearance = validateAppearanceSettings(settings.appearanceSettings);
     totalErrors += sections.appearance.errors.length;
@@ -968,6 +981,12 @@ export function validateAllSettings(settings: {
     sections.mcp = validateMCPSettings(settings.mcpSettings);
     totalErrors += sections.mcp.errors.length;
     totalWarnings += sections.mcp.warnings.length;
+  }
+
+  if (settings.workspaceSettings) {
+    sections.workspace = validateWorkspaceSettings(settings.workspaceSettings);
+    totalErrors += sections.workspace.errors.length;
+    totalWarnings += sections.workspace.warnings.length;
   }
 
   const valid = totalErrors === 0;

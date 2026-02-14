@@ -307,9 +307,9 @@ describe('Dynamic Tools Integration', () => {
     });
 
     it('should respect max tools per session', () => {
-      const flags = createDefaultFeatureFlags({ maxDynamicToolsPerSession: 5 });
+      const flags = createDefaultFeatureFlags({ toolSettings: { maxConcurrentTools: 5 } });
       
-      expect(flags.maxDynamicToolsPerSession).toBe(5);
+      expect(flags.toolSettings?.maxConcurrentTools).toBe(5);
     });
 
     it('should disable dynamic tools when flag is off', () => {

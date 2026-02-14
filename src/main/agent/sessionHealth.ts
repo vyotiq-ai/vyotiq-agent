@@ -107,6 +107,13 @@ export class SessionHealthMonitor {
   private sessions = new Map<string, SessionHealthState>();
   private eventEmitter?: (event: { type: string; sessionId: string; data: unknown }) => void;
 
+  /** Minimum interval (ms) between emitted health updates per session */
+  private static readonly HEALTH_EMIT_THROTTLE_MS = 2000;
+  /** Shorter throttle interval for healthy sessions (less noisy) */
+  private static readonly HEALTH_EMIT_THROTTLE_HEALTHY_MS = 5000;
+  /** Track last health-event emission time per session */
+  private lastHealthEmitTime = new Map<string, number>();
+
   constructor(config: Partial<SessionHealthConfig> = {}) {
     this.config = { ...DEFAULT_SESSION_HEALTH_CONFIG, ...config };
   }
@@ -162,6 +169,12 @@ export class SessionHealthMonitor {
     if (state.lastIterationStartedAt) {
       const iterationTime = now - state.lastIterationStartedAt;
       state.iterationTimes.push(iterationTime);
+      
+      // Cap iterationTimes to prevent unbounded memory growth in long sessions
+      // Keep only the most recent 200 entries — enough for averages and trend detection
+      if (state.iterationTimes.length > 200) {
+        state.iterationTimes = state.iterationTimes.slice(-200);
+      }
       
       // Check for slow response
       if (iterationTime > this.config.slowResponseThresholdMs) {
@@ -363,6 +376,7 @@ export class SessionHealthMonitor {
    */
   stopMonitoring(sessionId: string): void {
     this.sessions.delete(sessionId);
+    this.lastHealthEmitTime.delete(sessionId);
     logger.debug('Session monitoring stopped', { sessionId });
   }
 
@@ -530,84 +544,37 @@ export class SessionHealthMonitor {
   }
 
   private emitHealthUpdate(sessionId: string): void {
-    if (this.eventEmitter) {
-      const status = this.getHealthStatus(sessionId);
-      this.eventEmitter({
-        type: 'session-health-update',
-        sessionId,
-        data: status,
-      });
+    if (!this.eventEmitter) return;
+
+    const now = Date.now();
+    const lastEmit = this.lastHealthEmitTime.get(sessionId) ?? 0;
+
+    // Use a longer throttle interval for healthy sessions to reduce noise,
+    // shorter interval for unhealthy sessions so problems surface quickly.
+    const state = this.sessions.get(sessionId);
+    const hasRecentErrors = state?.issues.some(
+      i => i.severity === 'error' && now - i.detectedAt < 60000
+    );
+    const throttleMs = hasRecentErrors
+      ? SessionHealthMonitor.HEALTH_EMIT_THROTTLE_MS
+      : SessionHealthMonitor.HEALTH_EMIT_THROTTLE_HEALTHY_MS;
+
+    if (now - lastEmit < throttleMs) {
+      return; // Throttled — skip this emission
     }
+
+    this.lastHealthEmitTime.set(sessionId, now);
+    const status = this.getHealthStatus(sessionId);
+    this.eventEmitter({
+      type: 'session-health-update',
+      sessionId,
+      data: status,
+    });
   }
 
   // ===========================================================================
-  // Multi-Session Workspace Health Aggregation
+  // Stall Detection
   // ===========================================================================
-
-  /**
-   * Get aggregated health status for all sessions in a workspace.
-   * Useful for workspace-level resource monitoring when multiple sessions run concurrently.
-   */
-  getWorkspaceHealth(workspaceId: string, workspaceSessionIds: string[]): WorkspaceHealthStatus {
-    const sessionHealthStatuses: SessionHealthStatus[] = [];
-    let aggregateIssueCount = 0;
-    let aggregateHealthScore = 0;
-    let totalTokensUsed = 0;
-    let totalCost = 0;
-    let activeSessions = 0;
-
-    for (const sessionId of workspaceSessionIds) {
-      const status = this.getHealthStatus(sessionId);
-      if (status.status !== 'unknown') {
-        sessionHealthStatuses.push(status);
-        aggregateIssueCount += status.issues.length;
-        aggregateHealthScore += status.healthScore;
-        totalTokensUsed += status.tokenUsage.totalInput + status.tokenUsage.totalOutput;
-        totalCost += status.tokenUsage.estimatedCost;
-        activeSessions++;
-      }
-    }
-
-    // Calculate average health score (or 100 if no active sessions)
-    const averageHealthScore = activeSessions > 0 
-      ? Math.round(aggregateHealthScore / activeSessions)
-      : 100;
-
-    // Determine overall workspace status based on session statuses
-    let workspaceStatus: 'healthy' | 'warning' | 'critical' | 'unknown' = 'healthy';
-    const criticalCount = sessionHealthStatuses.filter(s => s.status === 'critical').length;
-    const warningCount = sessionHealthStatuses.filter(s => s.status === 'warning').length;
-
-    if (criticalCount > 0) {
-      workspaceStatus = 'critical';
-    } else if (warningCount > 0 || averageHealthScore < 70) {
-      workspaceStatus = 'warning';
-    } else if (activeSessions === 0) {
-      workspaceStatus = 'unknown';
-    }
-
-    // Collect all unique recommendations across sessions
-    const allRecommendations = new Set<string>();
-    for (const status of sessionHealthStatuses) {
-      for (const rec of status.recommendations) {
-        allRecommendations.add(rec);
-      }
-    }
-
-    return {
-      workspaceId,
-      status: workspaceStatus,
-      averageHealthScore,
-      activeSessions,
-      totalSessions: workspaceSessionIds.length,
-      totalIssues: aggregateIssueCount,
-      totalTokensUsed,
-      estimatedTotalCost: Math.round(totalCost * 10000) / 10000,
-      sessionStatuses: sessionHealthStatuses,
-      recommendations: Array.from(allRecommendations).slice(0, 5), // Top 5 recommendations
-      lastUpdated: Date.now(),
-    };
-  }
 
   /**
    * Check all active sessions for stalls and return session IDs that have stalled.
@@ -626,35 +593,17 @@ export class SessionHealthMonitor {
 
     return stalling;
   }
-}
 
-// =============================================================================
-// Workspace Health Status Type
-// =============================================================================
-
-export interface WorkspaceHealthStatus {
-  /** Workspace ID */
-  workspaceId: string;
-  /** Overall workspace health status */
-  status: 'healthy' | 'warning' | 'critical' | 'unknown';
-  /** Average health score across all sessions (0-100) */
-  averageHealthScore: number;
-  /** Number of currently active/monitored sessions */
-  activeSessions: number;
-  /** Total number of sessions in workspace */
-  totalSessions: number;
-  /** Total issues across all sessions */
-  totalIssues: number;
-  /** Total tokens used across all sessions */
-  totalTokensUsed: number;
-  /** Estimated total cost across all sessions */
-  estimatedTotalCost: number;
-  /** Individual session health statuses */
-  sessionStatuses: SessionHealthStatus[];
-  /** Combined recommendations across sessions */
-  recommendations: string[];
-  /** Last update timestamp */
-  lastUpdated: number;
+  /**
+   * Dispose all session state and reset the monitor.
+   * Called during orchestrator shutdown.
+   */
+  dispose(): void {
+    const sessionCount = this.sessions.size;
+    this.sessions.clear();
+    this.lastHealthEmitTime.clear();
+    logger.debug('Session health monitor disposed', { clearedSessions: sessionCount });
+  }
 }
 
 // =============================================================================

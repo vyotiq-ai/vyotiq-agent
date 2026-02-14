@@ -148,7 +148,7 @@ function applyTaskRoutingSettings(
 }
 
 export class ProviderSelector {
-  private readonly providers: ProviderMap;
+  private providers: ProviderMap;
   private readonly logger: Logger;
   
   // Provider cooldown tracking
@@ -163,7 +163,7 @@ export class ProviderSelector {
    * Update providers reference
    */
   updateProviders(providers: ProviderMap): void {
-    (this as unknown as { providers: ProviderMap }).providers = providers;
+    this.providers = providers;
   }
 
   /**
@@ -189,7 +189,10 @@ export class ProviderSelector {
   isProviderInCooldown(provider: LLMProviderName): boolean {
     const cooldown = this.providerCooldownUntil.get(provider);
     if (!cooldown) return false;
-    return cooldown.until > Date.now();
+    if (cooldown.until > Date.now()) return true;
+    // Lazily prune expired cooldown entries
+    this.providerCooldownUntil.delete(provider);
+    return false;
   }
 
   /**
@@ -214,6 +217,7 @@ export class ProviderSelector {
     const preferredProvider = session.state.config.preferredProvider;
     const fallbackProviderName = session.state.config.fallbackProvider;
     const enableProviderFallback = session.state.config.enableProviderFallback !== false;
+    const enableAutoModelSelection = session.state.config.enableAutoModelSelection !== false;
     
     const userExplicitlySelectedProvider = preferredProvider && preferredProvider !== 'auto';
 
@@ -303,9 +307,18 @@ export class ProviderSelector {
         usingProvider: availableProviders[0].name,
       });
     } else {
-      // Auto mode: Use intelligent routing (with optional user task mappings)
-      const lastUserMessage = session.state.messages.filter(m => m.role === 'user').pop();
-      if (lastUserMessage?.content) {
+      // Auto mode: Route based on enableAutoModelSelection setting
+      if (!enableAutoModelSelection) {
+        // Auto model selection disabled — use first available provider without intelligent routing
+        primary = availableProviders[0].provider;
+        this.logger.info('Auto mode: Using first available provider (auto model selection disabled)', {
+          selectedProvider: availableProviders[0].name,
+        });
+      }
+      
+      // Auto mode with intelligent routing enabled
+      const lastUserMessage = !primary ? session.state.messages.filter(m => m.role === 'user').pop() : null;
+      if (!primary && lastUserMessage?.content) {
         const taskAnalysis = analyzeUserQuery(lastUserMessage.content);
         const availableProviderNames = availableProviders.map(p => p.name as LLMProviderName);
         

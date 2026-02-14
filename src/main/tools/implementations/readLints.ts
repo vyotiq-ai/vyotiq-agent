@@ -170,10 +170,12 @@ read_lints([file]) → VERIFY no errors
 
     try {
       // Run ESLint via terminal command for reliability
+      // Quote each file path to prevent shell injection
+      const quotedFiles = resolvedFiles.map(f => `"${f.replace(/"/g, '\\"')}"`);
       const eslintArgs = [
         'npx', 'eslint',
         '--format', 'json',
-        ...resolvedFiles,
+        ...quotedFiles,
       ];
       
       if (fix) {
@@ -221,7 +223,7 @@ read_lints([file]) → VERIFY no errors
         };
       } else {
         // Fallback to simple lint
-        return await runSimpleLint(args.files, context, includeWarnings);
+        return await runSimpleLint(resolvedFiles, context, includeWarnings);
       }
 
       // Format results
@@ -259,8 +261,9 @@ async function runSimpleLint(
   context: ToolExecutionContext,
   includeWarnings: boolean
 ): Promise<ToolExecutionResult> {
+  const quotedFiles = files.map(f => `"${f.replace(/"/g, '\\"')}"`);
   const result = await context.terminalManager.run(
-    `npx eslint ${files.join(' ')}`,
+    `npx eslint ${quotedFiles.join(' ')}`,
     {
       cwd: context.workspacePath,
       waitForExit: true,

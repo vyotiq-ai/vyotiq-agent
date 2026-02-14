@@ -6,7 +6,7 @@
 import React from 'react';
 import { Shield } from 'lucide-react';
 import type { ComplianceSettings } from '../../../../shared/types';
-import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider } from '../primitives';
+import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsInfoBox } from '../primitives';
 
 interface SettingsComplianceProps {
   settings: ComplianceSettings;
@@ -91,12 +91,11 @@ export const SettingsCompliance: React.FC<SettingsComplianceProps> = ({ settings
       </SettingsGroup>
 
       {/* Info Box */}
-      <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-3 space-y-2">
-        <div className="text-[10px] text-[var(--color-text-secondary)]"># about compliance</div>
-        <p className="text-[9px] text-[var(--color-text-dim)] leading-relaxed">
+      <SettingsInfoBox title="# about compliance">
+        <p>
           Compliance rules help ensure the AI assistant follows best practices:
         </p>
-        <ul className="text-[9px] text-[var(--color-text-dim)] space-y-1 ml-2">
+        <ul className="space-y-1 ml-2 mt-1">
           <li className="flex items-start gap-1.5">
             <span className="text-[var(--color-accent-primary)]">•</span>
             <span><strong className="text-[var(--color-text-muted)]">Read-before-write:</strong> Prevents blind edits by requiring file reads first</span>
@@ -110,7 +109,7 @@ export const SettingsCompliance: React.FC<SettingsComplianceProps> = ({ settings
             <span><strong className="text-[var(--color-text-muted)]">Corrective messages:</strong> Guides the AI back on track when rules are broken</span>
           </li>
         </ul>
-      </div>
+      </SettingsInfoBox>
     </SettingsSection>
   );
 };

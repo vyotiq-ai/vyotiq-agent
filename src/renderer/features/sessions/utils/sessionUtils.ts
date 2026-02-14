@@ -13,7 +13,6 @@ export type SessionSortKey = 'date' | 'title' | 'status' | 'messageCount';
 
 export interface SessionFilterOptions {
   searchQuery?: string;
-  workspaceId?: string;
   showRunningOnly?: boolean;
   showIdleOnly?: boolean;
   sortBy?: SessionSortKey;
@@ -29,8 +28,6 @@ export interface SessionStats {
 }
 
 export interface WorkspaceSessionStats {
-  workspaceId: string;
-  workspaceLabel: string;
   total: number;
   running: number;
 }
@@ -140,14 +137,6 @@ export function filterSessionsByQuery<T extends { title: string }>(
   });
 }
 
-/** Filter sessions by workspace */
-export function filterSessionsByWorkspace(
-  sessions: AgentSessionState[],
-  workspaceId: string
-): AgentSessionState[] {
-  return sessions.filter(s => s.workspaceId === workspaceId);
-}
-
 /** Filter to running sessions only */
 export function filterRunningSessions<T extends { status: string }>(
   sessions: T[]
@@ -168,11 +157,6 @@ export function filterAndSortSessions(
   options: SessionFilterOptions
 ): AgentSessionState[] {
   let result = sessions;
-
-  // Filter by workspace
-  if (options.workspaceId) {
-    result = filterSessionsByWorkspace(result, options.workspaceId);
-  }
 
   // Filter by search query
   if (options.searchQuery) {
@@ -226,44 +210,25 @@ export function getSessionStats<T extends { status: string }>(sessions: T[]): Se
   );
 }
 
-/** Get running session count per workspace */
+/** Get running session count */
 export function getRunningCountByWorkspace(
   sessions: AgentSessionState[]
 ): Map<string, number> {
   const counts = new Map<string, number>();
-  
-  sessions.forEach(session => {
-    if (isSessionRunning(session.status) && session.workspaceId) {
-      const current = counts.get(session.workspaceId) || 0;
-      counts.set(session.workspaceId, current + 1);
-    }
-  });
-  
+  const running = sessions.filter(s => isSessionRunning(s.status)).length;
+  if (running > 0) {
+    counts.set('default', running);
+  }
   return counts;
 }
 
-/** Get session counts grouped by workspace */
+/** Get session counts */
 export function getSessionCountsByWorkspace(
   sessions: AgentSessionState[],
-  workspaceLabels?: Map<string, string>
+  _workspaceLabels?: Map<string, string>
 ): WorkspaceSessionStats[] {
-  const statsMap = new Map<string, { total: number; running: number }>();
-  
-  sessions.forEach(session => {
-    const wid = session.workspaceId || 'unknown';
-    const current = statsMap.get(wid) || { total: 0, running: 0 };
-    current.total++;
-    if (isSessionRunning(session.status)) {
-      current.running++;
-    }
-    statsMap.set(wid, current);
-  });
-  
-  return Array.from(statsMap.entries()).map(([workspaceId, stats]) => ({
-    workspaceId,
-    workspaceLabel: workspaceLabels?.get(workspaceId) || 'Unknown',
-    ...stats,
-  }));
+  const running = sessions.filter(s => isSessionRunning(s.status)).length;
+  return [{ total: sessions.length, running }];
 }
 
 // =============================================================================
@@ -309,31 +274,16 @@ export function groupSessionsByDate<T extends { updatedAt: number }>(
     .map(([label, groupSessions]) => ({ label, sessions: groupSessions }));
 }
 
-/** Group sessions by workspace */
+/** Group sessions by workspace (returns single group with all sessions) */
 export function groupSessionsByWorkspace(
   sessions: AgentSessionState[],
-  workspaceLabels: Map<string, string>
+  _workspaceLabels: Map<string, string>
 ): SessionGroup<AgentSessionState>[] {
-  const groups = new Map<string, AgentSessionState[]>();
-
-  sessions.forEach(session => {
-    const wid = session.workspaceId || 'unknown';
-    if (!groups.has(wid)) {
-      groups.set(wid, []);
-    }
-    groups.get(wid)!.push(session);
-  });
-
-  return Array.from(groups.entries())
-    .map(([workspaceId, groupSessions]) => ({
-      label: workspaceLabels.get(workspaceId) || 'Unknown Workspace',
-      sessions: groupSessions.sort((a, b) => b.updatedAt - a.updatedAt),
-    }))
-    .sort((a, b) => {
-      const aLatest = Math.max(...a.sessions.map(s => s.updatedAt));
-      const bLatest = Math.max(...b.sessions.map(s => s.updatedAt));
-      return bLatest - aLatest;
-    });
+  if (sessions.length === 0) return [];
+  return [{
+    label: 'All Sessions',
+    sessions: [...sessions].sort((a, b) => b.updatedAt - a.updatedAt),
+  }];
 }
 
 /** Group sessions by status */

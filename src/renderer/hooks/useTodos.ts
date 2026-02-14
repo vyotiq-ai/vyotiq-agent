@@ -129,5 +129,3 @@ export function useTodos({ sessionId, runId }: UseTodosOptions): UseTodosReturn 
     lastUpdated,
   };
 }
-
-export default useTodos;

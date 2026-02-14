@@ -10,6 +10,7 @@ import { resolvePath, ensureDirectory } from '../../utils/fileSystem';
 import { wasFileRead, getReadFilesCache } from '../fileTracker';
 import { undoHistory } from '../../agent/undoHistory';
 import { createLogger } from '../../logger';
+import { notifyFileChanged } from '../../utils/fileChangeNotifier';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
 
@@ -352,6 +353,15 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
       const lineCount = args.content.split('\n').length;
       const byteCount = Buffer.byteLength(args.content, 'utf-8');
       const action = fileExists ? 'overwritten' : 'created';
+
+      // Notify Rust backend for incremental re-indexing
+      if (context.workspacePath) {
+        notifyFileChanged(
+          context.workspacePath,
+          filePath,
+          fileExists ? 'modified' : 'created',
+        );
+      }
 
       return {
         toolName: 'write',

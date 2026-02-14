@@ -32,6 +32,9 @@ import { createLogger } from '../../utils/logger';
 import { EmptyState } from './components/EmptyState';
 import { SessionWelcome } from './components/SessionWelcome';
 import { ToolConfirmationPanel } from './components/ToolConfirmationPanel';
+import { ContextPressureIndicator } from './components/ContextPressureIndicator';
+import { RunErrorBanner } from './components/RunErrorBanner';
+import { ConnectionStatusBanner } from './components/ConnectionStatusBanner';
 import { BranchNavigation } from './components/BranchNavigation';
 import { ConversationSearchBar } from './components/ConversationSearchBar';
 import { MessageGroup } from './components/MessageGroup';
@@ -58,6 +61,8 @@ export const ChatArea: React.FC = () => {
   );
   
   // PERF: Memoize session selector with shallow equality on essential fields only
+  // During streaming, content length is checked at a coarse granularity (every ~100 chars)
+  // to reduce re-renders while still showing streaming progress.
   const activeSession = useAgentSelector(
     (state) => {
       if (!state.activeSessionId) return undefined;
@@ -68,15 +73,21 @@ export const ChatArea: React.FC = () => {
       if (!a || !b) return a === b;
       // Fast path: compare identity fields first
       if (a.id !== b.id || a.status !== b.status || a.activeBranchId !== b.activeBranchId) return false;
-      // Messages: only check length and last message essentials
+      // Messages: only check count and last message ID
       const aLen = a.messages.length, bLen = b.messages.length;
       if (aLen !== bLen) return false;
       if (aLen > 0) {
         const lastA = a.messages[aLen - 1], lastB = b.messages[bLen - 1];
         if (lastA.id !== lastB.id) return false;
-        // Only check content length for streaming updates
-        const aContentLen = lastA.content?.length ?? 0, bContentLen = lastB.content?.length ?? 0;
-        if (aContentLen !== bContentLen) return false;
+        // Check tool calls count — changes when new tools are invoked
+        const aToolCount = lastA.toolCalls?.length ?? 0, bToolCount = lastB.toolCalls?.length ?? 0;
+        if (aToolCount !== bToolCount) return false;
+        // FINE content check: re-render every ~30 chars of new content
+        // Small bucket ensures streaming text appears smoothly word-by-word
+        // The streaming buffer already throttles at ~30fps, so re-renders are manageable
+        const aContentBucket = Math.floor((lastA.content?.length ?? 0) / 30);
+        const bContentBucket = Math.floor((lastB.content?.length ?? 0) / 30);
+        if (aContentBucket !== bContentBucket) return false;
       }
       // Branches: only check length (detailed comparison not needed for render)
       return (a.branches?.length ?? 0) === (b.branches?.length ?? 0);
@@ -251,23 +262,30 @@ export const ChatArea: React.FC = () => {
   // Determine if agent is currently streaming content (defined early for deferred rendering)
   const isStreaming = activeSession?.status === 'running';
   
-  // PERFORMANCE OPTIMIZATION: Use deferred value for message groups during heavy streaming
-  // This allows React to prioritize input responsiveness over rendering message updates
-  // When the agent is actively streaming, message updates are deferred to avoid UI jank
+  // Use deferred value for large non-streaming state changes (bulk session loads, history)
+  // During active streaming, render message groups immediately for real-time token display.
+  // The streaming buffer (30ms) already throttles updates, so deferred rendering is unnecessary
+  // and would add visible lag to the streaming output.
   const deferredMessageGroups = useDeferredValue(messageGroups);
   
-  // Use deferred groups for rendering to keep input responsive during streaming
-  const renderGroups = isStreaming ? deferredMessageGroups : messageGroups;
+  // Immediate rendering during streaming; deferred for heavy non-streaming updates
+  const renderGroups = isStreaming ? messageGroups : deferredMessageGroups;
 
   // Enable virtualization for large chat histories
   const shouldVirtualize = branchFilteredMessages.length > VIRTUALIZATION_THRESHOLD;
   
   // Get the last assistant message content length for scroll dependency
   // This is used for both virtualized and non-virtualized scroll modes
+  // PERF: Use backward loop instead of [...messages].reverse().find() to avoid copying the array
   const lastAssistantContentLength = useMemo(() => {
-    if (!activeSession?.messages) return 0;
-    const lastAssistant = [...activeSession.messages].reverse().find(m => m.role === 'assistant');
-    return lastAssistant?.content?.length ?? 0;
+    const messages = activeSession?.messages;
+    if (!messages || messages.length === 0) return 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        return messages[i].content?.length ?? 0;
+      }
+    }
+    return 0;
   }, [activeSession?.messages]);
 
   // Virtualized list for performance with large histories
@@ -390,15 +408,32 @@ export const ChatArea: React.FC = () => {
   ]);
 
   // Helper to get tool results for a specific runId (stable reference)
+  // PERFORMANCE: Cache computed Maps to avoid creating new Map objects on every call,
+  // which would defeat MessageGroup's React.memo equality check
   const toolResultsByRunRef = useRef(toolResultsByRun);
   toolResultsByRunRef.current = toolResultsByRun;
   const activeSessionIdRef = useRef(activeSession?.id);
   activeSessionIdRef.current = activeSession?.id;
+  const toolResultsMapsCache = useRef(new Map<string, { map: Map<string, ToolResultEvent>; count: number }>());
+
+  // Prune stale cache entries when the active session changes to prevent unbounded growth
+  const prevSessionIdRef = useRef(activeSession?.id);
+  if (prevSessionIdRef.current !== activeSession?.id) {
+    prevSessionIdRef.current = activeSession?.id;
+    toolResultsMapsCache.current.clear();
+  }
   
   const getToolResultsForRun = useCallback((runId: string | undefined): Map<string, ToolResultEvent> | undefined => {
     if (!runId || !activeSessionIdRef.current) return undefined;
     const runResults = toolResultsByRunRef.current[runId];
     if (!runResults) return undefined;
+
+    // Check cache — if same number of results, return cached Map
+    const resultCount = Object.keys(runResults).length;
+    const cached = toolResultsMapsCache.current.get(runId);
+    if (cached && cached.count === resultCount) {
+      return cached.map;
+    }
 
     // Convert to Map<callId, ToolResultEvent> format expected by ToolExecution
     const resultsMap = new Map<string, ToolResultEvent>();
@@ -416,6 +451,9 @@ export const ChatArea: React.FC = () => {
         },
       });
     }
+
+    // Store in cache
+    toolResultsMapsCache.current.set(runId, { map: resultsMap, count: resultCount });
     return resultsMap;
   }, []);
 
@@ -478,7 +516,6 @@ export const ChatArea: React.FC = () => {
   const lastMsgRef = useRef<string | null>(null);
   const lastMsgCountRef = useRef(0);
   const wasStreamingRef = useRef(false);
-  const prevSessionIdRef = useRef<string | null>(null);
 
   // Scroll to bottom when session loads or changes
   useEffect(() => {
@@ -612,12 +649,26 @@ export const ChatArea: React.FC = () => {
   }, [activeSession, activeBranchId]);
 
   const handleRunCode = useCallback(async (code: string, language: string) => {
-    // Shell commands should be run through the agent's terminal tools, not directly
-    // This is a UI-only action that shows the code - actual execution happens via agent
+    if (!activeSession) return;
+
+    // Shell commands: send through agent as a terminal execution request
     if (['bash', 'sh', 'shell', 'zsh', 'cmd', 'powershell', 'ps1'].includes(language.toLowerCase())) {
-      logger.info('Code block run requested - use agent to execute shell commands', { language, codeLength: code.length });
+      try {
+        // Send the command as a user message to the agent for execution
+        await actions.sendMessage(`Please run the following command:\n\`\`\`${language}\n${code}\n\`\`\``, []);        logger.info('Shell command sent to agent for execution', { language, codeLength: code.length });
+      } catch (err) {
+        logger.error('Failed to send command to agent', { error: err });
+      }
+    } else {
+      // Non-shell code: copy to clipboard as a fallback action
+      try {
+        await navigator.clipboard.writeText(code);
+        logger.info('Code copied to clipboard (non-shell language)', { language });
+      } catch (err) {
+        logger.error('Failed to copy code to clipboard', { error: err });
+      }
     }
-  }, []);
+  }, [activeSession, actions]);
 
   // Handle message reactions
   const handleReaction = useCallback((messageId: string, reaction: MessageReaction) => {
@@ -700,6 +751,9 @@ export const ChatArea: React.FC = () => {
 
   return (
     <div className="flex-1 min-h-0 min-w-0 w-full relative overflow-hidden flex flex-col">
+      {/* Connection status banner - shows when offline */}
+      <ConnectionStatusBanner />
+
       {/* Minimal controls bar */}
       {(hasMessages || branches.length > 0) && (
         <div
@@ -876,6 +930,12 @@ export const ChatArea: React.FC = () => {
               })}
               </div>
 
+              {/* Run error recovery banner */}
+              <RunErrorBanner sessionId={activeSession?.id} />
+
+              {/* Context window pressure indicator */}
+              <ContextPressureIndicator className="mx-2 mb-2" />
+
               {/* Tool confirmation panel - shows when awaiting approval */}
               <ToolConfirmationPanel />
             </div>
@@ -889,7 +949,7 @@ export const ChatArea: React.FC = () => {
 
                 return (
                   <MessageGroup
-                    key={`group-${groupIdx}`}
+                    key={runKey}
                     messages={group.messages}
                     runId={group.runId}
                     groupIdx={groupIdx}
@@ -915,6 +975,12 @@ export const ChatArea: React.FC = () => {
                   />
                 );
               })}
+
+              {/* Run error recovery banner */}
+              <RunErrorBanner sessionId={activeSession?.id} />
+
+              {/* Context window pressure indicator */}
+              <ContextPressureIndicator className="mx-2 mb-2" />
 
               {/* Tool confirmation panel - shows when awaiting approval */}
               <ToolConfirmationPanel />

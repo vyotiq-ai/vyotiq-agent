@@ -4,7 +4,6 @@
  * Clean, minimalist exports for the chat interface
  */
 export { ChatArea } from './ChatArea';
-export { ChatInputRedesigned, ChatInputLegacy } from './components/input';
 export { ChatInput } from './components/input';
 
 // Legacy input sub-components (for flexible usage)

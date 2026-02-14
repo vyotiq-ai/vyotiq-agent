@@ -1,3 +1,13 @@
+// Local imports for types that are re-exported from sub-modules but also used
+// within this file (re-exports don't introduce local names in TypeScript).
+import type { PromptSettings } from './types/prompt';
+import type { AccessLevelSettings } from './types/accessLevel';
+import type { AppearanceSettings } from './types/appearance';
+import type { TaskRoutingSettings, RoutingDecision } from './types/taskRouting';
+import type { ToolConfigSettings } from './types/tools';
+import type { GitEvent, GitRemote, GitCommit } from './types/git';
+import type { CommunicationQuestion, DecisionRequest, ProgressLevel } from './types/communication';
+
 export type LLMProviderName = 'anthropic' | 'openai' | 'deepseek' | 'gemini' | 'openrouter' | 'xai' | 'mistral' | 'glm';
 
 export type AgentRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -308,12 +318,6 @@ export const SETTINGS_CONSTRAINTS = {
   maxConcurrentPages: { min: 1, max: 20, default: 5 },
   maxScreenshotSize: { min: 100, max: 4096, default: 1920 },
 
-  // EditorAI constraints
-  inlineCompletionDebounceMs: { min: 50, max: 2000, default: 300 },
-  inlineCompletionMaxTokens: { min: 16, max: 1024, default: 128 },
-  contextLinesBefore: { min: 5, max: 200, default: 50 },
-  contextLinesAfter: { min: 5, max: 100, default: 10 },
-
   // PromptSettings constraints
   maxMessageLength: { min: 100, max: 1000000, default: 100000 },
   maxToolResultLength: { min: 1000, max: 500000, default: 50000 },
@@ -347,11 +351,12 @@ export interface AgentSessionState {
   title: string;
   createdAt: number;
   updatedAt: number;
-  workspaceId?: string;
   config: AgentConfig;
   status: AgentRunStatus;
   activeRunId?: string;
   messages: ChatMessage[];
+  /** Workspace path this session is associated with (null = global/no workspace) */
+  workspacePath?: string | null;
   /** All conversation branches for this session */
   branches?: ConversationBranch[];
   /** Currently active branch ID (null or undefined = main branch) */
@@ -367,10 +372,11 @@ export interface SessionSummary {
   title: string;
   createdAt: number;
   updatedAt: number;
-  workspaceId?: string;
   status: AgentRunStatus;
   messageCount: number;
   lastMessagePreview?: string;
+  /** Workspace path this session is associated with */
+  workspacePath?: string | null;
 }
 
 export interface ToolCallPayload {
@@ -546,10 +552,37 @@ export interface StreamDeltaEvent extends AgentEventBase {
   };
 }
 
+/**
+ * Structured error codes for agent run failures.
+ * Enables the renderer to show targeted recovery UI.
+ */
+export type AgentErrorCode =
+  | 'RATE_LIMIT'
+  | 'AUTH_FAILURE'
+  | 'QUOTA_EXCEEDED'
+  | 'CONTEXT_OVERFLOW'
+  | 'LOOP_DETECTED'
+  | 'TOOL_NOT_SUPPORTED'
+  | 'DATA_POLICY'
+  | 'NETWORK_ERROR'
+  | 'PROVIDER_ERROR'
+  | 'MODEL_NOT_FOUND'
+  | 'TIMEOUT'
+  | 'CANCELLED'
+  | 'COMPLIANCE_VIOLATION'
+  | 'SESSION_ERROR'
+  | 'UNKNOWN';
+
 export interface RunStatusEvent extends AgentEventBase {
   type: 'run-status';
   status: AgentRunStatus;
   message?: string;
+  /** Structured error code for programmatic handling in the renderer */
+  errorCode?: AgentErrorCode;
+  /** Whether the error is recoverable (show retry UI) */
+  recoverable?: boolean;
+  /** Suggested recovery action for the user */
+  recoveryHint?: string;
 }
 
 export interface ToolCallEvent extends AgentEventBase {
@@ -700,93 +733,6 @@ export interface ComplianceViolationEvent extends AgentEventBase {
   toolName: string;
 }
 
-export interface WorkspaceEntry {
-  id: string;
-  path: string;
-  label: string;
-  lastOpenedAt: number;
-  isActive: boolean;
-}
-
-// =============================================================================
-// Multi-Workspace Types
-// =============================================================================
-
-/**
- * Represents an open workspace tab in the multi-workspace view.
- * Each tab corresponds to a workspace that the user has explicitly opened.
- */
-export interface WorkspaceTab {
-  /** Unique workspace ID (matches WorkspaceEntry.id) */
-  workspaceId: string;
-  /** Order index for tab positioning (lower = more left) */
-  order: number;
-  /** Whether this tab is currently focused/active in the view */
-  isFocused: boolean;
-  /** Timestamp when this tab was opened */
-  openedAt: number;
-  /** Timestamp when this tab was last focused */
-  lastFocusedAt: number;
-  /** Whether this tab has unsaved changes or pending operations */
-  hasUnsavedChanges?: boolean;
-  /** Whether an agent run is active in this workspace */
-  isRunning?: boolean;
-  /** Optional custom label override (defaults to workspace label) */
-  customLabel?: string;
-}
-
-/**
- * State for managing multiple open workspace tabs.
- * Supports concurrent workspace sessions with tab-based navigation.
- */
-export interface MultiWorkspaceState {
-  /** Array of currently open workspace tabs */
-  tabs: WorkspaceTab[];
-  /** ID of the currently focused workspace tab (null if no tabs open) */
-  focusedTabId: string | null;
-  /** Maximum number of tabs allowed to be open simultaneously */
-  maxTabs: number;
-  /** Whether to persist tab state across app restarts */
-  persistTabs: boolean;
-  /** Tab order strategy: 'chronological' | 'manual' */
-  orderStrategy: 'chronological' | 'manual';
-}
-
-/**
- * Event emitted when workspace tabs change
- */
-export interface WorkspaceTabsEvent {
-  type: 'workspace-tabs-update';
-  tabs: WorkspaceTab[];
-  focusedTabId: string | null;
-}
-
-/**
- * Workspace resource metrics for monitoring concurrent workspace performance
- */
-export interface WorkspaceResourceMetrics {
-  workspaceId: string;
-  /** Number of active sessions in this workspace */
-  activeSessions: number;
-  /** Number of active tool executions in this workspace */
-  activeToolExecutions: number;
-  /** Estimated memory usage in bytes for this workspace */
-  memoryEstimateBytes: number;
-  /** Last activity timestamp */
-  lastActivityAt: number;
-  /** Provider request counts in the current rate limit window */
-  requestCounts: Record<string, number>;
-}
-
-export interface WorkspaceEvent {
-  type: 'workspace-update';
-  workspaces: WorkspaceEntry[];
-}
-
-/**
- * Event emitted when files are created, modified, deleted, or renamed
- * Used for real-time file tree updates in the UI
- */
 export interface FileChangedEvent {
   type: 'file-changed';
   changeType: 'create' | 'write' | 'delete' | 'rename' | 'createDir';
@@ -797,6 +743,22 @@ export interface FileChangedEvent {
 export interface SessionsEvent {
   type: 'sessions-update';
   sessions: AgentSessionState[];
+}
+
+/**
+ * Lightweight session patch event — carries only changed fields.
+ * Avoids serializing the entire session (with all messages) over IPC
+ * for trivial updates like renames, reactions, config changes, status updates.
+ */
+export interface SessionPatchEvent {
+  type: 'session-patch';
+  sessionId: string;
+  patch: Partial<Pick<AgentSessionState, 'title' | 'status' | 'config' | 'activeBranchId' | 'branches' | 'updatedAt'>>;
+  /** Optionally patch a specific message (e.g., reaction change) */
+  messagePatch?: {
+    messageId: string;
+    changes: Partial<Pick<ChatMessage, 'reaction' | 'updatedAt'>>;
+  };
 }
 
 // =============================================================================
@@ -1162,519 +1124,31 @@ export interface TraceStepDetail {
 
 // =============================================================================
 // Prompt Customization Types
+// → Extracted to ./types/prompt.ts
 // =============================================================================
-
-/**
- * Predefined persona/role for the AI agent
- */
-export interface AgentPersona {
-  /** Unique identifier for the persona */
-  id: string;
-  /** Display name */
-  name: string;
-  /** Short description of the persona's behavior */
-  description: string;
-  /** System prompt content for this persona */
-  systemPrompt: string;
-  /** Icon identifier (lucide icon name) */
-  icon?: string;
-  /** Whether this is a built-in persona */
-  isBuiltIn?: boolean;
-}
-
-/**
- * Context injection rule - defines when and how to inject context
- */
-export interface ContextInjectionRule {
-  /** Unique identifier */
-  id: string;
-  /** Display name for the rule */
-  name: string;
-  /** Whether this rule is enabled */
-  enabled: boolean;
-  /** Priority order (lower = higher priority) */
-  priority: number;
-  /** Condition for when to apply this rule */
-  condition: ContextInjectionCondition;
-  /** The context template to inject (supports placeholders) */
-  template: string;
-  /** 
-   * Where to inject context. Note: all positions are treated as 'append' 
-   * to protect the core system prompt. Kept for backward compatibility.
-   * @deprecated Use 'append' - all values are treated as append now
-   */
-  position: 'prepend' | 'append' | 'replace';
-}
-
-/**
- * Condition for context injection
- */
-export interface ContextInjectionCondition {
-  /** Type of condition */
-  type: 'always' | 'workspace-pattern' | 'keyword' | 'custom' | 'file-type';
-  /** Value for the condition (e.g., file extension, glob pattern, keyword) */
-  value?: string;
-  /** Custom condition function (serialized as string) */
-  customFn?: string;
-}
-
-/**
- * Response format preferences
- */
-export interface ResponseFormatPreferences {
-  /** Preferred code block style */
-  codeBlockStyle: 'fenced' | 'indented';
-  /** Whether to include line numbers in code blocks */
-  includeLineNumbers: boolean;
-  /** Preferred language for explanations */
-  explanationDetail: 'minimal' | 'moderate' | 'detailed';
-  /** Whether to include examples in explanations */
-  includeExamples: boolean;
-  /** Maximum response length preference */
-  maxResponseLength: 'short' | 'medium' | 'long' | 'unlimited';
-  /** Preferred tone */
-  tone: 'professional' | 'casual' | 'technical' | 'friendly';
-  /** Whether to use markdown formatting */
-  useMarkdown: boolean;
-  /** Whether to break up long responses with headers */
-  useHeaders: boolean;
-}
-
-/**
- * Agent instruction scope determines when instructions are active
- */
-export type AgentInstructionScope = 'global' | 'workspace' | 'session';
-
-/**
- * Agent instruction trigger condition
- */
-export interface AgentInstructionTrigger {
-  /** Type of trigger */
-  type: 'always' | 'keyword' | 'file-type' | 'task-type' | 'manual';
-  /** Value for the trigger (keywords, file patterns, task types) */
-  value?: string;
-}
-
-/**
- * Agent instruction - specialized instructions for different agent behaviors
- * 
- * These instructions define how the agent should behave in specific contexts,
- * such as when acting as a researcher, planner, code reviewer, etc.
- */
-export interface AgentInstruction {
-  /** Unique identifier */
-  id: string;
-  /** Display name */
-  name: string;
-  /** Short description of what this instruction does */
-  description: string;
-  /** The instruction content to inject into the system prompt */
-  instructions: string;
-  /** Icon identifier (lucide icon name) */
-  icon?: string;
-  /** Whether this is a built-in instruction */
-  isBuiltIn?: boolean;
-  /** Whether this instruction is enabled */
-  enabled: boolean;
-  /** Scope of the instruction */
-  scope: AgentInstructionScope;
-  /** Priority order (lower = higher priority, loaded first) */
-  priority: number;
-  /** Trigger conditions for when to apply this instruction */
-  trigger: AgentInstructionTrigger;
-  /** Tags for categorization and filtering */
-  tags?: string[];
-}
-
-// =============================================================================
-// AGENTS.md File Support Types
-// =============================================================================
-
-/**
- * Parsed AGENTS.md file content
- * Follows the AGENTS.md specification (https://agents.md/)
- */
-export interface AgentsMdFile {
-  /** Absolute path to the AGENTS.md file */
-  filePath: string;
-  /** Relative path from workspace root */
-  relativePath: string;
-  /** Raw markdown content */
-  content: string;
-  /** File modification time for cache invalidation */
-  mtime: number;
-  /** Depth from workspace root (0 = root, 1 = one level down, etc.) */
-  depth: number;
-  /** Parsed sections from the markdown */
-  sections: AgentsMdSection[];
-}
-
-/**
- * A section from an AGENTS.md file
- */
-export interface AgentsMdSection {
-  /** Section heading (e.g., "Setup commands", "Code style") */
-  heading: string;
-  /** Heading level (1-6) */
-  level: number;
-  /** Section content (markdown) */
-  content: string;
-}
-
-/**
- * AGENTS.md context for system prompt injection
- * Represents the resolved AGENTS.md content for a given context
- */
-export interface AgentsMdContext {
-  /** Whether AGENTS.md files were found */
-  found: boolean;
-  /** Primary AGENTS.md file (closest to active file or workspace root) */
-  primary?: AgentsMdFile;
-  /** All discovered AGENTS.md files in the workspace */
-  allFiles: AgentsMdFile[];
-  /** Combined content from all applicable files (respecting hierarchy) */
-  combinedContent: string;
-  /** Last scan timestamp */
-  scannedAt: number;
-}
-
-// =============================================================================
-// Project Instruction Files Support Types (Extended AGENTS.md)
-// =============================================================================
-
-/**
- * Types of instruction files that can be discovered and loaded.
- * Following the 2025-2026 multi-agent specification standards.
- */
-export type InstructionFileType =
-  | 'agents-md'           // AGENTS.md - Open standard (Linux Foundation)
-  | 'claude-md'           // CLAUDE.md - Anthropic Claude Code
-  | 'copilot-instructions' // .github/copilot-instructions.md - GitHub Copilot
-  | 'github-instructions' // .github/instructions/*.md - Path-specific Copilot
-  | 'gemini-md'           // GEMINI.md - Google Gemini CLI
-  | 'cursor-rules';       // .cursor/rules - Cursor editor
-
-/**
- * Frontmatter metadata parsed from instruction files
- */
-export interface InstructionFileFrontmatter {
-  /** Title of the instruction file */
-  title?: string;
-  /** Description of the instructions */
-  description?: string;
-  /** Priority order (lower = higher priority) */
-  priority?: number;
-  /** Glob patterns for path-specific instructions */
-  paths?: string[];
-  /** Tags for categorization */
-  tags?: string[];
-  /** Whether this file should override parent instructions */
-  override?: boolean;
-  /** Scope of the instructions */
-  scope?: 'global' | 'directory' | 'file';
-  /** Custom metadata */
-  [key: string]: unknown;
-}
-
-/**
- * Extended instruction file with type and frontmatter
- */
-export interface InstructionFile extends AgentsMdFile {
-  /** Type of instruction file */
-  type: InstructionFileType;
-  /** Parsed frontmatter metadata */
-  frontmatter?: InstructionFileFrontmatter;
-  /** Whether this file is enabled */
-  enabled: boolean;
-  /** User-set priority override (null = use default from frontmatter or type) */
-  priorityOverride?: number;
-  /** Source of the instruction file */
-  source: 'workspace' | 'user' | 'global';
-}
-
-/**
- * Configuration for which instruction file types to load
- */
-export interface InstructionFilesConfig {
-  /** Enable AGENTS.md loading */
-  enableAgentsMd: boolean;
-  /** Enable CLAUDE.md loading */
-  enableClaudeMd: boolean;
-  /** Enable .github/copilot-instructions.md loading */
-  enableCopilotInstructions: boolean;
-  /** Enable .github/instructions/*.md loading */
-  enableGithubInstructions: boolean;
-  /** Enable GEMINI.md loading */
-  enableGeminiMd: boolean;
-  /** Enable .cursor/rules loading */
-  enableCursorRules: boolean;
-  /** Per-file enabled/disabled overrides by relative path */
-  fileOverrides: Record<string, { enabled: boolean; priority?: number }>;
-  /** Maximum combined content length (characters) */
-  maxCombinedContentLength: number;
-  /** Whether to show instruction sources in the prompt */
-  showSourcesInPrompt: boolean;
-}
-
-/**
- * Extended context for all instruction files
- */
-export interface InstructionFilesContext {
-  /** Whether any instruction files were found */
-  found: boolean;
-  /** All discovered instruction files */
-  allFiles: InstructionFile[];
-  /** Files filtered by enabled status and config */
-  enabledFiles: InstructionFile[];
-  /** Combined content from all enabled files (respecting priority) */
-  combinedContent: string;
-  /** Last scan timestamp */
-  scannedAt: number;
-  /** Errors encountered during discovery */
-  errors: Array<{ path: string; error: string }>;
-  /** Config used for this context */
-  config: InstructionFilesConfig;
-}
-
-/**
- * Default instruction files configuration
- */
-export const DEFAULT_INSTRUCTION_FILES_CONFIG: InstructionFilesConfig = {
-  enableAgentsMd: true,
-  enableClaudeMd: true,
-  enableCopilotInstructions: true,
-  enableGithubInstructions: true,
-  enableGeminiMd: true,
-  enableCursorRules: true,
-  fileOverrides: {},
-  maxCombinedContentLength: 32000, // 32KB combined limit
-  showSourcesInPrompt: true,
-};
-
-/**
- * Complete prompt customization settings
- */
-export interface PromptSettings {
-  /** Custom system prompt (overrides default if set) */
-  customSystemPrompt: string;
-  /** Whether to use custom system prompt */
-  useCustomSystemPrompt: boolean;
-  /** Currently selected persona ID */
-  activePersonaId: string | null;
-  /** Available personas (built-in + custom) */
-  personas: AgentPersona[];
-  /** Context injection rules */
-  contextInjectionRules: ContextInjectionRule[];
-  /** Response format preferences */
-  responseFormat: ResponseFormatPreferences;
-  /** Whether to include workspace context in prompts */
-  includeWorkspaceContext: boolean;
-  /** Agent instructions - specialized behavior definitions */
-  agentInstructions: AgentInstruction[];
-  /** Configuration for project instruction files (AGENTS.md, CLAUDE.md, etc.) */
-  instructionFilesConfig: InstructionFilesConfig;
-}
-
-/**
- * Default response format preferences
- */
-export const DEFAULT_RESPONSE_FORMAT: ResponseFormatPreferences = {
-  codeBlockStyle: 'fenced',
-  includeLineNumbers: false,
-  explanationDetail: 'moderate',
-  includeExamples: true,
-  maxResponseLength: 'medium',
-  tone: 'professional',
-  useMarkdown: true,
-  useHeaders: true,
-};
-
-/**
- * Built-in agent instructions
- * These provide specialized behaviors that can be dynamically loaded
- */
-export const BUILT_IN_AGENT_INSTRUCTIONS: AgentInstruction[] = [
-  {
-    id: 'researcher',
-    name: 'Researcher',
-    description: 'Focused on gathering information, searching documentation, and web research',
-    instructions: `When acting as a researcher:
-- Use browser tools to search for up-to-date documentation and information
-- Use grep and glob to find relevant code patterns and implementations
-- Gather comprehensive context before providing answers
-- Cite sources and provide links to documentation when relevant
-- Focus on accuracy and completeness of information
-- Synthesize findings into clear, actionable summaries`,
-    icon: 'Search',
-    isBuiltIn: true,
-    enabled: true,
-    scope: 'global',
-    priority: 1,
-    trigger: { type: 'keyword', value: 'research,find,search,documentation,docs' },
-    tags: ['research', 'documentation', 'search'],
-  },
-  {
-    id: 'planner',
-    name: 'Planner',
-    description: 'Creates detailed plans and breaks down complex tasks into steps',
-    instructions: `When acting as a planner:
-- Use CreatePlan tool to structure multi-step tasks
-- Break complex problems into smaller, manageable subtasks
-- Consider dependencies between tasks
-- Estimate complexity and effort for each step
-- Identify potential blockers and risks
-- Provide clear success criteria for each task
-- Track progress with TodoWrite tool`,
-    icon: 'ListTodo',
-    isBuiltIn: true,
-    enabled: true,
-    scope: 'global',
-    priority: 2,
-    trigger: { type: 'keyword', value: 'plan,breakdown,steps,organize,task' },
-    tags: ['planning', 'organization', 'tasks'],
-  },
-  {
-    id: 'code-reviewer',
-    name: 'Code Reviewer',
-    description: 'Reviews code for quality, security, and best practices',
-    instructions: `When acting as a code reviewer:
-- Analyze code for correctness, security vulnerabilities, and bugs
-- Check for adherence to best practices and design patterns
-- Evaluate code readability and maintainability
-- Identify performance issues and optimization opportunities
-- Suggest specific improvements with code examples
-- Consider edge cases and error handling
-- Use LSP tools for comprehensive code analysis`,
-    icon: 'CheckCircle2',
-    isBuiltIn: true,
-    enabled: true,
-    scope: 'global',
-    priority: 3,
-    trigger: { type: 'keyword', value: 'review,audit,check,analyze,quality' },
-    tags: ['review', 'quality', 'security'],
-  },
-  {
-    id: 'debugger',
-    name: 'Debugger',
-    description: 'Specialized in finding and fixing bugs and issues',
-    instructions: `When acting as a debugger:
-- Systematically trace the source of issues
-- Use read_lints to check for diagnostic errors
-- Analyze stack traces and error messages carefully
-- Form and test hypotheses about the root cause
-- Check related code paths for similar issues
-- Verify fixes don't introduce new problems
-- Document the issue and solution for future reference`,
-    icon: 'Bug',
-    isBuiltIn: true,
-    enabled: true,
-    scope: 'global',
-    priority: 4,
-    trigger: { type: 'keyword', value: 'debug,fix,bug,error,issue,problem' },
-    tags: ['debugging', 'troubleshooting', 'fixes'],
-  },
-  {
-    id: 'refactorer',
-    name: 'Refactorer',
-    description: 'Improves code structure without changing behavior',
-    instructions: `When acting as a refactorer:
-- Preserve existing functionality while improving code structure
-- Apply SOLID principles and design patterns appropriately
-- Use LSP tools to find all references before renaming
-- Break large functions/files into smaller, focused units
-- Improve naming for clarity and consistency
-- Remove code duplication through abstraction
-- Ensure tests pass after each refactoring step`,
-    icon: 'RefreshCw',
-    isBuiltIn: true,
-    enabled: true,
-    scope: 'global',
-    priority: 5,
-    trigger: { type: 'keyword', value: 'refactor,restructure,reorganize,cleanup,improve' },
-    tags: ['refactoring', 'cleanup', 'structure'],
-  },
-];
-
-/**
- * Built-in personas
- */
-export const BUILT_IN_PERSONAS: AgentPersona[] = [
-  {
-    id: 'default',
-    name: 'Default Assistant',
-    description: 'Balanced, helpful coding assistant',
-    systemPrompt: '',
-    icon: 'Bot',
-    isBuiltIn: true,
-  },
-  {
-    id: 'senior-dev',
-    name: 'Senior Developer',
-    description: 'Experienced, thorough, focuses on best practices and code quality',
-    systemPrompt: `You are a senior software developer with 15+ years of experience. You:
-- Always prioritize code quality, maintainability, and best practices
-- Consider edge cases and error handling thoroughly
-- Suggest improvements proactively when you see potential issues
-- Explain the reasoning behind architectural decisions
-- Focus on writing clean, well-documented, testable code`,
-    icon: 'Code2',
-    isBuiltIn: true,
-  },
-  {
-    id: 'quick-helper',
-    name: 'Quick Helper',
-    description: 'Fast, concise responses for quick tasks',
-    systemPrompt: `You are a fast, efficient coding assistant. You:
-- Give concise, direct answers
-- Skip unnecessary explanations unless asked
-- Focus on getting the task done quickly
-- Provide working code first, explanations only if needed
-- Assume the user knows what they're doing`,
-    icon: 'Zap',
-    isBuiltIn: true,
-  },
-  {
-    id: 'teacher',
-    name: 'Teacher Mode',
-    description: 'Educational, explains concepts in detail',
-    systemPrompt: `You are a patient programming teacher. You:
-- Explain concepts thoroughly and clearly
-- Use analogies and examples to illustrate points
-- Break down complex topics into digestible pieces
-- Encourage learning and understanding over quick fixes
-- Point out learning opportunities in every interaction`,
-    icon: 'GraduationCap',
-    isBuiltIn: true,
-  },
-  {
-    id: 'architect',
-    name: 'System Architect',
-    description: 'Focuses on system design and architecture',
-    systemPrompt: `You are a systems architect. You:
-- Think about scalability and maintainability
-- Consider the bigger picture and system interactions
-- Suggest appropriate design patterns
-- Balance trade-offs between different approaches
-- Focus on clean separation of concerns`,
-    icon: 'Building2',
-    isBuiltIn: true,
-  },
-];
-
-/**
- * Default prompt settings
- */
-export const DEFAULT_PROMPT_SETTINGS: PromptSettings = {
-  customSystemPrompt: '',
-  useCustomSystemPrompt: false,
-  activePersonaId: 'default',
-  personas: [...BUILT_IN_PERSONAS],
-  contextInjectionRules: [],
-  responseFormat: DEFAULT_RESPONSE_FORMAT,
-  includeWorkspaceContext: true,
-  agentInstructions: [...BUILT_IN_AGENT_INSTRUCTIONS],
-  instructionFilesConfig: { ...DEFAULT_INSTRUCTION_FILES_CONFIG },
-};
+export {
+  type AgentPersona,
+  type ContextInjectionRule,
+  type ContextInjectionCondition,
+  type ResponseFormatPreferences,
+  type AgentInstructionScope,
+  type AgentInstructionTrigger,
+  type AgentInstruction,
+  type AgentsMdFile,
+  type AgentsMdSection,
+  type AgentsMdContext,
+  type InstructionFileType,
+  type InstructionFileFrontmatter,
+  type InstructionFile,
+  type InstructionFilesConfig,
+  type InstructionFilesContext,
+  DEFAULT_INSTRUCTION_FILES_CONFIG,
+  type PromptSettings,
+  DEFAULT_RESPONSE_FORMAT,
+  BUILT_IN_AGENT_INSTRUCTIONS,
+  BUILT_IN_PERSONAS,
+  DEFAULT_PROMPT_SETTINGS,
+} from './types/prompt';
 
 /**
  * Compliance Settings
@@ -1824,594 +1298,144 @@ export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = {
 };
 
 // =============================================================================
-// Appearance Settings
+// Appearance Settings (extracted to ./types/appearance.ts)
+// =============================================================================
+export {
+  type AccentColorPreset,
+  type FontSizeScale,
+  type TerminalFont,
+  type LoadingIndicatorStyle,
+  type AnimationSpeed,
+  type ReduceMotionPreference,
+  ANIMATION_SPEED_MULTIPLIERS,
+  type AppearanceSettings,
+  DEFAULT_APPEARANCE_SETTINGS,
+  FONT_SIZE_SCALES,
+  ACCENT_COLOR_PRESETS,
+} from './types/appearance';
+
+// =============================================================================
+// Workspace & Indexing Settings
 // =============================================================================
 
 /**
- * Available accent color presets
+ * Workspace indexing and embedding settings
+ * Controls how workspace files are indexed, embedded, and searched
  */
-export type AccentColorPreset = 
-  | 'emerald'   // Default green
-  | 'violet'    // Purple
-  | 'blue'      // Blue
-  | 'amber'     // Orange/yellow
-  | 'rose'      // Pink/red
-  | 'cyan'      // Teal/cyan
-  | 'custom';   // Custom hex color
+export interface WorkspaceIndexingSettings {
+  /** Automatically index workspace files when a workspace is opened or activated */
+  autoIndexOnOpen: boolean;
 
-/**
- * Font size scale options
- */
-export type FontSizeScale = 'compact' | 'default' | 'comfortable' | 'large';
+  /** Enable real-time file watching for automatic re-indexing on file changes */
+  enableFileWatcher: boolean;
 
-/**
- * Available terminal font families
- */
-export type TerminalFont = 
-  | 'JetBrains Mono'
-  | 'Fira Code'
-  | 'Source Code Pro'
-  | 'Cascadia Code'
-  | 'Consolas'
-  | 'Monaco'
-  | 'Menlo'
-  | 'system';
+  /** File watcher debounce in milliseconds (100-5000, default: 300) */
+  watcherDebounceMs: number;
 
-/**
- * Loading indicator visual style
- */
-export type LoadingIndicatorStyle = 'spinner' | 'dots' | 'pulse' | 'minimal';
+  /** Maximum file size in bytes to index (files larger than this are skipped) */
+  maxFileSizeBytes: number;
 
-/**
- * Animation speed preference
- */
-export type AnimationSpeed = 'slow' | 'normal' | 'fast';
+  /** Maximum total index size in MB before pruning old entries */
+  maxIndexSizeMb: number;
 
-/**
- * Reduce motion behavior preference
- */
-export type ReduceMotionPreference = 'system' | 'always' | 'never';
+  /** Batch size for indexing operations (10-500, default: 50) */
+  indexBatchSize: number;
 
-/**
- * Animation speed multipliers
- */
-export const ANIMATION_SPEED_MULTIPLIERS: Record<AnimationSpeed, number> = {
-  slow: 1.5,
-  normal: 1.0,
-  fast: 0.5,
-};
+  /** Enable vector/semantic embeddings (requires more memory) */
+  enableVectorEmbeddings: boolean;
 
-/**
- * Appearance and UI customization settings
- */
-export interface AppearanceSettings {
-  /** Font size scale for the entire UI */
-  fontSizeScale: FontSizeScale;
-  /** Accent color preset */
-  accentColor: AccentColorPreset;
-  /** Custom accent color (hex) when accentColor is 'custom' */
-  customAccentColor?: string;
-  /** Enable compact mode (reduced padding/margins) */
-  compactMode: boolean;
-  /** Terminal font family */
-  terminalFont: TerminalFont;
-  /** Terminal font size in pixels */
-  terminalFontSize: number;
-  /** Enable smooth animations */
-  enableAnimations: boolean;
-  /** Loading indicator visual style */
-  loadingIndicatorStyle: LoadingIndicatorStyle;
-  /** Animation speed preference */
-  animationSpeed: AnimationSpeed;
-  /** Reduce motion behavior preference */
-  reduceMotion: ReduceMotionPreference;
-  /** Show line numbers in code blocks */
-  showLineNumbers: boolean;
-  /** Enable syntax highlighting in code blocks */
-  enableSyntaxHighlighting: boolean;
+  /** Maximum chunk size in characters for embedding text splitting */
+  embeddingChunkSize: number;
+
+  /** Chunk overlap in characters for embedding text splitting */
+  embeddingChunkOverlap: number;
+
+  /** Maximum chunks per file for embedding (limits memory usage) */
+  maxChunksPerFile: number;
+
+  /** Embedding batch size (how many chunks to embed at once) */
+  embeddingBatchSize: number;
+
+  /** Additional glob patterns of files/directories to exclude from indexing */
+  excludePatterns: string[];
+
+  /** Glob patterns of files to include (empty = all files) */
+  includePatterns: string[];
+
+  /** Enable automatic context injection from semantic search during agent runs */
+  enableAutoContextInjection: boolean;
+
+  /** Max semantic search results to inject into agent context */
+  maxContextResults: number;
+
+  /** Minimum similarity score (0-1) for semantic search results to be included */
+  minSimilarityScore: number;
 }
 
 /**
- * Default appearance settings
+ * Default workspace indexing settings
  */
-export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
-  fontSizeScale: 'default',
-  accentColor: 'emerald',
-  compactMode: false,
-  terminalFont: 'JetBrains Mono',
-  terminalFontSize: 12,
-  enableAnimations: true,
-  loadingIndicatorStyle: 'spinner',
-  animationSpeed: 'normal',
-  reduceMotion: 'system',
-  showLineNumbers: true,
-  enableSyntaxHighlighting: true,
-};
-
-/**
- * Font size scale CSS variables mapping
- */
-export const FONT_SIZE_SCALES: Record<FontSizeScale, {
-  base: number;
-  sm: number;
-  xs: number;
-  lg: number;
-}> = {
-  compact: { base: 11, sm: 10, xs: 9, lg: 12 },
-  default: { base: 12, sm: 11, xs: 10, lg: 14 },
-  comfortable: { base: 14, sm: 12, xs: 11, lg: 16 },
-  large: { base: 16, sm: 14, xs: 12, lg: 18 },
-};
-
-/**
- * Accent color CSS variable mappings
- */
-export const ACCENT_COLOR_PRESETS: Record<Exclude<AccentColorPreset, 'custom'>, {
-  primary: string;
-  hover: string;
-  active: string;
-  muted: string;
-}> = {
-  emerald: { primary: '#34d399', hover: '#6ee7b7', active: '#a7f3d0', muted: '#047857' },
-  violet: { primary: '#a78bfa', hover: '#c4b5fd', active: '#ddd6fe', muted: '#6d28d9' },
-  blue: { primary: '#60a5fa', hover: '#93c5fd', active: '#bfdbfe', muted: '#1d4ed8' },
-  amber: { primary: '#fbbf24', hover: '#fcd34d', active: '#fde68a', muted: '#b45309' },
-  rose: { primary: '#fb7185', hover: '#fda4af', active: '#fecdd3', muted: '#be123c' },
-  cyan: { primary: '#22d3ee', hover: '#67e8f9', active: '#a5f3fc', muted: '#0e7490' },
-};
-
-// =============================================================================
-// Access Level Types
-// =============================================================================
-
-/**
- * System access levels defining what the AI agent can do
- * - read-only: Can only read files and run non-modifying commands
- * - standard: Default level - can read/write with confirmations
- * - elevated: Extended permissions with fewer confirmations
- * - admin: Full system access (use with caution)
- */
-export type AccessLevel = 'read-only' | 'standard' | 'elevated' | 'admin';
-
-/**
- * Tool category for permission grouping and UI classification
- * This is the canonical definition - import from here in other files
- */
-export type ToolCategory =
-  | 'read'           // File reading, searching, listing
-  | 'write'          // File creation, editing, deletion
-  | 'terminal'       // Terminal command execution
-  | 'git'            // Git operations
-  | 'system'         // System-level operations
-  | 'destructive'    // Potentially dangerous operations
-  | 'file-read'      // Reading files (alias for read)
-  | 'file-write'     // Creating/modifying files (alias for write)
-  | 'file-search'    // Finding/searching files
-  | 'media'          // Video, audio, media operations
-  | 'communication'  // Email, messaging
-  | 'code-intelligence' // Symbols, definitions, references, diagnostics
-  | 'browser-read'   // Browser read-only operations (fetch, extract, console)
-  | 'browser-write'  // Browser state-changing operations (click, type, navigate)
-  | 'agent-internal' // Agent internal tools (planning, etc.)
-  | 'other';         // Uncategorized
-
-/**
- * Permission setting for a tool category
- */
-export interface CategoryPermission {
-  /** Whether tools in this category are allowed */
-  allowed: boolean;
-  /** Whether tools require confirmation */
-  requiresConfirmation: boolean;
-}
-
-/**
- * Access level configuration
- */
-export interface AccessLevelSettings {
-  /** Current access level */
-  level: AccessLevel;
-
-  /** Category-level permissions (overrides level defaults) */
-  categoryPermissions: Partial<Record<ToolCategory, CategoryPermission>>;
-
-  /** Individual tool overrides (highest priority) */
-  toolOverrides: Record<string, {
-    allowed: boolean;
-    requiresConfirmation: boolean;
-  }>;
-
-  /** Paths the agent is restricted from accessing (glob patterns) */
-  restrictedPaths: string[];
-
-  /** Paths the agent has explicit access to (glob patterns, overrides restrictions) */
-  allowedPaths: string[];
-
-  /** Whether to show access level in the system prompt */
-  showInSystemPrompt: boolean;
-
-  /** Custom message to include when access is denied */
-  accessDeniedMessage: string;
-
-  /** Allow the agent to request elevated access */
-  allowAccessRequests: boolean;
-
-  /** 
-   * Allow access to files outside the workspace.
-   * When false (default): Agent can only access files within the active workspace.
-   * When true: Agent can access any file on the system (use with caution).
-   */
-  allowOutsideWorkspace: boolean;
-}
-
-/**
- * Default permissions per access level
- */
-export const ACCESS_LEVEL_DEFAULTS: Record<AccessLevel, Record<ToolCategory, CategoryPermission>> = {
-  'read-only': {
-    read: { allowed: true, requiresConfirmation: false },
-    write: { allowed: false, requiresConfirmation: true },
-    terminal: { allowed: false, requiresConfirmation: true },
-    git: { allowed: false, requiresConfirmation: true },
-    system: { allowed: false, requiresConfirmation: true },
-    destructive: { allowed: false, requiresConfirmation: true },
-    'file-read': { allowed: true, requiresConfirmation: false },
-    'file-write': { allowed: false, requiresConfirmation: true },
-    'file-search': { allowed: true, requiresConfirmation: false },
-    media: { allowed: false, requiresConfirmation: true },
-    communication: { allowed: false, requiresConfirmation: true },
-    'code-intelligence': { allowed: true, requiresConfirmation: false },
-    'browser-read': { allowed: false, requiresConfirmation: true },
-    'browser-write': { allowed: false, requiresConfirmation: true },
-    'agent-internal': { allowed: true, requiresConfirmation: false },
-    other: { allowed: false, requiresConfirmation: true },
-  },
-  'standard': {
-    read: { allowed: true, requiresConfirmation: false },
-    write: { allowed: true, requiresConfirmation: true },
-    terminal: { allowed: true, requiresConfirmation: true },
-    git: { allowed: true, requiresConfirmation: true },
-    system: { allowed: false, requiresConfirmation: true },
-    destructive: { allowed: false, requiresConfirmation: true },
-    'file-read': { allowed: true, requiresConfirmation: false },
-    'file-write': { allowed: true, requiresConfirmation: true },
-    'file-search': { allowed: true, requiresConfirmation: false },
-    media: { allowed: true, requiresConfirmation: true },
-    communication: { allowed: false, requiresConfirmation: true },
-    'code-intelligence': { allowed: true, requiresConfirmation: false },
-    'browser-read': { allowed: true, requiresConfirmation: false },
-    'browser-write': { allowed: true, requiresConfirmation: true },
-    'agent-internal': { allowed: true, requiresConfirmation: false },
-    other: { allowed: true, requiresConfirmation: true },
-  },
-  'elevated': {
-    read: { allowed: true, requiresConfirmation: false },
-    write: { allowed: true, requiresConfirmation: false },
-    terminal: { allowed: true, requiresConfirmation: false },
-    git: { allowed: true, requiresConfirmation: false },
-    system: { allowed: true, requiresConfirmation: true },
-    destructive: { allowed: false, requiresConfirmation: true },
-    'file-read': { allowed: true, requiresConfirmation: false },
-    'file-write': { allowed: true, requiresConfirmation: false },
-    'file-search': { allowed: true, requiresConfirmation: false },
-    media: { allowed: true, requiresConfirmation: false },
-    communication: { allowed: true, requiresConfirmation: true },
-    'code-intelligence': { allowed: true, requiresConfirmation: false },
-    'browser-read': { allowed: true, requiresConfirmation: false },
-    'browser-write': { allowed: true, requiresConfirmation: false },
-    'agent-internal': { allowed: true, requiresConfirmation: false },
-    other: { allowed: true, requiresConfirmation: false },
-  },
-  'admin': {
-    read: { allowed: true, requiresConfirmation: false },
-    write: { allowed: true, requiresConfirmation: false },
-    terminal: { allowed: true, requiresConfirmation: false },
-    git: { allowed: true, requiresConfirmation: false },
-    system: { allowed: true, requiresConfirmation: false },
-    destructive: { allowed: true, requiresConfirmation: true },
-    'file-read': { allowed: true, requiresConfirmation: false },
-    'file-write': { allowed: true, requiresConfirmation: false },
-    'file-search': { allowed: true, requiresConfirmation: false },
-    media: { allowed: true, requiresConfirmation: false },
-    communication: { allowed: true, requiresConfirmation: false },
-    'code-intelligence': { allowed: true, requiresConfirmation: false },
-    'browser-read': { allowed: true, requiresConfirmation: false },
-    'browser-write': { allowed: true, requiresConfirmation: false },
-    'agent-internal': { allowed: true, requiresConfirmation: false },
-    other: { allowed: true, requiresConfirmation: false },
-  },
-};
-
-/**
- * Default access level settings
- */
-export const DEFAULT_ACCESS_LEVEL_SETTINGS: AccessLevelSettings = {
-  level: 'standard',
-  categoryPermissions: {},
-  toolOverrides: {},
-  restrictedPaths: [
-    '**/.env',
-    '**/.env.*',
-    '**/secrets/**',
-    '**/credentials/**',
-    '**/*.pem',
-    '**/*.key',
-    '**/id_rsa*',
-    '**/authorized_keys',
+export const DEFAULT_WORKSPACE_INDEXING_SETTINGS: WorkspaceIndexingSettings = {
+  autoIndexOnOpen: true,
+  enableFileWatcher: true,
+  watcherDebounceMs: 300,
+  maxFileSizeBytes: 10 * 1024 * 1024, // 10MB
+  maxIndexSizeMb: 512,
+  indexBatchSize: 50,
+  enableVectorEmbeddings: true,
+  embeddingChunkSize: 1024,
+  embeddingChunkOverlap: 96,
+  maxChunksPerFile: 200,
+  embeddingBatchSize: 128,
+  excludePatterns: [
+    'node_modules/**',
+    '.git/**',
+    'dist/**',
+    'build/**',
+    'target/**',
+    '.next/**',
+    '.nuxt/**',
+    'coverage/**',
+    '*.min.js',
+    '*.min.css',
+    '*.map',
+    '*.lock',
+    'package-lock.json',
+    'yarn.lock',
+    'pnpm-lock.yaml',
   ],
-  allowedPaths: [],
-  showInSystemPrompt: true,
-  accessDeniedMessage: 'This action is not permitted at your current access level.',
-  allowAccessRequests: false,
-  allowOutsideWorkspace: false,
-};
-
-/**
- * Human-readable descriptions for access levels
- */
-export const ACCESS_LEVEL_DESCRIPTIONS: Record<AccessLevel, { name: string; description: string; icon: string }> = {
-  'read-only': {
-    name: 'Read Only',
-    description: 'Can only read files and search. No modifications allowed.',
-    icon: 'Eye',
-  },
-  'standard': {
-    name: 'Standard',
-    description: 'Default level. Can read and write with confirmations.',
-    icon: 'Shield',
-  },
-  'elevated': {
-    name: 'Elevated',
-    description: 'Extended permissions with fewer confirmation prompts.',
-    icon: 'ShieldCheck',
-  },
-  'admin': {
-    name: 'Administrator',
-    description: 'Full system access. Use with extreme caution.',
-    icon: 'ShieldAlert',
-  },
+  includePatterns: [],
+  enableAutoContextInjection: true,
+  maxContextResults: 10,
+  minSimilarityScore: 0.3,
 };
 
 // =============================================================================
-// Task-Based Model Routing Types
+// Access Level Types (extracted to ./types/accessLevel.ts)
 // =============================================================================
+export {
+  type AccessLevel,
+  type ToolCategory,
+  type CategoryPermission,
+  type AccessLevelSettings,
+  ACCESS_LEVEL_DEFAULTS,
+  DEFAULT_ACCESS_LEVEL_SETTINGS,
+  ACCESS_LEVEL_DESCRIPTIONS,
+} from './types/accessLevel';
 
-/**
- * Task types that the agent can detect and route to different models.
- * Each task type can be configured to use a specific provider/model combination.
- */
-export type RoutingTaskType =
-  | 'frontend'       // React, Vue, CSS, HTML, UI components
-  | 'backend'        // Node.js, APIs, databases, server logic
-  | 'debugging'      // Bug fixing, error analysis
-  | 'analysis'       // Code review, refactoring suggestions
-  | 'planning'       // Architecture, system design, planning
-  | 'documentation'  // READMEs, comments, docs
-  | 'testing'        // Test writing, test analysis
-  | 'devops'         // CI/CD, Docker, deployment
-  | 'general';       // Default fallback
-
-/**
- * Human-readable info for each task type
- */
-export const ROUTING_TASK_INFO: Record<RoutingTaskType, { name: string; description: string; icon: string; keywords: string[] }> = {
-  frontend: {
-    name: 'Frontend Development',
-    description: 'React, Vue, CSS, HTML, UI components, styling',
-    icon: 'Layout',
-    keywords: ['react', 'vue', 'angular', 'css', 'html', 'component', 'ui', 'ux', 'tailwind', 'style', 'dom', 'browser', 'responsive', 'animation'],
-  },
-  backend: {
-    name: 'Backend Development',
-    description: 'Node.js, APIs, databases, server logic, authentication',
-    icon: 'Server',
-    keywords: ['api', 'database', 'server', 'node', 'express', 'fastify', 'mongodb', 'postgres', 'sql', 'rest', 'graphql', 'auth', 'middleware', 'endpoint'],
-  },
-  debugging: {
-    name: 'Debugging',
-    description: 'Bug fixing, error analysis, troubleshooting',
-    icon: 'Bug',
-    keywords: ['bug', 'error', 'fix', 'crash', 'issue', 'debug', 'broken', 'fail', 'exception', 'stack', 'trace', 'undefined', 'null', 'TypeError'],
-  },
-  analysis: {
-    name: 'Code Analysis',
-    description: 'Code review, refactoring, optimization suggestions',
-    icon: 'Search',
-    keywords: ['review', 'analyze', 'refactor', 'optimize', 'improve', 'performance', 'clean', 'smell', 'pattern', 'best practice', 'audit'],
-  },
-  planning: {
-    name: 'Planning & Architecture',
-    description: 'System design, architecture decisions, project planning',
-    icon: 'Map',
-    keywords: ['design', 'architect', 'plan', 'structure', 'organize', 'strategy', 'roadmap', 'diagram', 'flow', 'system', 'scale', 'microservice'],
-  },
-  documentation: {
-    name: 'Documentation',
-    description: 'READMEs, comments, API docs, guides',
-    icon: 'FileText',
-    keywords: ['document', 'readme', 'comment', 'jsdoc', 'describe', 'explain', 'guide', 'tutorial', 'api doc', 'changelog'],
-  },
-  testing: {
-    name: 'Testing',
-    description: 'Unit tests, integration tests, test analysis',
-    icon: 'TestTube',
-    keywords: ['test', 'jest', 'vitest', 'mocha', 'spec', 'unit', 'integration', 'e2e', 'coverage', 'mock', 'assert', 'expect'],
-  },
-  devops: {
-    name: 'DevOps & Deployment',
-    description: 'CI/CD, Docker, deployment, infrastructure',
-    icon: 'Cloud',
-    keywords: ['deploy', 'docker', 'kubernetes', 'ci', 'cd', 'pipeline', 'github actions', 'aws', 'azure', 'vercel', 'nginx', 'container'],
-  },
-  general: {
-    name: 'General',
-    description: 'Default for unclassified tasks',
-    icon: 'MessageSquare',
-    keywords: [],
-  },
-};
-
-/**
- * Configuration for a single task-to-model mapping
- */
-export interface TaskModelMapping {
-  /** The task type this mapping applies to */
-  taskType: RoutingTaskType;
-  /** Provider to use for this task ('auto' uses the default provider selection) */
-  provider: LLMProviderName | 'auto';
-  /** Specific model ID to use (optional - uses provider default if not set) */
-  modelId?: string;
-  /** Whether this mapping is enabled */
-  enabled: boolean;
-  /** Custom temperature for this task type (optional) */
-  temperature?: number;
-  /** Custom max tokens for this task type (optional) */
-  maxOutputTokens?: number;
-  /** Priority when multiple mappings could apply (lower = higher priority) */
-  priority: number;
-  /** Fallback provider if primary is unavailable */
-  fallbackProvider?: LLMProviderName;
-  /** Fallback model if primary model fails */
-  fallbackModelId?: string;
-  /** Custom label for display in UI (for custom tasks) */
-  label?: string;
-  /** Description for this mapping */
-  description?: string;
-  /** Color for UI display (hex color or CSS variable) */
-  color?: string;
-}
-
-/**
- * Custom user-defined task type for routing
- */
-export interface CustomTaskType {
-  /** Unique identifier for this custom task */
-  id: string;
-  /** Display name */
-  name: string;
-  /** Description of what this task handles */
-  description: string;
-  /** Icon name (from lucide-react) */
-  icon: string;
-  /** Keywords that trigger this task detection */
-  keywords: string[];
-  /** File patterns that indicate this task (glob-like) */
-  filePatterns?: string[];
-  /** Context patterns to match in user messages */
-  contextPatterns?: string[];
-  /** Priority relative to built-in tasks (lower = higher priority) */
-  priority: number;
-  /** Whether this custom task is active */
-  enabled: boolean;
-}
-
-/**
- * Complete task-based routing configuration
- */
-export interface TaskRoutingSettings {
-  /** Enable task-based model routing */
-  enabled: boolean;
-  /** Default mapping when no specific task is detected */
-  defaultMapping: TaskModelMapping;
-  /** Task-specific mappings */
-  taskMappings: TaskModelMapping[];
-  /** Custom user-defined task types */
-  customTaskTypes?: CustomTaskType[];
-  /** Show routing decisions in the UI (for transparency) */
-  showRoutingDecisions: boolean;
-  /** Show routing badge on assistant messages */
-  showRoutingBadge: boolean;
-  /** Allow agent to override routing in complex scenarios */
-  allowAgentOverride: boolean;
-  /** Minimum confidence required to apply task-specific routing (0-1) */
-  confidenceThreshold: number;
-  /** Enable logging of routing decisions for debugging */
-  logRoutingDecisions: boolean;
-  /** Use conversation context for better task detection */
-  useConversationContext: boolean;
-  /** Number of recent messages to consider for context (1-20) */
-  contextWindowSize: number;
-  /** Enable fallback to default when routed provider fails */
-  enableFallback: boolean;
-}
-
-/**
- * Default task routing settings
- */
-export const DEFAULT_TASK_ROUTING_SETTINGS: TaskRoutingSettings = {
-  enabled: false,
-  defaultMapping: {
-    taskType: 'general',
-    provider: 'auto',
-    enabled: true,
-    priority: 100,
-  },
-  taskMappings: [
-    { taskType: 'frontend', provider: 'auto', enabled: false, priority: 1, label: 'Frontend Development', description: 'React, Vue, CSS, HTML, UI components' },
-    { taskType: 'backend', provider: 'auto', enabled: false, priority: 2, label: 'Backend Development', description: 'Node.js, APIs, databases' },
-    { taskType: 'debugging', provider: 'auto', enabled: false, priority: 3, label: 'Debugging', description: 'Bug fixing, error analysis' },
-    { taskType: 'analysis', provider: 'auto', enabled: false, priority: 4, label: 'Code Analysis', description: 'Code review, optimization' },
-    { taskType: 'planning', provider: 'auto', enabled: false, priority: 5, label: 'Planning', description: 'Architecture, design' },
-    { taskType: 'documentation', provider: 'auto', enabled: false, priority: 6, label: 'Documentation', description: 'READMEs, docs' },
-    { taskType: 'testing', provider: 'auto', enabled: false, priority: 7, label: 'Testing', description: 'Tests, assertions' },
-    { taskType: 'devops', provider: 'auto', enabled: false, priority: 8, label: 'DevOps', description: 'CI/CD, Docker' },
-  ],
-  customTaskTypes: [],
-  showRoutingDecisions: true,
-  showRoutingBadge: true,
-  allowAgentOverride: true,
-  confidenceThreshold: 0.6,
-  logRoutingDecisions: false,
-  useConversationContext: true,
-  contextWindowSize: 10,
-  enableFallback: true,
-};
-
-/**
- * Result of task detection
- */
-export interface TaskDetectionResult {
-  /** Detected task type (built-in or custom) */
-  taskType: RoutingTaskType | string;
-  /** Confidence score (0-1) */
-  confidence: number;
-  /** Signals that triggered this detection */
-  signals: string[];
-  /** Alternative task types considered */
-  alternatives?: Array<{ taskType: RoutingTaskType | string; confidence: number }>;
-  /** Whether this is a custom task type */
-  isCustomTask?: boolean;
-}
-
-/**
- * Routing decision made by the task router
- */
-export interface RoutingDecision {
-  /** Detected task type (built-in or custom) */
-  detectedTaskType: RoutingTaskType | string;
-  /** Confidence of detection */
-  confidence: number;
-  /** Selected provider */
-  selectedProvider: LLMProviderName;
-  /** Selected model ID */
-  selectedModel: string;
-  /** Human-readable reason for the decision */
-  reason: string;
-  /** Whether the default was used (no matching task mapping) */
-  usedDefault: boolean;
-  /** The mapping that was applied */
-  appliedMapping?: TaskModelMapping;
-  /** Signals that triggered the task detection */
-  signals?: string[];
-  /** Alternative task types that were considered */
-  alternatives?: Array<{ taskType: RoutingTaskType | string; confidence: number }>;
-  /** Whether fallback was used due to primary provider failure */
-  usedFallback?: boolean;
-  /** Original provider before fallback (if fallback was used) */
-  originalProvider?: LLMProviderName;
-  /** Whether this was a custom task type */
-  isCustomTask?: boolean;
-}
+// =============================================================================
+// Task-Based Model Routing Types (extracted to ./types/taskRouting.ts)
+// =============================================================================
+export {
+  type RoutingTaskType,
+  ROUTING_TASK_INFO,
+  type TaskModelMapping,
+  type CustomTaskType,
+  type TaskRoutingSettings,
+  DEFAULT_TASK_ROUTING_SETTINGS,
+  type TaskDetectionResult,
+  type RoutingDecision,
+} from './types/taskRouting';
 
 /**
  * Claude Code subscription tier
@@ -2486,8 +1510,6 @@ export interface AgentSettings {
   appearanceSettings?: AppearanceSettings;
   /** Task-based model routing configuration */
   taskRoutingSettings?: TaskRoutingSettings;
-  /** Editor AI settings (inline completions, code actions) */
-  editorAISettings?: EditorAISettings;
   /** Autonomous feature flags */
   autonomousFeatureFlags?: AutonomousFeatureFlags;
   /** Claude Code subscription authentication (OAuth-based) */
@@ -2498,47 +1520,9 @@ export interface AgentSettings {
   mcpSettings?: import('./types/mcp').MCPSettings;
   /** Configured MCP servers */
   mcpServers?: import('./types/mcp').MCPServerConfig[];
+  /** Workspace indexing and embedding settings */
+  workspaceSettings?: WorkspaceIndexingSettings;
 }
-
-/**
- * Editor AI Settings
- * Configuration for AI-powered editor features
- */
-export interface EditorAISettings {
-  /** Enable inline completions (ghost text) */
-  enableInlineCompletions: boolean;
-  /** Enable AI quick fixes */
-  enableQuickFixes: boolean;
-  /** Enable AI code actions */
-  enableCodeActions: boolean;
-  /** Debounce delay for inline completions (ms) */
-  inlineCompletionDebounceMs: number;
-  /** Max tokens for inline completions */
-  inlineCompletionMaxTokens: number;
-  /** Temperature for completions */
-  completionTemperature: number;
-  /** Context lines before cursor */
-  contextLinesBefore: number;
-  /** Context lines after cursor */
-  contextLinesAfter: number;
-  /** Preferred provider for editor AI */
-  preferredProvider: LLMProviderName | 'auto';
-}
-
-/**
- * Default editor AI settings
- */
-export const DEFAULT_EDITOR_AI_SETTINGS: EditorAISettings = {
-  enableInlineCompletions: true,
-  enableQuickFixes: true,
-  enableCodeActions: true,
-  inlineCompletionDebounceMs: 300,
-  inlineCompletionMaxTokens: 128,
-  completionTemperature: 0.2,
-  contextLinesBefore: 50,
-  contextLinesAfter: 10,
-  preferredProvider: 'auto',
-};
 
 // =============================================================================
 // Task Intent Types
@@ -2588,691 +1572,61 @@ export interface AgentSettingsEvent {
   settings: AgentSettings;
 }
 
-// Git events for renderer
-export interface GitStatusChangedEvent {
-  type: 'git:status-changed';
-  status: GitRepoStatus;
-}
-
-export interface GitBranchChangedEvent {
-  type: 'git:branch-changed';
-  from: string;
-  to: string;
-}
-
-export interface GitOperationCompleteEvent {
-  type: 'git:operation-complete';
-  operation: string;
-  success: boolean;
-  message?: string;
-}
-
-export interface GitErrorEvent {
-  type: 'git:error';
-  operation: string;
-  error: string;
-}
-
-export type GitEvent = GitStatusChangedEvent | GitBranchChangedEvent | GitOperationCompleteEvent | GitErrorEvent;
+// Git events re-exported from ./types/git.ts (see Git Service Types section below)
 
 // =============================================================================
-// Completion Types
+// Completion Types (extracted to ./types/lsp.ts)
 // =============================================================================
-
-export interface CompletionContext {
-  filePath: string;
-  language: string;
-  content: string;
-  line: number;
-  column: number;
-  prefix: string;
-  suffix: string;
-  triggerCharacter?: string;
-  isManualTrigger?: boolean;
-}
-
-export interface CompletionItem {
-  id: string;
-  insertText: string;
-  label: string;
-  detail?: string;
-  documentation?: string;
-  kind: CompletionKind;
-  range?: CompletionRange;
-  sortPriority: number;
-  isSnippet?: boolean;
-  provider?: string;
-  confidence?: number;
-}
-
-export interface CompletionRange {
-  startLine: number;
-  startColumn: number;
-  endLine: number;
-  endColumn: number;
-}
-
-export type CompletionKind =
-  | 'text' | 'method' | 'function' | 'constructor' | 'field'
-  | 'variable' | 'class' | 'interface' | 'module' | 'property'
-  | 'unit' | 'value' | 'enum' | 'keyword' | 'snippet' | 'color'
-  | 'file' | 'reference' | 'constant' | 'struct' | 'event'
-  | 'operator' | 'typeParameter';
-
-export interface CompletionResult {
-  items: CompletionItem[];
-  isComplete: boolean;
-  timeTakenMs: number;
-  cached: boolean;
-}
-
-export interface InlineCompletionContext extends CompletionContext {
-  maxTokens?: number;
-}
-
-export interface InlineCompletionResult {
-  text: string;
-  range?: CompletionRange;
-  provider?: string;
-  confidence?: number;
-}
-
-export interface CompletionServiceConfig {
-  maxCompletions: number;
-  debounceMs: number;
-  cacheTtlMs: number;
-  contextLinesBefore: number;
-  contextLinesAfter: number;
-  temperature: number;
-  maxTokens: number;
-  includeSymbols: boolean;
-  includeImports: boolean;
-  minPrefixLength: number;
-}
+export {
+  type CompletionContext,
+  type CompletionItem,
+  type CompletionRange,
+  type CompletionKind,
+  type CompletionResult,
+  type InlineCompletionContext,
+  type InlineCompletionResult,
+  type CompletionServiceConfig,
+} from './types/lsp';
 
 // =============================================================================
-// Browser State Event Types
+// Dynamic Tools, Security, Discovery, Templates, Sandbox Types
+// → Extracted to ./types/tools.ts
 // =============================================================================
-
-/**
- * Tool configuration settings
- */
-export interface ToolConfigSettings {
-  /** Tools that require confirmation when NOT in YOLO mode (YOLO mode bypasses all confirmations) */
-  alwaysConfirmTools: string[];
-  /** Tools that are completely disabled */
-  disabledTools: string[];
-  /** Per-tool timeout overrides (ms) */
-  toolTimeouts: Record<string, number>;
-  /** Allow dynamic tool creation */
-  allowDynamicCreation: boolean;
-  /** Require confirmation for dynamic tools */
-  requireDynamicToolConfirmation: boolean;
-  /** Maximum execution time for any tool (ms) */
-  maxToolExecutionTime: number;
-  /** Enable tool result caching */
-  enableToolCaching: boolean;
-  /** Maximum concurrent tool executions for parallel execution (default: 5) */
-  maxConcurrentTools: number;
-  /** User-defined custom tools */
-  customTools?: CustomToolConfig[];
-}
-
-/**
- * User-defined custom tool configuration
- */
-export interface CustomToolConfig {
-  /** Unique identifier */
-  id: string;
-  /** Tool name (must be unique) */
-  name: string;
-  /** Description of what this tool does */
-  description: string;
-  /** Workflow steps (chain of existing tools) */
-  steps: CustomToolStep[];
-  /** Whether this tool is enabled */
-  enabled: boolean;
-  /** Whether this tool requires confirmation */
-  requiresConfirmation: boolean;
-  /** Creation timestamp */
-  createdAt: number;
-  /** Last modified timestamp */
-  updatedAt: number;
-  /** Usage count */
-  usageCount: number;
-}
-
-/**
- * A step in a custom tool workflow
- */
-export interface CustomToolStep {
-  /** Step ID */
-  id: string;
-  /** Tool to execute */
-  toolName: string;
-  /** Input mapping (can reference $input or $stepN) */
-  input: Record<string, unknown>;
-  /** Condition for execution (optional) */
-  condition?: string;
-  /** Error handling: 'stop' or 'continue' */
-  onError: 'stop' | 'continue';
-}
-
-/**
- * Default tool configuration settings
- */
-export const DEFAULT_TOOL_CONFIG_SETTINGS: ToolConfigSettings = {
-  alwaysConfirmTools: ['run', 'write', 'edit', 'delete'],
-  disabledTools: [],
-  toolTimeouts: {},
-  allowDynamicCreation: true,
-  requireDynamicToolConfirmation: true,
-  maxToolExecutionTime: 120000, // 2 minutes
-  enableToolCaching: true,
-  maxConcurrentTools: 5, // Default max concurrent tools for parallel execution
-};
-
-/**
-// =============================================================================
-// Browser State Event Types
-// =============================================================================
-
-/**
- * Types of tool execution
- */
-export type ToolExecutionType = 'template' | 'code' | 'composite';
-
-/**
- * Risk level for dynamic tools
- */
-export type ToolRiskLevel = 'safe' | 'moderate' | 'dangerous';
-
-/**
- * Status of a dynamic tool
- */
-export type DynamicToolStatus = 'active' | 'disabled' | 'expired';
-
-/**
- * Specification of a dynamically created tool
- */
-export interface ToolSpecification {
-  /** Unique identifier for the tool */
-  id: string;
-  /** Tool name (must be unique within session) */
-  name: string;
-  /** Human-readable description */
-  description: string;
-  /** JSON Schema for tool parameters */
-  inputSchema: Record<string, unknown>;
-  /** How the tool executes */
-  executionType: ToolExecutionType;
-  /** Reference to template if template-based */
-  templateId?: string;
-  /** Workflow steps if composite tool */
-  compositionSteps?: ToolCompositionStep[];
-  /** Code to execute if code-based */
-  executionCode?: string;
-  /** Required capabilities/permissions */
-  requiredCapabilities: string[];
-  /** Risk assessment */
-  riskLevel: ToolRiskLevel;
-  /** Session/run that created this tool */
-  createdBy: {
-    sessionId: string;
-    runId?: string;
-    agentId?: string;
-  };
-  /** Creation timestamp */
-  createdAt: number;
-  /** Version number for tracking changes */
-  version: number;
-}
-
-/**
- * A step in a composite tool workflow
- */
-export interface ToolCompositionStep {
-  /** Step identifier */
-  id: string;
-  /** Tool to execute */
-  toolName: string;
-  /** Arguments for the tool (can reference previous step outputs) */
-  arguments: Record<string, unknown>;
-  /** Dependencies on other steps */
-  dependsOn: string[];
-  /** Condition for execution (optional) */
-  condition?: string;
-  /** Output variable name */
-  outputAs?: string;
-}
-
-/**
- * Pre-defined template for creating tools
- */
-export interface ToolTemplate {
-  /** Template identifier */
-  id: string;
-  /** Template name */
-  name: string;
-  /** What the template does */
-  description: string;
-  /** Configurable parameter bindings */
-  parameterBindings: ToolParameterBinding[];
-  /** Base schema template */
-  baseSchema: Record<string, unknown>;
-  /** Execution logic (template code) */
-  executionLogic: string;
-  /** Category for organization */
-  category: string;
-}
-
-/**
- * Parameter binding for a tool template
- */
-export interface ToolParameterBinding {
-  /** Parameter name */
-  name: string;
-  /** Parameter type */
-  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
-  /** Description */
-  description: string;
-  /** Default value */
-  defaultValue?: unknown;
-  /** Whether required */
-  required: boolean;
-}
-
-/**
- * Runtime state of a dynamic tool
- */
-export interface DynamicToolState {
-  /** Tool name */
-  name: string;
-  /** Current status */
-  status: DynamicToolStatus;
-  /** Times used */
-  usageCount: number;
-  /** Last usage timestamp */
-  lastUsedAt?: number;
-  /** Error count */
-  errorCount: number;
-  /** Last error message */
-  lastError?: string;
-}
-
-// -----------------------------------------------------------------------------
-// Phase 2: Security Types
-// -----------------------------------------------------------------------------
-
-/**
- * Security event types for audit logging
- */
-export type SecurityEventType =
-  | 'tool_creation_attempt'
-  | 'tool_creation_success'
-  | 'tool_creation_denied'
-  | 'tool_execution_attempt'
-  | 'tool_execution_success'
-  | 'tool_execution_denied'
-  | 'capability_request'
-  | 'capability_denied'
-  | 'rate_limit_hit'
-  | 'validation_failure'
-  | 'sandbox_violation'
-  | 'anomaly_detected';
-
-/**
- * Security event for audit logging
- */
-export interface SecurityEvent {
-  /** Unique event ID */
-  id: string;
-  /** Event type */
-  type: SecurityEventType;
-  /** When the event occurred */
-  timestamp: number;
-  /** Actor (agent/session) that triggered the event */
-  actor: {
-    sessionId: string;
-    agentId?: string;
-    runId?: string;
-  };
-  /** Event details */
-  details: {
-    toolName?: string;
-    toolId?: string;
-    capability?: string;
-    reason?: string;
-    riskLevel?: ToolRiskLevel;
-    [key: string]: unknown;
-  };
-  /** Outcome of the event */
-  outcome: 'allowed' | 'denied' | 'flagged';
-  /** Risk level assessment */
-  riskLevel: 'low' | 'medium' | 'high' | 'critical';
-}
-
-/**
- * Security violation record
- */
-export interface SecurityViolation {
-  /** Violation ID */
-  id: string;
-  /** Violation type */
-  type: 'code_injection' | 'privilege_escalation' | 'resource_abuse' | 'policy_violation';
-  /** Severity */
-  severity: 'warning' | 'error' | 'critical';
-  /** Description */
-  description: string;
-  /** When detected */
-  detectedAt: number;
-  /** Related event ID */
-  relatedEventId?: string;
-  /** Action taken */
-  actionTaken: 'logged' | 'blocked' | 'quarantined' | 'alerted';
-}
-
-/**
- * Rate limit configuration
- */
-export interface RateLimitConfig {
-  /** Maximum operations per window */
-  maxOperations: number;
-  /** Time window in milliseconds */
-  windowMs: number;
-  /** Action when limit exceeded */
-  onExceeded: 'reject' | 'queue' | 'throttle';
-  /** Cooldown period after limit hit (ms) */
-  cooldownMs?: number;
-}
-
-/**
- * Rate limit state
- */
-export interface RateLimitState {
-  /** Current operation count */
-  count: number;
-  /** Window start timestamp */
-  windowStart: number;
-  /** Whether currently in cooldown */
-  inCooldown: boolean;
-  /** Cooldown ends at */
-  cooldownEndsAt?: number;
-}
-
-/**
- * Security level configuration
- */
-export type SecurityLevel = 'maximum' | 'high' | 'standard' | 'permissive';
-
-/**
- * Security settings for dynamic tools
- */
-export interface DynamicToolSecuritySettings {
-  /** Overall security level */
-  level: SecurityLevel;
-  /** Allow dynamic tool creation */
-  allowDynamicTools: boolean;
-  /** Allow code-based tools (most risky) */
-  allowCodeBasedTools: boolean;
-  /** Require confirmation for moderate risk */
-  confirmModerateRisk: boolean;
-  /** Require confirmation for dangerous */
-  confirmDangerous: boolean;
-  /** Maximum dynamic tools per session */
-  maxToolsPerSession: number;
-  /** Maximum tool creations per minute */
-  maxCreationsPerMinute: number;
-  /** Allowed capabilities for dynamic tools */
-  allowedCapabilities: ToolCapability[];
-  /** Blocked patterns in tool code */
-  blockedPatterns: string[];
-}
-
-// -----------------------------------------------------------------------------
-// Phase 2: Tool Capability Types
-// -----------------------------------------------------------------------------
-
-/**
- * Capability a tool can request
- */
-export type ToolCapability =
-  | 'file_read'
-  | 'file_write'
-  | 'network'
-  | 'terminal'
-  | 'environment'
-  | 'system_info'
-  | 'browser'
-  | 'none';
-
-/**
- * Capability grant for a dynamic tool
- */
-export interface CapabilityGrant {
-  /** The capability */
-  capability: ToolCapability;
-  /** Scope restrictions */
-  scope?: {
-    /** Allowed file paths (glob patterns) */
-    paths?: string[];
-    /** Allowed domains */
-    domains?: string[];
-    /** Allowed commands */
-    commands?: string[];
-  };
-  /** When granted */
-  grantedAt: number;
-  /** When expires (optional) */
-  expiresAt?: number;
-}
-
-// -----------------------------------------------------------------------------
-// Phase 2: Tool Composition Types
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Phase 2: Tool Discovery Types
-// -----------------------------------------------------------------------------
-
-/**
- * Tool usage statistics
- */
-export interface ToolUsageStats {
-  /** Tool name */
-  toolName: string;
-  /** Total invocations */
-  totalInvocations: number;
-  /** Successful invocations */
-  successCount: number;
-  /** Failed invocations */
-  failureCount: number;
-  /** Success rate (0-1) */
-  successRate: number;
-  /** Average execution time (ms) */
-  avgDurationMs: number;
-  /** Last used timestamp */
-  lastUsedAt: number;
-  /** Usage by context type */
-  usageByContext: Record<string, number>;
-}
-
-/**
- * Ranking factors for tool search results
- */
-export interface ToolRankingFactors {
-  /** Text relevance score (0-1) */
-  relevance: number;
-  /** Usage frequency score (0-1) */
-  frequency: number;
-  /** Success rate score (0-1) */
-  successRate: number;
-  /** Recency score (0-1) */
-  recency: number;
-  /** User preference score (0-1) */
-  preference: number;
-}
-
-/**
- * Weighted ranking configuration
- */
-export interface ToolRankingConfig {
-  /** Weight for relevance (default 0.4) */
-  relevanceWeight: number;
-  /** Weight for frequency (default 0.2) */
-  frequencyWeight: number;
-  /** Weight for success rate (default 0.2) */
-  successRateWeight: number;
-  /** Weight for recency (default 0.1) */
-  recencyWeight: number;
-  /** Weight for preference (default 0.1) */
-  preferenceWeight: number;
-}
-
-/**
- * Tool suggestion with context
- */
-export interface ToolSuggestion {
-  /** Tool name */
-  toolName: string;
-  /** Why suggested */
-  reason: 'task_match' | 'context_match' | 'pattern_match' | 'gap_fill' | 'alternative';
-  /** Confidence score (0-1) */
-  confidence: number;
-  /** Explanation for user */
-  explanation: string;
-  /** Suggested arguments (if applicable) */
-  suggestedArgs?: Record<string, unknown>;
-}
-
-/**
- * Search context for enhanced tool discovery
- */
-export interface ToolSearchContext {
-  /** Current task description */
-  taskDescription?: string;
-  /** Recent tool calls in session */
-  recentToolCalls?: string[];
-  /** File types being worked with */
-  fileTypes?: string[];
-  /** Programming language context */
-  language?: string;
-  /** Whether to include dynamic tools */
-  includeDynamic?: boolean;
-  /** Maximum results */
-  maxResults?: number;
-}
-
-/**
- * Enhanced search result with ranking
- */
-export interface RankedToolResult {
-  /** Tool name */
-  toolName: string;
-  /** Tool description */
-  description: string;
-  /** Whether dynamic */
-  isDynamic: boolean;
-  /** Combined ranking score */
-  score: number;
-  /** Individual ranking factors */
-  factors: ToolRankingFactors;
-  /** Match explanation */
-  matchReason?: string;
-}
-
-// -----------------------------------------------------------------------------
-// Phase 2: Template Types
-// -----------------------------------------------------------------------------
-
-/**
- * Template categories
- */
-export type ToolTemplateCategory =
-  | 'http'
-  | 'file'
-  | 'data'
-  | 'aggregate'
-  | 'filter'
-  | 'validate'
-  | 'transform'
-  | 'custom';
-
-/**
- * Template execution context
- */
-export interface TemplateExecutionContext {
-  /** Bound parameters */
-  params: Record<string, unknown>;
-  /** Input data */
-  input: unknown;
-  /** Workspace path */
-  workspacePath?: string;
-  /** Capability grants */
-  capabilities: CapabilityGrant[];
-}
-
-/**
- * Template execution result
- */
-export interface TemplateExecutionResult {
-  /** Whether execution succeeded */
-  success: boolean;
-  /** Output data */
-  output?: unknown;
-  /** Error if failed */
-  error?: string;
-  /** Execution metadata */
-  metadata?: {
-    durationMs: number;
-    bytesProcessed?: number;
-    itemsProcessed?: number;
-  };
-}
-
-// -----------------------------------------------------------------------------
-// Phase 2: Sandbox Types
-// -----------------------------------------------------------------------------
-
-/**
- * Sandbox execution mode
- */
-export type SandboxMode = 'strict' | 'limited' | 'standard' | 'privileged';
-
-/**
- * Sandbox configuration
- */
-export interface SandboxConfig {
-  /** Execution mode */
-  mode: SandboxMode;
-  /** CPU time limit in milliseconds */
-  cpuTimeLimitMs: number;
-  /** I/O operations limit */
-  ioOperationsLimit: number;
-  /** Allowed globals */
-  allowedGlobals: string[];
-  /** Blocked patterns in code */
-  blockedPatterns: string[];
-}
-
-/**
- * Sandbox execution result
- */
-export interface SandboxExecutionResult {
-  /** Whether execution succeeded */
-  success: boolean;
-  /** Return value */
-  result?: unknown;
-  /** Error if failed */
-  error?: string;
-  /** Resource usage */
-  resourceUsage: {
-    cpuTimeMs: number;
-    ioOperations: number;
-  };
-  /** Security events during execution */
-  securityEvents: SecurityEvent[];
-}
+export {
+  type ToolConfigSettings,
+  type CustomToolConfig,
+  type CustomToolStep,
+  DEFAULT_TOOL_CONFIG_SETTINGS,
+  type ToolExecutionType,
+  type ToolRiskLevel,
+  type DynamicToolStatus,
+  type ToolSpecification,
+  type ToolCompositionStep,
+  type ToolTemplate,
+  type ToolParameterBinding,
+  type DynamicToolState,
+  type SecurityEventType,
+  type SecurityEvent,
+  type SecurityViolation,
+  type RateLimitConfig,
+  type RateLimitState,
+  type SecurityLevel,
+  type DynamicToolSecuritySettings,
+  type ToolCapability,
+  type CapabilityGrant,
+  type ToolUsageStats,
+  type ToolRankingFactors,
+  type ToolRankingConfig,
+  type ToolSuggestion,
+  type ToolSearchContext,
+  type RankedToolResult,
+  type ToolTemplateCategory,
+  type TemplateExecutionContext,
+  type TemplateExecutionResult,
+  type SandboxMode,
+  type SandboxConfig,
+  type SandboxExecutionResult,
+} from './types/tools';
 
 // -----------------------------------------------------------------------------
 // Agent Specialization Types
@@ -3427,67 +1781,26 @@ export interface SessionHealthUpdateEvent {
 }
 
 /**
- * Global sessions event types - emitted by MultiSessionManager
+ * Throttle state changed event - emitted when background throttling state changes
  */
-export type GlobalSessionEventType = 
-  | 'global-session-started'
-  | 'global-session-completed'
-  | 'global-session-error'
-  | 'global-session-progress'
-  | 'global-stats-updated'
-  | 'global-sessions-update';
-
-/**
- * Global session event - emitted when session states change across workspaces
- */
-export interface GlobalSessionEvent {
-  type: GlobalSessionEventType;
-  sessionId?: string;
-  workspaceId?: string;
-  runId?: string;
-  stats?: GlobalSessionStats;
-  error?: string;
-  timestamp: number;
+export interface ThrottleStateChangedEvent {
+  type: 'throttle-state-changed';
+  state: {
+    isThrottled: boolean;
+    agentRunning: boolean;
+    windowVisible: boolean;
+    windowFocused: boolean;
+    effectiveInterval: number;
+  };
 }
 
-/**
- * Global sessions update event - periodic update of all running sessions
- */
-export interface GlobalSessionsUpdateEvent {
-  type: 'global-sessions-update';
-  totalRunning: number;
-  totalQueued: number;
-  runningByWorkspace: Record<string, number>;
-  sessions: Array<{
-    sessionId: string;
-    workspaceId: string;
-    status: AgentRunStatus;
-    startedAt: number;
-    iteration: number;
-    maxIterations: number;
-    provider: string;
-  }>;
-  timestamp: number;
-}
-
-/**
- * Stats for running sessions across all workspaces
- */
-export interface GlobalSessionStats {
-  totalRunning: number;
-  totalQueued: number;
-  runningByWorkspace: Record<string, number>;
-  canStartNew: boolean;
-  maxGlobal: number;
-  maxPerWorkspace: number;
-}
-
-export type RendererEvent = AgentEvent | WorkspaceEvent | SessionsEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent | SessionHealthUpdateEvent | GlobalSessionEvent | GlobalSessionsUpdateEvent;
+export type RendererEvent = AgentEvent | SessionsEvent | SessionPatchEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent | SessionHealthUpdateEvent | ThrottleStateChangedEvent;
 
 
 export interface StartSessionPayload {
-  workspaceId?: string;
   initialConfig?: Partial<AgentConfig>;
+  /** Workspace path to associate with this session */
+  workspacePath?: string | null;
 }
 
 /**
@@ -3959,299 +2272,44 @@ export interface ProgressUpdate {
 }
 
 // =============================================================================
-// File Tree Types
+// File Tree, Symbol, Diagnostics & File Operations Types (extracted to ./types/lsp.ts)
 // =============================================================================
-
-/** Represents a node in the file tree (file or directory) */
-export interface FileTreeNode {
-  name: string;
-  path: string;
-  type: 'file' | 'directory';
-  children?: FileTreeNode[];
-  /** File size in bytes (only for files) */
-  size?: number;
-  /** Last modified timestamp */
-  modifiedAt?: number;
-  /** File extension (only for files) */
-  extension?: string;
-  /** Whether the directory is expanded in UI */
-  isExpanded?: boolean;
-  /** Whether this is a hidden file/folder (starts with .) */
-  isHidden?: boolean;
-}
-
-// =============================================================================
-// Symbol Service Types
-// =============================================================================
-
-/** Types of code symbols */
-export type SymbolKind =
-  | 'class'
-  | 'interface'
-  | 'function'
-  | 'method'
-  | 'property'
-  | 'variable'
-  | 'constant'
-  | 'enum'
-  | 'type'
-  | 'import'
-  | 'export'
-  | 'component';
-
-/** Information about a code symbol */
-export interface SymbolInfo {
-  /** Symbol name */
-  name: string;
-  /** Type of symbol */
-  kind: SymbolKind;
-  /** File path where symbol is defined */
-  filePath: string;
-  /** Line number (1-indexed) */
-  line: number;
-  /** Column number (1-indexed) */
-  column: number;
-  /** End line number */
-  endLine: number;
-  /** End column number */
-  endColumn: number;
-  /** Parent symbol name (e.g., class name for a method) */
-  containerName?: string;
-  /** Export modifiers */
-  isExported?: boolean;
-  /** Default export */
-  isDefault?: boolean;
-  /** Brief documentation/JSDoc comment */
-  documentation?: string;
-}
-
-/** Location of a symbol reference or definition */
-export interface SymbolLocation {
-  /** File path */
-  filePath: string;
-  /** Line number (1-indexed) */
-  line: number;
-  /** Column number (1-indexed) */
-  column: number;
-  /** End column number */
-  endColumn?: number;
-  /** Preview of the line content */
-  preview?: string;
-  /** Whether this is the definition */
-  isDefinition?: boolean;
-}
-
-/** Hover information for a symbol */
-export interface HoverInfo {
-  /** Symbol name */
-  name: string;
-  /** Symbol kind */
-  kind: SymbolKind;
-  /** Full signature or type annotation */
-  signature?: string;
-  /** Documentation/JSDoc */
-  documentation?: string;
-  /** File path where defined */
-  definitionPath?: string;
-  /** Definition line number */
-  definitionLine?: number;
-  /** Content to display */
-  content?: string;
-  /** Range in the source */
-  range?: {
-    startLine: number;
-    startColumn: number;
-    endLine: number;
-    endColumn: number;
-  };
-}
+export {
+  type FileTreeNode,
+  type SymbolKind,
+  type SymbolInfo,
+  type SymbolLocation,
+  type HoverInfo,
+  type DiagnosticSeverity,
+  type DiagnosticInfo,
+  type DiagnosticsSummary,
+  type FileChangeType,
+  type FileChangeEvent,
+  type WatchOptions,
+  type WatcherStatus,
+  type BulkOperationType,
+  type BulkOperation,
+  type BulkOperationResult,
+} from './types/lsp';
 
 // =============================================================================
-// Diagnostics Service Types
+// Git Service Types (extracted to ./types/git.ts)
 // =============================================================================
-
-/** Severity levels for diagnostics */
-export type DiagnosticSeverity = 'error' | 'warning' | 'info' | 'hint';
-
-/** A diagnostic (error, warning, etc.) in a file */
-export interface DiagnosticInfo {
-  /** File path */
-  filePath: string;
-  /** File name (extracted from path) */
-  fileName?: string;
-  /** Line number (1-indexed) */
-  line: number;
-  /** Column number (1-indexed) */
-  column: number;
-  /** End line number */
-  endLine?: number;
-  /** End column number */
-  endColumn?: number;
-  /** Diagnostic message */
-  message: string;
-  /** Severity level */
-  severity: DiagnosticSeverity;
-  /** Source of the diagnostic (e.g., 'typescript', 'eslint') */
-  source: string;
-  /** Error code (e.g., 'TS2345', 'no-unused-vars') */
-  code?: string;
-  /** Suggested fix if available */
-  suggestedFix?: string;
-}
-
-/** Summary of diagnostics for a workspace or file */
-export interface DiagnosticsSummary {
-  /** Total error count */
-  errors: number;
-  /** Total warning count */
-  warnings: number;
-  /** Total info count */
-  infos: number;
-  /** Total hint count */
-  hints: number;
-  /** Grand total */
-  total: number;
-  /** Count by file path */
-  byFile: Record<string, number>;
-}
-
-// =============================================================================
-// Enhanced File Operations Types
-// =============================================================================
-
-/** Type of file change event */
-export type FileChangeType = 'change' | 'create' | 'delete' | 'rename';
-
-/** File change event from file watcher */
-export interface FileChangeEvent {
-  type: FileChangeType;
-  path: string;
-  oldPath?: string; // For rename events
-  timestamp: number;
-}
-
-/** Options for file watching */
-export interface WatchOptions {
-  /** Patterns to ignore (glob-like) */
-  ignorePatterns?: string[];
-  /** Watch directories recursively */
-  recursive?: boolean;
-  /** Debounce time in milliseconds for rapid file changes */
-  debounceMs?: number;
-}
-
-/** Watcher status information */
-export interface WatcherStatus {
-  watcherCount: number;
-  paths: Array<{ path: string; isDirectory: boolean }>;
-  pendingEvents: number;
-}
-
-/** Type of bulk file operation */
-export type BulkOperationType = 'rename' | 'move' | 'copy' | 'delete';
-
-/** A single bulk file operation */
-export interface BulkOperation {
-  type: BulkOperationType;
-  source: string;
-  destination?: string;
-}
-
-/** Result of a bulk operation */
-export interface BulkOperationResult {
-  operation: BulkOperation;
-  success: boolean;
-  error?: string;
-}
-
-// =============================================================================
-// Git Service Types
-// =============================================================================
-
-/** Git file status */
-export type GitFileStatus =
-  | 'modified'
-  | 'added'
-  | 'deleted'
-  | 'renamed'
-  | 'copied'
-  | 'untracked'
-  | 'ignored'
-  | 'conflicted'
-  | 'unmerged';
-
-/** Git file change information */
-export interface GitFileChange {
-  path: string;
-  status: GitFileStatus;
-  staged: boolean;
-  oldPath?: string;
-  additions?: number;
-  deletions?: number;
-}
-
-/** Git branch information */
-export interface GitBranch {
-  name: string;
-  current: boolean;
-  remote?: string;
-  upstream?: string;
-  ahead?: number;
-  behind?: number;
-  lastCommit?: string;
-}
-
-/** Git commit information */
-export interface GitCommit {
-  hash: string;
-  shortHash: string;
-  author: string;
-  authorEmail: string;
-  date: string;
-  message: string;
-  body?: string;
-  parents: string[];
-}
-
-/** Git stash entry */
-export interface GitStash {
-  index: number;
-  message: string;
-  branch: string;
-  date: string;
-}
-
-/** Git remote configuration */
-export interface GitRemote {
-  name: string;
-  url: string;
-  type: 'fetch' | 'push';
-}
-
-/** Comprehensive git repository status */
-export interface GitRepoStatus {
-  branch: string;
-  upstream?: string;
-  ahead: number;
-  behind: number;
-  isClean: boolean;
-  isRebasing: boolean;
-  isMerging: boolean;
-  staged: GitFileChange[];
-  unstaged: GitFileChange[];
-  untracked: GitFileChange[];
-  conflicted: GitFileChange[];
-  stashCount: number;
-}
-
-/** Git blame entry */
-export interface GitBlameEntry {
-  commit: string;
-  author: string;
-  date: string;
-  line: number;
-  content: string;
-}
+export {
+  type GitFileStatus,
+  type GitFileChange,
+  type GitBranch,
+  type GitCommit,
+  type GitStash,
+  type GitRemote,
+  type GitRepoStatus,
+  type GitBlameEntry,
+  type GitStatusChangedEvent,
+  type GitBranchChangedEvent,
+  type GitOperationCompleteEvent,
+  type GitErrorEvent,
+  type GitEvent,
+} from './types/git';
 
 
 
@@ -4312,786 +2370,67 @@ export interface ProjectAnalysis {
 
 
 // =============================================================================
-// Phase 4: Task Analysis Types
-// NOTE: TaskIntentType is defined in Task Intent Types section
-// TaskScopeLevel, TaskComplexityLevel are defined in Task Analysis section above
-// TaskIntent, TaskScope, TaskComplexity are interfaces that wrap these types with additional context
-// TaskAnalysis is defined in Task Analysis section above with merged properties
+// Phase 4: Task Analysis & Resource Types (extracted to ./types/taskPlanning.ts)
 // =============================================================================
-
-/**
- * Requirements extracted from the task
- */
-export interface TaskRequirements {
-  /** Files that need to be read or modified */
-  targetFiles: string[];
-  /** Files that may need to be created */
-  newFiles: string[];
-  /** Expected output format */
-  outputFormat?: 'code' | 'explanation' | 'both' | 'file-changes';
-  /** User-specified constraints */
-  constraints: string[];
-  /** Quality requirements */
-  qualityRequirements: string[];
-  /** Inferred context from conversation */
-  context: string[];
-}
-
-// NOTE: TaskAnalysis is defined in Task Analysis section above
-
-/**
- * Dependency relationship between subtasks
- */
-export interface TaskDependency {
-  /** ID of the dependent subtask */
-  subtaskId: string;
-  /** IDs of subtasks this depends on */
-  dependsOn: string[];
-  /** Type of dependency */
-  type: 'sequential' | 'data' | 'resource';
-  /** Whether this is a hard dependency (must complete) or soft (preferred) */
-  isHard: boolean;
-}
-
-/**
- * Individual subtask in a decomposed task
- */
-export interface SubTask {
-  /** Unique identifier */
-  id: string;
-  /** Parent subtask ID (for hierarchical decomposition) */
-  parentId?: string;
-  /** Order within parent or root */
-  order: number;
-  /** Subtask name */
-  name: string;
-  /** Detailed description */
-  description: string;
-  /** Type of subtask */
-  type: TaskIntentType;
-  /** Target files for this subtask */
-  targetFiles: string[];
-  /** Estimated token cost */
-  estimatedTokens: number;
-  /** Estimated time in milliseconds */
-  estimatedTimeMs: number;
-  /** Current state */
-  state: 'pending' | 'in-progress' | 'completed' | 'failed' | 'skipped';
-  /** Result of execution */
-  result?: {
-    success: boolean;
-    output?: string;
-    error?: string;
-    tokensUsed?: number;
-    timeMs?: number;
-  };
-  /** Dependencies */
-  dependencies: string[];
-  /** Priority (lower = higher priority) */
-  priority: number;
-  /** Can be executed in parallel with other subtasks */
-  canParallelize: boolean;
-}
-
-/**
- * Decomposition pattern type
- */
-export type DecompositionPattern =
-  | 'sequential'   // Tasks in order
-  | 'parallel'     // Independent tasks
-  | 'hierarchical' // Tasks with subtasks
-  | 'iterative';   // Repeat until condition
-
-/**
- * Execution plan for a decomposed task
- */
-export interface TaskPlan {
-  /** Unique identifier */
-  id: string;
-  /** Analysis that generated this plan */
-  analysisId: string;
-  /** Session this plan belongs to */
-  sessionId: string;
-  /** Root subtasks */
-  subtasks: SubTask[];
-  /** All dependencies */
-  dependencies: TaskDependency[];
-  /** Decomposition pattern used */
-  pattern: DecompositionPattern;
-  /** Total estimated tokens */
-  totalEstimatedTokens: number;
-  /** Total estimated time in milliseconds */
-  totalEstimatedTimeMs: number;
-  /** Plan creation timestamp */
-  createdAt: number;
-  /** Plan state */
-  state: 'planning' | 'executing' | 'completed' | 'failed' | 'cancelled';
-  /** Progress percentage (0-100) */
-  progress: number;
-  /** Execution start time */
-  startedAt?: number;
-  /** Execution end time */
-  completedAt?: number;
-  /** Maximum parallel execution */
-  maxParallelism: number;
-  /** Whether plan was validated */
-  isValidated: boolean;
-  /** Validation errors if any */
-  validationErrors: string[];
-}
+export {
+  type TaskRequirements,
+  type TaskDependency,
+  type SubTask,
+  type DecompositionPattern,
+  type TaskPlan,
+  type ResourceType,
+  type AllocationStrategy,
+  type ResourceAllocation,
+  type ResourceBudget,
+  type ResourceBudgetItem,
+  type ResourceUsage,
+  type ResourceUsageMetrics,
+  type ResourceRequest,
+  type AllocationResult,
+  type ResourcePoolStatus,
+} from './types/taskPlanning';
 
 // =============================================================================
-// Phase 4: Resource Types
+// Phase 4: User Communication Types (extracted to ./types/communication.ts)
 // =============================================================================
-
-/**
- * Types of resources that can be allocated
- */
-export type ResourceType = 'tokens' | 'agents' | 'files' | 'terminals' | 'time' | 'api-calls';
-
-/**
- * Strategy for resource allocation
- */
-export type AllocationStrategy = 'fair-share' | 'priority' | 'fifo' | 'greedy' | 'reserved';
-
-/**
- * Resource allocation record
- */
-export interface ResourceAllocation {
-  id: string;
-  type: ResourceType;
-  amount: number;
-  used: number;
-  holderId?: string;
-  agentId?: string;
-  holderType: 'session' | 'agent' | 'run';
-  status: 'pending' | 'granted' | 'released' | 'expired';
-  grantedAt: number;
-  expiresAt?: number;
-  isActive: boolean;
-}
-
-/**
- * Resource budget configuration
- */
-export interface ResourceBudget {
-  type: ResourceType;
-  total: number;
-  allocated: number;
-  available: number;
-  reserved: number;
-}
-
-/**
- * Resource budget item
- */
-export interface ResourceBudgetItem {
-  id: string;
-  type: ResourceType;
-  total: number;
-  allocated: number;
-  used: number;
-  reserved: number;
-  softLimit: number;
-  hardLimit: number;
-  isExhausted: boolean;
-  percentUsed: number;
-  ownerId: string;
-  ownerType: 'session' | 'agent' | 'run';
-}
-
-/**
- * Resource usage tracking
- */
-export interface ResourceUsage {
-  type: ResourceType;
-  current: number;
-  peak: number;
-  average: number;
-  timestamp: number;
-}
-
-/**
- * Resource usage metrics
- */
-export interface ResourceUsageMetrics {
-  type: ResourceType;
-  current: number;
-  peak: number;
-  average: number;
-  history: Array<{ timestamp: number; value: number }>;
-  allocationCount: number;
-  releaseCount: number;
-  waitTimeStats: {
-    min: number;
-    max: number;
-    average: number;
-  };
-}
+export {
+  type QuestionType,
+  type QuestionOption,
+  type CommunicationQuestion,
+  type QuestionResponse,
+  type ProgressLevel,
+  type DecisionOption,
+  type DecisionRequest,
+  type DecisionResponse,
+  type FeedbackType,
+  type UserFeedback,
+} from './types/communication';
 
 // =============================================================================
-// Phase 4: Resource Allocation Types (Extended)
+// Metrics & Observability Types (extracted to ./types/metrics.ts)
 // =============================================================================
-
-/**
- * Request for resource allocation
- */
-export interface ResourceRequest {
-  /** Unique request ID */
-  id: string;
-  /** Type of resource requested */
-  type: ResourceType;
-  /** Amount requested */
-  amount: number;
-  /** Requesting agent ID (null for main agent) */
-  agentId?: string;
-  /** Priority of the request */
-  priority: 'low' | 'normal' | 'high' | 'critical';
-  /** Reason for the request */
-  reason: string;
-  /** Maximum time to wait for allocation */
-  timeoutMs?: number;
-  /** Whether to queue if not immediately available */
-  allowQueue: boolean;
-  /** Timestamp of request */
-  requestedAt: number;
-}
-
-/**
- * Result of an allocation attempt
- */
-export interface AllocationResult {
-  /** Whether allocation succeeded */
-  success: boolean;
-  /** Allocation if successful */
-  allocation?: ResourceAllocation;
-  /** Error message if failed */
-  error?: string;
-  /** Whether request was queued */
-  queued: boolean;
-  /** Position in queue if queued */
-  queuePosition?: number;
-  /** Estimated wait time if queued */
-  estimatedWaitMs?: number;
-}
-
-/**
- * Resource pool status
- */
-export interface ResourcePoolStatus {
-  /** Pool type */
-  type: ResourceType;
-  /** Total capacity */
-  capacity: number;
-  /** Available amount */
-  available: number;
-  /** Active allocations count */
-  activeAllocations: number;
-  /** Queued requests count */
-  queuedRequests: number;
-  /** Pool health */
-  health: 'healthy' | 'degraded' | 'exhausted';
-  /** Last update timestamp */
-  updatedAt: number;
-}
-
-// =============================================================================
-// Phase 4: User Communication Types
-// =============================================================================
-
-/**
- * Types of questions that can be asked
- */
-export type QuestionType =
-  | 'yes-no'            // Simple yes/no question
-  | 'multiple-choice'   // Select from options
-  | 'text'              // Free-form text input
-  | 'file-selection'    // Choose file(s)
-  | 'priority-ranking'  // Rank items by priority
-  | 'confirmation';     // Confirm an action
-
-/**
- * An option in a multiple choice question
- */
-export interface QuestionOption {
-  /** Option ID */
-  id: string;
-  /** Display label */
-  label: string;
-  /** Description */
-  description?: string;
-  /** Whether this is the recommended option */
-  isRecommended?: boolean;
-  /** Whether this option is disabled */
-  isDisabled?: boolean;
-}
-
-/**
- * A question to ask the user
- */
-export interface CommunicationQuestion {
-  /** Question ID */
-  id: string;
-  /** Question type */
-  type: QuestionType;
-  /** Question text */
-  text: string;
-  /** Additional context */
-  context?: string;
-  /** Options for multiple-choice */
-  options?: QuestionOption[];
-  /** Default answer */
-  defaultAnswer?: string;
-  /** Placeholder for text input */
-  placeholder?: string;
-  /** Timeout in milliseconds (0 = no timeout) */
-  timeoutMs: number;
-  /** Whether question is required (vs skippable) */
-  isRequired: boolean;
-  /** Whether question is blocking execution */
-  isBlocking: boolean;
-  /** Priority of the question */
-  priority: 'low' | 'normal' | 'high' | 'urgent';
-  /** Requesting agent ID */
-  requesterId?: string;
-  /** Session ID */
-  sessionId: string;
-  /** Run ID */
-  runId?: string;
-  /** Creation timestamp */
-  createdAt: number;
-  /** Validation pattern for text input */
-  validationPattern?: string;
-  /** Validation error message */
-  validationMessage?: string;
-}
-
-/**
- * User's response to a question
- */
-export interface QuestionResponse {
-  /** Question ID */
-  questionId: string;
-  /** The answer */
-  answer: string | string[] | boolean;
-  /** Response timestamp */
-  respondedAt: number;
-  /** Whether question was skipped */
-  skipped: boolean;
-  /** Whether response timed out */
-  timedOut: boolean;
-}
-
-/**
- * Progress level for updates
- */
-export type ProgressLevel =
-  | 'task'       // Overall task progress
-  | 'subtask'    // Individual subtask
-  | 'agent'      // Per-agent progress
-  | 'operation'; // Current operation
-
-// ProgressUpdate defined earlier at line ~3358
-
-/**
- * A decision option with implications
- */
-export interface DecisionOption {
-  /** Option ID */
-  id: string;
-  /** Option label */
-  label: string;
-  /** Detailed description */
-  description: string;
-  /** Pros of this option */
-  pros: string[];
-  /** Cons of this option */
-  cons: string[];
-  /** Whether this is the recommended option */
-  isRecommended: boolean;
-  /** Risk level of this option */
-  riskLevel: 'low' | 'medium' | 'high';
-  /** Estimated impact description */
-  impact: string;
-}
-
-/**
- * A decision request to the user
- */
-export interface DecisionRequest {
-  /** Decision ID */
-  id: string;
-  /** Decision title */
-  title: string;
-  /** Decision context/description */
-  description: string;
-  /** Available options */
-  options: DecisionOption[];
-  /** Why this decision is needed */
-  reason: string;
-  /** Urgency of the decision */
-  urgency: 'low' | 'normal' | 'high' | 'blocking';
-  /** Default option ID if user doesn't respond */
-  defaultOptionId?: string;
-  /** Timeout in milliseconds */
-  timeoutMs: number;
-  /** Session ID */
-  sessionId: string;
-  /** Run ID */
-  runId?: string;
-  /** Requesting agent ID */
-  requesterId?: string;
-  /** Creation timestamp */
-  createdAt: number;
-}
-
-/**
- * User's decision response
- */
-export interface DecisionResponse {
-  /** Decision ID */
-  decisionId: string;
-  /** Selected option ID */
-  selectedOptionId: string;
-  /** Optional user comment */
-  comment?: string;
-  /** Response timestamp */
-  respondedAt: number;
-  /** Whether decision timed out (used default) */
-  timedOut: boolean;
-}
-
-/**
- * Types of feedback
- */
-export type FeedbackType =
-  | 'rating'      // Satisfaction rating
-  | 'issue'       // Report an issue
-  | 'suggestion'  // Improvement suggestion
-  | 'preference'; // Preference update
-
-/**
- * User feedback on agent actions
- */
-export interface UserFeedback {
-  /** Feedback ID */
-  id: string;
-  /** Feedback type */
-  type: FeedbackType;
-  /** Related session ID */
-  sessionId: string;
-  /** Related run ID */
-  runId?: string;
-  /** Related message ID */
-  messageId?: string;
-  /** Rating (1-5) for rating type */
-  rating?: number;
-  /** Text feedback */
-  text?: string;
-  /** Specific issue description */
-  issue?: string;
-  /** Suggestion text */
-  suggestion?: string;
-  /** Preference key-value */
-  preference?: { key: string; value: unknown };
-  /** Timestamp */
-  createdAt: number;
-}
-
-// =============================================================================
-// Metrics & Observability Types (Phase 10)
-// =============================================================================
-
-/**
- * Metrics dashboard widget data
- */
-export interface MetricsWidgetData {
-  id: string;
-  type: 'counter' | 'gauge' | 'chart' | 'table' | 'status';
-  title: string;
-  value: number | string | unknown[];
-  unit?: string;
-  trend?: 'up' | 'down' | 'stable';
-  trendValue?: number;
-  status?: 'healthy' | 'warning' | 'critical';
-  chartData?: Array<{ timestamp: number; value: number }>;
-  tableData?: Array<Record<string, unknown>>;
-}
-
-/**
- * Metrics dashboard layout
- */
-export interface MetricsDashboardLayout {
-  widgets: MetricsWidgetData[];
-  lastUpdated: number;
-  period: 'hour' | 'day' | 'week' | 'month';
-}
-
-/**
- * Tool metrics summary
- */
-export interface ToolMetricsSummary {
-  totalExecutions: number;
-  successRate: number;
-  avgDurationMs: number;
-  topTools: Array<{ name: string; count: number; successRate: number }>;
-  failingTools: Array<{ name: string; failureRate: number; errorCount: number }>;
-}
-
-/**
- * Agent metrics summary
- */
-export interface AgentMetricsSummary {
-  totalSpawned: number;
-  completionRate: number;
-  avgDurationMs: number;
-  avgTokensPerAgent: number;
-  bySpecialization: Array<{ specialization: string; count: number; successRate: number }>;
-}
-
-// =============================================================================
-// Cost Management Types
-// =============================================================================
-
-/**
- * Cost record for tracking LLM usage costs
- */
-export interface CostRecord {
-  id: string;
-  agentId: string;
-  sessionId: string;
-  provider: LLMProviderName;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cost: number;
-  timestamp: number;
-  requestType: 'chat' | 'tool';
-}
-
-/**
- * Cost budget configuration
- */
-export interface CostBudget {
-  sessionBudget: number;
-  perAgentBudget: number;
-  warningThreshold: number;
-  enforceHardLimit: boolean;
-}
-
-/**
- * Cost threshold event
- */
-export interface CostThresholdEvent {
-  type: 'cost-threshold-reached';
-  agentId?: string;
-  currentCost: number;
-  budget: number;
-  percentUsed: number;
-  isHardLimit: boolean;
-  timestamp: number;
-}
-
-// =============================================================================
-// Provider Health Types
-// =============================================================================
-
-/**
- * Provider health status
- */
-export interface ProviderHealth {
-  provider: LLMProviderName;
-  status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
-  latencyMs: number;
-  errorRate: number;
-  lastCheck: number;
-  consecutiveFailures: number;
-}
-
-/**
- * Failover configuration
- */
-export interface FailoverConfig {
-  enabled: boolean;
-  maxFailovers: number;
-  maxRetries: number;
-  retryDelayMs: number;
-  failoverThreshold: number;
-  recoveryPeriodMs: number;
-  excludedProviders: LLMProviderName[];
-  failoverChain: LLMProviderName[];
-  circuitBreakerThreshold: number;
-  circuitBreakerResetMs: number;
-}
-
-/**
- * Cost metrics summary
- */
-export interface CostMetricsSummary {
-  totalTokens: number;
-  totalCostUsd: number;
-  byProvider: Array<{ provider: string; tokens: number; costUsd: number }>;
-  avgCostPerTask: number;
-}
-
-/**
- * Quality metrics summary
- */
-export interface QualityMetricsSummary {
-  taskSuccessRate: number;
-  errorRate: number;
-  userSatisfaction: number;
-}
-
-/**
- * System-wide metrics summary
- */
-export interface SystemMetricsSummary {
-  period: 'hour' | 'day' | 'week' | 'month';
-  periodStart: number;
-  periodEnd: number;
-  tools: ToolMetricsSummary;
-  agents: AgentMetricsSummary;
-  costs: CostMetricsSummary;
-  quality: QualityMetricsSummary;
-  trends: {
-    successRateTrend: 'improving' | 'stable' | 'declining';
-    costTrend: 'increasing' | 'stable' | 'decreasing';
-    performanceTrend: 'improving' | 'stable' | 'declining';
-  };
-}
-
-/**
- * Metrics alert
- */
-export interface MetricsAlert {
-  severity: 'info' | 'warning' | 'error';
-  message: string;
-  timestamp: number;
-}
-
-/**
- * Safety status
- */
-export interface SafetyStatus {
-  isActive: boolean;
-  emergencyStopTriggered: boolean;
-  lastCheck: number;
-  overallHealth: 'healthy' | 'warning' | 'critical';
-}
-
-/**
- * Resource limits configuration
- */
-export interface SafetyResourceLimits {
-  maxTokensPerRun: number;
-  maxApiCallsPerRun: number;
-  maxConcurrentAgents: number;
-  maxFilesPerRun: number;
-  maxBytesPerRun: number;
-}
-
-/**
- * Resource usage tracking
- */
-export interface SafetyResourceUsage {
-  tokensUsed: number;
-  apiCallsUsed: number;
-  activeAgents: number;
-  filesModified: number;
-  bytesWritten: number;
-}
-
-/**
- * Safety violation record
- */
-export interface SafetyViolation {
-  id: string;
-  type: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  message: string;
-  agentId?: string;
-  action?: string;
-  timestamp: number;
-  wasBlocked: boolean;
-}
-
-/**
- * Complete safety state
- */
-export interface SafetyState {
-  status: SafetyStatus;
-  limits: SafetyResourceLimits;
-  usage: SafetyResourceUsage;
-  recentViolations: SafetyViolation[];
-  blockedActions: number;
-  allowedActions: number;
-}
-
-/**
- * Performance bottleneck info
- */
-export interface PerformanceBottleneck {
-  type: 'slow-operation' | 'high-frequency' | 'blocking';
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  operation: string;
-  description: string;
-  recommendation: string;
-  metrics: {
-    avgDurationMs?: number;
-    callCount?: number;
-    blockingTimeMs?: number;
-  };
-}
-
-/**
- * Performance report
- */
-export interface PerformanceReport {
-  generatedAt: number;
-  periodMs: number;
-  summary: {
-    totalOperations: number;
-    avgDurationMs: number;
-    p95DurationMs: number;
-    p99DurationMs: number;
-    slowestOperation: string;
-    fastestOperation: string;
-  };
-  bottlenecks: PerformanceBottleneck[];
-  recommendations: string[];
-}
-
-/**
- * Event emitted when metrics are updated
- */
-export interface MetricsUpdateEvent {
-  type: 'metrics-update';
-  timestamp: number;
-  metrics: Array<{
-    name: string;
-    value: number;
-    labels?: Record<string, string>;
-  }>;
-}
-
-/**
- * Event emitted when safety violation occurs
- */
-export interface SafetyViolationEvent {
-  type: 'safety-violation';
-  sessionId?: string;
-  timestamp: number;
-  violation: SafetyViolation;
-  wasBlocked: boolean;
-}
-
-/**
- * Event emitted when emergency stop is triggered
- */
-export interface EmergencyStopEvent {
-  type: 'emergency-stop';
-  timestamp: number;
-  reason: string;
-  triggeredBy: 'user' | 'system' | 'safety-framework';
-}
+export {
+  type MetricsWidgetData,
+  type MetricsDashboardLayout,
+  type ToolMetricsSummary,
+  type AgentMetricsSummary,
+  type CostRecord,
+  type CostBudget,
+  type CostThresholdEvent,
+  type ProviderHealth,
+  type FailoverConfig,
+  type CostMetricsSummary,
+  type QualityMetricsSummary,
+  type SystemMetricsSummary,
+  type MetricsAlert,
+  type SafetyStatus,
+  type SafetyResourceLimits,
+  type SafetyResourceUsage,
+  type SafetyViolation,
+  type SafetyState,
+  type PerformanceBottleneck,
+  type PerformanceReport,
+  type MetricsUpdateEvent,
+  type SafetyViolationEvent,
+  type EmergencyStopEvent,
+} from './types/metrics';

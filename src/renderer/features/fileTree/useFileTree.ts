@@ -13,6 +13,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createLogger } from '../../utils/logger';
+import { useStableCallback } from '../../utils/performance';
 import type { 
   FileTreeNode, 
   ContextMenuState, 
@@ -268,6 +269,8 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
   
   const fetchingRef = useRef(false);
   const lastWorkspaceRef = useRef<string | null>(null);
+  const fileChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingChangesRef = useRef<Set<string>>(new Set());
 
   // ==========================================================================
   // Build tree from API response
@@ -634,13 +637,18 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
     
     try {
       const paths = Array.from(selectedPaths);
-      let allSuccess = true;
+      // Batch delete: fire all deletes concurrently instead of sequentially
+      const results = await Promise.allSettled(
+        paths.map(p => window.vyotiq.files.delete(p))
+      );
       
-      for (const path of paths) {
-        const result = await window.vyotiq.files.delete(path);
-        if (!result.success) {
+      let allSuccess = true;
+      for (const result of results) {
+        if (result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.success)) {
           allSuccess = false;
-          setError(result.error || `Failed to delete ${path}`);
+          if (result.status === 'fulfilled') {
+            setError(result.value.error || 'Failed to delete');
+          }
         }
       }
       
@@ -862,10 +870,19 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
   // Keyboard Navigation
   // ==========================================================================
   
+  // Build path-to-index map for O(1) navigation lookups instead of O(n) findIndex
+  const pathIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < flatNodes.length; i++) {
+      map.set(flatNodes[i].path, i);
+    }
+    return map;
+  }, [flatNodes]);
+
   const navigateUp = useCallback(() => {
     if (flatNodes.length === 0) return;
     
-    const currentIdx = focusedPath ? flatNodes.findIndex(n => n.path === focusedPath) : -1;
+    const currentIdx = focusedPath ? (pathIndexMap.get(focusedPath) ?? -1) : -1;
     const newIdx = currentIdx > 0 ? currentIdx - 1 : 0;
     const newPath = flatNodes[newIdx]?.path;
     
@@ -873,12 +890,12 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
       setFocusedPath(newPath);
       selectPath(newPath);
     }
-  }, [flatNodes, focusedPath, selectPath]);
+  }, [flatNodes, focusedPath, selectPath, pathIndexMap]);
   
   const navigateDown = useCallback(() => {
     if (flatNodes.length === 0) return;
     
-    const currentIdx = focusedPath ? flatNodes.findIndex(n => n.path === focusedPath) : -1;
+    const currentIdx = focusedPath ? (pathIndexMap.get(focusedPath) ?? -1) : -1;
     const newIdx = currentIdx < flatNodes.length - 1 ? currentIdx + 1 : flatNodes.length - 1;
     const newPath = flatNodes[newIdx]?.path;
     
@@ -886,7 +903,7 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
       setFocusedPath(newPath);
       selectPath(newPath);
     }
-  }, [flatNodes, focusedPath, selectPath]);
+  }, [flatNodes, focusedPath, selectPath, pathIndexMap]);
   
   const navigateInto = useCallback(() => {
     if (!focusedPath) return;
@@ -934,10 +951,18 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
   // ==========================================================================
   
   // Load files when workspace changes
+  // PERFORMANCE: Defer initial file tree load to avoid blocking the UI during startup.
+  // requestAnimationFrame ensures the browser has painted the initial frame first.
   useEffect(() => {
     if (workspacePath) {
-      fetchFiles();
-      fetchGitStatus();
+      let cancelled = false;
+      // Defer to next idle frame so the UI renders before heavy I/O
+      const rafId = requestAnimationFrame(() => {
+        if (cancelled) return;
+        fetchFiles();
+        fetchGitStatus();
+      });
+      return () => { cancelled = true; cancelAnimationFrame(rafId); };
     } else {
       setNodes([]);
       setExpandedPaths(new Set());
@@ -963,6 +988,16 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
     return unsubscribe;
   }, [workspacePath, preferences.showGitDecorations, fetchGitStatus]);
   
+  // Debounced file change handler - batches rapid file changes
+  // instead of refreshing the entire tree on every single change
+  const debouncedRefresh = useStableCallback(() => {
+    pendingChangesRef.current.clear();
+    fetchFiles();
+    if (preferences.showGitDecorations) {
+      fetchGitStatus();
+    }
+  });
+
   // Listen for file changes (from IPC file operations and agent tools)
   useEffect(() => {
     if (!workspacePath) return;
@@ -973,21 +1008,29 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
       const normalizedWorkspace = workspacePath.replace(/\\/g, '/');
       
       if (normalizedPath.startsWith(normalizedWorkspace)) {
-        logger.debug('File change detected, refreshing file tree', { 
-          type: event.type, 
-          path: event.path 
-        });
-        fetchFiles();
+        // Batch rapid file changes with debouncing (300ms)
+        // This prevents the tree from refreshing hundreds of times
+        // during bulk operations (git checkout, npm install, etc.)
+        pendingChangesRef.current.add(event.path);
         
-        // Also refresh git status since file changes may affect it
-        if (preferences.showGitDecorations) {
-          fetchGitStatus();
+        if (fileChangeTimerRef.current) {
+          clearTimeout(fileChangeTimerRef.current);
         }
+        fileChangeTimerRef.current = setTimeout(() => {
+          fileChangeTimerRef.current = null;
+          debouncedRefresh();
+        }, 300);
       }
     });
     
-    return unsubscribe;
-  }, [workspacePath, fetchFiles, fetchGitStatus, preferences.showGitDecorations]);
+    return () => {
+      unsubscribe();
+      if (fileChangeTimerRef.current) {
+        clearTimeout(fileChangeTimerRef.current);
+        fileChangeTimerRef.current = null;
+      }
+    };
+  }, [workspacePath, debouncedRefresh]);
 
   return {
     nodes,

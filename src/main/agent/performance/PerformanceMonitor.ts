@@ -76,6 +76,9 @@ export class PerformanceMonitor extends EventEmitter {
       this.collectionInterval = setInterval(() => {
         this.collectResourceMetrics();
       }, this.config.collectionIntervalMs);
+      if (this.collectionInterval && typeof this.collectionInterval === 'object' && 'unref' in this.collectionInterval) {
+        (this.collectionInterval as NodeJS.Timeout).unref();
+      }
     }
 
     this.deps.logger.info('PerformanceMonitor: started');

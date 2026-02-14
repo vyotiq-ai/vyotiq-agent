@@ -81,10 +81,11 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ onComplete, onSk
       if (e.key === 'Escape') onSkip();
     };
     document.addEventListener('keydown', handleEscape);
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = prevOverflow;
     };
   }, [onSkip]);
 

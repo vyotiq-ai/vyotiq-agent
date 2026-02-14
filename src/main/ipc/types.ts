@@ -7,7 +7,6 @@
 import type { BrowserWindow } from 'electron';
 import type { AgentOrchestrator } from '../agent/orchestrator';
 import type { SettingsStore } from '../agent/settingsStore';
-import type { WorkspaceManager } from '../workspaces/workspaceManager';
 
 /**
  * Context object passed to all IPC handlers
@@ -16,10 +15,8 @@ import type { WorkspaceManager } from '../workspaces/workspaceManager';
 export interface IpcContext {
   getOrchestrator: () => AgentOrchestrator | null;
   getSettingsStore: () => SettingsStore;
-  getWorkspaceManager: () => WorkspaceManager;
   getMainWindow: () => BrowserWindow | null;
   emitToRenderer: (event: Record<string, unknown>) => void;
-  getActiveWorkspacePath: () => string | undefined;
 }
 
 /**

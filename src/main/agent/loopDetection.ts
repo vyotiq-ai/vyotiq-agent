@@ -87,26 +87,29 @@ export interface LoopDetectionState {
 // Tool Categories - Different tools have different loop thresholds
 // =============================================================================
 
-/** Exploration tools - high tolerance, reading many files is normal */
+/** Exploration tools - high tolerance, reading many files is normal.
+ *  All names are stored in lowercase for consistent matching. */
 const EXPLORATION_TOOLS = new Set([
   'read', 'ls', 'grep', 'search', 'find', 'glob', 'list',
-  'readFile', 'listDirectory', 'grepSearch', 'fileSearch',
+  'readfile', 'listdirectory', 'grepsearch', 'filesearch',
   'cat', 'head', 'tail', 'tree',
   // Browser tools - fetching different URLs is exploration
-  'browser_fetch', 'browserFetch', 'fetch', 'web_fetch',
+  'browser_fetch', 'browserfetch', 'fetch', 'web_fetch',
   // Research tools
-  'research', 'web_search', 'webSearch',
+  'research', 'web_search', 'websearch',
 ]);
 
-/** Action tools - lower tolerance, repeated actions are suspicious */
+/** Action tools - lower tolerance, repeated actions are suspicious.
+ *  All names are stored in lowercase for consistent matching. */
 const ACTION_TOOLS = new Set([
   'write', 'delete', 'run', 'exec', 'create', 'modify',
-  'writeFile', 'deleteFile', 'runCommand', 'executeCommand',
+  'writefile', 'deletefile', 'runcommand', 'executecommand',
   'mkdir', 'rm', 'mv', 'cp',
 ]);
 
-/** Edit tool - special handling for repeated failures */
-const EDIT_TOOLS = new Set(['edit', 'editFile', 'str_replace', 'strReplace']);
+/** Edit tool - special handling for repeated failures.
+ *  All names are stored in lowercase for consistent matching. */
+const EDIT_TOOLS = new Set(['edit', 'editfile', 'str_replace', 'strreplace']);
 
 // =============================================================================
 // Default Configuration
@@ -128,9 +131,75 @@ export const DEFAULT_LOOP_DETECTION_CONFIG: LoopDetectionConfig = {
 export class LoopDetector {
   private config: LoopDetectionConfig;
   private states = new Map<string, LoopDetectionState>();
+  /** Maximum patterns stored per run to prevent unbounded memory growth */
+  private static readonly MAX_PATTERNS_PER_RUN = 200;
+  /** Maximum age for orphaned run states (30 minutes) */
+  private static readonly ORPHAN_STATE_MAX_AGE_MS = 30 * 60 * 1000;
+  /** Interval timer for periodic state cleanup */
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  // --- Detection threshold constants (previously hardcoded magic numbers) ---
+  /** Consecutive identical edit-string failures before flagging immediately */
+  private static readonly MAX_IDENTICAL_EDIT_FAILURES = 2;
+  /** Consecutive tool failures before flagging as repeated-failures loop */
+  private static readonly MAX_CONSECUTIVE_FAILURES = 7;
+  /** Minimum iterations before no-progress detection activates */
+  private static readonly NO_PROGRESS_MIN_ITERATIONS = 30;
+  /** Minimum unique resources in recent window to NOT flag as no-progress */
+  private static readonly NO_PROGRESS_MIN_UNIQUE_RESOURCES = 1;
+  /** Minimum repetitions of a single signature to flag no-progress */
+  private static readonly NO_PROGRESS_MAX_REPETITION = 15;
+  /** Extra leniency added to consecutive threshold for exploration tools */
+  private static readonly EXPLORATION_CONSECUTIVE_LENIENCY = 4;
+  /** Reduction applied to consecutive threshold for action tools */
+  private static readonly ACTION_CONSECUTIVE_STRICTNESS = 1;
+  /** Extra leniency added to frequency threshold for exploration tools */
+  private static readonly EXPLORATION_FREQUENCY_LENIENCY = 6;
+  /** Minimum unique resources before exploration tools are allowed to reset consecutive counter */
+  private static readonly EXPLORATION_RESET_MIN_RESOURCES = 5;
+  /** Minimum repetitions in repeating-sequence check (Check 5) */
+  private static readonly REPEATING_SEQUENCE_MIN_REPS = 6;
+  /** Confidence required for exploration tools in repeating-sequence check */
+  private static readonly EXPLORATION_SEQUENCE_CONFIDENCE = 0.995;
+  /** Cap for unique resources tracked per run */
+  private static readonly MAX_UNIQUE_RESOURCES = 2000;
 
   constructor(config: Partial<LoopDetectionConfig> = {}) {
     this.config = { ...DEFAULT_LOOP_DETECTION_CONFIG, ...config };
+    // Periodic cleanup of orphaned run states every 5 minutes
+    // .unref() prevents this timer from keeping the Node.js process alive during shutdown
+    this.cleanupTimer = setInterval(() => this.cleanupOrphanedStates(), 5 * 60 * 1000);
+    if (this.cleanupTimer && typeof this.cleanupTimer === 'object' && 'unref' in this.cleanupTimer) {
+      this.cleanupTimer.unref();
+    }
+  }
+
+  /**
+   * Clean up states for runs that were not properly cleaned up (orphans).
+   * Removes states older than MAX_ORPHAN_STATE_AGE_MS based on the latest pattern timestamp.
+   */
+  private cleanupOrphanedStates(): void {
+    const now = Date.now();
+    for (const [runId, state] of this.states) {
+      const lastActivity = state.patterns.length > 0
+        ? state.patterns[state.patterns.length - 1].timestamp
+        : 0;
+      if (now - lastActivity > LoopDetector.ORPHAN_STATE_MAX_AGE_MS) {
+        this.states.delete(runId);
+        logger.debug('Cleaned up orphaned loop detection state', { runId });
+      }
+    }
+  }
+
+  /**
+   * Dispose the loop detector and clean up timers
+   */
+  dispose(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.states.clear();
   }
 
   /**
@@ -228,7 +297,7 @@ export class LoopDetector {
     // If so, don't count it as a consecutive identical call
     const isRetryAfterModification = keyArgument && 
       this.wasFileRecentlyModified(runId, keyArgument) &&
-      (EXPLORATION_TOOLS.has(toolCall.name) || EXPLORATION_TOOLS.has(toolCall.name.toLowerCase()));
+      EXPLORATION_TOOLS.has(toolCall.name.toLowerCase());
     
     // Create pattern from tool call
     const pattern: ToolCallPattern = {
@@ -240,8 +309,8 @@ export class LoopDetector {
       success,
     };
 
-    // Track unique resources accessed
-    if (keyArgument) {
+    // Track unique resources accessed (cap to prevent unbounded memory growth)
+    if (keyArgument && state.uniqueResourcesAccessed.size < LoopDetector.MAX_UNIQUE_RESOURCES) {
       state.uniqueResourcesAccessed.add(keyArgument);
     }
 
@@ -250,12 +319,12 @@ export class LoopDetector {
       state.consecutiveFailures++;
       
       // Track specific "identical strings" edit failures
-      const isEditTool = EDIT_TOOLS.has(toolCall.name) || EDIT_TOOLS.has(toolCall.name.toLowerCase());
+      const isEditTool = EDIT_TOOLS.has(toolCall.name.toLowerCase());
       if (isEditTool && failureReason?.includes('identical')) {
         state.consecutiveIdenticalEditFailures++;
         
-        // If we've had 2+ consecutive identical string failures, flag it immediately
-        if (state.consecutiveIdenticalEditFailures >= 2) {
+        // If we've had repeated consecutive identical string failures, flag it immediately
+        if (state.consecutiveIdenticalEditFailures >= LoopDetector.MAX_IDENTICAL_EDIT_FAILURES) {
           logger.warn('Repeated identical edit string failures detected', {
             runId,
             sessionId: state.sessionId,
@@ -281,8 +350,12 @@ export class LoopDetector {
       state.consecutiveIdenticalEditFailures = 0;
     }
 
-    // Update state
+    // Update state - cap patterns array to prevent unbounded memory growth
     state.patterns.push(pattern);
+    if (state.patterns.length > LoopDetector.MAX_PATTERNS_PER_RUN) {
+      // Remove oldest patterns beyond the analysis window
+      state.patterns.splice(0, state.patterns.length - LoopDetector.MAX_PATTERNS_PER_RUN);
+    }
 
     // Check for identical consecutive calls
     // But don't count retries after file modifications as consecutive identical calls
@@ -427,24 +500,23 @@ export class LoopDetector {
     iteration: number,
     currentTool: string
   ): LoopDetectionResult {
-    // Determine tool category for threshold adjustment
-    const isExplorationTool = EXPLORATION_TOOLS.has(currentTool) || 
-      EXPLORATION_TOOLS.has(currentTool.toLowerCase());
-    const isActionTool = ACTION_TOOLS.has(currentTool) ||
-      ACTION_TOOLS.has(currentTool.toLowerCase());
+    // Determine tool category for threshold adjustment (all Sets use lowercase)
+    const normalizedTool = currentTool.toLowerCase();
+    const isExplorationTool = EXPLORATION_TOOLS.has(normalizedTool);
+    const isActionTool = ACTION_TOOLS.has(normalizedTool);
 
     // Adjust thresholds based on tool type - be much more lenient for exploration
     const consecutiveThreshold = isExplorationTool 
-      ? this.config.maxConsecutiveIdenticalCalls + 4  // Much more lenient for exploration
+      ? this.config.maxConsecutiveIdenticalCalls + LoopDetector.EXPLORATION_CONSECUTIVE_LENIENCY
       : isActionTool 
-        ? this.config.maxConsecutiveIdenticalCalls - 1  // Stricter for actions
+        ? this.config.maxConsecutiveIdenticalCalls - LoopDetector.ACTION_CONSECUTIVE_STRICTNESS
         : this.config.maxConsecutiveIdenticalCalls;
 
     // Check 1: Consecutive identical calls (same tool + same arguments)
     // For exploration tools, also check if we're accessing different resources
     if (state.consecutiveIdenticalCalls >= consecutiveThreshold) {
       // For exploration tools, only flag if we're truly stuck (same resource repeatedly)
-      if (isExplorationTool && state.uniqueResourcesAccessed.size > 5) {
+      if (isExplorationTool && state.uniqueResourcesAccessed.size > LoopDetector.EXPLORATION_RESET_MIN_RESOURCES) {
         // We're accessing many different resources, this is legitimate exploration
         // Reset the counter to allow continued exploration
         state.consecutiveIdenticalCalls = 1;
@@ -464,7 +536,7 @@ export class LoopDetector {
 
     // Check 2: Repeated failures - agent keeps trying something that fails
     // Be more lenient - require more failures before flagging
-    if (state.consecutiveFailures >= 7) {
+    if (state.consecutiveFailures >= LoopDetector.MAX_CONSECUTIVE_FAILURES) {
       return {
         loopDetected: true,
         loopType: 'repeated-failures',
@@ -478,8 +550,8 @@ export class LoopDetector {
 
     // Check 3: No progress detection - many iterations but no new resources accessed
     // Much more lenient: require more iterations and check for actual stagnation
-    if (iteration >= 30 && state.patterns.length >= 30) {
-      const recentPatterns = state.patterns.slice(-30);
+    if (iteration >= LoopDetector.NO_PROGRESS_MIN_ITERATIONS && state.patterns.length >= LoopDetector.NO_PROGRESS_MIN_ITERATIONS) {
+      const recentPatterns = state.patterns.slice(-LoopDetector.NO_PROGRESS_MIN_ITERATIONS);
       const recentUniqueResources = new Set(
         recentPatterns.map(p => p.keyArgument).filter(Boolean)
       );
@@ -487,7 +559,7 @@ export class LoopDetector {
       // If we've done 30+ iterations but only accessed 1 or fewer unique resources
       // AND we're not using action tools (which might legitimately repeat)
       // AND we have a high repetition of the same exact calls
-      if (recentUniqueResources.size <= 1 && !isActionTool) {
+      if (recentUniqueResources.size <= LoopDetector.NO_PROGRESS_MIN_UNIQUE_RESOURCES && !isActionTool) {
         const recentTools = [...new Set(recentPatterns.map(p => p.toolName))];
         
         // Only flag if it's exploration tools that should be accessing different resources
@@ -499,7 +571,7 @@ export class LoopDetector {
         }
         const maxRepetition = Math.max(...signatureCounts.values());
         
-        if (recentTools.some(t => EXPLORATION_TOOLS.has(t) || EXPLORATION_TOOLS.has(t.toLowerCase())) && maxRepetition >= 15) {
+        if (recentTools.some(t => EXPLORATION_TOOLS.has(t.toLowerCase())) && maxRepetition >= LoopDetector.NO_PROGRESS_MAX_REPETITION) {
           return {
             loopDetected: true,
             loopType: 'no-progress',
@@ -528,7 +600,7 @@ export class LoopDetector {
 
     // Adjust threshold for exploration tools - be much more lenient
     const frequencyThreshold = isExplorationTool
-      ? this.config.maxIdenticalCallsInWindow + 6
+      ? this.config.maxIdenticalCallsInWindow + LoopDetector.EXPLORATION_FREQUENCY_LENIENCY
       : this.config.maxIdenticalCallsInWindow;
 
     for (const [signature, count] of signatureFrequency) {
@@ -560,12 +632,12 @@ export class LoopDetector {
       const patternResult = this.detectRepeatingSequence(recentSignatures);
       
       // Require higher confidence for exploration tools
-      const requiredConfidence = isExplorationTool ? 0.995 : this.config.patternSimilarityThreshold;
+      const requiredConfidence = isExplorationTool ? LoopDetector.EXPLORATION_SEQUENCE_CONFIDENCE : this.config.patternSimilarityThreshold;
       
       // Require more repetitions before flagging
       if (patternResult.detected && 
           patternResult.confidence >= requiredConfidence &&
-          patternResult.repetitions >= 6) {
+          patternResult.repetitions >= LoopDetector.REPEATING_SEQUENCE_MIN_REPS) {
         const toolNames = patternResult.pattern.map(sig => sig.split(':')[0]);
         return {
           loopDetected: true,
@@ -665,7 +737,7 @@ export class LoopDetector {
       for (let i = 0; i < sorted.length; i++) {
         const char = sorted.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
+        hash |= 0;
       }
       return hash.toString(16);
     } catch {
@@ -707,6 +779,8 @@ export function getLoopDetector(): LoopDetector {
 }
 
 export function initLoopDetector(config?: Partial<LoopDetectionConfig>): LoopDetector {
+  // Dispose the previous instance to prevent interval timer leaks
+  loopDetectorInstance?.dispose();
   loopDetectorInstance = new LoopDetector(config);
   return loopDetectorInstance;
 }

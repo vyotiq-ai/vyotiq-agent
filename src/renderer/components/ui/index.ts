@@ -10,7 +10,10 @@ export { Modal } from './Modal';
 export { Select } from './Select';
 export type { SelectOption } from './Select';
 export { StatusIndicator, StatusDot as StatusIndicatorDot } from './StatusIndicator';
-export { Toggle, Checkbox, RadioGroup } from './Toggle';
+export { Toggle } from './Toggle';
+export { Checkbox } from './Checkbox';
+export { RadioGroup } from './RadioGroup';
+export type { RadioOption, RadioGroupProps } from './RadioGroup';
 
 // Interactive Data Viewer
 export { DataViewer } from './DataViewer';
@@ -35,11 +38,7 @@ export {
 export {
   getToolDescription,
   getToolCategory,
-  getToolConfig,
   getToolColorClass,
-  getToolIcon,
-  ToolIconDisplay,
-  TOOL_ICON_MAP,
 } from './ToolIcons';
 export type { ToolIconProps, ToolIconConfig } from './ToolIcons';
 
@@ -112,3 +111,7 @@ export type { ErrorStateProps, ErrorBannerProps, EmptyStateProps, ErrorSeverity 
 // Feature Toggle components
 export { FeatureToggle, FeatureToggleGroup } from './FeatureToggle';
 export type { FeatureToggleProps, FeatureToggleGroupProps } from './FeatureToggle';
+
+// Toast Notification System
+export { ToastProvider, useToast } from './Toast';
+export type { ToastType, ToastItem, ToastOptions } from './Toast';

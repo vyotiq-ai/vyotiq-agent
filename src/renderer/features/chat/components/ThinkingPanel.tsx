@@ -164,3 +164,4 @@ const ThinkingPanelComponent: React.FC<ThinkingPanelProps> = ({
 };
 
 export const ThinkingPanel = memo(ThinkingPanelComponent);
+ThinkingPanel.displayName = 'ThinkingPanel';

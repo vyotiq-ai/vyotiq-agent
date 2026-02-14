@@ -1,45 +1,53 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { MainLayout } from './components/layout/MainLayout';
 import { Home } from './pages/Home';
-import { useUI } from './state/UIProvider';
+import { useUIState, useUIActions } from './state/UIProvider';
 import { useAgentActions, useAgentSelector } from './state/AgentProvider';
-import { useEditor } from './state/EditorProvider';
 import { KeyboardShortcutsModal } from './components/ui/KeyboardShortcutsModal';
 import { CommandPalette, CommandIcons, type CommandItem } from './components/ui/CommandPalette';
+import { QuickOpen } from './components/ui/QuickOpen';
+import { openFileInEditor } from './features/editor/components/EditorPanel';
 import { useConfirm } from './components/ui/ConfirmModal';
 import { useFirstRun } from './hooks/useFirstRun';
 import { useAppearanceSettings } from './hooks/useAppearanceSettings';
 import { FeatureErrorBoundary } from './components/layout/ErrorBoundary';
-import { Code, Save, X } from 'lucide-react';
-
-// Direct imports for instant loading - no lazy loading
 import { SettingsPanel, MetricsDashboard } from './features/settings';
+import { useProfilerKeyboard } from './utils/profiler';
 import BrowserPanel from './features/browser/BrowserPanel';
 import { UndoHistoryPanel } from './features/undo/UndoHistoryPanel';
 import { FirstRunWizard } from './features/onboarding/FirstRunWizard';
+import { createLogger } from './utils/logger';
+
+const logger = createLogger('App');
 
 const App: React.FC = () => {
   const {
     settingsOpen,
+    shortcutsOpen,
+    browserPanelOpen,
+    browserPanelWidth,
+    undoHistoryOpen,
+    commandPaletteOpen,
+    quickOpenOpen,
+    metricsDashboardOpen,
+  } = useUIState();
+
+  const {
     openSettings,
     closeSettings,
-    shortcutsOpen,
     openShortcuts,
     closeShortcuts,
-    browserPanelOpen,
     openBrowserPanel,
     closeBrowserPanel,
-    browserPanelWidth,
     setBrowserPanelWidth,
-    undoHistoryOpen,
     openUndoHistory,
     closeUndoHistory,
-    commandPaletteOpen,
     closeCommandPalette,
-    metricsDashboardOpen,
     openMetricsDashboard,
     closeMetricsDashboard,
-  } = useUI();
+    openQuickOpen,
+    closeQuickOpen,
+  } = useUIActions();
 
   const actions = useAgentActions();
   const agentSnapshot = useAgentSelector(
@@ -59,19 +67,6 @@ const App: React.FC = () => {
       a.activeRunId === b.activeRunId,
   );
 
-  const {
-    tabs,
-    activeTabId,
-    activeTab,
-    isEditorVisible,
-    saveFile,
-    saveAllFiles,
-    closeTab,
-    closeAllTabs,
-    toggleEditor,
-    hasUnsavedChanges,
-  } = useEditor();
-
   // First run detection
   const { isFirstRun, completeFirstRun } = useFirstRun();
   const [showWizard, setShowWizard] = useState(false);
@@ -81,6 +76,9 @@ const App: React.FC = () => {
 
   // Apply appearance settings from state
   useAppearanceSettings();
+
+  // Register dev-only profiler keyboard shortcut (Ctrl+Shift+P)
+  useProfilerKeyboard();
 
   // Show wizard on first run after settings are loaded
   useEffect(() => {
@@ -112,7 +110,7 @@ const App: React.FC = () => {
       completeFirstRun();
       setShowWizard(false);
     } catch (error) {
-      console.error('Failed to save wizard settings:', error);
+      logger.error('Failed to save wizard settings:', { error: error instanceof Error ? error.message : String(error) });
       // Still close wizard on error - user can configure later
       completeFirstRun();
       setShowWizard(false);
@@ -142,15 +140,6 @@ const App: React.FC = () => {
         input?.focus();
       },
     },
-    // Workspace commands
-    {
-      id: 'add-workspace',
-      label: 'Add Workspace',
-      description: 'Open a folder as a workspace',
-      icon: CommandIcons.folder,
-      category: 'Workspace',
-      action: () => void actions.openWorkspaceDialog(),
-    },
     // Settings commands
     {
       id: 'open-settings',
@@ -170,7 +159,16 @@ const App: React.FC = () => {
       category: 'Settings',
       action: openShortcuts,
     },
-  ], [actions, openSettings, openShortcuts]);
+    {
+      id: 'quick-open',
+      label: 'Quick Open File',
+      description: 'Search and open a file by name',
+      icon: CommandIcons.file,
+      shortcut: 'Ctrl+P',
+      category: 'Navigation',
+      action: openQuickOpen,
+    },
+  ], [openSettings, openShortcuts, openQuickOpen]);
 
   // Dynamic commands that depend on UI state
   const commands = useMemo<CommandItem[]>(() => [
@@ -289,63 +287,6 @@ const App: React.FC = () => {
       },
       disabled: !agentSnapshot.activeSessionId,
     },
-    // Editor commands
-    {
-      id: 'toggle-editor',
-      label: isEditorVisible ? 'Hide Editor' : 'Show Editor',
-      description: 'Toggle the code editor panel',
-      icon: <Code size={14} />,
-      shortcut: 'Ctrl+E',
-      category: 'Editor',
-      action: toggleEditor,
-    },
-    {
-      id: 'save-file',
-      label: 'Save File',
-      description: 'Save the current file',
-      icon: <Save size={14} />,
-      shortcut: 'Ctrl+S',
-      category: 'Editor',
-      action: () => {
-        if (activeTabId) {
-          void saveFile(activeTabId);
-        }
-      },
-      disabled: !activeTabId || !activeTab?.isDirty,
-    },
-    {
-      id: 'save-all-files',
-      label: 'Save All Files',
-      description: 'Save all modified files',
-      icon: <Save size={14} />,
-      shortcut: 'Ctrl+Shift+S',
-      category: 'Editor',
-      action: () => void saveAllFiles(),
-      disabled: !hasUnsavedChanges(),
-    },
-    {
-      id: 'close-tab',
-      label: 'Close Tab',
-      description: 'Close the current editor tab',
-      icon: <X size={14} />,
-      shortcut: 'Ctrl+W',
-      category: 'Editor',
-      action: () => {
-        if (activeTabId) {
-          closeTab(activeTabId);
-        }
-      },
-      disabled: !activeTabId,
-    },
-    {
-      id: 'close-all-tabs',
-      label: 'Close All Tabs',
-      description: 'Close all editor tabs',
-      icon: <X size={14} />,
-      category: 'Editor',
-      action: closeAllTabs,
-      disabled: tabs.length === 0,
-    },
   ], [
     stableCommands,
     agentSnapshot.activeSessionId,
@@ -358,17 +299,6 @@ const App: React.FC = () => {
     openUndoHistory,
     closeUndoHistory,
     openMetricsDashboard,
-    // Editor dependencies
-    isEditorVisible,
-    activeTabId,
-    activeTab?.isDirty,
-    tabs.length,
-    toggleEditor,
-    saveFile,
-    saveAllFiles,
-    closeTab,
-    closeAllTabs,
-    hasUnsavedChanges,
     confirm,
   ]);
 
@@ -431,10 +361,10 @@ const App: React.FC = () => {
                   aria-orientation="vertical"
                 />
                 <FeatureErrorBoundary featureName="Browser">
-                  <BrowserPanel
-                    isOpen={browserPanelOpen}
-                    onClose={closeBrowserPanel}
-                  />
+                    <BrowserPanel
+                      isOpen={browserPanelOpen}
+                      onClose={closeBrowserPanel}
+                    />
                 </FeatureErrorBoundary>
               </div>
             )}
@@ -442,30 +372,45 @@ const App: React.FC = () => {
         </div>
         {settingsOpen && (
           <FeatureErrorBoundary featureName="Settings">
-            <SettingsPanel open={settingsOpen} onClose={closeSettings} />
+              <SettingsPanel open={settingsOpen} onClose={closeSettings} />
           </FeatureErrorBoundary>
         )}
         {undoHistoryOpen && (
           <FeatureErrorBoundary featureName="UndoHistory">
-            <UndoHistoryPanel
-              isOpen={undoHistoryOpen}
-              onClose={closeUndoHistory}
-              sessionId={agentSnapshot.activeSessionId}
-            />
+              <UndoHistoryPanel
+                isOpen={undoHistoryOpen}
+                onClose={closeUndoHistory}
+                sessionId={agentSnapshot.activeSessionId}
+              />
           </FeatureErrorBoundary>
         )}
-        <KeyboardShortcutsModal open={shortcutsOpen} onClose={closeShortcuts} />
-        <CommandPalette
-          isOpen={commandPaletteOpen}
-          onClose={closeCommandPalette}
-          commands={commands}
-        />
+        <FeatureErrorBoundary featureName="Shortcuts">
+          <KeyboardShortcutsModal open={shortcutsOpen} onClose={closeShortcuts} />
+        </FeatureErrorBoundary>
+        <FeatureErrorBoundary featureName="CommandPalette">
+          <CommandPalette
+            isOpen={commandPaletteOpen}
+            onClose={closeCommandPalette}
+            commands={commands}
+          />
+        </FeatureErrorBoundary>
+        <FeatureErrorBoundary featureName="QuickOpen">
+          <QuickOpen
+            isOpen={quickOpenOpen}
+            onClose={closeQuickOpen}
+            onFileSelect={(filePath) => {
+              openFileInEditor(filePath);
+            }}
+          />
+        </FeatureErrorBoundary>
         {/* First Run Wizard */}
         {showWizard && (
-          <FirstRunWizard
-            onComplete={handleWizardComplete}
-            onSkip={handleWizardSkip}
-          />
+          <FeatureErrorBoundary featureName="FirstRunWizard">
+            <FirstRunWizard
+              onComplete={handleWizardComplete}
+              onSkip={handleWizardSkip}
+            />
+          </FeatureErrorBoundary>
         )}
       </MainLayout>
       {/* Metrics Dashboard Modal - rendered outside MainLayout to avoid overflow issues */}
@@ -499,7 +444,7 @@ const App: React.FC = () => {
             {/* Content */}
             <div className="overflow-y-auto max-h-[calc(90vh-60px)]">
               <FeatureErrorBoundary featureName="MetricsDashboard">
-                <MetricsDashboard period="day" />
+                  <MetricsDashboard period="day" />
               </FeatureErrorBoundary>
             </div>
           </div>

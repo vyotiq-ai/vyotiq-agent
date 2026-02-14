@@ -235,26 +235,40 @@ export class CommitCoordinator extends EventEmitter {
         await git.stash('Temporary stash for atomic commit');
       }
 
-      // Stage only specified files
-      await git.stage(files);
+      try {
+        // Stage only specified files
+        await git.stage(files);
 
-      // Commit
-      const finalMessage = this.formatCommitMessage(agentId, message, files);
-      const result = await git.commit(finalMessage);
+        // Commit
+        const finalMessage = this.formatCommitMessage(agentId, message, files);
+        const result = await git.commit(finalMessage);
 
-      // Restore stash if we created one
-      if (otherModified.length > 0) {
-        await git.stashPop();
+        // Restore stash if we created one
+        if (otherModified.length > 0) {
+          await git.stashPop();
+        }
+
+        if (!result.success) {
+          return { success: false, error: result.error };
+        }
+
+        this.clearPendingChanges(agentId, files);
+        this.emitEvent('commit-created', agentId, result.commit?.hash, files, finalMessage);
+
+        return { success: true, commitHash: result.commit?.hash };
+      } catch (innerError) {
+        // Restore stash on failure to prevent data loss
+        if (otherModified.length > 0) {
+          try {
+            await git.stashPop();
+          } catch (stashError) {
+            this.logger.error('Failed to restore stash after commit failure - user changes may be in stash', {
+              stashError: stashError instanceof Error ? stashError.message : String(stashError),
+            });
+          }
+        }
+        throw innerError;
       }
-
-      if (!result.success) {
-        return { success: false, error: result.error };
-      }
-
-      this.clearPendingChanges(agentId, files);
-      this.emitEvent('commit-created', agentId, result.commit?.hash, files, finalMessage);
-
-      return { success: true, commitHash: result.commit?.hash };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       return { success: false, error: errorMsg };
@@ -497,6 +511,9 @@ export class CommitCoordinator extends EventEmitter {
         await this.batchCommit(`Auto-commit: ${message}`);
       }
     }, this.config.autoCommitIntervalMs);
+    if (this.autoCommitInterval && typeof this.autoCommitInterval === 'object' && 'unref' in this.autoCommitInterval) {
+      (this.autoCommitInterval as NodeJS.Timeout).unref();
+    }
   }
 
   private emitEvent(

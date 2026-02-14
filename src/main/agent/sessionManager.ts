@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { AgentConfig, AgentSessionState, StartSessionPayload, ConversationBranch, SessionSummary } from '../../shared/types';
 import type { InternalSession } from './types';
-import type { WorkspaceManager } from '../workspaces/workspaceManager';
 import { SessionStorage } from './storage';
 import { createLogger } from '../logger';
 import { cleanupSession } from './context/ToolContextManager';
@@ -37,8 +36,20 @@ export class SessionManager {
   /** Pending sessions that need to be persisted */
   private pendingPersist = new Set<string>();
 
+  /** Track consecutive persistence failures per session */
+  private persistFailures = new Map<string, number>();
+  
+  /** Maximum consecutive persistence failures before warning */
+  private static readonly MAX_PERSIST_FAILURES = 3;
+
+  /** Tracks number of failed load attempts to prevent infinite retries */
+  private loadAttempts = 0;
+  private static readonly MAX_LOAD_ATTEMPTS = 3;
+
+  /** Optional callback for persistence warnings */
+  private onPersistenceWarning?: (sessionId: string, failureCount: number, error: string) => void;
+
   constructor(
-    private readonly workspaceManager: WorkspaceManager,
     private readonly storagePath?: string
   ) {
     // Initialize session storage with the base path
@@ -52,6 +63,12 @@ export class SessionManager {
 
   async load(): Promise<void> {
     if (this.initialized) return;
+    if (this.loadAttempts >= SessionManager.MAX_LOAD_ATTEMPTS) {
+      logger.error('Max load attempts reached, giving up session loading');
+      this.initialized = true; // Prevent further attempts
+      return;
+    }
+    this.loadAttempts++;
     
     try {
       // Initialize storage system
@@ -66,7 +83,6 @@ export class SessionManager {
       }
       
       // Load all sessions into memory
-      const activeWorkspace = this.workspaceManager.getActive();
       const sessions = await this.storage.loadAllSessions();
       
       // Debug: Log usage data availability in loaded sessions
@@ -88,29 +104,17 @@ export class SessionManager {
       }
       
       this.sessions.clear();
-      let migratedCount = 0;
       let recoveredCount = 0;
+      const sessionsToSave: typeof sessions = [];
       
       for (const sessionState of sessions) {
         let needsSave = false;
-
-        // Migrate legacy sessions without workspaceId
-        if (!sessionState.workspaceId && activeWorkspace) {
-          sessionState.workspaceId = activeWorkspace.id;
-          migratedCount++;
-          needsSave = true;
-          logger.info('Migrated legacy session to workspace', {
-            sessionId: sessionState.id,
-            workspaceId: activeWorkspace.id,
-          });
-        }
 
         // Recovery: Reset orphaned "running" sessions to "idle" on startup
         // These sessions were likely left in running state due to app crash
         if (sessionState.status === 'running') {
           logger.warn('Recovering orphaned running session', {
             sessionId: sessionState.id,
-            workspaceId: sessionState.workspaceId,
             activeRunId: sessionState.activeRunId,
             lastUpdatedAt: new Date(sessionState.updatedAt).toISOString(),
           });
@@ -127,20 +131,28 @@ export class SessionManager {
         });
 
         if (needsSave) {
-          await this.storage.saveSession(sessionState);
+          sessionsToSave.push(sessionState);
         }
+      }
+
+      // Batch save migrated/recovered sessions in parallel for faster startup
+      if (sessionsToSave.length > 0) {
+        await Promise.all(sessionsToSave.map(s => this.storage.saveSession(s)));
       }
       
       logger.info('Sessions loaded successfully', {
         total: sessions.length,
-        migrated: migratedCount,
         recoveredFromCrash: recoveredCount,
       });
       
       this.initialized = true;
     } catch (error) {
-      logger.error('Failed to load sessions', { error: error instanceof Error ? error.message : String(error) });
-      this.initialized = true; // Mark as initialized to prevent retry loops
+      logger.error('Failed to load sessions', { 
+        error: error instanceof Error ? error.message : String(error),
+        attempt: this.loadAttempts,
+        maxAttempts: SessionManager.MAX_LOAD_ATTEMPTS,
+      });
+      // Don't mark as initialized - allow retry on next call (up to MAX_LOAD_ATTEMPTS)
     }
   }
 
@@ -158,14 +170,60 @@ export class SessionManager {
 
   /**
    * Persist a specific session to disk immediately.
+   * Tracks consecutive failures and emits warnings when persistence is degraded.
    */
   private async persistSessionImmediate(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) {
-      await this.storage.saveSession(session.state);
-      this.lastPersistTime.set(sessionId, Date.now());
-      this.pendingPersist.delete(sessionId);
+      try {
+        await this.storage.saveSession(session.state);
+        this.lastPersistTime.set(sessionId, Date.now());
+        this.pendingPersist.delete(sessionId);
+        // Reset failure count on success
+        if (this.persistFailures.has(sessionId)) {
+          const prevFailures = this.persistFailures.get(sessionId) ?? 0;
+          this.persistFailures.delete(sessionId);
+          if (prevFailures >= SessionManager.MAX_PERSIST_FAILURES) {
+            logger.info('Session persistence recovered', { sessionId, previousFailures: prevFailures });
+          }
+        }
+      } catch (error) {
+        const failCount = (this.persistFailures.get(sessionId) ?? 0) + 1;
+        this.persistFailures.set(sessionId, failCount);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        
+        logger.error('Session persistence failed', {
+          sessionId,
+          failureCount: failCount,
+          error: errorMsg,
+        });
+
+        // Notify about repeated failures
+        if (failCount >= SessionManager.MAX_PERSIST_FAILURES) {
+          this.onPersistenceWarning?.(sessionId, failCount, errorMsg);
+        }
+        throw error;
+      }
     }
+  }
+
+  /**
+   * Register a callback that fires when persistence failures are detected.
+   * Used by orchestrator to surface persistence issues to the UI.
+   */
+  public setOnPersistenceWarning(callback: (sessionId: string, failureCount: number, error: string) => void): void {
+    this.onPersistenceWarning = callback;
+  }
+
+  /**
+   * Get persistence health status for a session.
+   */
+  public getPersistenceHealth(sessionId: string): { healthy: boolean; failureCount: number; lastPersistAt: number | undefined } {
+    return {
+      healthy: (this.persistFailures.get(sessionId) ?? 0) < SessionManager.MAX_PERSIST_FAILURES,
+      failureCount: this.persistFailures.get(sessionId) ?? 0,
+      lastPersistAt: this.lastPersistTime.get(sessionId),
+    };
   }
 
   /**
@@ -262,37 +320,16 @@ export class SessionManager {
     const sessionId = randomUUID();
     const config: AgentConfig = { ...defaultConfig, ...payload.initialConfig };
     
-    // Get workspace ID - explicit from payload takes priority, then active workspace
-    // This ensures every session is bound to a specific workspace
-    let workspaceId = payload.workspaceId ?? this.workspaceManager.getActive()?.id;
-    
-    // Validate the workspaceId exists - REQUIRED for new sessions
-    if (workspaceId) {
-      const workspaceExists = this.workspaceManager.list().some(w => w.id === workspaceId);
-      if (!workspaceExists) {
-        logger.warn('Workspace not found, using active workspace instead', {
-          requestedWorkspaceId: workspaceId,
-        });
-        workspaceId = this.workspaceManager.getActive()?.id;
-      }
-    }
-    
-    // STRICT: Require a workspace for session creation
-    if (!workspaceId) {
-      logger.error('Cannot create session without a workspace');
-      throw new Error('Cannot create session: No workspace selected. Please select a workspace first.');
-    }
-    
     const session: InternalSession = {
       state: {
         id: sessionId,
         title: 'New Session',
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        workspaceId,
         config,
         status: 'idle',
         messages: [],
+        workspacePath: payload.workspacePath ?? null,
       },
     };
 
@@ -409,37 +446,26 @@ export class SessionManager {
   }
 
   /**
-   * Get sessions filtered by workspace ID
-   * Returns all sessions that belong to the specified workspace
-   */
-  getSessionsByWorkspace(workspaceId: string): AgentSessionState[] {
-    return Array.from(this.sessions.values())
-      .filter((session) => session.state.workspaceId === workspaceId)
-      .map((session) => session.state)
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-  }
-
-  /**
    * Get session summaries for lazy loading (sidebar display without full message content)
    * This is much faster for workspaces with many sessions or long conversations
    */
-  async getSessionSummaries(workspaceId?: string): Promise<SessionSummary[]> {
-    return this.storage.getSessionSummaries(workspaceId);
-  }
-
-  /**
-   * Get sessions for the currently active workspace
-   */
-  getActiveWorkspaceSessions(): AgentSessionState[] {
-    const activeWorkspace = this.workspaceManager.getActive();
-    if (!activeWorkspace) return [];
-    return this.getSessionsByWorkspace(activeWorkspace.id);
+  async getSessionSummaries(): Promise<SessionSummary[]> {
+    return this.storage.getSessionSummaries();
   }
 
   /**
    * Delete a session by ID.
    */
   deleteSession(sessionId: string): boolean {
+    // Cancel any pending debounce timer for this session before deletion
+    const pendingTimer = this.persistDebounceTimers.get(sessionId);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      this.persistDebounceTimers.delete(sessionId);
+    }
+    this.pendingPersist.delete(sessionId);
+    this.lastPersistTime.delete(sessionId);
+
     const result = this.sessions.delete(sessionId);
     if (result) {
       // Clean up session-specific data
@@ -461,57 +487,11 @@ export class SessionManager {
   }
 
   /**
-   * Get a session's workspace path.
-   * This resolves the workspaceId to an actual path.
-   */
-  getSessionWorkspacePath(sessionId: string): string | undefined {
-    const session = this.sessions.get(sessionId);
-    if (!session?.state.workspaceId) return undefined;
-    
-    const workspace = this.workspaceManager.list().find(
-      w => w.id === session.state.workspaceId
-    );
-    return workspace?.path;
-  }
-
-  /**
-   * Validate that a session's workspace still exists and is valid.
-   */
-  validateSessionWorkspace(sessionId: string): { valid: boolean; workspacePath?: string; error?: string } {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      return { valid: false, error: 'Session not found' };
-    }
-    
-    if (!session.state.workspaceId) {
-      return { valid: false, error: 'Session has no workspace binding' };
-    }
-    
-    const workspace = this.workspaceManager.list().find(
-      w => w.id === session.state.workspaceId
-    );
-    
-    if (!workspace) {
-      return { valid: false, error: `Workspace ${session.state.workspaceId} not found` };
-    }
-    
-    return { valid: true, workspacePath: workspace.path };
-  }
-
-  /**
    * Get storage statistics
    */
-  getStorageStats(): { sessionCount: number; workspaceSessionCounts: Record<string, number> } {
-    const workspaceSessionCounts: Record<string, number> = {};
-    
-    for (const session of this.sessions.values()) {
-      const wsId = session.state.workspaceId ?? 'unassigned';
-      workspaceSessionCounts[wsId] = (workspaceSessionCounts[wsId] ?? 0) + 1;
-    }
-    
+  getStorageStats(): { sessionCount: number } {
     return {
       sessionCount: this.sessions.size,
-      workspaceSessionCounts,
     };
   }
 
@@ -631,137 +611,23 @@ export class SessionManager {
     return { success: true };
   }
 
-  // =============================================================================
-  // Multi-Workspace Session Management
-  // =============================================================================
-
   /**
-   * Get sessions for multiple workspaces efficiently.
-   * Uses a single pass through sessions for better performance with many open workspaces.
+   * Dispose the session manager, flushing pending persistence and clearing timers.
+   * Call this during app shutdown.
    */
-  getSessionsByWorkspaces(workspaceIds: string[]): Map<string, AgentSessionState[]> {
-    const workspaceIdSet = new Set(workspaceIds);
-    const result = new Map<string, AgentSessionState[]>();
-    
-    // Initialize empty arrays for each workspace
-    for (const wsId of workspaceIds) {
-      result.set(wsId, []);
-    }
+  async dispose(): Promise<void> {
+    // Flush all pending persistence
+    await this.flushPendingPersistence();
 
-    // Single pass through all sessions
-    for (const session of this.sessions.values()) {
-      const wsId = session.state.workspaceId;
-      if (wsId && workspaceIdSet.has(wsId)) {
-        result.get(wsId)!.push(session.state);
-      }
+    // Clear all debounce timers
+    for (const [, timer] of this.persistDebounceTimers) {
+      clearTimeout(timer);
     }
+    this.persistDebounceTimers.clear();
+    this.pendingPersist.clear();
+    this.lastPersistTime.clear();
 
-    // Sort each workspace's sessions by updatedAt
-    for (const [wsId, sessions] of result) {
-      result.set(wsId, sessions.sort((a, b) => b.updatedAt - a.updatedAt));
-    }
-
-    return result;
+    logger.info('SessionManager disposed');
   }
 
-  /**
-   * Get session counts per workspace.
-   * Useful for displaying session counts in workspace tabs without loading full session data.
-   */
-  getSessionCountsByWorkspace(): Map<string, { total: number; active: number }> {
-    const counts = new Map<string, { total: number; active: number }>();
-
-    for (const session of this.sessions.values()) {
-      const wsId = session.state.workspaceId ?? 'unassigned';
-      const current = counts.get(wsId) ?? { total: 0, active: 0 };
-      
-      current.total++;
-      if (session.state.status === 'running') {
-        current.active++;
-      }
-      
-      counts.set(wsId, current);
-    }
-
-    return counts;
-  }
-
-  /**
-   * Get all active (running) sessions across multiple workspaces.
-   * Used for monitoring concurrent execution across workspace tabs.
-   */
-  getActiveSessionsByWorkspaces(workspaceIds: string[]): Map<string, AgentSessionState[]> {
-    const workspaceIdSet = new Set(workspaceIds);
-    const result = new Map<string, AgentSessionState[]>();
-    
-    for (const wsId of workspaceIds) {
-      result.set(wsId, []);
-    }
-
-    for (const session of this.sessions.values()) {
-      const wsId = session.state.workspaceId;
-      if (wsId && workspaceIdSet.has(wsId) && session.state.status === 'running') {
-        result.get(wsId)!.push(session.state);
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Get session summaries for multiple workspaces in a single batch operation.
-   * Much more efficient than calling getSessionSummaries for each workspace.
-   */
-  async getSessionSummariesBatch(workspaceIds: string[]): Promise<Map<string, SessionSummary[]>> {
-    const result = new Map<string, SessionSummary[]>();
-    
-    // Fetch all summaries in parallel
-    const summaryPromises = workspaceIds.map(async (wsId) => {
-      const summaries = await this.storage.getSessionSummaries(wsId);
-      return { wsId, summaries };
-    });
-
-    const results = await Promise.all(summaryPromises);
-    
-    for (const { wsId, summaries } of results) {
-      result.set(wsId, summaries);
-    }
-
-    return result;
-  }
-
-  /**
-   * Find which workspace a session belongs to.
-   * Returns workspace ID or undefined if session not found.
-   */
-  getSessionWorkspaceId(sessionId: string): string | undefined {
-    return this.sessions.get(sessionId)?.state.workspaceId;
-  }
-
-  /**
-   * Check if any sessions are running in a specific workspace.
-   * Used to determine if a workspace tab should show activity indicator.
-   */
-  hasActiveSessionsInWorkspace(workspaceId: string): boolean {
-    for (const session of this.sessions.values()) {
-      if (session.state.workspaceId === workspaceId && session.state.status === 'running') {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Get total running sessions count across all workspaces.
-   * Useful for global activity monitoring and resource management.
-   */
-  getTotalActiveSessionCount(): number {
-    let count = 0;
-    for (const session of this.sessions.values()) {
-      if (session.state.status === 'running') {
-        count++;
-      }
-    }
-    return count;
-  }
 }

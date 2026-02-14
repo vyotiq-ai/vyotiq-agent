@@ -3,10 +3,10 @@ import { useThrottleControl } from './useThrottleControl';
 
 /** Streaming mode determines how content is batched and delivered */
 export type StreamingMode = 
-  | 'balanced'      // Default: 50ms intervals, good balance of smoothness and performance
-  | 'smooth'        // 33ms intervals (30fps), smoother but more re-renders
-  | 'fast'          // 100ms intervals, fewer re-renders but chunkier updates
-  | 'typewriter';   // Character-by-character with controlled timing for visual effect
+  | 'balanced'      // Default: 32ms intervals (~30fps), smooth word-by-word streaming
+  | 'smooth'        // 24ms intervals (~40fps), smoother character flow
+  | 'fast'          // 80ms intervals (~12fps), performance focused
+  | 'typewriter';   // 16ms intervals (60fps), character-by-character visual effect
 
 interface StreamingBufferOptions {
   /** Streaming mode preset (default: 'balanced') */
@@ -35,14 +35,16 @@ interface BufferState {
 
 /** Mode presets for flush intervals */
 const MODE_INTERVALS: Record<StreamingMode, number> = {
-  balanced: 50,    // 20 fps - good balance
-  smooth: 33,      // 30 fps - smoother animations
-  fast: 100,       // 10 fps - performance focused
+  balanced: 32,    // ~30 fps - smooth word-by-word streaming
+  smooth: 24,      // ~40 fps - smoother character flow
+  fast: 80,        // ~12 fps - performance focused
   typewriter: 16,  // 60 fps - for character-by-character effect
 };
 
-/** Fastest interval when agent is running - 60fps for responsive streaming */
-const AGENT_RUNNING_INTERVAL = 16;
+/** Interval when agent is running — use 32ms (~30fps) for smooth word-by-word streaming.
+ *  30fps provides visually smooth text flow while keeping React overhead reasonable.
+ *  Lower values (16ms/60fps) offer no perceptible improvement for text but double GC cost. */
+const AGENT_RUNNING_INTERVAL = 32;
 
 /**
  * A hook that batches streaming deltas to reduce React re-renders.
@@ -114,9 +116,10 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
         // Calculate characters per second
         const charsPerSecond = buffer.recentCharsCount / (timeSinceCount / 1000);
         
-        // If receiving more than 500 chars/second, use longer interval
+        // If receiving more than 500 chars/second, slightly increase interval
+        // Capped at 1.5x base to avoid visible chunking during fast streaming
         if (charsPerSecond > 500) {
-          effectiveInterval = Math.min(flushInterval * 2, 100);
+          effectiveInterval = Math.min(flushInterval * 1.5, 64);
           highThroughputRef.current.add(sessionId);
         } else {
           highThroughputRef.current.delete(sessionId);
@@ -263,8 +266,15 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
   }, []);
   
   /** Get current buffer size for a session (useful for debugging) */
-  const getBufferSize = useCallback((sessionId: string) => {
-    return buffersRef.current.get(sessionId)?.content.length ?? 0;
+  const getBufferSize = useCallback((sessionId: string): number => {
+    // Buffers are keyed as `${sessionId}:${messageId}` — sum all buffers for this session
+    let total = 0;
+    for (const [key, buf] of buffersRef.current.entries()) {
+      if (key.startsWith(`${sessionId}:`)) {
+        total += buf.content.length;
+      }
+    }
+    return total;
   }, []);
   
   /** Check if the flush loop is currently active */

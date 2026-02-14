@@ -89,6 +89,8 @@ export type ContextMenuAction =
   | 'copyRelativePath'
   | 'revealInExplorer'
   | 'openInTerminal'
+  | 'openInEditor'
+  | 'openDiff'
   | 'refresh'
   | 'collapseAll'
   | 'expandAll'

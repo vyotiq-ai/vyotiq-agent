@@ -12,10 +12,6 @@
  */
 
 import type { AgentSessionState, ChatMessage } from '../../shared/types';
-import { createLogger } from '../utils/logger';
-
-// Logger available for debugging session delta operations
-const _logger = createLogger('SessionDelta');
 
 // =============================================================================
 // Types
@@ -65,7 +61,7 @@ export function computeSessionDelta(
   const delta: SessionDelta = {
     sessionId: newSession.id,
     timestamp: Date.now(),
-    version: (oldSession as unknown as { _version?: number })._version ?? 0 + 1,
+    version: ((oldSession as unknown as { _version?: number })._version ?? 0) + 1,
   };
 
   let hasChanges = false;

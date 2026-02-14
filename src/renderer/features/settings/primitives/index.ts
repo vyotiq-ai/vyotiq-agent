@@ -97,3 +97,10 @@ export type {
   RequireProps,
   SizeVariant,
 } from './types';
+
+// Notification
+export { NotificationBanner } from './NotificationBanner';
+export type { Notification, NotificationType } from './NotificationBanner';
+
+// Info Box
+export { SettingsInfoBox } from './SettingsInfoBox';

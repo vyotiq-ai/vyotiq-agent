@@ -21,7 +21,6 @@ import type { InternalSession } from '../../agent/types';
 import type { ToolRegistry } from '../registry/ToolRegistry';
 import type { Logger } from '../../logger';
 import type { TerminalManager, ToolExecutionContext, EnhancedToolResult } from '../types';
-import type { WorkspaceManager } from '../../workspaces/workspaceManager';
 
 // =============================================================================
 // Types
@@ -30,7 +29,6 @@ import type { WorkspaceManager } from '../../workspaces/workspaceManager';
 interface ToolExecutorDeps {
   toolRegistry: ToolRegistry;
   terminalManager: TerminalManager;
-  workspaceManager: WorkspaceManager;
   logger: Logger;
   emitEvent: (event: RendererEvent | AgentEvent) => void;
 }
@@ -206,7 +204,7 @@ export class ToolExecutor {
     if (!this.cacheInvalidators.has(toolName)) return;
 
     // Get the affected path from arguments
-    const affectedPath = (args.path || args.filePath || args.directory) as string | undefined;
+    const affectedPath = (args.path || args.filePath || args.file_path || args.directory) as string | undefined;
     
     // Invalidate entries that might be affected
     for (const [key] of this.resultCache) {
@@ -395,88 +393,21 @@ export class ToolExecutor {
   /**
    * Build execution context for a session
    * 
-   * IMPORTANT: Uses the session's explicit workspaceId to ensure tool execution
-   * happens in the correct workspace. Falls back to active workspace only if
-   * the session has no workspaceId (legacy sessions).
-   * 
-   * STRICT MODE: If session has a workspaceId but workspace is not found,
-   * this will return a context WITHOUT workspacePath, causing tools to fail safely
-   * with a clear "No workspace selected" error.
-   * 
+   * Resolves the workspace path for tool execution using the session's
+   * workspace path. Never falls back to process.cwd() as that exposes
+   * the application's own installation directory.
+   *
    * @param session - The internal session
    * @param runId - Optional run ID for tracking (Requirement 8: Tool Execution Context Enhancement)
    */
   private buildContext(session: InternalSession, runId?: string): ToolExecutionContext {
-    // Log context building for debugging
-    this.deps.logger.info('Building tool execution context', {
-      sessionId: session.state.id,
-      sessionWorkspaceId: session.state.workspaceId,
-      availableWorkspaceCount: this.deps.workspaceManager.list().length,
-    });
+    const workspacePath = session.state.workspacePath || '';
     
-    // First try to find the workspace by the session's explicit workspaceId
-    let workspace = session.state.workspaceId
-      ? this.deps.workspaceManager.list().find((entry) => entry.id === session.state.workspaceId)
-      : undefined;
-    
-    // If session has explicit workspaceId but workspace not found - this is a critical error
-    // Return context with fallback workspacePath so tools can fail safely with clear error
-    if (session.state.workspaceId && !workspace) {
-      this.deps.logger.error('CRITICAL: Session workspaceId not found in workspace list', {
-        sessionId: session.state.id,
-        sessionWorkspaceId: session.state.workspaceId,
-        availableWorkspaces: this.deps.workspaceManager.list().map(w => ({
-          id: w.id,
-          path: w.path,
-          isActive: w.isActive
-        })),
-      });
-      
-      // Return context with fallback workspacePath - tools should check workspace validity
-      const fallbackPath = process.cwd();
-      return {
-        sessionId: session.state.id,
-        runId,
-        workspacePath: fallbackPath,
-        cwd: fallbackPath,
-        terminalManager: this.deps.terminalManager,
-        logger: {
-          info: (message: string, meta?: Record<string, unknown>) =>
-            this.deps.logger.info(message, meta),
-          warn: (message: string, meta?: Record<string, unknown>) =>
-            this.deps.logger.warn(message, meta),
-          error: (message: string, meta?: Record<string, unknown>) =>
-            this.deps.logger.error(message, meta),
-        },
-      };
-    }
-    
-    // Fallback to active workspace only for legacy sessions without workspaceId
-    if (!workspace && !session.state.workspaceId) {
-      workspace = this.deps.workspaceManager.getActive();
-      
-      // Log a warning if we're falling back - this helps track legacy sessions
-      if (workspace) {
-        this.deps.logger.info('Session has no workspaceId, using active workspace (legacy mode)', {
-          sessionId: session.state.id,
-          activeWorkspacePath: workspace.path,
-          activeWorkspaceId: workspace.id,
-        });
-      } else {
-        this.deps.logger.error('No workspace available for session', {
-          sessionId: session.state.id,
-        });
-      }
-    }
-
-    // Log the resolved workspace for debugging
     this.deps.logger.info('Tool execution context resolved', {
       sessionId: session.state.id,
-      workspacePath: workspace?.path ?? '(none)',
-      workspaceId: workspace?.id ?? '(none)',
+      workspacePath,
     });
 
-    const workspacePath = workspace?.path ?? process.cwd();
     return {
       sessionId: session.state.id,
       runId,
