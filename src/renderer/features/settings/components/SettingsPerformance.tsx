@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Database, RefreshCw, Trash2, Plus, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
+import { RadioGroup } from '../../../components/ui/RadioGroup';
 import type { CacheSettings, LLMProviderName } from '../../../../shared/types';
 import { createLogger } from '../../../utils/logger';
 import { cn } from '../../../utils/cn';
@@ -154,21 +155,14 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
 
       {/* Cache Strategy */}
       <SettingsGroup title="prompt cache strategy">
-        <div className="grid gap-2 sm:grid-cols-3">
-          {CACHE_STRATEGIES.map((strategy) => (
-            <button
-              key={strategy.value}
-              onClick={() => onChange('promptCacheStrategy', strategy.value)}
-              className={`p-3 text-left border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40 ${
-                settings.promptCacheStrategy === strategy.value
-                  ? 'border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10'
-                  : 'border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] hover:border-[var(--color-border-default)]'
-              }`}
-            >
-              <div className="text-[10px] text-[var(--color-text-secondary)]">{strategy.label}</div>
-            </button>
-          ))}
-        </div>
+        <RadioGroup
+          name="cacheStrategy"
+          options={CACHE_STRATEGIES}
+          value={settings.promptCacheStrategy}
+          onChange={(value) => onChange('promptCacheStrategy', value as CacheSettings['promptCacheStrategy'])}
+          direction="horizontal"
+          size="sm"
+        />
       </SettingsGroup>
 
       {/* Tool Cache Settings */}
@@ -212,7 +206,7 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
                         min={1}
                         max={600}
                         value={Math.round((ttlMs as number) / 1000)}
-                        onChange={(e) => handleUpdateToolTtl(toolName, parseInt(e.target.value) * 1000)}
+                        onChange={(e) => handleUpdateToolTtl(toolName, (parseInt(e.target.value) || 60) * 1000)}
                         className="w-16 px-2 py-1 text-[9px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] text-right focus-visible:outline-none focus-visible:border-[var(--color-accent-primary)]/30"
                       />
                       <span className="text-[9px] text-[var(--color-text-dim)] w-4">s</span>

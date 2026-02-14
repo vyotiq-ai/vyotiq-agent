@@ -27,6 +27,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { createLogger } from '../../../utils/logger';
+import { getFileName, getFileExtension } from '../../../utils/pathHelpers';
 
 const logger = createLogger('Mentions');
 
@@ -163,21 +164,7 @@ const EXTENSION_ICONS: Record<string, 'file' | 'code' | 'folder'> = {
   // Default is 'file'
 };
 
-/**
- * Extract filename from path
- */
-function getFileName(filePath: string): string {
-  return filePath.split(/[/\\]/).pop() ?? filePath;
-}
-
-/**
- * Get file extension
- */
-function getFileExtension(filePath: string): string {
-  const fileName = getFileName(filePath);
-  const lastDot = fileName.lastIndexOf('.');
-  return lastDot > 0 ? fileName.slice(lastDot + 1).toLowerCase() : '';
-}
+// getFileName and getFileExtension imported from utils/pathHelpers
 
 /**
  * Get icon type for a file based on extension

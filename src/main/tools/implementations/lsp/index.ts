@@ -8,6 +8,7 @@
  */
 
 import type { ToolDefinition } from '../../types';
+import { markAsDeferred as markAsDeferredBase } from '../index';
 
 export { lspHoverTool } from './hover';
 export { lspDefinitionTool } from './definition';
@@ -28,18 +29,9 @@ import { lspCompletionsTool } from './completions';
 import { lspCodeActionsTool } from './codeActions';
 import { lspRenameTool } from './rename';
 
-/**
- * Mark secondary tools as deferred for context-aware loading
- */
+/** Mark an LSP tool as deferred with LSP-specific keywords */
 function markAsDeferred<T extends ToolDefinition>(tool: T): T {
-  return {
-    ...tool,
-    deferLoading: true,
-    searchKeywords: [
-      ...(tool.searchKeywords || []),
-      'lsp', 'code', 'intelligence', 'symbol',
-    ],
-  };
+  return markAsDeferredBase(tool, ['lsp', 'code', 'intelligence', 'symbol']);
 }
 
 /**

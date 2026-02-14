@@ -33,6 +33,8 @@ import { cn } from '../../../../utils/cn';
 import { Modal } from '../../../../components/ui/Modal';
 import { Button } from '../../../../components/ui/Button';
 import { EnvVarEditor } from './EnvVarEditor';
+import { useToast } from '../../../../components/ui/Toast';
+import { Tabs, TabList, TabTrigger, TabContent } from '../../../../components/ui/Tabs';
 import { createLogger } from '../../../../utils/logger';
 import type {
   MCPServerConfig,
@@ -48,20 +50,12 @@ interface ServerDetailModalProps {
   serverId: string | null;
 }
 
-type TabId = 'overview' | 'tools' | 'resources' | 'prompts' | 'config';
-
 const logger = createLogger('ServerDetailModal');
-
-interface Tab {
-  id: TabId;
-  label: string;
-  icon: React.ReactNode;
-  count?: number;
-}
 
 // Tool schema viewer component
 const ToolSchemaViewer: React.FC<{ tool: MCPToolDefinition }> = memo(({ tool }) => {
   const [expanded, setExpanded] = useState(false);
+  const { toast } = useToast();
 
   return (
     <div className="border border-[var(--color-border)] overflow-hidden">
@@ -98,7 +92,10 @@ const ToolSchemaViewer: React.FC<{ tool: MCPToolDefinition }> = memo(({ tool }) 
             <div className="flex items-center justify-between mb-1">
               <div className="text-[10px] text-[var(--color-text-muted)]">Input Schema</div>
               <button
-                onClick={() => navigator.clipboard.writeText(JSON.stringify(tool.inputSchema, null, 2))}
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(tool.inputSchema, null, 2));
+                  toast({ type: 'success', message: 'Schema copied to clipboard' });
+                }}
                 className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
                 title="Copy schema"
               >
@@ -200,11 +197,11 @@ PromptItem.displayName = 'PromptItem';
 
 export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
   ({ open, onClose, serverId }) => {
-    const [activeTab, setActiveTab] = useState<TabId>('overview');
     const [config, setConfig] = useState<MCPServerConfig | null>(null);
     const [state, setState] = useState<MCPServerState | null>(null);
     const [loading, setLoading] = useState(true);
     const [envVars, setEnvVars] = useState<Record<string, string>>({});
+    const { toast: _toast } = useToast();
 
     useEffect(() => {
       if (!open || !serverId) return;
@@ -231,14 +228,6 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
 
       loadData();
     }, [open, serverId]);
-
-    const tabs: Tab[] = [
-      { id: 'overview', label: 'Overview', icon: <Server className="w-3 h-3" /> },
-      { id: 'tools', label: 'Tools', icon: <Wrench className="w-3 h-3" />, count: state?.tools.length },
-      { id: 'resources', label: 'Resources', icon: <Database className="w-3 h-3" />, count: state?.resources.length },
-      { id: 'prompts', label: 'Prompts', icon: <MessageSquare className="w-3 h-3" />, count: state?.prompts.length },
-      { id: 'config', label: 'Config', icon: <Settings2 className="w-3 h-3" /> },
-    ];
 
     const renderOverview = () => {
       if (!config || !state) return null;
@@ -484,23 +473,6 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
       );
     };
 
-    const renderTabContent = () => {
-      switch (activeTab) {
-        case 'overview':
-          return renderOverview();
-        case 'tools':
-          return renderTools();
-        case 'resources':
-          return renderResources();
-        case 'prompts':
-          return renderPrompts();
-        case 'config':
-          return renderConfig();
-        default:
-          return null;
-      }
-    };
-
     return (
       <Modal
         open={open}
@@ -523,41 +495,31 @@ export const ServerDetailModal: React.FC<ServerDetailModalProps> = memo(
             <p className="text-sm text-[var(--color-text-muted)]">Server not found</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <Tabs defaultValue="overview" className="space-y-4">
             {/* Tabs */}
-            <div className="flex gap-1 p-1 bg-[var(--color-surface-base)]">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-mono transition-colors',
-                    activeTab === tab.id
-                      ? 'bg-[var(--color-accent)] text-white'
-                      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]'
-                  )}
-                >
-                  {tab.icon}
-                  {tab.label}
-                  {tab.count !== undefined && tab.count > 0 && (
-                    <span
-                      className={cn(
-                        'px-1 py-0.5 rounded text-[8px]',
-                        activeTab === tab.id
-                          ? 'bg-white/20'
-                          : 'bg-[var(--color-surface-elevated)]'
-                      )}
-                    >
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
+            <TabList variant="pills" className="p-1 bg-[var(--color-surface-base)]">
+              <TabTrigger value="overview" variant="pills" icon={<Server className="w-3 h-3" />}>Overview</TabTrigger>
+              <TabTrigger value="tools" variant="pills" icon={<Wrench className="w-3 h-3" />}>
+                Tools{state && state.tools.length > 0 && <span className="px-1 py-0.5 rounded text-[8px] bg-[var(--color-surface-elevated)]">{state.tools.length}</span>}
+              </TabTrigger>
+              <TabTrigger value="resources" variant="pills" icon={<Database className="w-3 h-3" />}>
+                Resources{state && state.resources.length > 0 && <span className="px-1 py-0.5 rounded text-[8px] bg-[var(--color-surface-elevated)]">{state.resources.length}</span>}
+              </TabTrigger>
+              <TabTrigger value="prompts" variant="pills" icon={<MessageSquare className="w-3 h-3" />}>
+                Prompts{state && state.prompts.length > 0 && <span className="px-1 py-0.5 rounded text-[8px] bg-[var(--color-surface-elevated)]">{state.prompts.length}</span>}
+              </TabTrigger>
+              <TabTrigger value="config" variant="pills" icon={<Settings2 className="w-3 h-3" />}>Config</TabTrigger>
+            </TabList>
 
             {/* Tab content */}
-            <div className="min-h-[300px]">{renderTabContent()}</div>
-          </div>
+            <div className="min-h-[300px]">
+              <TabContent value="overview">{renderOverview()}</TabContent>
+              <TabContent value="tools">{renderTools()}</TabContent>
+              <TabContent value="resources">{renderResources()}</TabContent>
+              <TabContent value="prompts">{renderPrompts()}</TabContent>
+              <TabContent value="config">{renderConfig()}</TabContent>
+            </div>
+          </Tabs>
         )}
       </Modal>
     );

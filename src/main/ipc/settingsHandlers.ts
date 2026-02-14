@@ -17,6 +17,7 @@ import { getToolResultCache, getContextCache } from '../agent/cache';
 import { getBrowserManager } from '../browser';
 import { withErrorGuard } from './guards';
 import { validateAllSettings } from '../agent/settingsValidation';
+import { syncMCPSettingsToManager } from './mcpSettingsSync';
 
 const logger = createLogger('IPC:Settings');
 
@@ -50,6 +51,7 @@ function validateSettings(settings: Partial<AgentSettings>): ValidationError[] {
     cacheSettings: settings.cacheSettings,
     mcpSettings: settings.mcpSettings,
     workspaceSettings: settings.workspaceSettings,
+    rateLimits: settings.rateLimits,
   });
 
   // Convert full validation result to ValidationError array
@@ -226,6 +228,11 @@ export function registerSettingsHandlers(context: IpcContext): void {
       if (payload.settings.browserSettings) {
         applyBrowserSettings(updated);
       }
+
+      // Propagate MCP settings/servers changes to live MCPServerManager
+      if (payload.settings.mcpSettings || payload.settings.mcpServers) {
+        syncMCPSettingsToManager(updated, logger);
+      }
       
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });
@@ -255,6 +262,9 @@ export function registerSettingsHandlers(context: IpcContext): void {
       const updated = settingsStore.get();
       applyCacheSettings(updated);
       applyBrowserSettings(updated);
+
+      // Sync MCP settings to live MCPServerManager after reset
+      syncMCPSettingsToManager(updated, logger);
       
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });
@@ -285,10 +295,20 @@ export function registerSettingsHandlers(context: IpcContext): void {
       const settingsStore = getSettingsStore();
       const settings = settingsStore.get();
       
-      // Remove sensitive data (API keys) for export
+      // Remove sensitive data (API keys, subscription tokens) for export
       const exportData = {
         ...settings,
         apiKeys: {}, // Don't export API keys
+        // Strip subscription credentials
+        claudeSubscription: settings.claudeSubscription ? {
+          ...settings.claudeSubscription,
+          accessToken: undefined as string | undefined,
+          refreshToken: undefined as string | undefined,
+        } : undefined,
+        glmSubscription: settings.glmSubscription ? {
+          ...settings.glmSubscription,
+          apiKey: undefined as string | undefined,
+        } : undefined,
       };
       
       return { success: true, data: exportData };
@@ -312,13 +332,18 @@ export function registerSettingsHandlers(context: IpcContext): void {
         };
       }
       
-      // Don't import API keys from external sources for security
+      // Don't import API keys or subscription credentials from external sources for security
       const safeSettings = { ...payload.settings };
       delete safeSettings.apiKeys;
+      delete safeSettings.claudeSubscription;
+      delete safeSettings.glmSubscription;
       
       const updated = settingsStore.set(safeSettings);
       applyCacheSettings(updated);
       applyBrowserSettings(updated);
+
+      // Sync MCP settings to live MCPServerManager after import
+      syncMCPSettingsToManager(updated, logger);
       
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });

@@ -1,6 +1,7 @@
 import React, { memo, useState, useCallback } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, Terminal } from 'lucide-react';
+import { ChevronRight, Terminal } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
+import { cleanTerminalOutput } from '../../../../utils/ansi';
 
 const MAX_COLLAPSED_LINES = 10;
 const MAX_EXPANDED_LINES = 150;
@@ -19,7 +20,8 @@ export const TerminalOutputPreview: React.FC<{
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   
-  const lines = output.split('\n');
+  const cleanedOutput = cleanTerminalOutput(output);
+  const lines = cleanedOutput.split('\n');
   const hasMoreLines = lines.length > MAX_COLLAPSED_LINES;
   const displayLines = isExpanded 
     ? lines.slice(0, MAX_EXPANDED_LINES) 
@@ -30,61 +32,62 @@ export const TerminalOutputPreview: React.FC<{
     : lines.length - MAX_COLLAPSED_LINES;
   
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(output);
+    await navigator.clipboard.writeText(cleanedOutput);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
-  }, [output]);
+  }, [cleanedOutput]);
   
   const toggleExpand = useCallback(() => setIsExpanded(prev => !prev), []);
 
   return (
-    <div className="ml-4 mt-1.5 mb-2 rounded-lg overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)] shadow-[0_2px_8px_rgba(0,0,0,0.12)]">
-      {/* Header - consistent with DiffViewer header styling */}
+    <div className="ml-4 mt-1.5 mb-2 rounded-md overflow-hidden border border-[var(--color-border-subtle)]/30 bg-[var(--color-surface-editor)]">
+      {/* Header — clean terminal bar */}
       <div className={cn(
-        'flex items-center gap-2 px-3 py-2',
-        'bg-[var(--color-surface-1)]/60',
-        'border-b border-[var(--color-border-subtle)]/25'
+        'flex items-center gap-2 px-3 py-1.5',
+        'bg-[var(--color-surface-1)]/40',
+        'border-b border-[var(--color-border-subtle)]/20'
       )}>
-        <Terminal size={12} className="text-[var(--color-terminal-prompt)] flex-shrink-0" />
+        <Terminal size={11} className="text-[var(--color-terminal-prompt)]/70 flex-shrink-0" />
         
         {command && (
-          <code className="text-[10px] font-mono text-[var(--color-text-secondary)] truncate flex-1">
+          <code className="text-[10px] font-mono text-[var(--color-text-secondary)]/80 truncate flex-1">
             {command}
           </code>
         )}
         
         <div className="flex items-center gap-2 ml-auto">
           {/* Line count */}
-          <span className="text-[9px] text-[var(--color-text-dim)]/60 font-mono tabular-nums">
+          <span className="text-[9px] text-[var(--color-text-dim)]/50 font-mono tabular-nums">
             {lines.length} lines
           </span>
           
-          {/* Exit code badge - refined pill style */}
+          {/* Exit code badge */}
           {exitCode !== undefined && (
             <span
               className={cn(
-                'text-[8px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded',
+                'text-[8px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded-md',
                 exitCode === 0 
-                  ? 'text-[var(--color-diff-added-text)] bg-[var(--color-diff-added-text)]/10' 
-                  : 'text-[var(--color-diff-removed-text)] bg-[var(--color-diff-removed-text)]/10',
+                  ? 'text-[var(--color-diff-added-text)]/80 bg-[var(--color-diff-added-text)]/8' 
+                  : 'text-[var(--color-diff-removed-text)]/80 bg-[var(--color-diff-removed-text)]/8',
               )}
             >
               {exitCode === 0 ? 'ok' : `exit ${exitCode}`}
             </span>
           )}
           
-          {/* Copy button */}
+          {/* Copy button — text-based for terminal consistency */}
           <button
             type="button"
             onClick={handleCopy}
             className={cn(
-              'p-1.5 rounded transition-colors duration-100',
-              'text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)]',
-              'hover:bg-[var(--color-surface-2)]/60'
+              'px-1.5 py-0.5 rounded-md text-[9px] font-mono',
+              'transition-all duration-150',
+              'text-[var(--color-text-dim)]/60 hover:text-[var(--color-text-secondary)]',
+              'hover:bg-[var(--color-surface-2)]/40'
             )}
             title="Copy output"
           >
-            {copied ? <Check size={12} className="text-[var(--color-diff-added-text)]" /> : <Copy size={12} />}
+            {copied ? 'copied' : 'copy'}
           </button>
         </div>
       </div>
@@ -101,29 +104,26 @@ export const TerminalOutputPreview: React.FC<{
         {displayOutput || <span className="text-[var(--color-text-dim)]/50 italic">(no output)</span>}
       </pre>
       
-      {/* Expand/collapse footer - consistent with diff expand buttons */}
+      {/* Expand/collapse footer — subtle toggle */}
       {hasMoreLines && (
         <button
           type="button"
           onClick={toggleExpand}
           className={cn(
-            'w-full flex items-center justify-center gap-1.5 px-3 py-1.5',
-            'text-[9px] font-mono text-[var(--color-diff-expand-text)]/70',
-            'bg-[var(--color-diff-expand-bg)] hover:bg-[var(--color-diff-expand-border)] hover:text-[var(--color-diff-expand-text)]',
-            'border-t border-[var(--color-border-subtle)]/20 transition-colors duration-100'
+            'w-full flex items-center justify-center gap-1.5 px-3 py-1',
+            'text-[9px] font-mono text-[var(--color-text-dim)]/60',
+            'hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-1)]/30',
+            'border-t border-[var(--color-border-subtle)]/15 transition-all duration-150'
           )}
         >
-          {isExpanded ? (
-            <>
-              <ChevronUp size={10} />
-              <span className="tracking-wide">collapse</span>
-            </>
-          ) : (
-            <>
-              <ChevronDown size={10} />
-              <span>{hiddenCount} more line{hiddenCount !== 1 ? 's' : ''}</span>
-            </>
-          )}
+          <ChevronRight
+            size={9}
+            className={cn(
+              'transition-transform duration-150',
+              isExpanded && 'rotate-90'
+            )}
+          />
+          <span>{isExpanded ? 'collapse' : `${hiddenCount} more line${hiddenCount !== 1 ? 's' : ''}`}</span>
         </button>
       )}
     </div>

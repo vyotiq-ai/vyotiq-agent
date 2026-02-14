@@ -14,6 +14,7 @@ import { useSessionCost } from '../../sessions/hooks/useSessionCost';
 import { formatCost } from '../../../../shared/utils/costEstimation';
 import { getAllMetrics, clearMetrics, type RenderMetrics } from '../../../utils/profiler';
 import { cn } from '../../../utils/cn';
+import { Tabs, TabList, TabTrigger, TabContent } from '../../../components/ui/Tabs';
 import { 
   Activity, 
   Zap, 
@@ -78,27 +79,7 @@ const MetricCard: React.FC<{
   );
 };
 
-/** Tab button component */
-const TabButton: React.FC<{
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}> = ({ active, onClick, children }) => (
-  <button
-    onClick={onClick}
-    className={cn(
-      'px-3 py-1.5 text-[10px] font-medium transition-colors',
-      active
-        ? 'bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]'
-        : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]'
-    )}
-  >
-    {children}
-  </button>
-);
-
 export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
-  const [activeTab, setActiveTab] = useState<'session' | 'performance' | 'all-sessions'>('session');
   const [perfMetrics, setPerfMetrics] = useState<Map<string, RenderMetrics>>(getAllMetrics());
   
   // Primary data source - already computed in reducer
@@ -180,32 +161,23 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
   };
 
   return (
-    <div className="font-mono text-[11px]">
+    <Tabs defaultValue="session" className="font-mono text-[11px]">
       {/* Tab Navigation */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
-        <TabButton active={activeTab === 'session'} onClick={() => setActiveTab('session')}>
-          <span className="flex items-center gap-1.5">
-            <Activity size={12} />
-            Current Session
-          </span>
-        </TabButton>
-        <TabButton active={activeTab === 'all-sessions'} onClick={() => setActiveTab('all-sessions')}>
-          <span className="flex items-center gap-1.5">
-            <Layers size={12} />
-            All Sessions ({sessionData.totalSessions})
-          </span>
-        </TabButton>
-        <TabButton active={activeTab === 'performance'} onClick={() => setActiveTab('performance')}>
-          <span className="flex items-center gap-1.5">
-            <Cpu size={12} />
-            Performance
-          </span>
-        </TabButton>
-      </div>
+      <TabList variant="pills" className="px-4 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
+        <TabTrigger value="session" variant="pills" icon={<Activity size={12} />}>
+          Current Session
+        </TabTrigger>
+        <TabTrigger value="all-sessions" variant="pills" icon={<Layers size={12} />}>
+          All Sessions ({sessionData.totalSessions})
+        </TabTrigger>
+        <TabTrigger value="performance" variant="pills" icon={<Cpu size={12} />}>
+          Performance
+        </TabTrigger>
+      </TabList>
 
       {/* Tab Content */}
       <div className="p-4 space-y-4">
-        {activeTab === 'session' && (
+        <TabContent value="session">
           <>
             {/* Session Header */}
             <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border-subtle)]">
@@ -387,9 +359,9 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
               </>
             )}
           </>
-        )}
+        </TabContent>
 
-        {activeTab === 'all-sessions' && (
+        <TabContent value="all-sessions">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[9px] text-[var(--color-text-muted)] uppercase tracking-wide">
@@ -472,9 +444,9 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
               </div>
             )}
           </div>
-        )}
+        </TabContent>
 
-        {activeTab === 'performance' && (
+        <TabContent value="performance">
           <div className="space-y-4">
             {/* Performance Actions */}
             <div className="flex items-center justify-between">
@@ -589,8 +561,8 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
               </ul>
             </div>
           </div>
-        )}
+        </TabContent>
       </div>
-    </div>
+    </Tabs>
   );
 };

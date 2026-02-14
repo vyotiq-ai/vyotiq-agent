@@ -6,9 +6,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   FileText, Download, Play, AlertTriangle, Eye, RefreshCw, Terminal,
-  ChevronDown, ChevronRight, Copy, Check
+  ChevronDown, ChevronRight, Copy
 } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
+import { useToast } from '../../../components/ui/Toast';
 import type { DebugSettings } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
 import { createLogger } from '../../../utils/logger';
@@ -53,8 +54,8 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
   const [isLoadingTraces, setIsLoadingTraces] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>('logging');
   const [isExporting, setIsExporting] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const { toast } = useToast();
 
   const fetchTraces = useCallback(async () => {
     setIsLoadingTraces(true);
@@ -106,10 +107,10 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
   const handleCopyTraceId = async (traceId: string) => {
     try {
       await navigator.clipboard.writeText(traceId);
-      setCopiedId(traceId);
-      setTimeout(() => setCopiedId(null), 2000);
+      toast({ type: 'success', message: 'Trace ID copied to clipboard' });
     } catch (error) {
       logger.error('Failed to copy trace ID', { error });
+      toast({ type: 'error', message: 'Failed to copy trace ID' });
     }
   };
 
@@ -275,7 +276,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                           )} />
                           <span className="text-[10px] text-[var(--color-text-primary)] truncate">{trace.traceId.slice(0, 8)}</span>
                           <button onClick={() => handleCopyTraceId(trace.traceId)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40" title="Copy trace ID">
-                            {copiedId === trace.traceId ? <Check size={10} className="text-[var(--color-success)]" /> : <Copy size={10} />}
+                            <Copy size={10} />
                           </button>
                         </div>
                         <div className="flex items-center gap-2 mt-1">

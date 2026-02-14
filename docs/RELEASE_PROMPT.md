@@ -133,7 +133,7 @@ Release: vX.X.X
 - `terminal` - Terminal, pty integration
 - `browser` - Browser automation, Playwright
 - `mcp` - Model Context Protocol
-- `semantic` - Semantic search, embeddings
+- `search` - Full-text search, indexing
 - `providers` - LLM providers
 - `lsp` - Language Server Protocol
 - `settings` - Settings, configuration
@@ -292,7 +292,6 @@ gh release list
 - Tailwind CSS 4.1
 - Playwright for browser automation
 - SQLite for persistence
-- Transformers.js for local embeddings
 
 **Key Files to Check:**
 - `package.json` - Version field

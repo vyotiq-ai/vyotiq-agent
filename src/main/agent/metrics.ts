@@ -90,7 +90,13 @@ class AgentMetrics {
 
   completeRun(runId: string, status: 'completed' | 'error', tokensUsed?: number): RunResult | null {
     const run = this.activeRuns.get(runId);
-    if (!run) return null;
+    if (!run) {
+      // Log when a run is missing to aid debugging stale/evicted metrics
+      if (typeof console !== 'undefined') {
+        console.warn(`[AgentMetrics] completeRun called for unknown runId: ${runId} (may have been evicted as stale)`);
+      }
+      return null;
+    }
 
     const durationMs = Date.now() - run.startTime;
     this.data.totalRuns++;

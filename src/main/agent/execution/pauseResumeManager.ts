@@ -8,7 +8,8 @@ import type { Logger } from '../../logger';
 
 interface PauseState {
   pausedAt: number;
-  resumeResolve?: () => void;
+  /** Array of resolve functions for all concurrent waiters */
+  resumeResolvers: Array<() => void>;
 }
 
 export class PauseResumeManager {
@@ -39,7 +40,7 @@ export class PauseResumeManager {
     }
 
     this.logger.info('pauseRun: Pausing session', { sessionId });
-    this.pausedSessions.set(sessionId, { pausedAt: Date.now() });
+    this.pausedSessions.set(sessionId, { pausedAt: Date.now(), resumeResolvers: [] });
 
     this.emitEvent({
       type: 'agent-status',
@@ -70,9 +71,11 @@ export class PauseResumeManager {
       pausedDuration: Date.now() - pauseState.pausedAt
     });
 
-    if (pauseState.resumeResolve) {
-      pauseState.resumeResolve();
+    // Resolve all waiters
+    for (const resolve of pauseState.resumeResolvers) {
+      resolve();
     }
+    pauseState.resumeResolvers = [];
 
     this.pausedSessions.delete(sessionId);
 
@@ -98,7 +101,8 @@ export class PauseResumeManager {
   }
 
   /**
-   * Wait if the session is paused
+   * Wait if the session is paused.
+   * Supports multiple concurrent waiters — all are resolved on resume.
    */
   async waitIfPaused(sessionId: string): Promise<void> {
     const pauseState = this.pausedSessions.get(sessionId);
@@ -107,7 +111,7 @@ export class PauseResumeManager {
     this.logger.debug('waitIfPaused: Waiting for resume', { sessionId });
 
     await new Promise<void>((resolve) => {
-      pauseState.resumeResolve = resolve;
+      pauseState.resumeResolvers.push(resolve);
     });
   }
 
@@ -116,8 +120,11 @@ export class PauseResumeManager {
    */
   clearPauseState(sessionId: string): void {
     const pauseState = this.pausedSessions.get(sessionId);
-    if (pauseState?.resumeResolve) {
-      pauseState.resumeResolve();
+    if (pauseState) {
+      for (const resolve of pauseState.resumeResolvers) {
+        resolve();
+      }
+      pauseState.resumeResolvers = [];
     }
     this.pausedSessions.delete(sessionId);
   }

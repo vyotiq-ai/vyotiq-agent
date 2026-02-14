@@ -25,7 +25,6 @@ import { createLogger } from '../../logger';
 import { getToolExecutionLogger } from '../logging/ToolExecutionLogger';
 import { getToolResultCache } from '../cache/ToolResultCache';
 import * as fs from 'node:fs';
-import * as fsPromises from 'node:fs/promises';
 import * as path from 'node:path';
 
 const logger = createLogger('ToolContextManager');
@@ -55,6 +54,8 @@ export interface ToolSelectionContext {
   recentToolErrors?: Array<{ toolName: string; error: string }>;
   /** Whether to include error recovery tools */
   includeErrorRecoveryTools?: boolean;
+  /** Tools that are disabled by user settings — excluded from LLM context */
+  disabledTools?: string[];
 }
 
 // =============================================================================
@@ -711,48 +712,6 @@ const TASK_INTENT_KEYWORDS: Record<TaskIntent, string[]> = {
 };
 
 /**
- * Detect task intent from message content
- * Supports compound intents (e.g., "debug and fix" → ['debugging', 'coding'])
- */
-function detectTaskIntent(content: string): TaskIntent {
-  const lowerContent = content.toLowerCase();
-
-  // Check each intent's keywords
-  const scores: Record<TaskIntent, number> = {
-    coding: 0,
-    debugging: 0,
-    research: 0,
-    'file-exploration': 0,
-    'terminal-operations': 0,
-    'browser-automation': 0,
-    documentation: 0,
-    testing: 0,
-    general: 0,
-  };
-
-  for (const [intent, keywords] of Object.entries(TASK_INTENT_KEYWORDS)) {
-    for (const keyword of keywords) {
-      if (lowerContent.includes(keyword)) {
-        scores[intent as TaskIntent]++;
-      }
-    }
-  }
-
-  // Find the intent with highest score
-  let maxScore = 0;
-  let detectedIntent: TaskIntent = 'general';
-
-  for (const [intent, score] of Object.entries(scores)) {
-    if (score > maxScore) {
-      maxScore = score;
-      detectedIntent = intent as TaskIntent;
-    }
-  }
-
-  return detectedIntent;
-}
-
-/**
  * Detect multiple intents for compound tasks
  * 
  * IMPORTANT: This function is conservative to avoid loading too many tools.
@@ -796,11 +755,11 @@ function detectCompoundIntents(content: string): TaskIntent[] {
     }
   }
 
-  // If no strong intents, use only the primary one
+  // If no strong intents, fall back to the single highest-scoring intent
   if (strongIntents.length === 0) {
-    const primary = detectTaskIntent(content);
-    if (primary !== 'general') {
-      return [primary];
+    const [topIntent, topScore] = sortedIntents[0] ?? ['general', 0];
+    if (topScore > 0) {
+      return [topIntent as TaskIntent];
     }
   }
 
@@ -839,11 +798,11 @@ function getToolsForIntent(intent: TaskIntent): string[] {
 
     case 'research':
       // Research: minimal core + essential browser tools + search tools
-      return ['read', 'ls', 'grep', 'glob', 'semantic_search', 'full_text_search', ...ESSENTIAL_BROWSER_TOOLS, 'browser_extract'];
+      return ['read', 'ls', 'grep', 'glob', 'full_text_search', ...ESSENTIAL_BROWSER_TOOLS, 'browser_extract'];
 
     case 'file-exploration':
       // File exploration: minimal set for understanding codebase + search tools
-      return ['read', 'ls', 'glob', 'grep', 'semantic_search', 'full_text_search', 'code_query'];
+      return ['read', 'ls', 'glob', 'grep', 'full_text_search'];
 
     case 'terminal-operations':
       // Terminal: minimal core + terminal tools
@@ -933,6 +892,7 @@ export function selectToolsForContext(
 
   const selectedToolNames = new Set<string>();
   const maxTools = context.maxTools ?? 18; // Reduced from 25 to minimize token usage
+  const disabledToolsSet = new Set(context.disabledTools ?? []);
 
   // 1. Always include core tools (essential for any task)
   for (const tool of CORE_TOOLS) {
@@ -1032,12 +992,27 @@ export function selectToolsForContext(
   // 10. Always include the request_tools tool so agent can request more
   selectedToolNames.add('request_tools');
 
-  // 10. Filter tools with STRICT deferred loading enforcement
+  // 10a. Include connected MCP tools automatically
+  // MCP tools are dynamically registered from external servers and must be
+  // included in the LLM context so the agent can actually call them
+  for (const tool of allTools) {
+    if (tool.name.startsWith('mcp_')) {
+      selectedToolNames.add(tool.name);
+    }
+  }
+
+  // 11. Filter tools with STRICT deferred loading enforcement
   // Deferred tools are ONLY included if:
   // - They are in selectedToolNames (explicitly selected above)
   // - They were requested by the agent
   // - They were discovered via search
+  // - They are MCP tools (automatically included above)
   let selectedTools = allTools.filter(tool => {
+    // Never include disabled tools in LLM context
+    if (disabledToolsSet.has(tool.name)) {
+      return false;
+    }
+
     // Always include if explicitly selected by name
     if (selectedToolNames.has(tool.name)) {
       return true;
@@ -1390,127 +1365,6 @@ export function detectWorkspaceType(workspacePath: string | null): WorkspaceType
     return detectedType;
   } catch (err) {
     logger.debug('detectWorkspaceType failed', { workspacePath, error: err instanceof Error ? err.message : String(err) });
-    return 'unknown';
-  }
-}
-
-/**
- * Async version of workspace type detection
- * Uses non-blocking file operations to avoid blocking the main process
- * Preferred for use in async contexts (IPC handlers, agent execution, etc.)
- */
-export async function detectWorkspaceTypeAsync(workspacePath: string | null): Promise<WorkspaceType> {
-  if (!workspacePath) {
-    return 'unknown';
-  }
-
-  // Check cache first (sync cache read is acceptable - it's just memory)
-  const now = Date.now();
-  if (
-    workspaceTypeCache &&
-    workspaceTypeCache.path === workspacePath &&
-    now - workspaceTypeCache.timestamp < WORKSPACE_CACHE_TTL
-  ) {
-    return workspaceTypeCache.type;
-  }
-
-  try {
-    const exists = async (filename: string): Promise<boolean> => {
-      try {
-        await fsPromises.access(path.join(workspacePath, filename));
-        return true;
-      } catch {
-        return false;
-      }
-    };
-
-    let detectedType: WorkspaceType = 'unknown';
-
-    // Check for TypeScript projects (run checks in parallel where possible)
-    const [
-      hasTsconfig,
-      hasForgeTs,
-      hasForgeJs,
-      hasNextJs,
-      hasNextTs,
-      hasNextMjs,
-      hasViteTs,
-      hasViteJs,
-      hasPackageJson,
-      hasRequirements,
-      hasSetupPy,
-      hasPyproject,
-      hasIndexHtml,
-    ] = await Promise.all([
-      exists('tsconfig.json'),
-      exists('forge.config.ts'),
-      exists('forge.config.js'),
-      exists('next.config.js'),
-      exists('next.config.ts'),
-      exists('next.config.mjs'),
-      exists('vite.config.ts'),
-      exists('vite.config.js'),
-      exists('package.json'),
-      exists('requirements.txt'),
-      exists('setup.py'),
-      exists('pyproject.toml'),
-      exists('index.html'),
-    ]);
-
-    if (hasTsconfig) {
-      if (hasForgeTs || hasForgeJs) {
-        detectedType = 'electron';
-      } else if (hasNextJs || hasNextTs || hasNextMjs) {
-        detectedType = 'react';
-      } else if (hasViteTs || hasViteJs) {
-        // Check if it's a React project
-        try {
-          const pkgPath = path.join(workspacePath, 'package.json');
-          const pkgContent = await fsPromises.readFile(pkgPath, 'utf-8');
-          const pkg = JSON.parse(pkgContent);
-          if (pkg.dependencies?.react || pkg.devDependencies?.react) {
-            detectedType = 'react';
-          } else {
-            detectedType = 'typescript';
-          }
-        } catch {
-          detectedType = 'typescript';
-        }
-      } else {
-        detectedType = 'typescript';
-      }
-    } else if (hasPackageJson) {
-      // Check for Node.js projects
-      try {
-        const pkgPath = path.join(workspacePath, 'package.json');
-        const pkgContent = await fsPromises.readFile(pkgPath, 'utf-8');
-        const pkg = JSON.parse(pkgContent);
-        if (pkg.dependencies?.react || pkg.devDependencies?.react) {
-          detectedType = 'react';
-        } else {
-          detectedType = 'node';
-        }
-      } catch {
-        detectedType = 'node';
-      }
-    } else if (hasRequirements || hasSetupPy || hasPyproject) {
-      // Python project
-      detectedType = 'python';
-    } else if (hasIndexHtml) {
-      // Web project
-      detectedType = 'web';
-    }
-
-    // Update cache
-    workspaceTypeCache = {
-      path: workspacePath,
-      type: detectedType,
-      timestamp: now,
-    };
-
-    return detectedType;
-  } catch (err) {
-    logger.debug('detectWorkspaceTypeAsync failed', { workspacePath, error: err instanceof Error ? err.message : String(err) });
     return 'unknown';
   }
 }

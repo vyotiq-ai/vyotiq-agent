@@ -42,8 +42,10 @@ export function registerMCPHandlers(context: IpcContext): void {
     return getMCPStore(getMCPManager());
   };
 
-  // Set up event forwarding to renderer
+  // Set up event forwarding to renderer (eagerly on handler registration)
+  let eventForwardingSetup = false;
   const setupEventForwarding = () => {
+    if (eventForwardingSetup) return;
     const manager = getMCPManager();
 
     manager.on('server:status-changed', (serverId, status, error) => {
@@ -61,14 +63,23 @@ export function registerMCPHandlers(context: IpcContext): void {
     manager.on('event', (event) => {
       emitToRenderer?.({ type: 'mcp:event', ...event });
     });
+
+    eventForwardingSetup = true;
   };
 
-  // Initialize event forwarding on first access
-  let eventForwardingSetup = false;
+  // Initialize event forwarding eagerly so server status events
+  // are forwarded to the renderer from the start (not just on first IPC call)
+  try {
+    setupEventForwarding();
+  } catch (err) {
+    logger.warn('Failed to setup MCP event forwarding eagerly, will retry on first access', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   const ensureEventForwarding = () => {
     if (!eventForwardingSetup) {
       setupEventForwarding();
-      eventForwardingSetup = true;
     }
   };
 
@@ -675,16 +686,25 @@ export function registerMCPHandlers(context: IpcContext): void {
     }
   };
 
-  // Load saved servers on startup
+  // Load saved servers on startup only if not already loaded by orchestrator init
   const loadServersFromSettings = () => {
     try {
       const servers = getSettingsStore()?.get()?.mcpServers;
       if (servers && Array.isArray(servers)) {
         const manager = getMCPManager();
+        const existingServerIds = new Set(manager.getAllServers().map((s: MCPServerConfig) => s.id));
+        let newCount = 0;
         for (const server of servers) {
-          manager.registerServer(server);
+          if (!existingServerIds.has(server.id)) {
+            manager.registerServer(server);
+            newCount++;
+          }
         }
-        logger.info('Loaded MCP servers from settings', { count: servers.length });
+        if (newCount > 0) {
+          logger.info('Loaded new MCP servers from settings', { newCount, totalSettings: servers.length });
+        } else {
+          logger.debug('All MCP servers already registered (likely loaded by orchestrator)', { count: servers.length });
+        }
       }
     } catch (error) {
       logger.error('Failed to load servers from settings', {

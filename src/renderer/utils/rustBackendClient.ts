@@ -82,16 +82,6 @@ export interface RustGrepMatch {
   context_after: string[];
 }
 
-export interface RustSemanticResult {
-  path: string;
-  relative_path: string;
-  chunk_text: string;
-  score: number;
-  line_start: number;
-  line_end: number;
-  language: string;
-}
-
 export interface IndexProgress {
   workspace_id: string;
   indexed: number;
@@ -110,8 +100,6 @@ export type ServerEvent =
   | { type: 'index_progress'; data: IndexProgress }
   | { type: 'index_complete'; data: { workspace_id: string; total_files: number; duration_ms: number } }
   | { type: 'index_error'; data: { workspace_id: string; error: string } }
-  | { type: 'vector_index_progress'; data: { workspace_id: string; embedded_chunks: number; total_chunks: number } }
-  | { type: 'vector_index_complete'; data: { workspace_id: string; total_chunks: number; duration_ms: number } }
   | { type: 'file_changed'; data: FileWatchEvent }
   | { type: 'workspace_created'; data: RustWorkspace }
   | { type: 'workspace_removed'; data: { workspace_id: string } }
@@ -611,21 +599,6 @@ class RustBackendClient {
     return { matches: raw.results, total_matches: raw.total_matches, files_searched: raw.files_searched };
   }
 
-  async semanticSearch(
-    workspaceId: string,
-    query: string,
-    options: { limit?: number } = {},
-  ): Promise<{ results: RustSemanticResult[]; query_time_ms: number }> {
-    return request<{ results: RustSemanticResult[]; query_time_ms: number }>(
-      `/api/workspaces/${workspaceId}/search/semantic`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ query, limit: options.limit || 20 }),
-      },
-      this.baseUrl,
-    );
-  }
-
   // ----- Events ------------------------------------------------------------
 
   /** Subscribe to real-time server events via WebSocket */
@@ -668,12 +641,8 @@ class RustBackendClient {
   async getIndexStatus(workspaceId: string): Promise<{
     indexed: boolean;
     is_indexing: boolean;
-    is_vector_indexing: boolean;
     indexed_count: number;
     total_count: number;
-    vector_count: number;
-    vector_ready: boolean;
-    embedding_model_ready: boolean;
   }> {
     return request(`/api/workspaces/${workspaceId}/index/status`, {}, this.baseUrl);
   }

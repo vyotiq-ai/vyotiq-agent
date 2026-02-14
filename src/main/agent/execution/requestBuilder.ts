@@ -9,6 +9,7 @@
  */
 
 import type { LLMProviderName, PromptSettings, RoutingDecision } from '../../../shared/types';
+import type { ToolConfigSettings } from '../../../shared/types';
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
 import type { ToolRegistry } from '../../tools';
@@ -49,6 +50,7 @@ export class RequestBuilder {
   private readonly getCacheSettings: () => CacheSettings | undefined;
   private readonly getPromptSettings: () => PromptSettings | undefined;
   private readonly getAccessLevelSettings: () => AccessLevelSettings | undefined;
+  private readonly getToolSettings: () => ToolConfigSettings | undefined;
   private readonly getEditorState?: () => EditorState;
   private readonly getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>;
   
@@ -71,7 +73,8 @@ export class RequestBuilder {
     getAccessLevelSettings: () => AccessLevelSettings | undefined,
     emitEvent: (event: RendererEvent | AgentEvent) => void,
     getEditorState?: () => EditorState,
-    getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>
+    getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>,
+    getToolSettings?: () => ToolConfigSettings | undefined
   ) {
     this.toolRegistry = toolRegistry;
     this.logger = logger;
@@ -82,11 +85,14 @@ export class RequestBuilder {
     this.getCacheSettings = getCacheSettings;
     this.getPromptSettings = getPromptSettings;
     this.getAccessLevelSettings = getAccessLevelSettings;
+    this.getToolSettings = getToolSettings ?? (() => undefined);
     this.emitEvent = emitEvent;
     this.getEditorState = getEditorState;
     this.getWorkspaceDiagnostics = getWorkspaceDiagnostics;
     
-    this.contextManager = new ContextWindowManager('deepseek');
+    // Initialize with 'anthropic' as a safe default with generous context limits.
+    // The actual provider is applied via updateContextManagerForProvider() before the first request.
+    this.contextManager = new ContextWindowManager('anthropic');
     this.conversationSummarizer = new ConversationSummarizer({
       minMessagesForSummary: 100,
       keepRecentMessages: 40,
@@ -217,6 +223,8 @@ export class RequestBuilder {
       useSuccessRateBoost: true,
       // Include error recovery tools if there were recent errors
       includeErrorRecoveryTools: true,
+      // Pass disabled tools from settings to filter them from LLM context
+      disabledTools: this.getToolSettings()?.disabledTools,
     };
 
     // Select relevant tools using the context-aware selection
@@ -294,7 +302,7 @@ export class RequestBuilder {
     const workspace = workspacePath ? { id: 'default', path: workspacePath } : undefined;
 
     // Ensure workspace is indexed in the Rust backend (awaited on first call
-    // to ensure vector index is ready for semantic context injection)
+    // to ensure full-text index is ready for context injection)
     if (workspacePath) {
       try {
         await this.contextBuilder.ensureWorkspaceIndexed(workspacePath);
@@ -502,7 +510,7 @@ export class RequestBuilder {
           : lastUserMessage.content;
         workspaceCodeContext = await this.contextBuilder.buildWorkspaceCodeContext(
           workspace.path,
-          String(queryText).slice(0, 1000), // Allow longer query for better semantic search relevance
+          String(queryText).slice(0, 1000), // Allow longer query for better search relevance
           10, // Max snippets
         );
       }

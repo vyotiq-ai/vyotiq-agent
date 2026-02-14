@@ -20,6 +20,7 @@ import type { ToolExecutionResult } from '../../../shared/types';
 import { addAgentRequestedTools, addDiscoveredTools, getRecentToolErrors, getSessionToolState, getLoadedToolsInfo } from '../../agent/context/ToolContextManager';
 import { getToolResultCache } from '../../agent/cache/ToolResultCache';
 import { getErrorRecoveryManager } from '../../agent/recovery/ErrorRecoveryManager';
+import { getMCPToolMetadata } from '../../mcp/MCPToolAdapter';
 
 // Tool categories for listing
 const TOOL_CATEGORIES = {
@@ -39,7 +40,7 @@ const TOOL_CATEGORIES = {
     'read', 'write', 'edit', 'ls', 'grep', 'glob', 'bulk', 'read_lints',
   ],
   search: [
-    'semantic_search', 'full_text_search', 'code_query', 'code_similarity',
+    'full_text_search',
   ],
   terminal: [
     'run', 'check_terminal', 'kill_terminal',
@@ -98,11 +99,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   bulk: 'Batch file operations (rename, move, copy, delete). Use for multiple file operations in one call.',
   read_lints: 'Get TypeScript/ESLint diagnostics for files. Use after edits to verify code quality. Essential verification step.',
   
-  // Search tools - Semantic and full-text code search
-  semantic_search: 'Vector/embedding-based semantic code search across the indexed workspace. Use natural language queries to find relevant code. Powered by Qwen3 embeddings + usearch HNSW.',
+  // Search tools - Full-text code search
   full_text_search: 'BM25 ranked keyword search via Tantivy engine. Supports fuzzy matching, language filtering, and file pattern filtering. Best for exact keyword/identifier searches.',
-  code_query: 'Natural language code query - ask questions about the codebase and get relevant code snippets with explanations.',
-  code_similarity: 'Find code similar to a given snippet or description. Uses vector embeddings to find structurally/semantically similar code.',
 
   // Terminal tools - Command execution
   run: 'Run a terminal command. Use for builds, tests, installs, or any shell operation. Supports background mode for servers.',
@@ -173,7 +171,7 @@ interface RequestToolsArgs extends Record<string, unknown> {
   /** Search query (for 'search' action) */
   query?: string;
   /** Category to list (for 'list' action) */
-  category?: 'browser' | 'lsp' | 'file' | 'search' | 'terminal' | 'task' | 'advanced' | 'all';
+  category?: 'browser' | 'lsp' | 'file' | 'search' | 'terminal' | 'task' | 'advanced' | 'mcp' | 'all';
   /** Reason for requesting tools (helps with debugging) */
   reason?: string;
   /** Error message to get recovery suggestions for (for 'recover' action) */
@@ -237,10 +235,11 @@ action="reset_cache_stats"
 - **browser**: Web automation, scraping, form filling, screenshots
 - **lsp**: Code intelligence, navigation, refactoring, diagnostics
 - **file**: File operations, bulk rename/move/copy/delete, diagnostics
-- **search**: Semantic vector search, BM25 keyword search, code queries, code similarity
+- **search**: BM25 keyword search
 - **terminal**: Command execution, process management
 - **task**: Task tracking, planning, verification (always available)
 - **advanced**: Dynamic tool creation
+- **mcp**: Tools from connected MCP servers (dynamic)
 
 ## Best Practices
 - Request tools BEFORE you need them (proactive loading)
@@ -271,7 +270,7 @@ action="reset_cache_stats"
       category: {
         type: 'string',
         description: 'Category to list (for "list" action)',
-        enum: ['browser', 'lsp', 'file', 'search', 'terminal', 'task', 'advanced', 'all'],
+        enum: ['browser', 'lsp', 'file', 'search', 'terminal', 'task', 'advanced', 'mcp', 'all'],
       },
       reason: {
         type: 'string',
@@ -341,13 +340,14 @@ function handleRequest(args: RequestToolsArgs, sessionId?: string): ToolExecutio
     };
   }
 
-  // Validate tool names
+  // Validate tool names — include MCP tools dynamically
   const allKnownTools = Object.values(TOOL_CATEGORIES).flat();
+  const mcpToolNames = new Set(getMCPToolMetadata().map(t => t.name));
   const validTools: string[] = [];
   const invalidTools: string[] = [];
   
   for (const tool of tools) {
-    if (allKnownTools.includes(tool) || TOOL_DESCRIPTIONS[tool]) {
+    if (allKnownTools.includes(tool) || TOOL_DESCRIPTIONS[tool] || tool.startsWith('mcp_') || mcpToolNames.has(tool)) {
       validTools.push(tool);
     } else {
       invalidTools.push(tool);
@@ -406,6 +406,7 @@ function handleSearch(args: RequestToolsArgs, sessionId?: string): ToolExecution
   const queryWords = queryLower.split(/\s+/);
   const matches: Array<{ name: string; description: string; score: number }> = [];
 
+  // Search built-in tool descriptions
   for (const [name, description] of Object.entries(TOOL_DESCRIPTIONS)) {
     let score = 0;
     const nameLower = name.toLowerCase();
@@ -422,6 +423,27 @@ function handleSearch(args: RequestToolsArgs, sessionId?: string): ToolExecution
 
     if (score > 0) {
       matches.push({ name, description, score });
+    }
+  }
+
+  // Also search registered MCP tools from connected servers
+  for (const mcpTool of getMCPToolMetadata()) {
+    let score = 0;
+    const nameLower = mcpTool.name.toLowerCase();
+    const descLower = mcpTool.description.toLowerCase();
+    const serverLower = mcpTool.serverName.toLowerCase();
+
+    if (nameLower.includes(queryLower) || serverLower.includes(queryLower)) {
+      score += 10;
+    }
+    for (const word of queryWords) {
+      if (nameLower.includes(word)) score += 3;
+      if (descLower.includes(word)) score += 2;
+      if (serverLower.includes(word)) score += 2;
+    }
+
+    if (score > 0) {
+      matches.push({ name: mcpTool.name, description: `[MCP: ${mcpTool.serverName}] ${mcpTool.description}`, score });
     }
   }
 
@@ -480,8 +502,47 @@ function handleList(args: RequestToolsArgs): ToolExecutionResult {
       lines.push('');
     }
 
+    // Include MCP tools from connected servers
+    const mcpTools = getMCPToolMetadata();
+    if (mcpTools.length > 0) {
+      lines.push(`**mcp** (${mcpTools.length} tools from connected MCP servers):`);
+      for (const tool of mcpTools.slice(0, 5)) {
+        lines.push(`  • ${tool.name} - [${tool.serverName}] ${tool.description}`);
+      }
+      if (mcpTools.length > 5) {
+        lines.push(`  ... and ${mcpTools.length - 5} more`);
+      }
+      lines.push('');
+    }
+
     lines.push('Use action="list" category="<name>" to see all tools in a category.');
     lines.push('Use action="request" tools=["tool1", "tool2"] to load specific tools.');
+
+    return {
+      toolName: 'request_tools',
+      success: true,
+      output: lines.join('\n'),
+    };
+  }
+
+  // Handle MCP category dynamically
+  if (category === 'mcp') {
+    const mcpTools = getMCPToolMetadata();
+    if (mcpTools.length === 0) {
+      return {
+        toolName: 'request_tools',
+        success: true,
+        output: 'No MCP tools available. Connect MCP servers in Settings to use MCP tools.',
+      };
+    }
+
+    const lines = [
+      `**mcp** tools (${mcpTools.length} from connected servers):`,
+      '',
+      ...mcpTools.map(t => `  • ${t.name} - [${t.serverName}] ${t.description}`),
+      '',
+      `To load these tools: action="request" tools=[${mcpTools.slice(0, 3).map(t => `"${t.name}"`).join(', ')}]`,
+    ];
 
     return {
       toolName: 'request_tools',
@@ -495,7 +556,7 @@ function handleList(args: RequestToolsArgs): ToolExecutionResult {
     return {
       toolName: 'request_tools',
       success: false,
-      output: `Unknown category: ${category}. Valid categories: ${Object.keys(TOOL_CATEGORIES).join(', ')}, all`,
+      output: `Unknown category: ${category}. Valid categories: ${Object.keys(TOOL_CATEGORIES).join(', ')}, mcp, all`,
     };
   }
 

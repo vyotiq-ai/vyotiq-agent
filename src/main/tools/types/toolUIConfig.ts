@@ -101,61 +101,6 @@ export const TOOL_UI_CONFIG: Record<string, ToolUIMetadata> = {
     completedLabel: 'Found',
   },
 
-  // Semantic Search (Vector Embeddings)
-  semantic_search: {
-    icon: 'Brain',
-    label: 'Semantic Search',
-    color: 'text-violet-400',
-    runningLabel: 'Searching semantically',
-    completedLabel: 'Found semantically',
-  },
-  semantic: {
-    icon: 'Brain',
-    label: 'Semantic Search',
-    color: 'text-violet-400',
-    runningLabel: 'Searching semantically',
-    completedLabel: 'Found semantically',
-  },
-  vector_search: {
-    icon: 'Brain',
-    label: 'Semantic Search',
-    color: 'text-violet-400',
-    runningLabel: 'Searching semantically',
-    completedLabel: 'Found semantically',
-  },
-
-  // Code Query (Natural Language)
-  code_query: {
-    icon: 'MessageSquare',
-    label: 'Code Query',
-    color: 'text-indigo-400',
-    runningLabel: 'Querying code',
-    completedLabel: 'Query complete',
-  },
-  find_code: {
-    icon: 'MessageSquare',
-    label: 'Code Query',
-    color: 'text-indigo-400',
-    runningLabel: 'Querying code',
-    completedLabel: 'Query complete',
-  },
-
-  // Code Similarity
-  code_similarity: {
-    icon: 'GitCompare',
-    label: 'Code Similarity',
-    color: 'text-teal-400',
-    runningLabel: 'Comparing code',
-    completedLabel: 'Similarity found',
-  },
-  similar_code: {
-    icon: 'GitCompare',
-    label: 'Code Similarity',
-    color: 'text-teal-400',
-    runningLabel: 'Comparing code',
-    completedLabel: 'Similarity found',
-  },
-
   // Terminal
   run: {
     icon: 'Terminal',
@@ -554,6 +499,18 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   TodoWrite: 'agent-internal',
   request_tools: 'agent-internal',
   create_tool: 'agent-internal',
+  // Plan/Task tracking tools
+  CreatePlan: 'agent-internal',
+  VerifyTasks: 'agent-internal',
+  GetActivePlan: 'agent-internal',
+  ListPlans: 'agent-internal',
+  DeletePlan: 'agent-internal',
+  // Full-text search tools
+  full_text_search: 'file-search',
+  // Linting tools
+  read_lints: 'code-intelligence',
+  // Terminal canonical names (in addition to aliases above)
+  check_terminal: 'terminal',
 };
 
 // Default fallback config

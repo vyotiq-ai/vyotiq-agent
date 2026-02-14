@@ -1,993 +1,477 @@
 /**
- * Chat Area - Terminal-style message display
+ * ChatArea Component
  * 
- * Minimalist design showing:
- * - User prompts with timestamp
- * - AI responses with real-time streaming
- * - Tool executions with status and output
- * - Error handling and recovery
- * - Branch navigation for conversation alternatives
- * - Todo progress tracking for complex tasks
+ * The main chat message display area. Renders conversation messages grouped by run,
+ * with collapsible run headers, scroll management (virtualized for large histories),
+ * conversation search, branch navigation, and streaming state handling.
  * 
- * All content is rendered inline without unnecessary cards or modals.
+ * Uses the following hooks:
+ * - useChatAreaState: branch filtering, message grouping, collapse state
+ * - useChatScrollManager: auto-scroll during streaming, virtualization
+ * - useConversationSearch: message search with navigation
  * 
- * Performance optimizations:
- * - Virtualized rendering for large chat histories (100+ messages)
- * - Deferred value for message groups during streaming
- * - Stable callback references with refs
- * - Custom equality checks for selectors
- * - Extracted state management into reusable hooks
+ * Follows the terminal aesthetic with monospace fonts and CSS variable theming.
  */
-import React, { useMemo, useRef, useEffect, useCallback, useState, useDeferredValue } from 'react';
-import { ChevronsUpDown, ArrowDown } from 'lucide-react';
-import { useAgentActions, useAgentSelector } from '../../state/AgentProvider';
-import { useChatScroll } from '../../hooks/useChatScroll';
-import { useConversationSearch } from '../../hooks/useConversationSearch';
-import { useHotkey } from '../../hooks/useKeyboard';
-// Virtualization hooks for performance optimization with large chat histories
-import { useVirtualizedList } from '../../hooks/useVirtualizedList';
-import { useRenderProfiler } from '../../utils/profiler';
+import React, { memo, useState, useCallback, useMemo } from 'react';
+import { Search, ChevronsUpDown, ArrowDown } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { createLogger } from '../../utils/logger';
+import { useAgentSelector, useAgentActions } from '../../state/AgentProvider';
+import type { AgentUIState, RoutingDecisionState } from '../../state/types';
+import type { ChatMessage, AgentRunStatus } from '../../../shared/types';
+import { useChatAreaState } from './hooks/useChatAreaState';
+import { useChatScrollManager } from './hooks/useChatScrollManager';
+import { useConversationSearch } from '../../hooks/useConversationSearch';
+import { MessageLine } from './components/MessageLine';
+import { RunGroupHeader } from './components/RunGroupHeader';
 import { EmptyState } from './components/EmptyState';
 import { SessionWelcome } from './components/SessionWelcome';
-import { ToolConfirmationPanel } from './components/ToolConfirmationPanel';
-import { ContextPressureIndicator } from './components/ContextPressureIndicator';
-import { RunErrorBanner } from './components/RunErrorBanner';
-import { ConnectionStatusBanner } from './components/ConnectionStatusBanner';
-import { BranchNavigation } from './components/BranchNavigation';
 import { ConversationSearchBar } from './components/ConversationSearchBar';
-import { MessageGroup } from './components/MessageGroup';
-import { groupMessagesByRun, useSearchRunExpansion } from './hooks/useChatAreaState';
-import type { ToolResultEvent, ConversationBranch } from '../../../shared/types';
+import { ToolConfirmationPanel } from './components/ToolConfirmationPanel';
+import { BranchNavigation } from './components/BranchNavigation';
+import { TodoProgress } from './components/TodoProgress';
+import { RunErrorBanner } from './components/RunErrorBanner';
 
-/** Message reaction type */
-type MessageReaction = 'up' | 'down' | null;
+// =============================================================================
+// Selectors
+// =============================================================================
 
-const logger = createLogger('ChatArea');
-
-/** Virtualization threshold - enable virtualization for large chat histories */
 const VIRTUALIZATION_THRESHOLD = 100;
 
-export const ChatArea: React.FC = () => {
-  useRenderProfiler('ChatArea');
+const selectActiveSession = (state: AgentUIState) => {
+  if (!state.activeSessionId) return undefined;
+  return state.sessions.find(s => s.id === state.activeSessionId);
+};
 
-  const actions = useAgentActions();
-  
-  // PERFORMANCE OPTIMIZATION: Use stable selectors with efficient equality checks
-  // Only extract the fields we actually need to minimize re-renders
-  const activeSessionId = useAgentSelector(
-    (state) => state.activeSessionId
-  );
-  
-  // PERF: Memoize session selector with shallow equality on essential fields only
-  // During streaming, content length is checked at a coarse granularity (every ~100 chars)
-  // to reduce re-renders while still showing streaming progress.
-  const activeSession = useAgentSelector(
-    (state) => {
-      if (!state.activeSessionId) return undefined;
-      return state.sessions.find((session) => session.id === state.activeSessionId);
-    },
-    (a, b) => {
-      if (a === b) return true;
-      if (!a || !b) return a === b;
-      // Fast path: compare identity fields first
-      if (a.id !== b.id || a.status !== b.status || a.activeBranchId !== b.activeBranchId) return false;
-      // Messages: only check count and last message ID
-      const aLen = a.messages.length, bLen = b.messages.length;
-      if (aLen !== bLen) return false;
-      if (aLen > 0) {
-        const lastA = a.messages[aLen - 1], lastB = b.messages[bLen - 1];
-        if (lastA.id !== lastB.id) return false;
-        // Check tool calls count — changes when new tools are invoked
-        const aToolCount = lastA.toolCalls?.length ?? 0, bToolCount = lastB.toolCalls?.length ?? 0;
-        if (aToolCount !== bToolCount) return false;
-        // FINE content check: re-render every ~30 chars of new content
-        // Small bucket ensures streaming text appears smoothly word-by-word
-        // The streaming buffer already throttles at ~30fps, so re-renders are manageable
-        const aContentBucket = Math.floor((lastA.content?.length ?? 0) / 30);
-        const bContentBucket = Math.floor((lastB.content?.length ?? 0) / 30);
-        if (aContentBucket !== bContentBucket) return false;
-      }
-      // Branches: only check length (detailed comparison not needed for render)
-      return (a.branches?.length ?? 0) === (b.branches?.length ?? 0);
-    }
-  );
-  
-  const routingDecision = useAgentSelector(
-    (state) => (state.activeSessionId ? state.routingDecisions?.[state.activeSessionId] : undefined),
-    (a, b) => {
-      if (a === b) return true;
-      if (!a || !b) return false;
-      return a.selectedProvider === b.selectedProvider && 
-             a.selectedModel === b.selectedModel &&
-             a.taskType === b.taskType;
-    }
-  );
-  
-  // OPTIMIZATION: Tool results selector - only re-render when the specific session's results change
-  const toolResultsByRun = useAgentSelector(
-    (state) => state.toolResults,
-    (a, b) => {
-      if (a === b) return true;
-      // Quick check: same number of runs
-      const keysA = Object.keys(a);
-      const keysB = Object.keys(b);
-      if (keysA.length !== keysB.length) return false;
-      // Check if any run has different number of results
-      for (const key of keysA) {
-        if (!b[key]) return false;
-        if (Object.keys(a[key]).length !== Object.keys(b[key]).length) return false;
-      }
-      return true;
-    }
-  );
-  
-  // OPTIMIZATION: Executing tools selector - for real-time tool status display
-  const executingToolsByRun = useAgentSelector(
-    (state) => state.executingTools,
-    (a, b) => {
-      if (a === b) return true;
-      const keysA = Object.keys(a);
-      const keysB = Object.keys(b);
-      if (keysA.length !== keysB.length) return false;
-      for (const key of keysA) {
-        if (!b[key]) return false;
-        if (Object.keys(a[key]).length !== Object.keys(b[key]).length) return false;
-      }
-      return true;
-    }
-  );
+const selectPendingConfirmations = (state: AgentUIState) => state.pendingConfirmations;
+const selectRoutingDecisions = (state: AgentUIState) => state.routingDecisions;
+const selectExecutingTools = (state: AgentUIState) => state.executingTools;
+const selectQueuedTools = (state: AgentUIState) => state.queuedTools;
+const selectTodos = (state: AgentUIState) => state.todos;
+const selectAgentStatus = (state: AgentUIState) => state.agentStatus;
 
-  // OPTIMIZATION: Queued tools selector - for showing tools waiting to execute
-  const queuedToolsByRun = useAgentSelector(
-    (state) => state.queuedTools,
-    (a, b) => {
-      if (a === b) return true;
-      const keysA = Object.keys(a);
-      const keysB = Object.keys(b);
-      if (keysA.length !== keysB.length) return false;
-      for (const key of keysA) {
-        if (!b[key]) return false;
-        if (a[key].length !== b[key].length) return false;
-      }
-      return true;
-    }
-  );
+// =============================================================================
+// Chat Area Component
+// =============================================================================
 
-  // Pending tool confirmations (awaiting approval)
-  const pendingConfirmationsByRun = useAgentSelector(
-    (state) => state.pendingConfirmations,
-    (a, b) => a === b
-  );
+const ChatAreaInternal: React.FC = () => {
+  const activeSession = useAgentSelector(selectActiveSession);
+  const pendingConfirmations = useAgentSelector(selectPendingConfirmations);
+  const routingDecisions = useAgentSelector(selectRoutingDecisions);
+  const executingToolsMap = useAgentSelector(selectExecutingTools);
+  const queuedToolsMap = useAgentSelector(selectQueuedTools);
+  const todosMap = useAgentSelector(selectTodos);
+  const agentStatusMap = useAgentSelector(selectAgentStatus);
+  const { addReaction } = useAgentActions();
 
-  // Log session changes for debugging (only on session ID change)
-  useEffect(() => {
-    if (activeSessionId && process.env.NODE_ENV === 'development') {
-      logger.debug('Active session changed', { sessionId: activeSessionId });
-    }
-  }, [activeSessionId]);
-
-  // Branch state
-  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
-  const [branches, setBranches] = useState<ConversationBranch[]>([]);
-
-  // Search state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Collapsed runs state - tracks which runs are manually expanded/collapsed
-  // By default, older runs are collapsed, latest is expanded
-  const [manuallyToggledRuns, setManuallyToggledRuns] = useState<Set<string>>(new Set());
-
-  // Initialize branches from session (only update if actually changed)
-  useEffect(() => {
-    const newBranches = activeSession?.branches ?? [];
-    setBranches(prev => {
-      if (prev.length === newBranches.length && prev.every((b, i) => b.id === newBranches[i]?.id)) {
-        return prev;
-      }
-      return newBranches;
-    });
-    setActiveBranchId(prev => {
-      const newId = activeSession?.activeBranchId ?? null;
-      return prev === newId ? prev : newId;
-    });
-  }, [activeSession?.id, activeSession?.branches, activeSession?.activeBranchId]);
-
-  // Filter messages by active branch
-  const branchFilteredMessages = useMemo(() => {
-    const messages = activeSession?.messages || [];
-    if (!activeBranchId) {
-      // Main branch: show messages without branchId or with main branchId
-      return messages.filter(m => !m.branchId);
-    }
-    // Show messages for this branch + messages before the fork point
-    const branch = branches.find(b => b.id === activeBranchId);
-    if (!branch) return messages;
-
-    // Get the fork point index
-    const forkPointIdx = messages.findIndex(m => m.id === branch.forkPointMessageId);
-    if (forkPointIdx === -1) return messages;
-
-    // Messages before fork + messages in this branch
-    const beforeFork = messages.slice(0, forkPointIdx + 1).filter(m => !m.branchId);
-    const inBranch = messages.filter(m => m.branchId === activeBranchId);
-    return [...beforeFork, ...inBranch];
-  }, [activeSession?.messages, activeBranchId, branches]);
-
-  // Conversation search - uses branch-filtered messages
+  // Core state management
   const {
-    searchQuery,
-    setSearchQuery,
-    isSearchActive,
-    matchingMessageIds,
-    matchCount,
-    currentMatchIndex,
-    goToNextMatch,
-    goToPrevMatch,
-    currentMatchMessageId,
-    clearSearch,
-  } = useConversationSearch(branchFilteredMessages);
+    branchState,
+    branchFilteredMessages,
+    messageGroups,
+    collapseState,
+    isStreaming,
+    lastAssistantContentLength,
+  } = useChatAreaState({ activeSession });
 
-  // Close search when switching sessions
-  useEffect(() => {
-    setIsSearchOpen(false);
-    clearSearch();
-  }, [activeSession?.id, clearSearch]);
+  // Search
+  const searchResult = useConversationSearch(branchFilteredMessages);
 
-  // Keyboard shortcut to open search (Ctrl/Cmd+F)
-  useHotkey('ctrl+f', () => {
-    setIsSearchOpen(true);
-  });
-
-  // Handle closing search
-  const handleCloseSearch = useCallback(() => {
-    setIsSearchOpen(false);
-    clearSearch();
-  }, [clearSearch]);
-
-  const toggleSearch = useCallback(() => {
-    if (isSearchOpen) {
-      handleCloseSearch();
-      return;
-    }
-    setIsSearchOpen(true);
-  }, [handleCloseSearch, isSearchOpen]);
-
-  // Group messages by run - defined early so other effects can reference it
-  const messageGroups = useMemo(() => {
-    return groupMessagesByRun(branchFilteredMessages);
-  }, [branchFilteredMessages]);
-
-  // Determine if agent is currently streaming content (defined early for deferred rendering)
-  const isStreaming = activeSession?.status === 'running';
-  
-  // Use deferred value for large non-streaming state changes (bulk session loads, history)
-  // During active streaming, render message groups immediately for real-time token display.
-  // The streaming buffer (30ms) already throttles updates, so deferred rendering is unnecessary
-  // and would add visible lag to the streaming output.
-  const deferredMessageGroups = useDeferredValue(messageGroups);
-  
-  // Immediate rendering during streaming; deferred for heavy non-streaming updates
-  const renderGroups = isStreaming ? messageGroups : deferredMessageGroups;
-
-  // Enable virtualization for large chat histories
+  // Determine if we should virtualize
   const shouldVirtualize = branchFilteredMessages.length > VIRTUALIZATION_THRESHOLD;
-  
-  // Get the last assistant message content length for scroll dependency
-  // This is used for both virtualized and non-virtualized scroll modes
-  // PERF: Use backward loop instead of [...messages].reverse().find() to avoid copying the array
-  const lastAssistantContentLength = useMemo(() => {
-    const messages = activeSession?.messages;
-    if (!messages || messages.length === 0) return 0;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') {
-        return messages[i].content?.length ?? 0;
-      }
-    }
-    return 0;
-  }, [activeSession?.messages]);
 
-  // Virtualized list for performance with large histories
-  // gap: 12 matches Tailwind's gap-3 (0.75rem = 12px) used in non-virtualized mode
+  // Scroll management
   const {
+    scrollRef,
+    virtualContainerRef,
+    handleScrollToBottom,
+    showScrollToBottom,
     virtualItems,
     totalHeight,
-    containerRef: virtualContainerRef,
-    scrollToBottom: virtualScrollToBottom,
-    isNearBottom,
     measureItem,
-  } = useVirtualizedList({
-    items: renderGroups,
-    estimatedItemHeight: 150,
-    overscan: 3,
-    gap: 12, // Match gap-3 from non-virtualized mode
-    autoScrollToBottom: true,
-    getItemKey: (item, index) => item.runId ?? `group-${index}`,
-    streamingMode: isStreaming,
-    streamingDep: lastAssistantContentLength,
+  } = useChatScrollManager({
+    shouldVirtualize,
+    sessionId: activeSession?.id,
+    messages: branchFilteredMessages,
+    isStreaming,
+    lastAssistantContentLength,
+    renderGroups: messageGroups,
   });
 
-  // Virtualization debug logging (dev only, on threshold change)
-  useEffect(() => {
-    if (shouldVirtualize && process.env.NODE_ENV === 'development') {
-      logger.debug('Virtualization enabled', { messageCount: branchFilteredMessages.length });
-    }
-  }, [shouldVirtualize, branchFilteredMessages.length]);
+  // Get session-specific state
+  const sessionId = activeSession?.id;
+  const sessionConfirmations = useMemo(() => {
+    if (!sessionId) return [];
+    return Object.values(pendingConfirmations).filter(c => c.sessionId === sessionId);
+  }, [pendingConfirmations, sessionId]);
 
-  // Reset manually toggled runs when session changes
-  useEffect(() => {
-    setManuallyToggledRuns(new Set());
-  }, [activeSession?.id]);
+  const sessionRoutingDecision = sessionId ? routingDecisions[sessionId] : undefined;
+  const sessionTodos = sessionId ? todosMap[sessionId] : undefined;
+  const sessionStatus = sessionId ? agentStatusMap[sessionId] : undefined;
 
-  // Auto-expand runs containing search matches using extracted hook
-  useSearchRunExpansion(isSearchActive, matchingMessageIds, messageGroups, setManuallyToggledRuns);
-
-  // Toggle run collapse state
-  const toggleRunCollapse = useCallback((runKey: string) => {
-    setManuallyToggledRuns(prev => {
-      const next = new Set(prev);
-      if (next.has(runKey)) {
-        next.delete(runKey);
-      } else {
-        next.add(runKey);
-      }
-      return next;
+  // Toggle search
+  const toggleSearch = useCallback(() => {
+    setIsSearchOpen(prev => {
+      if (prev) searchResult.clearSearch();
+      return !prev;
     });
+  }, [searchResult]);
+
+  // Handle keyboard shortcut for search
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      e.preventDefault();
+      toggleSearch();
+    }
+  }, [toggleSearch]);
+
+  // Reaction handler
+  const handleReaction = useCallback((messageId: string, reaction: 'up' | 'down' | null) => {
+    if (!sessionId) return;
+    addReaction(sessionId, messageId, reaction as 'up' | 'down');
+  }, [addReaction, sessionId]);
+
+  // Branch delete handler
+  const handleDeleteBranch = useCallback((_branchId: string) => {
+    // Branch deletion through the session manager
+    // This would need to be wired to the agent actions
   }, []);
 
-  // Expand/Collapse all runs
-  const expandAllRuns = useCallback(() => {
-    // Add all older runs to manually toggled (they default to collapsed)
-    const toToggle = new Set<string>();
-    messageGroups.forEach((group, idx) => {
-      const runKey = group.runId ?? `group-${idx}`;
-      const isLastGroup = idx === messageGroups.length - 1;
-      if (!isLastGroup) {
-        toToggle.add(runKey);
-      }
-    });
-    setManuallyToggledRuns(toToggle);
-  }, [messageGroups]);
+  // ==========================================================================
+  // Render
+  // ==========================================================================
 
-  const collapseAllRuns = useCallback(() => {
-    // Clear all manual toggles (returns to default: older collapsed, latest expanded)
-    // Then add the last group to toggle it to collapsed
-    const toToggle = new Set<string>();
-    if (messageGroups.length > 0) {
-      const lastGroup = messageGroups[messageGroups.length - 1];
-      const runKey = lastGroup.runId ?? `group-${messageGroups.length - 1}`;
-      toToggle.add(runKey); // Toggle last to collapse it
-    }
-    setManuallyToggledRuns(toToggle);
-  }, [messageGroups]);
-
-  // Check if all runs are expanded or collapsed
-  const allExpanded = useMemo(() => {
-    if (messageGroups.length <= 1) return true;
-    return messageGroups.every((group, idx) => {
-      const runKey = group.runId ?? `group-${idx}`;
-      const isLastGroup = idx === messageGroups.length - 1;
-      const defaultCollapsed = !isLastGroup;
-      const isManuallyToggled = manuallyToggledRuns.has(runKey);
-      const isCollapsed = isManuallyToggled ? !defaultCollapsed : defaultCollapsed;
-      return !isCollapsed;
-    });
-  }, [messageGroups, manuallyToggledRuns]);
-
-  // Check if a run should be collapsed
-  // Default: older runs collapsed, latest expanded
-  // If manually toggled, invert the default behavior
-  const isRunCollapsed = useCallback((groupIdx: number, totalGroups: number, runKey: string) => {
-    const isLastGroup = groupIdx === totalGroups - 1;
-    const defaultCollapsed = !isLastGroup; // Older runs collapsed by default
-    const isManuallyToggled = manuallyToggledRuns.has(runKey);
-    return isManuallyToggled ? !defaultCollapsed : defaultCollapsed;
-  }, [manuallyToggledRuns]);
-
-  // Get routing decision for active session (stable memoization)
-  const routingInfo = useMemo(() => {
-    if (!routingDecision?.selectedProvider) return undefined;
-    return {
-      taskType: routingDecision.taskType,
-      provider: routingDecision.selectedProvider,
-      model: routingDecision.selectedModel,
-      confidence: routingDecision.confidence,
-      reason: routingDecision.reason,
-      usedFallback: routingDecision.usedFallback,
-      originalProvider: routingDecision.originalProvider,
-    };
-  }, [
-    routingDecision?.taskType,
-    routingDecision?.selectedProvider,
-    routingDecision?.selectedModel,
-    routingDecision?.confidence,
-    routingDecision?.reason,
-    routingDecision?.usedFallback,
-    routingDecision?.originalProvider,
-  ]);
-
-  // Helper to get tool results for a specific runId (stable reference)
-  // PERFORMANCE: Cache computed Maps to avoid creating new Map objects on every call,
-  // which would defeat MessageGroup's React.memo equality check
-  const toolResultsByRunRef = useRef(toolResultsByRun);
-  toolResultsByRunRef.current = toolResultsByRun;
-  const activeSessionIdRef = useRef(activeSession?.id);
-  activeSessionIdRef.current = activeSession?.id;
-  const toolResultsMapsCache = useRef(new Map<string, { map: Map<string, ToolResultEvent>; count: number }>());
-
-  // Prune stale cache entries when the active session changes to prevent unbounded growth
-  const prevSessionIdRef = useRef(activeSession?.id);
-  if (prevSessionIdRef.current !== activeSession?.id) {
-    prevSessionIdRef.current = activeSession?.id;
-    toolResultsMapsCache.current.clear();
-  }
-  
-  const getToolResultsForRun = useCallback((runId: string | undefined): Map<string, ToolResultEvent> | undefined => {
-    if (!runId || !activeSessionIdRef.current) return undefined;
-    const runResults = toolResultsByRunRef.current[runId];
-    if (!runResults) return undefined;
-
-    // Check cache — if same number of results, return cached Map
-    const resultCount = Object.keys(runResults).length;
-    const cached = toolResultsMapsCache.current.get(runId);
-    if (cached && cached.count === resultCount) {
-      return cached.map;
-    }
-
-    // Convert to Map<callId, ToolResultEvent> format expected by ToolExecution
-    const resultsMap = new Map<string, ToolResultEvent>();
-    for (const [callId, resultState] of Object.entries(runResults)) {
-      resultsMap.set(callId, {
-        type: 'tool-result',
-        sessionId: activeSessionIdRef.current,
-        runId,
-        timestamp: resultState.timestamp,
-        result: {
-          toolName: resultState.toolName,
-          success: resultState.result.success,
-          output: resultState.result.output,
-          metadata: resultState.result.metadata,
-        },
-      });
-    }
-
-    // Store in cache
-    toolResultsMapsCache.current.set(runId, { map: resultsMap, count: resultCount });
-    return resultsMap;
-  }, []);
-
-  const getPendingToolsForRun = useCallback((runId: string | undefined) => {
-    if (!runId) return undefined;
-    const pending = pendingConfirmationsByRun[runId];
-    if (!pending?.toolCall) return undefined;
-    return [
-      {
-        callId: pending.toolCall.callId,
-        name: pending.toolCall.name,
-        arguments: pending.toolCall.arguments as Record<string, unknown> | undefined,
-      },
-    ];
-  }, [pendingConfirmationsByRun]);
-
-  // Helper to get executing tools for a specific runId (stable reference)
-  const executingToolsByRunRef = useRef(executingToolsByRun);
-  executingToolsByRunRef.current = executingToolsByRun;
-  
-  const getExecutingToolsForRun = useCallback((runId: string | undefined) => {
-    if (!runId) return undefined;
-    return executingToolsByRunRef.current[runId];
-  }, []);
-
-  // Helper to get queued tools for a specific runId (stable reference)
-  const queuedToolsByRunRef = useRef(queuedToolsByRun);
-  queuedToolsByRunRef.current = queuedToolsByRun;
-  
-  const getQueuedToolsForRun = useCallback((runId: string | undefined) => {
-    if (!runId) return undefined;
-    return queuedToolsByRunRef.current[runId];
-  }, []);
-
-
-  // Scroll hook for non-virtualized mode only
-  // When virtualized, the useVirtualizedList handles scrolling
-  const { scrollRef, forceScrollToBottom, isNearBottom: isNearBottomNonVirt } = useChatScroll(
-    `${activeSession?.messages.length ?? 0}-${lastAssistantContentLength}`,
-    {
-      enabled: !shouldVirtualize, // Only active when NOT virtualized
-      threshold: 200,
-      streamingMode: isStreaming && !shouldVirtualize, // Only stream scroll when not virtualized
-    }
-  );
-
-  // Unified isNearBottom for both virtualized and non-virtualized modes
-  const showScrollToBottom = shouldVirtualize ? !isNearBottom : !isNearBottomNonVirt();
-
-  // Handle scroll to bottom button click
-  const handleScrollToBottom = useCallback(() => {
-    if (shouldVirtualize) {
-      virtualScrollToBottom('smooth');
-    } else {
-      forceScrollToBottom();
-    }
-  }, [shouldVirtualize, virtualScrollToBottom, forceScrollToBottom]);
-
-  // Track last message to auto-scroll on new messages
-  const lastMsgRef = useRef<string | null>(null);
-  const lastMsgCountRef = useRef(0);
-  const wasStreamingRef = useRef(false);
-
-  // Scroll to bottom when session loads or changes
-  useEffect(() => {
-    if (!activeSession?.id) return;
-    
-    // Only scroll on session change (not on every render)
-    if (prevSessionIdRef.current !== activeSession.id) {
-      prevSessionIdRef.current = activeSession.id;
-      
-      // Wait for the container to be mounted and measured
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (shouldVirtualize) {
-            virtualScrollToBottom('instant');
-          } else {
-            forceScrollToBottom();
-          }
-        });
-      });
-    }
-  }, [activeSession?.id, shouldVirtualize, virtualScrollToBottom, forceScrollToBottom]);
-
-  // Force scroll to bottom when streaming starts
-  useEffect(() => {
-    if (isStreaming && !wasStreamingRef.current) {
-      // Streaming just started - force scroll to bottom
-      requestAnimationFrame(() => {
-        if (shouldVirtualize) {
-          virtualScrollToBottom('instant');
-        } else {
-          forceScrollToBottom();
-        }
-      });
-    }
-    wasStreamingRef.current = isStreaming;
-  }, [isStreaming, shouldVirtualize, virtualScrollToBottom, forceScrollToBottom]);
-
-  useEffect(() => {
-    if (!activeSession?.messages) return;
-    const msgCount = activeSession.messages.length;
-    const lastMsg = activeSession.messages[msgCount - 1];
-
-    // Force scroll when new message is added (not just content update)
-    if (lastMsg && (lastMsg.id !== lastMsgRef.current || msgCount > lastMsgCountRef.current)) {
-      lastMsgRef.current = lastMsg.id;
-      lastMsgCountRef.current = msgCount;
-      // Use virtualized scroll when virtualization is enabled
-      if (shouldVirtualize) {
-        virtualScrollToBottom();
-      } else {
-        forceScrollToBottom();
-      }
-    }
-  }, [activeSession?.messages, forceScrollToBottom, virtualScrollToBottom, shouldVirtualize]);
-
-  // Note: Continuous scroll during streaming is handled by the scroll hooks
-  // useChatScroll handles non-virtualized mode
-  // useVirtualizedList handles virtualized mode with streamingDep
-
-  // Handle message edit - resends from that point
-  const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
-    if (!activeSession) return;
-
-    // Find the message index
-    const messageIndex = activeSession.messages.findIndex(m => m.id === messageId);
-    if (messageIndex === -1) return;
-
-    // Use the editMessage API to truncate and resend
-    const result = await window.vyotiq?.agent?.editMessage(
-      activeSession.id,
-      messageIndex,
-      newContent
-    );
-
-    if (!result?.success) {
-      logger.error('Failed to edit message', { error: result?.error, messageId });
-    }
-  }, [activeSession]);
-
-  // Handle forking conversation from a message
-  const handleForkMessage = useCallback(async (messageId: string) => {
-    if (!activeSession) return;
-
-    // Find the message
-    const message = activeSession.messages.find(m => m.id === messageId);
-    if (!message) return;
-
-    // Use the API to create a branch
-    const result = await window.vyotiq?.agent?.createBranch(
-      activeSession.id,
-      messageId
-    );
-
-    if (result?.success && result.branchId) {
-      // Create a local branch object for UI
-      const newBranch: ConversationBranch = {
-        id: result.branchId,
-        parentBranchId: activeBranchId,
-        forkPointMessageId: messageId,
-        name: `Branch from message`,
-        createdAt: Date.now(),
-      };
-      setBranches(prev => [...prev, newBranch]);
-      setActiveBranchId(newBranch.id);
-    } else {
-      logger.error('Failed to create branch', { error: result?.error, messageId });
-    }
-  }, [activeSession, activeBranchId]);
-
-  // Handle switching branches
-  const handleSwitchBranch = useCallback(async (branchId: string | null) => {
-    if (!activeSession) return;
-
-    const result = await window.vyotiq?.agent?.switchBranch(activeSession.id, branchId);
-    if (result?.success) {
-      setActiveBranchId(branchId);
-    }
-  }, [activeSession]);
-
-  // Handle deleting a branch
-  const handleDeleteBranch = useCallback(async (branchId: string) => {
-    if (!activeSession) return;
-
-    const result = await window.vyotiq?.agent?.deleteBranch(activeSession.id, branchId);
-    if (result?.success) {
-      setBranches(prev => prev.filter(b => b.id !== branchId));
-      if (activeBranchId === branchId) {
-        setActiveBranchId(null);
-      }
-    }
-  }, [activeSession, activeBranchId]);
-
-  const handleRunCode = useCallback(async (code: string, language: string) => {
-    if (!activeSession) return;
-
-    // Shell commands: send through agent as a terminal execution request
-    if (['bash', 'sh', 'shell', 'zsh', 'cmd', 'powershell', 'ps1'].includes(language.toLowerCase())) {
-      try {
-        // Send the command as a user message to the agent for execution
-        await actions.sendMessage(`Please run the following command:\n\`\`\`${language}\n${code}\n\`\`\``, []);        logger.info('Shell command sent to agent for execution', { language, codeLength: code.length });
-      } catch (err) {
-        logger.error('Failed to send command to agent', { error: err });
-      }
-    } else {
-      // Non-shell code: copy to clipboard as a fallback action
-      try {
-        await navigator.clipboard.writeText(code);
-        logger.info('Code copied to clipboard (non-shell language)', { language });
-      } catch (err) {
-        logger.error('Failed to copy code to clipboard', { error: err });
-      }
-    }
-  }, [activeSession, actions]);
-
-  // Handle message reactions
-  const handleReaction = useCallback((messageId: string, reaction: MessageReaction) => {
-    if (activeSession) {
-      actions.addReaction(activeSession.id, messageId, reaction);
-    }
-  }, [activeSession, actions]);
-
-  // Handle regenerating the last assistant response
-  const handleRegenerate = useCallback(async () => {
-    if (!activeSession) return;
-    try {
-      await actions.regenerate(activeSession.id);
-    } catch (err) {
-      logger.error('Failed to regenerate response', { error: err, sessionId: activeSession.id });
-    }
-  }, [activeSession, actions]);
-
-  // Handle inserting code into files with file picker
-  const handleInsertCode = useCallback(async (code: string, language: string) => {
-    // Get file extension based on language
-    const getExtension = (lang: string): string => {
-      const extensions: Record<string, string> = {
-        javascript: 'js', typescript: 'ts', python: 'py', java: 'java',
-        csharp: 'cs', cpp: 'cpp', c: 'c', go: 'go', rust: 'rs',
-        ruby: 'rb', php: 'php', swift: 'swift', kotlin: 'kt',
-        html: 'html', css: 'css', scss: 'scss', json: 'json',
-        yaml: 'yaml', xml: 'xml', markdown: 'md', sql: 'sql',
-        bash: 'sh', shell: 'sh', powershell: 'ps1',
-      };
-      return extensions[lang.toLowerCase()] ?? 'txt';
-    };
-
-    const extension = getExtension(language);
-
-    try {
-      const result = await window.vyotiq.files.saveAs(code, {
-        title: 'Save Code',
-        defaultPath: `code.${extension}`,
-        filters: [
-          { name: `${language.charAt(0).toUpperCase() + language.slice(1)} Files`, extensions: [extension] },
-          { name: 'All Files', extensions: ['*'] },
-        ],
-      });
-
-      if (result.success && result.path) {
-        logger.info('Code saved to file', { path: result.path, language });
-      } else if (result.error !== 'Save cancelled') {
-        // Fall back to clipboard if save failed (but not if user cancelled)
-        await navigator.clipboard.writeText(code);
-        logger.warn('File save failed, copied to clipboard', { error: result.error });
-      }
-    } catch (err) {
-      // Fall back to clipboard on error
-      await navigator.clipboard.writeText(code);
-      logger.error('Error saving file, copied to clipboard', { error: err, language });
-    }
-  }, []);
-
+  // No session state
   if (!activeSession) {
-    return <EmptyState />;
-  }
-
-  const isRunning = activeSession.status === 'running';
-  const hasMessages = activeSession.messages && activeSession.messages.length > 0;
-
-  // Show welcome screen for empty sessions
-  if (!hasMessages && !isRunning) {
     return (
-      <div
-        className={cn(
-          "flex-1 min-h-0 overflow-y-auto overflow-x-hidden",
-          "bg-[var(--color-surface-base)] transition-colors"
-        )}
-      >
-        <SessionWelcome />
+      <div className="flex-1 flex items-center justify-center">
+        <EmptyState hasWorkspace hasSession={false} />
       </div>
     );
   }
 
-  return (
-    <div className="flex-1 min-h-0 min-w-0 w-full relative overflow-hidden flex flex-col">
-      {/* Connection status banner - shows when offline */}
-      <ConnectionStatusBanner />
+  // Empty session
+  const hasMessages = branchFilteredMessages.length > 0;
 
-      {/* Minimal controls bar */}
-      {(hasMessages || branches.length > 0) && (
-        <div
-          className={cn(
-            'flex items-center justify-between gap-2 px-2 sm:px-3 py-1',
-            'border-b border-[var(--color-border-subtle)]/40',
-            'bg-[var(--color-surface-base)]',
-            'text-[10px] font-mono text-[var(--color-text-muted)]'
-          )}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <button
-              type="button"
-              onClick={toggleSearch}
-              className={cn(
-                'px-1.5 py-0.5 rounded-sm',
-                'border border-transparent',
-                'hover:border-[var(--color-border-subtle)]/60',
-                'hover:text-[var(--color-text-secondary)]',
-                isSearchOpen && 'text-[var(--color-accent-primary)]'
-              )}
-              title={isSearchOpen ? 'Close search' : 'Search messages'}
-              aria-pressed={isSearchOpen}
-            >
-              search
-            </button>
-            {messageGroups.length > 1 && (
-              <button
-                onClick={allExpanded ? collapseAllRuns : expandAllRuns}
-                className={cn(
-                  'flex items-center gap-1 px-1.5 py-0.5 rounded-sm',
-                  'border border-transparent',
-                  'hover:border-[var(--color-border-subtle)]/60',
-                  'hover:text-[var(--color-text-secondary)]'
-                )}
-                title={allExpanded ? 'Collapse all runs' : 'Expand all runs'}
-              >
-                <ChevronsUpDown size={10} />
-                <span>{allExpanded ? 'collapse' : 'expand'}</span>
-              </button>
-            )}
-          </div>
-          {branches.length > 0 && (
+  return (
+    <div
+      className="flex-1 flex flex-col min-h-0 font-mono"
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+    >
+      {/* Top bar: branches + search toggle + collapse toggle */}
+      {hasMessages && (
+        <div className="flex items-center gap-1 px-3 py-1 shrink-0 border-b border-[var(--color-border-subtle)]">
+          {/* Branch navigation */}
+          {branchState.branches.length > 0 && (
             <BranchNavigation
-              branches={branches}
-              activeBranchId={activeBranchId}
-              onSwitchBranch={handleSwitchBranch}
+              branches={branchState.branches}
+              activeBranchId={branchState.activeBranchId}
+              onSwitchBranch={branchState.setActiveBranchId}
               onDeleteBranch={handleDeleteBranch}
             />
           )}
+
+          <div className="flex-1" />
+
+          {/* Collapse/Expand toggle */}
+          {messageGroups.length > 1 && (
+            <button
+              type="button"
+              onClick={collapseState.allExpanded ? collapseState.collapseAllRuns : collapseState.expandAllRuns}
+              className="p-0.5 text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] transition-colors"
+              title={collapseState.allExpanded ? 'Collapse all runs' : 'Expand all runs'}
+            >
+              <ChevronsUpDown size={12} />
+            </button>
+          )}
+
+          {/* Search toggle */}
+          <button
+            type="button"
+            onClick={toggleSearch}
+            className={cn(
+              'p-0.5 transition-colors',
+              isSearchOpen
+                ? 'text-[var(--color-accent-primary)]'
+                : 'text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)]',
+            )}
+            title="Search messages (Ctrl+F)"
+          >
+            <Search size={12} />
+          </button>
         </div>
       )}
 
-      {/* Conversation Search Bar */}
+      {/* Search bar */}
       {isSearchOpen && (
         <ConversationSearchBar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          matchCount={matchCount}
-          currentMatchIndex={currentMatchIndex}
-          isSearchActive={isSearchActive}
-          onNextMatch={goToNextMatch}
-          onPrevMatch={goToPrevMatch}
-          onClose={handleCloseSearch}
+          search={searchResult}
+          onClose={() => {
+            searchResult.clearSearch();
+            setIsSearchOpen(false);
+          }}
         />
       )}
 
-      {/* Main chat area */}
-      <div className="flex-1 min-h-0 min-w-0 w-full relative overflow-hidden">
-        {/* Bottom fade gradient - smooth edge transition */}
+      {/* Messages area */}
+      {!hasMessages ? (
+        <div className="flex-1">
+          <SessionWelcome />
+        </div>
+      ) : shouldVirtualize ? (
+        /* Virtualized rendering */
         <div
-          className="absolute bottom-0 left-0 right-0 h-8 z-10 pointer-events-none"
-          style={{
-            background: 'linear-gradient(to top, var(--color-surface-base) 0%, transparent 100%)'
-          }}
-          aria-hidden="true"
-        />
-
-        {/* Scroll to bottom button - appears when scrolled away from bottom */}
-        <button
-          onClick={handleScrollToBottom}
-          className={cn(
-            'absolute bottom-12 right-4 z-20',
-            'flex items-center justify-center w-8 h-8 rounded-full',
-            'bg-[var(--color-surface-2)]/95 backdrop-blur-sm border border-[var(--color-border-subtle)]',
-            'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
-            'hover:bg-[var(--color-surface-3)] hover:border-[var(--color-accent-primary)]/30',
-            'shadow-lg hover:shadow-xl',
-            'transition-all duration-200 ease-out',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/50',
-            // Fade animation based on visibility
-            showScrollToBottom && hasMessages
-              ? 'opacity-100 translate-y-0 pointer-events-auto'
-              : 'opacity-0 translate-y-2 pointer-events-none'
-          )}
-          title="Scroll to bottom"
-          aria-label="Scroll to bottom"
-          aria-hidden={!showScrollToBottom || !hasMessages}
-          tabIndex={showScrollToBottom && hasMessages ? 0 : -1}
+          ref={virtualContainerRef}
+          className="flex-1 overflow-y-auto px-3 py-2"
         >
-          <ArrowDown size={16} className="transition-transform group-hover:translate-y-0.5" />
-        </button>
-        <div
-          className={cn(
-            "h-full w-full min-w-0 overflow-y-auto overflow-x-hidden",
-            "scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent",
-            "bg-[var(--color-surface-base)] transition-colors"
-          )}
-          ref={shouldVirtualize ? virtualContainerRef : scrollRef}
-          role="log"
-          aria-label="Chat conversation"
-          aria-live="polite"
-          aria-relevant="additions"
-        >
-          {/* Virtualized rendering for large histories */}
-          {shouldVirtualize ? (
-            <div className="w-full max-w-[1800px] 2xl:max-w-[2000px] mx-auto px-2 sm:px-3 md:px-4 lg:px-6 xl:px-8 2xl:px-10 pt-3 sm:pt-4 md:pt-5 lg:pt-6 pb-6 sm:pb-8 md:pb-10 min-w-0">
-              {/* Virtualized items container */}
-              <div style={{ height: totalHeight, position: 'relative' }}>
-                {/* Render only visible virtualized items */}
-                {virtualItems.map((virtualItem) => {
-                  const group = virtualItem.item;
-                  const groupIdx = virtualItem.index;
-                  const isLastGroup = groupIdx === renderGroups.length - 1;
-                  const runKey = group.runId ?? `group-${groupIdx}`;
-                  const collapsed = isRunCollapsed(groupIdx, renderGroups.length, runKey);
+          <div style={{ height: `${totalHeight}px`, position: 'relative' }}>
+            {virtualItems.map(vItem => {
+              const group = messageGroups[vItem.index];
+              if (!group) return null;
+              const runKey = group.runId ?? `group-${vItem.index}`;
+              const isCollapsed = collapseState.isRunCollapsed(vItem.index, messageGroups.length, runKey);
 
-                  return (
-                    <div
-                      key={virtualItem.key}
-                      className="min-w-0"
-                      style={{
-                        position: 'absolute',
-                        top: virtualItem.offsetTop,
-                        left: 0,
-                      right: 0,
-                    }}
-                    ref={(el) => {
-                      if (el) {
-                        // Measure actual height for accurate virtualization
-                        const height = el.getBoundingClientRect().height;
-                        if (height > 0) {
-                          measureItem(groupIdx, height);
-                        }
-                      }
-                    }}
-                  >
-                    <MessageGroup
-                      messages={group.messages}
-                      runId={group.runId}
-                      groupIdx={groupIdx}
-                      totalGroups={renderGroups.length}
-                      isLastGroup={isLastGroup}
-                      isRunning={isRunning}
-                      collapsed={collapsed}
-                      onToggleCollapse={toggleRunCollapse}
-                      toolResults={getToolResultsForRun(group.runId)}
-                      executingTools={getExecutingToolsForRun(group.runId)}
-                      queuedTools={getQueuedToolsForRun(group.runId)}
-                      pendingTools={getPendingToolsForRun(group.runId)}
-                      sessionId={activeSession?.id}
-                      matchingMessageIds={matchingMessageIds}
-                      currentMatchMessageId={currentMatchMessageId}
-                      routingInfo={routingInfo}
-                      onEditMessage={handleEditMessage}
-                      onForkMessage={handleForkMessage}
-                      onRunCode={handleRunCode}
-                      onInsertCode={handleInsertCode}
-                      onReaction={handleReaction}
-                      onRegenerate={isLastGroup ? handleRegenerate : undefined}
-                    />
-                  </div>
-                );
-              })}
-              </div>
-
-              {/* Run error recovery banner */}
-              <RunErrorBanner sessionId={activeSession?.id} />
-
-              {/* Context window pressure indicator */}
-              <ContextPressureIndicator className="mx-2 mb-2" />
-
-              {/* Tool confirmation panel - shows when awaiting approval */}
-              <ToolConfirmationPanel />
-            </div>
-          ) : (
-            /* Standard rendering for smaller histories */
-            <div className="w-full max-w-[1800px] 2xl:max-w-[2000px] mx-auto flex flex-col gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 lg:px-6 xl:px-8 2xl:px-10 pt-3 sm:pt-4 md:pt-5 lg:pt-6 pb-6 sm:pb-8 md:pb-10 min-w-0">
-              {renderGroups.map((group, groupIdx) => {
-                const isLastGroup = groupIdx === renderGroups.length - 1;
-                const runKey = group.runId ?? `group-${groupIdx}`;
-                const collapsed = isRunCollapsed(groupIdx, renderGroups.length, runKey);
-
-                return (
-                  <MessageGroup
-                    key={runKey}
-                    messages={group.messages}
-                    runId={group.runId}
-                    groupIdx={groupIdx}
-                    totalGroups={renderGroups.length}
-                    isLastGroup={isLastGroup}
-                    isRunning={isRunning}
-                    collapsed={collapsed}
-                    onToggleCollapse={toggleRunCollapse}
-                    toolResults={getToolResultsForRun(group.runId)}
-                    executingTools={getExecutingToolsForRun(group.runId)}
-                    queuedTools={getQueuedToolsForRun(group.runId)}
-                    sessionId={activeSession?.id}
-                    matchingMessageIds={matchingMessageIds}
-                    currentMatchMessageId={currentMatchMessageId}
-                    routingInfo={routingInfo}
-                    pendingTools={getPendingToolsForRun(group.runId)}
-                    onEditMessage={handleEditMessage}
-                    onForkMessage={handleForkMessage}
-                    onRunCode={handleRunCode}
-                    onInsertCode={handleInsertCode}
+              return (
+                <div
+                  key={runKey}
+                  data-index={vItem.index}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    transform: `translateY(${vItem.offsetTop}px)`,
+                    width: '100%',
+                  }}
+                >
+                  <RunGroup
+                    group={group}
+                    groupIndex={vItem.index}
+                    totalGroups={messageGroups.length}
+                    isCollapsed={isCollapsed}
+                    onToggleCollapse={() => collapseState.toggleRunCollapse(runKey)}
+                    runStatus={isStreaming && vItem.index === messageGroups.length - 1 ? activeSession.status : undefined}
+                    messages={branchFilteredMessages}
+                    isStreaming={isStreaming && vItem.index === messageGroups.length - 1}
+                    matchingMessageIds={searchResult.matchingMessageIds}
+                    routingDecision={sessionRoutingDecision}
+                    executingToolsMap={executingToolsMap}
+                    queuedToolsMap={queuedToolsMap}
+                    sessionId={sessionId!}
                     onReaction={handleReaction}
-                    onRegenerate={isLastGroup ? handleRegenerate : undefined}
                   />
-                );
-              })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        /* Non-virtualized rendering */
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto px-3 py-2"
+        >
+          <div className="flex flex-col gap-3">
+            {messageGroups.map((group, idx) => {
+              const runKey = group.runId ?? `group-${idx}`;
+              const isCollapsed = collapseState.isRunCollapsed(idx, messageGroups.length, runKey);
 
-              {/* Run error recovery banner */}
-              <RunErrorBanner sessionId={activeSession?.id} />
+              return (
+                <RunGroup
+                  key={runKey}
+                  group={group}
+                  groupIndex={idx}
+                  totalGroups={messageGroups.length}
+                  isCollapsed={isCollapsed}
+                  onToggleCollapse={() => collapseState.toggleRunCollapse(runKey)}
+                  runStatus={isStreaming && idx === messageGroups.length - 1 ? activeSession.status : undefined}
+                  messages={branchFilteredMessages}
+                  isStreaming={isStreaming && idx === messageGroups.length - 1}
+                  matchingMessageIds={searchResult.matchingMessageIds}
+                  routingDecision={sessionRoutingDecision}
+                  executingToolsMap={executingToolsMap}
+                  queuedToolsMap={queuedToolsMap}
+                  sessionId={sessionId!}
+                  onReaction={handleReaction}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-              {/* Context window pressure indicator */}
-              <ContextPressureIndicator className="mx-2 mb-2" />
+      {/* Todo progress (if active) */}
+      {sessionTodos && sessionTodos.todos.length > 0 && (
+        <div className="px-3 py-1 shrink-0 border-t border-[var(--color-border-subtle)]">
+          <TodoProgress
+            todos={sessionTodos.todos}
 
-              {/* Tool confirmation panel - shows when awaiting approval */}
-              <ToolConfirmationPanel />
-            </div>
+          />
+        </div>
+      )}
+
+      {/* Run error banner — shown when agent run fails with structured error info */}
+      {sessionId && activeSession.status === 'error' && (
+        <RunErrorBanner
+          sessionId={sessionId}
+          className="shrink-0"
+        />
+      )}
+
+      {/* Pending tool confirmations */}
+      {sessionConfirmations.length > 0 && (
+        <div className="px-3 py-1.5 shrink-0 border-t border-[var(--color-border-subtle)] flex flex-col gap-1.5">
+          {sessionConfirmations.map(conf => (
+            <ToolConfirmationPanel
+              key={conf.runId ?? conf.toolCall?.callId ?? 'confirm'}
+              toolCall={conf}
+              sessionId={sessionId!}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Status bar */}
+      {isStreaming && sessionStatus && (
+        <div className="px-3 py-0.5 shrink-0 border-t border-[var(--color-border-subtle)] flex items-center gap-1.5">
+          <span
+            className="h-1.5 w-1.5 rounded-full animate-pulse"
+            style={{ backgroundColor: 'var(--color-accent-primary)' }}
+          />
+          <span className="text-[9px] text-[var(--color-text-muted)] truncate">
+            {sessionStatus.message}
+          </span>
+          {sessionStatus.currentIteration != null && sessionStatus.maxIterations != null && (
+            <span className="ml-auto text-[8px] tabular-nums text-[var(--color-text-dim)]">
+              {sessionStatus.currentIteration}/{sessionStatus.maxIterations}
+            </span>
           )}
         </div>
-      </div>
+      )}
+
+      {/* Scroll to bottom button */}
+      {showScrollToBottom && (
+        <div className="absolute bottom-20 right-6">
+          <button
+            type="button"
+            onClick={handleScrollToBottom}
+            className={cn(
+              'flex items-center justify-center',
+              'h-7 w-7 rounded-full shadow-md',
+              'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
+              'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
+              'transition-all duration-150 hover:scale-105',
+            )}
+            title="Scroll to bottom"
+          >
+            <ArrowDown size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
+
+// =============================================================================
+// RunGroup Sub-component
+// =============================================================================
+
+interface RunGroupProps {
+  group: { runId?: string; messages: ChatMessage[] };
+  groupIndex: number;
+  totalGroups: number;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  runStatus?: AgentRunStatus;
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  matchingMessageIds: Set<string>;
+  routingDecision?: {
+    taskType: string;
+    selectedProvider: string | null;
+    selectedModel: string | null;
+    confidence: number;
+    reason: string;
+    usedFallback?: boolean;
+    originalProvider?: string;
+  };
+  executingToolsMap: Record<string, Record<string, { callId: string; name: string; startedAt: number }>>;
+  queuedToolsMap: Record<string, Array<{ callId: string; name: string; queuePosition: number }>>;
+  sessionId: string;
+  onReaction: (messageId: string, reaction: 'up' | 'down' | null) => void;
+}
+
+const RunGroup: React.FC<RunGroupProps> = memo(({
+  group,
+  groupIndex,
+  totalGroups,
+  isCollapsed,
+  onToggleCollapse,
+  runStatus,
+  messages: allMessages,
+  isStreaming,
+  matchingMessageIds,
+  routingDecision,
+  executingToolsMap,
+  queuedToolsMap,
+  sessionId,
+  onReaction,
+}) => {
+  const showHeader = totalGroups > 1;
+  const runId = group.runId;
+
+  // Get executing/queued tools for this run
+  const executingTools = runId ? executingToolsMap[runId] : undefined;
+  const queuedTools = runId ? queuedToolsMap[runId] : undefined;
+
+  return (
+    <div>
+      {/* Run Header */}
+      {showHeader && (
+        <RunGroupHeader
+          runId={runId}
+          groupIndex={groupIndex}
+          messages={group.messages}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={onToggleCollapse}
+          runStatus={runStatus}
+        />
+      )}
+
+      {/* Messages (hidden when collapsed) */}
+      {!isCollapsed && (
+        <div className={cn('flex flex-col gap-2', showHeader && 'ml-2 pl-2 border-l border-[var(--color-border-subtle)] border-opacity-30')}>
+          {group.messages.map((msg, msgIdx) => {
+            // Skip tool messages rendered inline by their parent assistant's ToolExecution
+            if (msg.role === 'tool') return null;
+
+            const isLastInGroup = msgIdx === group.messages.length - 1;
+            const isCurrentlyStreaming = isStreaming && isLastInGroup && msg.role === 'assistant';
+
+            return (
+              <MessageLine
+                key={msg.id}
+                message={msg}
+                messages={allMessages}
+                isHighlighted={matchingMessageIds.has(msg.id)}
+                isStreaming={isCurrentlyStreaming}
+                routingDecision={msg.role === 'assistant' ? routingDecision : undefined}
+                executingTools={executingTools}
+                queuedTools={queuedTools}
+                onReaction={onReaction}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+});
+RunGroup.displayName = 'RunGroup';
+
+// =============================================================================
+// Export
+// =============================================================================
+
+export const ChatArea = memo(ChatAreaInternal);
+ChatArea.displayName = 'ChatArea';

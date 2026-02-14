@@ -51,7 +51,7 @@
 | 🤖 **Autonomous Agents** | Advanced task execution with tool confirmation and safety guardrails |
 | 💻 **Integrated IDE** | xterm.js terminal and browser automation |
 | 🧠 **Context-Aware** | Smart summarization, prompt caching, and context window optimization |
-| � **Semantic Search** | AI-powered codebase search using local vector embeddings |
+| 🔍 **Full-Text Search** | Fast codebase search powered by Tantivy (BM25) indexing |
 | �📊 **Git Integration** | Review changes with git diff and commit directly |
 | 🔒 **Local-First** | All data stays on your machine—complete privacy |
 
@@ -381,7 +381,6 @@ vyotiq/
 │   │   │   ├── providers/        # LLM provider integrations
 │   │   │   ├── context/          # Context management
 │   │   │   ├── cache/            # Caching systems
-│   │   │   ├── semantic/         # Vector embeddings & semantic search
 │   │   │   ├── compliance/       # Safety & compliance
 │   │   │   ├── recovery/         # Error recovery
 │   │   │   └── debugging/        # Execution tracing

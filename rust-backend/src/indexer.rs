@@ -65,6 +65,18 @@ impl IndexSchema {
     }
 }
 
+/// RAII guard that resets `is_indexing` when dropped (including on panic).
+/// Prevents the indexing flag from getting stuck if the indexing task panics.
+struct IndexingGuard {
+    flag: Arc<IndexState>,
+}
+
+impl Drop for IndexingGuard {
+    fn drop(&mut self) {
+        self.flag.is_indexing.store(false, Ordering::Release);
+    }
+}
+
 /// Tracks indexing state for a workspace
 pub struct IndexState {
     pub index: Index,
@@ -166,6 +178,9 @@ impl IndexManager {
             return Ok(());
         }
 
+        // RAII guard: resets is_indexing on drop (normal return, early return, or panic)
+        let _indexing_guard = IndexingGuard { flag: index_state.clone() };
+
         let ws_id = workspace_id.to_string();
         let ws_path = workspace_path.to_string();
         let max_file_size = self.max_file_size;
@@ -259,7 +274,7 @@ impl IndexManager {
         // If nothing changed, skip the expensive write
         if files_to_index.is_empty() && paths_to_remove.is_empty() {
             state.indexed_count.store(total, Ordering::Relaxed);
-            state.is_indexing.store(false, Ordering::Release);
+            // is_indexing reset handled by _indexing_guard Drop
             // Still mark workspace as indexed — it completed successfully with zero changes
             self.indexed_workspaces.insert(ws_id.clone(), true);
             let duration = start.elapsed();
@@ -359,7 +374,7 @@ impl IndexManager {
 
         let duration = start.elapsed();
         state.indexed_count.store(total, Ordering::Relaxed);
-        state.is_indexing.store(false, Ordering::Release);
+        // is_indexing reset handled by _indexing_guard Drop
         // Mark workspace as having completed indexing
         self.indexed_workspaces.insert(ws_id.clone(), true);
 
@@ -520,53 +535,7 @@ impl IndexManager {
         for component in path.components() {
             if let std::path::Component::Normal(name) = component {
                 let name_str = name.to_string_lossy();
-                let n = name_str.as_ref();
-
-                // Exact name matches
-                if matches!(
-                    n,
-                    "node_modules"
-                        | ".git"
-                        | "target"
-                        | "dist"
-                        | "build"
-                        | "out"
-                        | ".next"
-                        | ".nuxt"
-                        | ".output"
-                        | ".vite"
-                        | ".turbo"
-                        | ".svelte-kit"
-                        | ".parcel-cache"
-                        | "__pycache__"
-                        | ".tox"
-                        | ".mypy_cache"
-                        | ".pytest_cache"
-                        | ".ruff_cache"
-                        | "coverage"
-                        | ".nyc_output"
-                        | ".cache"
-                        | "vendor"
-                        | ".gradle"
-                        | ".maven"
-                        | ".terraform"
-                        | ".eggs"
-                        | ".vscode"
-                        | ".idea"
-                        | ".angular"
-                        | ".expo"
-                        | ".vercel"
-                        | ".netlify"
-                        | ".serverless"
-                        | ".aws-sam"
-                        | "__generated__"
-                        | ".cargo"
-                ) {
-                    return true;
-                }
-
-                // Suffix-based patterns (e.g., *.egg-info)
-                if n.ends_with(".egg-info") {
+                if crate::config::is_excluded_directory(&name_str) {
                     return true;
                 }
             }

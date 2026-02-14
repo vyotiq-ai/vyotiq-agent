@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { TriangleAlert, RefreshCw, Copy, Check, TerminalSquare, ExternalLink } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { ErrorState } from '../ui/ErrorState';
 import { createLogger } from '../../utils/logger';
 import { captureComponentError } from '../../utils/telemetry';
 
@@ -110,87 +111,24 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
           </div>
           
-          <div className="w-full max-w-lg bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)] p-4">
-            {/* Error header */}
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-[var(--color-error)] text-[10px]">[ERR]</span>
-              <TriangleAlert size={14} className="text-[var(--color-error)]" />
-              <span className="text-[11px] text-[var(--color-text-secondary)]">Process terminated unexpectedly</span>
-            </div>
-            
-            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">
-              # An unexpected error occurred in the application
-            </p>
-
-            {this.state.error && (
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[9px] text-[var(--color-error)] uppercase tracking-wider">
-                    # ERROR_DETAILS
-                  </span>
-                  <button
-                    onClick={this.handleCopyError}
-                    className="flex items-center gap-1 text-[9px] text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)] transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
-                  >
-                    {this.state.copied ? <Check size={10} /> : <Copy size={10} />}
-                    {this.state.copied ? 'copied' : '--copy'}
-                  </button>
-                </div>
-                <div className="bg-[var(--color-surface-2)]/50 border border-[var(--color-border-subtle)] p-2">
-                  <p className="text-[10px] text-[var(--color-error)] break-all">
-                    <span className="text-[var(--color-text-placeholder)]">&gt;</span> {this.state.error.message}
-                  </p>
-                </div>
-
-                {IS_DEV && this.state.error.stack && (
-                  <pre className="mt-2 text-[9px] text-[var(--color-text-placeholder)] overflow-auto max-h-40 p-2 bg-[var(--color-surface-2)]/30 border border-[var(--color-border-subtle)]">
-                    {this.state.error.stack}
-                  </pre>
-                )}
-                {this.state.errorInfo?.componentStack && (
-                  <details className="mt-2">
-                    <summary className="text-[9px] text-[var(--color-text-placeholder)] cursor-pointer hover:text-[var(--color-text-secondary)]">
-                      stack --trace
-                    </summary>
-                    <pre className="mt-1 text-[9px] text-[var(--color-text-placeholder)] overflow-auto max-h-24 p-2 bg-[var(--color-surface-2)]/30 border border-[var(--color-border-subtle)]">
-                      {this.state.errorInfo.componentStack}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-2 border-t border-[var(--color-border-subtle)]">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => window.location.reload()}
-                className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-              >
-                <RefreshCw size={10} />
-                --reload
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={this.handleReset}
-                className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-[var(--color-accent-primary)]"
-              >
-                --retry
-              </Button>
-              {this.props.helpUrl && (
-                <a
-                  href={this.props.helpUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
-                >
-                  <ExternalLink size={10} />
-                  --help
-                </a>
-              )}
-            </div>
-          </div>
+          <ErrorState
+            title="Process terminated unexpectedly"
+            message={this.state.error?.message || 'An unexpected error occurred in the application'}
+            details={[
+              IS_DEV && this.state.error?.stack,
+              this.state.errorInfo?.componentStack && `Component Stack:${this.state.errorInfo.componentStack}`,
+            ].filter(Boolean).join('\n\n') || undefined}
+            severity="error"
+            errorCode="ERR"
+            onRetry={this.handleReset}
+            action={{ label: '--reload', onClick: () => window.location.reload() }}
+            helpLink={this.props.helpUrl ? { label: '--help', url: this.props.helpUrl } : undefined}
+            copyable
+            collapsibleDetails
+            variant="card"
+            size="md"
+            className="w-full max-w-lg font-mono text-left"
+          />
         </div>
       );
     }

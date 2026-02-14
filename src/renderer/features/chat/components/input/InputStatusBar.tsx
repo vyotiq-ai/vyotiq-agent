@@ -103,8 +103,8 @@ export const InputStatusBar: React.FC<InputStatusBarProps> = memo(({
       className={cn(
         'flex items-center justify-between',
         'px-2 py-1',
-        'bg-[var(--color-surface-header)]',
-        'border-t border-[var(--color-border-subtle)]',
+        'bg-[var(--color-surface-1)]/40',
+        'border-t border-[var(--color-border-subtle)]/20',
         'text-[9px] font-mono text-[var(--color-text-secondary)]',
         'transition-colors duration-200',
         'overflow-hidden',

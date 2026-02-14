@@ -17,9 +17,6 @@ export { buildToolingSystem } from './setup';
 // Registry for tool management
 export { ToolRegistry } from './registry';
 
-// Executor for running tools
-export { ToolExecutor } from './executor';
-
 // Terminal manager for process execution
 export { ProcessTerminalManager } from './terminalManager';
 
@@ -34,27 +31,12 @@ export {
   getReadFilesCache,
 } from './fileTracker';
 
-// Discovery system for deferred tool loading
+// Discovery system for tool usage tracking and capability matching
 export {
-  ToolSearchManager,
-  createToolSearchTool,
-  DEFAULT_SEARCH_CONFIG,
-  type ToolSearchConfig,
-  type ToolReference,
-  type ToolSearchResult,
-  type TokenSavings,
-  type SessionToolState,
-  // Phase 2: Enhanced discovery
-  DynamicToolIndexer,
-  getDynamicToolIndexer,
   ToolUsageTracker,
   getToolUsageTracker,
-  ToolRankingEngine,
-  getToolRankingEngine,
   CapabilityMatcher,
   getCapabilityMatcher,
-  ToolSuggestionEngine,
-  getToolSuggestionEngine,
 } from './discovery';
 
 // Phase 2: Tool Factory for dynamic tool creation

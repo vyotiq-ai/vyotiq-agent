@@ -198,7 +198,7 @@ export interface SystemPromptContext {
   agentsMdContext?: AgentsMdContext;
   /** Extended instruction files context (AGENTS.md, CLAUDE.md, etc.) */
   instructionFilesContext?: InstructionFilesContext;
-  /** Semantically relevant code snippets from the workspace vector index */
+  /** Relevant code snippets from the workspace full-text index */
   workspaceCodeContext?: string;
   logger?: Logger;
 }

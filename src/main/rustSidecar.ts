@@ -19,15 +19,6 @@ const HEALTH_CHECK_INTERVAL = 10_000; // 10s
 const STARTUP_TIMEOUT = 15_000; // 15s
 const MAX_RESTART_ATTEMPTS = 3;
 
-/**
- * Current embedding model version marker.
- * When the model changes, old vector indexes are incompatible (different
- * embedding weights/quality) and must be rebuilt.
- * Updated: Switched to Qwen3-Embedding-0.6B (Qwen/Qwen3-Embedding-0.6B, 1024d, June 2025).
- * Decoder-only LLM embedder — #1 on MTEB leaderboard. Uses candle backend (pure Rust).
- */
-const EMBEDDING_MODEL_VERSION = 'qwen3-embedding-0.6b-1024d';
-
 class RustSidecarManager {
   private process: ChildProcess | null = null;
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
@@ -67,9 +58,6 @@ class RustSidecarManager {
     logger.info('Starting Rust sidecar', { binaryPath, port: SIDECAR_PORT });
 
     const dataDir = path.join(app.getPath('userData'), 'rust-data');
-
-    // Check if the embedding model has changed — if so, clear stale vector indexes
-    this.migrateVectorIndexIfNeeded(dataDir);
 
     // Generate a per-session auth token for sidecar communication security
     this.authToken = randomBytes(32).toString('hex');
@@ -165,7 +153,13 @@ class RustSidecarManager {
         import('http').then(({ default: http }) => {
           const req = http.request(
             `http://127.0.0.1:${SIDECAR_PORT}/shutdown`,
-            { method: 'POST', timeout: 2000 },
+            {
+              method: 'POST',
+              timeout: 2000,
+              headers: {
+                ...(this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {}),
+              },
+            },
             () => {
               logger.info('Graceful shutdown request sent to Rust sidecar');
             }
@@ -248,53 +242,6 @@ class RustSidecarManager {
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = null;
-    }
-  }
-
-  /**
-   * If the embedding model has changed, clear stale vector indexes.
-   * The vector indexes store embeddings with specific dimensions (e.g., 768 vs 1024).
-   * When the model changes, old vectors are incompatible and must be purged.
-   * The Rust backend will automatically rebuild them on next indexing.
-   */
-  private migrateVectorIndexIfNeeded(dataDir: string): void {
-    const versionFile = path.join(dataDir, 'embedding-model-version');
-    const vectorsDir = path.join(dataDir, 'vectors');
-
-    try {
-      // Read current version marker
-      let currentVersion = '';
-      if (fs.existsSync(versionFile)) {
-        currentVersion = fs.readFileSync(versionFile, 'utf-8').trim();
-      }
-
-      if (currentVersion !== EMBEDDING_MODEL_VERSION) {
-        logger.info('Embedding model changed, clearing stale vector indexes', {
-          from: currentVersion || '(none)',
-          to: EMBEDDING_MODEL_VERSION,
-        });
-
-        // Remove all vector index directories
-        if (fs.existsSync(vectorsDir)) {
-          fs.rmSync(vectorsDir, { recursive: true, force: true });
-          logger.info('Cleared stale vector indexes');
-        }
-
-        // Also clear the old model cache if model family changed
-        const modelsDir = path.join(dataDir, 'models');
-        if (currentVersion && !currentVersion.startsWith('qwen3') && fs.existsSync(modelsDir)) {
-          fs.rmSync(modelsDir, { recursive: true, force: true });
-          logger.info('Cleared old embedding model cache (switching to Qwen3-Embedding-0.6B)');
-        }
-
-        // Write new version marker
-        fs.mkdirSync(dataDir, { recursive: true });
-        fs.writeFileSync(versionFile, EMBEDDING_MODEL_VERSION, 'utf-8');
-      }
-    } catch (err) {
-      logger.warn('Failed to check/migrate embedding model version', {
-        error: err instanceof Error ? err.message : String(err),
-      });
     }
   }
 }

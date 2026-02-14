@@ -1273,6 +1273,52 @@ const lspAPI = {
 	}> => ipcRenderer.invoke('lsp:refresh-diagnostics'),
 
 	/**
+	 * Subscribe to aggregated diagnostics updates (all files snapshot)
+	 * Emitted when TypeScript diagnostics change across the project.
+	 */
+	onDiagnosticsSnapshot: (handler: (event: {
+		diagnostics: unknown[];
+		errorCount: number;
+		warningCount: number;
+		filesWithErrors: number;
+		timestamp: number;
+	}) => void) => {
+		const listener = (_event: IpcRendererEvent, data: {
+			diagnostics: unknown[];
+			errorCount: number;
+			warningCount: number;
+			filesWithErrors: number;
+			timestamp: number;
+		}) => handler(data);
+		ipcRenderer.on('diagnostics:updated', listener);
+		return () => ipcRenderer.removeListener('diagnostics:updated', listener);
+	},
+
+	/**
+	 * Subscribe to per-file diagnostics updates from TypeScript service
+	 */
+	onFileDiagnosticsUpdated: (handler: (event: {
+		filePath: string;
+		diagnostics: unknown[];
+	}) => void) => {
+		const listener = (_event: IpcRendererEvent, data: {
+			filePath: string;
+			diagnostics: unknown[];
+		}) => handler(data);
+		ipcRenderer.on('diagnostics:file-updated', listener);
+		return () => ipcRenderer.removeListener('diagnostics:file-updated', listener);
+	},
+
+	/**
+	 * Subscribe to diagnostics cleared event (e.g., workspace closed)
+	 */
+	onDiagnosticsCleared: (handler: () => void) => {
+		const listener = () => handler();
+		ipcRenderer.on('diagnostics:cleared', listener);
+		return () => ipcRenderer.removeListener('diagnostics:cleared', listener);
+	},
+
+	/**
 	 * Restart TypeScript Language Server
 	 * Fully reinitializes the TypeScript service to pick up new type definitions.
 	 */
@@ -1808,12 +1854,6 @@ const rustBackendAPI = {
 		options?: { is_regex?: boolean; case_sensitive?: boolean; limit?: number },
 	): Promise<{ success: boolean; results?: unknown[]; total?: number; error?: string }> =>
 		ipcRenderer.invoke('rust-backend:grep', workspaceId, pattern, options),
-	semanticSearch: (
-		workspaceId: string,
-		query: string,
-		options?: { limit?: number },
-	): Promise<{ success: boolean; results?: unknown[]; query_time_ms?: number; error?: string }> =>
-		ipcRenderer.invoke('rust-backend:semantic-search', workspaceId, query, options),
 	triggerIndex: (workspaceId: string): Promise<{ success: boolean; error?: string }> =>
 		ipcRenderer.invoke('rust-backend:trigger-index', workspaceId),
 	indexStatus: (workspaceId: string): Promise<{ success: boolean; status?: string; total_files?: number; indexed_files?: number; error?: string }> =>

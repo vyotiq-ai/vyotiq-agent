@@ -7,15 +7,11 @@
 // Strategy definitions
 export { RETRY_STRATEGY, RetryExecutor } from './RetryStrategy';
 export { FALLBACK_STRATEGY, FallbackExecutor } from './FallbackStrategy';
-export { ROLLBACK_STRATEGY, RollbackExecutor } from './RollbackStrategy';
-export { SCALE_DOWN_STRATEGY, ScaleDownExecutor } from './ScaleDownStrategy';
 export { ESCALATE_STRATEGY, EscalateExecutor } from './EscalateStrategy';
 
 import type { RecoveryStrategy } from '../types';
 import { RETRY_STRATEGY } from './RetryStrategy';
 import { FALLBACK_STRATEGY } from './FallbackStrategy';
-import { ROLLBACK_STRATEGY } from './RollbackStrategy';
-import { SCALE_DOWN_STRATEGY } from './ScaleDownStrategy';
 import { ESCALATE_STRATEGY } from './EscalateStrategy';
 
 /**
@@ -24,8 +20,6 @@ import { ESCALATE_STRATEGY } from './EscalateStrategy';
 export const ALL_STRATEGIES: RecoveryStrategy[] = [
   RETRY_STRATEGY,       // Priority 1 - Try again first
   FALLBACK_STRATEGY,    // Priority 2 - Switch to alternative
-  ROLLBACK_STRATEGY,    // Priority 3 - Undo and retry
-  SCALE_DOWN_STRATEGY,  // Priority 5 - Reduce scope
   ESCALATE_STRATEGY,    // Priority 10 - Ask user (last resort)
 ].sort((a, b) => a.priority - b.priority);
 

@@ -25,33 +25,33 @@ const SessionWelcomeComponent: React.FC = () => {
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[200px] font-mono px-6">
       <div className={cn(
-        'text-left max-w-md w-full transition-opacity duration-400',
-        visible ? 'opacity-100' : 'opacity-0'
+        'text-left max-w-md w-full transition-all duration-300',
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1'
       )}>
         {/* Brand symbol */}
-        <div className="flex items-center gap-2.5 mb-3">
-          <span className="text-[var(--color-accent-primary)] text-lg font-semibold leading-none opacity-80">λ</span>
-          <span className="text-[11px] text-[var(--color-text-secondary)]">new session</span>
+        <div className="flex items-center gap-3 mb-5">
+          <span className="text-[var(--color-accent-primary)] text-lg font-semibold leading-none opacity-50">λ</span>
+          <span className="text-[12px] text-[var(--color-text-secondary)]/50 tracking-widest uppercase">new session</span>
         </div>
 
         {/* Hint text */}
-        <div className="pl-6 mb-2">
-          <div className="text-[10px] text-[var(--color-text-tertiary)] leading-relaxed">
+        <div className="pl-7 mb-2">
+          <div className="text-[10px] text-[var(--color-text-tertiary)]/60 leading-relaxed">
             {displayedText}
           </div>
         </div>
 
         {/* Input prompt hint */}
-        <div className="pl-6">
-          <span className="text-[10px] text-[var(--color-text-dim)]">
+        <div className="pl-7">
+          <span className="text-[10px] text-[var(--color-text-dim)]/40">
             type a message below to get started
           </span>
         </div>
 
         {/* Waiting cursor */}
-        <div className="flex items-center gap-2 mt-5 pl-0.5">
-          <span className="text-[var(--color-accent-primary)] text-xs opacity-50">λ</span>
-          <span className="inline-block w-[5px] h-[11px] bg-[var(--color-accent-primary)]/60 animate-blink" />
+        <div className="flex items-center gap-2 mt-6 pl-2">
+          <span className="text-[var(--color-accent-primary)] text-xs opacity-30">λ</span>
+          <span className="inline-block w-[5px] h-[11px] bg-[var(--color-accent-primary)]/30 animate-blink rounded-[1px]" />
         </div>
       </div>
     </div>

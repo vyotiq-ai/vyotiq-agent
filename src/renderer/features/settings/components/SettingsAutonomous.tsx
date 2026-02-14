@@ -10,9 +10,10 @@
  * - Safety monitoring options
  */
 import React, { useState, useMemo } from 'react';
-import { Shield, Wrench, AlertTriangle, X, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { Shield, Wrench, AlertTriangle, X, Plus, ChevronDown, ChevronRight, Cpu, ListChecks, Puzzle } from 'lucide-react';
 import type { AutonomousFeatureFlags, ToolConfigSettings } from '../../../../shared/types';
 import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsInfoBox } from '../primitives';
+import { FeatureToggle, FeatureToggleGroup } from '../../../components/ui/FeatureToggle';
 
 interface SettingsAutonomousProps {
   settings?: AutonomousFeatureFlags;
@@ -99,26 +100,37 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
   return (
     <SettingsSection title="autonomous" description="Configure autonomous agent capabilities and advanced features">
       {/* Core Autonomous Features */}
-      <SettingsGroup title="autonomous mode">
-        <SettingsToggleRow
-          label="enable-autonomous"
+      <FeatureToggleGroup label="autonomous mode">
+        <FeatureToggle
+          icon={<Cpu size={14} className="text-[var(--color-accent-primary)]" />}
+          iconBgClass="bg-[var(--color-accent-primary)]/10"
+          title="Autonomous Mode"
           description="Enable autonomous decision-making and multi-step task execution"
           checked={settings.enableAutonomousMode}
-          onToggle={() => onChange('enableAutonomousMode', !settings.enableAutonomousMode)}
+          onChange={() => onChange('enableAutonomousMode', !settings.enableAutonomousMode)}
+          size="sm"
         />
-        <SettingsToggleRow
-          label="task-planning"
+        <FeatureToggle
+          icon={<ListChecks size={14} className="text-[var(--color-info)]" />}
+          iconBgClass="bg-[var(--color-info)]/10"
+          title="Task Planning"
           description="Break down complex requests into structured task plans"
           checked={settings.enableTaskPlanning}
-          onToggle={() => onChange('enableTaskPlanning', !settings.enableTaskPlanning)}
+          onChange={() => onChange('enableTaskPlanning', !settings.enableTaskPlanning)}
+          size="sm"
         />
-        <SettingsToggleRow
-          label="dynamic-tools"
+        <FeatureToggle
+          icon={<Puzzle size={14} className="text-[var(--color-warning)]" />}
+          iconBgClass="bg-[var(--color-warning)]/10"
+          title="Dynamic Tools"
           description="Allow agent to create custom tools at runtime"
           checked={settings.enableDynamicTools}
-          onToggle={() => onChange('enableDynamicTools', !settings.enableDynamicTools)}
+          onChange={() => onChange('enableDynamicTools', !settings.enableDynamicTools)}
+          badge="Beta"
+          badgeVariant="warning"
+          size="sm"
         />
-      </SettingsGroup>
+      </FeatureToggleGroup>
 
       {/* Safety & Monitoring */}
       <SettingsGroup title="safety monitoring" icon={<Shield size={11} />}>

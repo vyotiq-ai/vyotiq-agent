@@ -39,11 +39,7 @@ interface WorkspaceStateType {
   isIndexed: boolean;
   /** Whether the Rust backend is currently indexing (full-text) */
   isIndexing: boolean;
-  /** Whether vector embeddings are ready for this workspace */
-  isVectorReady: boolean;
-  /** Whether vector indexing is currently in progress */
-  isVectorIndexing: boolean;
-  /** Whether the workspace is fully search-ready (both full-text and vectors) */
+  /** Whether the workspace is fully search-ready */
   isSearchReady: boolean;
 }
 
@@ -101,6 +97,23 @@ function addToRecent(path: string, existing: string[]): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// Module-level workspace path accessor
+// Allows reading the current workspace path outside of React hooks (e.g. in
+// plain callbacks inside AgentProvider). The ref is kept in sync via a
+// useEffect inside <WorkspaceProvider>.
+// ---------------------------------------------------------------------------
+
+let _currentWorkspacePath: string | null = null;
+
+/**
+ * Return the current workspace path synchronously.
+ * Safe to call from outside React component tree (event handlers, callbacks).
+ */
+export function getCurrentWorkspacePath(): string | undefined {
+  return _currentWorkspacePath ?? undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
 
@@ -111,9 +124,13 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [rustWorkspaceId, setRustWorkspaceId] = useState<string | null>(null);
   const [isIndexed, setIsIndexed] = useState(false);
   const [isIndexing, setIsIndexing] = useState(false);
-  const [isVectorReady, setIsVectorReady] = useState(false);
-  const [isVectorIndexing, setIsVectorIndexing] = useState(false);
   const [isSearchReady, setIsSearchReady] = useState(false);
+
+  // Keep the module-level ref in sync so getCurrentWorkspacePath() works
+  // outside of React hooks.
+  useEffect(() => {
+    _currentWorkspacePath = workspacePath;
+  }, [workspacePath]);
 
   /** Track which workspace path has already been registered with the Rust backend */
   const registeredPathRef = useRef<string | null>(null);
@@ -171,12 +188,11 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         setRustWorkspaceId(null);
         setIsIndexed(false);
         setIsIndexing(false);
-        setIsVectorReady(false);
-        setIsVectorIndexing(false);
         setIsSearchReady(false);
       }
     });
-    return unsubscribe;
+
+    return () => { unsubscribe(); };
   }, []);
 
   // ---- Auto-register workspace in Rust backend for indexing ----------------
@@ -209,13 +225,12 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
             setRustWorkspaceId(activated.id);
             setIsIndexed(activated.indexed);
 
-            // Fetch detailed index status to restore vector/search readiness
+            // Fetch detailed index status to restore search readiness
             try {
               const indexStatus = await rustBackend.getIndexStatus(activated.id);
               if (!cancelled) {
                 setIsIndexing(indexStatus.is_indexing);
-                setIsVectorReady(indexStatus.vector_ready);
-                setIsSearchReady(indexStatus.indexed && indexStatus.vector_ready);
+                setIsSearchReady(indexStatus.indexed);
               }
             } catch (err) {
               logger.debug('Failed to fetch index status on activation', { error: err instanceof Error ? err.message : String(err) });
@@ -231,7 +246,12 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
               setRustWorkspaceId(created.id);
               setIsIndexed(false);
               // Auto-trigger indexing for new workspaces
-              rustBackend.triggerIndex(created.id).catch(() => {});
+              rustBackend.triggerIndex(created.id).catch((err) => {
+                logger.warn('Failed to trigger workspace indexing', {
+                  workspaceId: created.id,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              });
               setIsIndexing(true);
             }
           } catch (createErr: unknown) {
@@ -311,14 +331,6 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
           break;
         case 'index_error':
           setIsIndexing(false);
-          setIsVectorIndexing(false);
-          break;
-        case 'vector_index_progress':
-          setIsVectorIndexing(true);
-          break;
-        case 'vector_index_complete':
-          setIsVectorIndexing(false);
-          setIsVectorReady(true);
           break;
         case 'search_ready':
           setIsSearchReady(true);
@@ -377,8 +389,6 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
       setRustWorkspaceId(null);
       setIsIndexed(false);
       setIsIndexing(false);
-      setIsVectorReady(false);
-      setIsVectorIndexing(false);
       setIsSearchReady(false);
     } catch (err) {
       logger.debug('Error closing workspace', {
@@ -402,8 +412,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
   // ---- Context values (split for performance) ------------------------------
 
   const stateValue = useMemo<WorkspaceStateType>(
-    () => ({ workspacePath, workspaceName, recentPaths, isLoading, rustWorkspaceId, isIndexed, isIndexing, isVectorReady, isVectorIndexing, isSearchReady }),
-    [workspacePath, workspaceName, recentPaths, isLoading, rustWorkspaceId, isIndexed, isIndexing, isVectorReady, isVectorIndexing, isSearchReady],
+    () => ({ workspacePath, workspaceName, recentPaths, isLoading, rustWorkspaceId, isIndexed, isIndexing, isSearchReady }),
+    [workspacePath, workspaceName, recentPaths, isLoading, rustWorkspaceId, isIndexed, isIndexing, isSearchReady],
   );
 
   const actionsValue = useMemo<WorkspaceActionsType>(

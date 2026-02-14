@@ -8,7 +8,6 @@ use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser};
 use tantivy::schema::Value;
 use tantivy::TantivyDocument;
 use tracing::{debug, info, warn};
-use crate::embedder::{EmbeddingManager, SemanticSearchResponse};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchQuery {
@@ -90,7 +89,7 @@ pub struct GrepResponse {
     pub query_time_ms: u64,
 }
 
-/// Perform semantic/full-text search within an indexed workspace
+/// Perform full-text search within an indexed workspace
 pub fn search_workspace(
     index_manager: &IndexManager,
     workspace_id: &str,
@@ -148,13 +147,11 @@ pub fn search_workspace(
         .search(&*parsed_query, &TopDocs::with_limit(query.limit * 2)) // Over-fetch for filtering
         .map_err(|e| AppError::SearchError(format!("Search failed: {}", e)))?;
 
+    // Track total matching results before applying the limit
+    let mut total_matching = 0usize;
     let mut results = Vec::new();
 
     for (score, doc_address) in top_docs {
-        if results.len() >= query.limit {
-            break;
-        }
-
         let doc: TantivyDocument = searcher.doc(doc_address).map_err(|e| {
             AppError::SearchError(format!("Failed to retrieve doc: {}", e))
         })?;
@@ -202,6 +199,14 @@ pub fn search_workspace(
             }
         }
 
+        // Count total matching results (before applying the limit)
+        total_matching += 1;
+
+        // Only collect results up to the limit
+        if results.len() >= query.limit {
+            continue; // Keep counting total_matching but don't add more results
+        }
+
         // Generate snippet around matching text
         let (snippet, line_number) = generate_snippet(content, &query.query, 200);
 
@@ -227,7 +232,7 @@ pub fn search_workspace(
     );
 
     Ok(SearchResponse {
-        total_hits: results.len(),
+        total_hits: total_matching,
         results,
         query_time_ms: duration.as_millis() as u64,
     })
@@ -244,7 +249,7 @@ fn generate_snippet(content: &str, query: &str, max_len: usize) -> (String, Opti
 
     for word in &query_words {
         if let Some(pos) = lower_content.find(word) {
-            if best_pos.is_none() || pos < best_pos.unwrap() {
+            if best_pos.map_or(true, |bp| pos < bp) {
                 best_pos = Some(pos);
             }
         }
@@ -426,7 +431,9 @@ pub fn grep_workspace(
                     });
 
                     // Per-file limit to avoid overwhelming results from one file
-                    if file_results.len() >= limit {
+                    // Use a fraction of the global limit, with a minimum of 20 results per file
+                    let per_file_limit = (limit / 4).max(20);
+                    if file_results.len() >= per_file_limit {
                         break;
                     }
                 }
@@ -455,25 +462,4 @@ pub fn grep_workspace(
         files_searched,
         query_time_ms: duration.as_millis() as u64,
     })
-}
-
-/// True vector-based semantic search using embeddings
-pub fn vector_semantic_search(
-    embedding_manager: &EmbeddingManager,
-    workspace_id: &str,
-    query: &str,
-    limit: usize,
-) -> AppResult<SemanticSearchResponse> {
-    debug!(workspace_id, query = %query, limit, "Semantic vector search starting");
-    let result = embedding_manager.semantic_search(workspace_id, query, limit);
-    match &result {
-        Ok(resp) => info!(
-            workspace_id,
-            results = resp.results.len(),
-            query_time_ms = resp.query_time_ms,
-            "Semantic vector search completed"
-        ),
-        Err(e) => warn!(workspace_id, error = %e, "Semantic vector search failed"),
-    }
-    result
 }

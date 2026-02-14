@@ -1,5 +1,4 @@
 use crate::config::AppConfig;
-use crate::embedder::EmbeddingManager;
 use crate::error::AppResult;
 use crate::indexer::IndexManager;
 use crate::watcher::FileWatcherManager;
@@ -23,14 +22,27 @@ pub enum ServerEvent {
     IndexingCompleted { workspace_id: String, total_files: usize, duration_ms: u64 },
     #[serde(rename = "index_error")]
     IndexingError { workspace_id: String, error: String },
-    #[serde(rename = "vector_index_progress")]
-    VectorIndexingProgress { workspace_id: String, embedded_chunks: usize, total_chunks: usize },
-    #[serde(rename = "vector_index_complete")]
-    VectorIndexingCompleted { workspace_id: String, total_chunks: usize, duration_ms: u64 },
     #[serde(rename = "file_changed")]
     FileChanged { workspace_id: String, path: String, change_type: String },
     #[serde(rename = "search_ready")]
     SearchReady { workspace_id: String },
+}
+
+impl ServerEvent {
+    /// Extract the workspace_id from any event variant.
+    /// Used by WebSocket handler to filter events per subscribed workspace.
+    pub fn workspace_id(&self) -> &str {
+        match self {
+            ServerEvent::WorkspaceCreated { workspace_id, .. } => workspace_id,
+            ServerEvent::WorkspaceRemoved { workspace_id } => workspace_id,
+            ServerEvent::IndexingStarted { workspace_id } => workspace_id,
+            ServerEvent::IndexingProgress { workspace_id, .. } => workspace_id,
+            ServerEvent::IndexingCompleted { workspace_id, .. } => workspace_id,
+            ServerEvent::IndexingError { workspace_id, .. } => workspace_id,
+            ServerEvent::FileChanged { workspace_id, .. } => workspace_id,
+            ServerEvent::SearchReady { workspace_id } => workspace_id,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -38,7 +50,6 @@ pub struct AppState {
     pub config: AppConfig,
     pub workspace_manager: Arc<WorkspaceManager>,
     pub index_manager: Arc<IndexManager>,
-    pub embedding_manager: Arc<EmbeddingManager>,
     pub watcher_manager: Arc<FileWatcherManager>,
     pub event_tx: broadcast::Sender<ServerEvent>,
 }
@@ -58,7 +69,6 @@ impl AppState {
             config.max_file_size_bytes,
             config.index_batch_size,
         ));
-        let embedding_manager = Arc::new(EmbeddingManager::new(data_dir.clone()));
         let watcher_manager = Arc::new(FileWatcherManager::new(
             config.watcher_debounce_ms,
             event_tx.clone(),
@@ -68,7 +78,6 @@ impl AppState {
             config,
             workspace_manager,
             index_manager,
-            embedding_manager,
             watcher_manager,
             event_tx,
         })

@@ -23,7 +23,6 @@ const statusConfig: Record<ExtendedStatus, {
   color: string;
   dotColor: string;
   bgColor: string;
-  animate?: 'pulse';
 }> = {
   idle: {
     label: 'IDLE',
@@ -38,7 +37,6 @@ const statusConfig: Record<ExtendedStatus, {
     color: 'text-[var(--color-accent-primary)]',
     dotColor: 'bg-[var(--color-accent-primary)]',
     bgColor: 'bg-[var(--color-accent-primary)]/10',
-    animate: 'pulse',
   },
   'awaiting-confirmation': {
     label: 'WAIT',

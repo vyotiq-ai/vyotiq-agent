@@ -20,7 +20,6 @@ import type { LLMProvider, ProviderRequest } from '../providers/baseProvider';
 import type { IterationResult, RetryResult, IterationSettings } from './types';
 import type { ProgressTracker } from './progressTracker';
 import type { DebugEmitter } from './debugEmitter';
-import type { StreamHandler } from './streamHandler';
 import { createStreamState, trackChunk, detectRepetition } from '../utils/streamUtils';
 import { parseToolArguments } from '../../utils';
 import {
@@ -39,7 +38,6 @@ export class IterationRunner {
   private readonly emitEvent: (event: RendererEvent | AgentEvent) => void;
   private readonly progressTracker: ProgressTracker;
   private readonly debugEmitter: DebugEmitter;
-  private readonly streamHandler: StreamHandler;
   private readonly updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void;
   private readonly getProviderHealthCallback?: () => ProviderHealthCallback | undefined;
 
@@ -48,7 +46,6 @@ export class IterationRunner {
     emitEvent: (event: RendererEvent | AgentEvent) => void,
     progressTracker: ProgressTracker,
     debugEmitter: DebugEmitter,
-    streamHandler: StreamHandler,
     updateSessionState: (sessionId: string, update: Partial<InternalSession['state']>) => void,
     getProviderHealthCallback?: () => ProviderHealthCallback | undefined
   ) {
@@ -56,7 +53,6 @@ export class IterationRunner {
     this.emitEvent = emitEvent;
     this.progressTracker = progressTracker;
     this.debugEmitter = debugEmitter;
-    this.streamHandler = streamHandler;
     this.updateSessionState = updateSessionState;
     this.getProviderHealthCallback = getProviderHealthCallback;
   }
@@ -504,7 +500,7 @@ export class IterationRunner {
             delete pendingWithJson._argsJson;
             delete pendingWithJson._argsIsComplete;
 
-            if (!pending.callId) {
+            if (!pending.callId || pending.callId.trim() === '') {
               pending.callId = `call_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
             }
 

@@ -13,6 +13,11 @@ import type {
   ErrorClassifierConfig,
   RecoveryDeps,
 } from './types';
+import {
+  isRateLimitError as isRateLimitUtil,
+  isContextOverflowError as isContextOverflowUtil,
+  shouldTryFallback as shouldTryFallbackUtil,
+} from '../utils/errorUtils';
 import { DEFAULT_ERROR_CLASSIFIER_CONFIG } from './types';
 
 // =============================================================================
@@ -282,8 +287,7 @@ export class ErrorClassifier {
    * Check if error is rate limit related
    */
   isRateLimitError(error: Error | unknown): boolean {
-    const classified = this.classify(error);
-    return classified.category === 'transient' && /rate.?limit|429/i.test(classified.original.message);
+    return isRateLimitUtil(error);
   }
 
   /**
@@ -306,22 +310,14 @@ export class ErrorClassifier {
    * Check if error is context overflow
    */
   isContextOverflowError(error: Error | unknown): boolean {
-    const normalized = this.normalizeError(error);
-    return /token.?limit|context.?length|max.?tokens|too.?long/i.test(normalized.message);
+    return isContextOverflowUtil(error);
   }
 
   /**
    * Check if error warrants fallback to different provider
    */
   shouldTryFallback(error: Error | unknown): boolean {
-    const classified = this.classify(error);
-    // Fallback for: provider errors, rate limits, quota issues
-    return (
-      classified.category === 'external' ||
-      (classified.category === 'transient' && !classified.isRetryable) ||
-      this.isRateLimitError(error) ||
-      /quota|billing/i.test(classified.original.message)
-    );
+    return shouldTryFallbackUtil(error);
   }
 
   // ===========================================================================

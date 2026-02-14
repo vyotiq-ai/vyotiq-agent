@@ -13,12 +13,17 @@ import {
   History,
   Globe,
 } from 'lucide-react';
+import { Tooltip } from '../ui/Tooltip';
+import { StatusIndicator } from '../ui/StatusIndicator';
+import type { AgentPhase } from '../ui/StatusIndicator';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { useUIState, useUIActions } from '../../state/UIProvider';
+import { useAgentSelector } from '../../state/AgentProvider';
 import { useLifecycleProfiler } from '../../utils/profiler';
 import { cn } from '../../utils/cn';
 import { SessionSelector } from '../../features/chat/components/sessionSelector';
 import { WorkspaceSwitcher } from '../../features/workspace';
+import { GlobalRunningIndicator } from '../../features/sessions/components/GlobalRunningSessionsPanel';
 
 // =============================================================================
 // Types
@@ -39,10 +44,10 @@ interface HeaderProps {
 /** Icon button with consistent styling */
 const IconButton: React.FC<{
   onClick: () => void;
-  title: string;
+  label: string;
   active?: boolean;
   children: React.ReactNode;
-}> = memo(({ onClick, title, active, children }) => (
+}> = memo(({ onClick, label, active, children }) => (
   <button
     className={cn(
       'p-1.5 transition-colors rounded-sm',
@@ -52,8 +57,7 @@ const IconButton: React.FC<{
         : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-2)]'
     )}
     onClick={onClick}
-    title={title}
-    aria-label={title}
+    aria-label={label}
   >
     {children}
   </button>
@@ -69,10 +73,22 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
   onToggle,
   onOpenSettings,
   isMobile = false,
+  isTablet = false,
 }) {
   useLifecycleProfiler('Header');
 
   const { handleNewSession } = useAgentStatus();
+
+  const sessionStatus = useAgentSelector(
+    (s) => {
+      const activeSession = s.activeSessionId ? s.sessions.find((x) => x.id === s.activeSessionId) : undefined;
+      return {
+        status: activeSession?.status ?? ('idle' as const),
+        phase: activeSession?.statusPhase as AgentPhase | undefined,
+      };
+    },
+    (a, b) => a.status === b.status && a.phase === b.phase,
+  );
 
   const {
     undoHistoryOpen, browserPanelOpen,
@@ -94,12 +110,14 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
     >
       {/* Left: Navigation */}
       <div className="flex items-center gap-1.5 no-drag h-full min-w-0 flex-1">
-        <IconButton
-          onClick={onToggle}
-          title={collapsed ? 'Show sidebar [Ctrl+B]' : 'Hide sidebar [Ctrl+B]'}
-        >
-          <PanelLeft size={14} />
-        </IconButton>
+        <Tooltip content={collapsed ? 'Show sidebar' : 'Hide sidebar'} shortcut="Ctrl+B">
+          <IconButton
+            onClick={onToggle}
+            label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+          >
+            <PanelLeft size={14} />
+          </IconButton>
+        </Tooltip>
 
         {/* Workspace selector */}
         <div className="ml-1 pl-1 border-l border-[var(--color-border-subtle)]">
@@ -110,11 +128,24 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
         <div className="ml-1 pl-1 border-l border-[var(--color-border-subtle)]">
           <SessionSelector />
         </div>
+
+        {/* Agent status */}
+        {sessionStatus.status !== 'idle' && (
+          <div className="ml-1 pl-1 border-l border-[var(--color-border-subtle)]">
+            <StatusIndicator
+              status={sessionStatus.status}
+              phase={sessionStatus.phase}
+              size="sm"
+              showLabel={true}
+            />
+          </div>
+        )}
       </div>
 
       {/* Right: Actions */}
       <div className="flex items-center gap-0.5 no-drag pr-[70px] sm:pr-[100px] md:pr-[138px] shrink-0">
         {/* New Session */}
+        <Tooltip content="New session" shortcut="Ctrl+N">
         <button
           className={cn(
             'flex items-center gap-1 px-2 py-1 text-[10px] rounded-sm',
@@ -124,39 +155,52 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
           )}
           onClick={handleNewSession}
-          title="New session [Ctrl+N]"
+          aria-label="New session"
         >
           <Plus size={12} />
-          {!isMobile && <span>new</span>}
+          {!isMobile && !isTablet && <span>new</span>}
         </button>
+        </Tooltip>
+
+        {/* Running sessions indicator */}
+        <GlobalRunningIndicator
+          showCount={!isMobile}
+          className="ml-0.5"
+        />
 
         {/* Panel Toggles - grouped */}
         <div className="flex items-center gap-0.5 ml-1 pl-1.5 border-l border-[var(--color-border-subtle)]">
-          <IconButton
-            onClick={toggleBrowserPanel}
-            title={browserPanelOpen ? 'Hide browser [Ctrl+Shift+B]' : 'Show browser [Ctrl+Shift+B]'}
-            active={browserPanelOpen}
-          >
-            <Globe size={13} />
-          </IconButton>
+          <Tooltip content={browserPanelOpen ? 'Hide browser' : 'Show browser'} shortcut="Ctrl+Shift+B">
+            <IconButton
+              onClick={toggleBrowserPanel}
+              label={browserPanelOpen ? 'Hide browser' : 'Show browser'}
+              active={browserPanelOpen}
+            >
+              <Globe size={13} />
+            </IconButton>
+          </Tooltip>
 
-          <IconButton
-            onClick={toggleUndoHistory}
-            title={undoHistoryOpen ? 'Hide history [Ctrl+Shift+H]' : 'Show history [Ctrl+Shift+H]'}
-            active={undoHistoryOpen}
-          >
-            <History size={13} />
-          </IconButton>
+          <Tooltip content={undoHistoryOpen ? 'Hide history' : 'Show history'} shortcut="Ctrl+Shift+H">
+            <IconButton
+              onClick={toggleUndoHistory}
+              label={undoHistoryOpen ? 'Hide history' : 'Show history'}
+              active={undoHistoryOpen}
+            >
+              <History size={13} />
+            </IconButton>
+          </Tooltip>
         </div>
 
         {/* Settings - separate */}
         <div className="ml-1 pl-1.5 border-l border-[var(--color-border-subtle)]">
-          <IconButton
-            onClick={onOpenSettings}
-            title="Settings [Ctrl+,]"
-          >
-            <Settings size={13} />
-          </IconButton>
+          <Tooltip content="Settings" shortcut="Ctrl+,">
+            <IconButton
+              onClick={onOpenSettings}
+              label="Settings"
+            >
+              <Settings size={13} />
+            </IconButton>
+          </Tooltip>
         </div>
       </div>
     </header>

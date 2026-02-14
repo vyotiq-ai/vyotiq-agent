@@ -18,7 +18,6 @@ import type { Logger } from '../../logger';
 import type { ToolRegistry, TerminalManager, ToolExecutionContext } from '../../tools';
 import type { ProgressTracker } from './progressTracker';
 import type { DebugEmitter } from './debugEmitter';
-import type { AnnotatedToolCall } from './types';
 import { SafetyManager } from '../safety';
 import { ComplianceValidator } from '../compliance';
 import { getAccessLevelCategory, checkAccessLevelPermission } from '../utils/accessLevelUtils';
@@ -31,6 +30,7 @@ import { getToolResultCache } from '../cache/ToolResultCache';
 import { getErrorRecoveryManager } from '../recovery/ErrorRecoveryManager';
 import { getToolExecutionLogger, createToolSpecificLogger } from '../logging/ToolExecutionLogger';
 import { getOutputTruncator } from '../output/OutputTruncator';
+import { getToolUsageTracker } from '../../tools/discovery/ToolUsageTracker';
 import type { EnhancedToolResult } from '../../tools/types';
 import type { SafetySettings } from '../../../shared/types';
 import { getAuditLogger } from '../compliance';
@@ -50,6 +50,15 @@ export class ToolQueueProcessor {
   private readonly getSafetySettings: () => SafetySettings | undefined;
   private readonly activeControllers: Map<string, AbortController>;
   private readonly safetyManagers = new Map<string, SafetyManager>();
+
+  // Cached singleton references (resolved once per processToolQueue batch)
+  private _loopDetector: ReturnType<typeof getLoopDetector> | null = null;
+  private _healthMonitor: ReturnType<typeof getSessionHealthMonitor> | null = null;
+  private _toolExecLogger: ReturnType<typeof getToolExecutionLogger> | null = null;
+  private _outputTruncator: ReturnType<typeof getOutputTruncator> | null = null;
+  private _errorRecovery: ReturnType<typeof getErrorRecoveryManager> | null = null;
+  private _auditLogger: ReturnType<typeof getAuditLogger> | null = null;
+  private _toolResultCache: ReturnType<typeof getToolResultCache> | null = null;
 
   constructor(
     toolRegistry: ToolRegistry,
@@ -93,9 +102,25 @@ export class ToolQueueProcessor {
   }
 
   /**
+   * Resolve all singletons once per processToolQueue batch to avoid
+   * repeated getter calls during tool execution.
+   */
+  private resolveSingletons(): void {
+    this._loopDetector = getLoopDetector();
+    this._healthMonitor = getSessionHealthMonitor();
+    this._toolExecLogger = getToolExecutionLogger();
+    this._outputTruncator = getOutputTruncator();
+    this._errorRecovery = getErrorRecoveryManager();
+    this._auditLogger = getAuditLogger();
+    this._toolResultCache = getToolResultCache();
+  }
+
+  /**
    * Process the tool queue for a session
    */
   async processToolQueue(session: InternalSession): Promise<'completed' | 'tool-continue' | 'awaiting-confirmation'> {
+    // Resolve all singletons once for this batch
+    this.resolveSingletons();
     const runId = session.state.activeRunId;
     if (!runId) {
       this.logger.warn('No active run for tool queue processing', { sessionId: session.state.id });
@@ -122,10 +147,42 @@ export class ToolQueueProcessor {
       const executableTools: ToolCallPayload[] = [];
       const toolsNeedingApproval: ToolCallPayload[] = [];
 
+      // Get user-configured tool settings for disabled/confirm lists
+      const toolSettings = this.getToolSettings();
+      const disabledToolsSet = new Set(toolSettings?.disabledTools ?? []);
+      const alwaysConfirmList = new Set(toolSettings?.alwaysConfirmTools ?? []);
+
       while (session.toolQueue.length > 0) {
         const tool = session.toolQueue[0];
+
+        // Skip disabled tools entirely — return error to LLM so it knows
+        if (disabledToolsSet.has(tool.name)) {
+          const disabledTool = session.toolQueue.shift()!;
+          const progressId = this.progressTracker.ensureToolProgressId(disabledTool);
+          const errorMessage: ChatMessage = {
+            id: randomUUID(),
+            role: 'tool',
+            content: `Tool "${disabledTool.name}" is disabled in settings. Use a different approach or request an alternative tool.`,
+            toolCallId: disabledTool.callId,
+            toolName: disabledTool.name,
+            toolSuccess: false,
+            createdAt: Date.now(),
+            runId,
+          };
+          session.state.messages.push(errorMessage);
+          this.progressTracker.finishToolProgress(session, runId, progressId, disabledTool.name, '', 'error');
+          this.updateSessionState(session.state.id, {
+            messages: session.state.messages,
+            updatedAt: Date.now(),
+          });
+          this.logger.info('Skipped disabled tool', { tool: disabledTool.name, sessionId: session.state.id });
+          continue;
+        }
+
         const toolRequiresApproval = this.toolRegistry.requiresApproval(tool.name);
-        const requiresApproval = !session.state.config.yoloMode && toolRequiresApproval;
+        // Check both the tool definition's requiresApproval AND the user's alwaysConfirmTools setting
+        const isInAlwaysConfirmList = alwaysConfirmList.has(tool.name);
+        const requiresApproval = !session.state.config.yoloMode && (toolRequiresApproval || isInAlwaysConfirmList);
 
         if (requiresApproval) {
           toolsNeedingApproval.push(session.toolQueue.shift()!);
@@ -137,13 +194,13 @@ export class ToolQueueProcessor {
 
       if (toolsNeedingApproval.length > 0) {
         const tool = toolsNeedingApproval[0];
-        const progressId = this.ensureToolProgressId(tool);
+        const progressId = this.progressTracker.ensureToolProgressId(tool);
 
         this.progressTracker.emitRunProgressItem(session, runId, {
           id: progressId,
           type: 'tool-call',
           label: tool.name,
-          detail: this.describeToolTarget(tool),
+          detail: this.progressTracker.describeToolTarget(tool),
           status: 'pending',
           timestamp: Date.now(),
         });
@@ -212,12 +269,12 @@ export class ToolQueueProcessor {
     });
 
     for (const tool of tools) {
-      const progressId = this.ensureToolProgressId(tool);
+      const progressId = this.progressTracker.ensureToolProgressId(tool);
       this.progressTracker.emitRunProgressItem(session, runId, {
         id: progressId,
         type: 'tool-call',
         label: tool.name,
-        detail: this.describeToolTarget(tool),
+        detail: this.progressTracker.describeToolTarget(tool),
         status: 'running',
         timestamp: Date.now(),
         metadata: { callId: tool.callId, parallel: true },
@@ -248,7 +305,7 @@ export class ToolQueueProcessor {
     const duration = Date.now() - startTime;
 
     // Log parallel execution results with time savings using structured logger
-    const toolExecutionLogger = getToolExecutionLogger();
+    const toolExecutionLogger = this._toolExecLogger!;
     toolExecutionLogger.logParallelExecution(session.state.id, runId, {
       toolCount: tools.length,
       tools: tools.map(t => t.name),
@@ -312,9 +369,10 @@ export class ToolQueueProcessor {
     try {
       await this.executeTool(session, tool, runId);
 
-      const toolMessage = session.state.messages
-        .filter(m => m.role === 'tool' && m.toolCallId === tool.callId)
-        .pop();
+      // Find the tool result message we just pushed (search from end for O(1) best case)
+      const toolMessage = session.state.messages.findLast(
+        m => m.role === 'tool' && m.toolCallId === tool.callId
+      );
 
       return {
         toolName: tool.name,
@@ -378,12 +436,12 @@ export class ToolQueueProcessor {
 
     // Loop detection — record the tool call BEFORE execution to detect loops early.
     // On failure, we update the same record with failure info instead of double-recording.
-    const loopDetector = getLoopDetector();
+    const loopDetector = this._loopDetector!;
     const iteration = session.agenticContext?.iteration || 1;
     const loopResult = loopDetector.recordToolCall(runId, tool, iteration);
 
     if (loopResult.loopDetected) {
-      const healthMonitor = getSessionHealthMonitor();
+      const healthMonitor = this._healthMonitor!;
       healthMonitor.recordLoopDetected(session.state.id, loopResult.loopType || 'unknown', loopResult.involvedTools);
 
       this.emitEvent({
@@ -422,14 +480,14 @@ export class ToolQueueProcessor {
 
     this.logger.info('Executing tool', { tool: tool.name, sessionId: session.state.id, runId });
     const toolLabel = tool.name;
-    const toolDetail = this.describeToolTarget(tool);
+    const toolDetail = this.progressTracker.describeToolTarget(tool);
     const progressId = this.progressTracker.startToolProgress(session, runId, tool, toolDetail);
 
     // Parse tool arguments once (reused below for compliance + execution)
     const toolArgs = tool.arguments && typeof tool.arguments === 'object' ? tool.arguments : {};
 
     // Log tool execution start with structured logging
-    const toolExecutionLogger = getToolExecutionLogger();
+    const toolExecutionLogger = this._toolExecLogger!;
     toolExecutionLogger.logStart({
       sessionId: session.state.id,
       runId,
@@ -532,7 +590,7 @@ export class ToolQueueProcessor {
           this.progressTracker.finishToolProgress(session, runId, progressId, toolLabel, toolDetail, 'error');
 
           // Audit log: tool blocked by compliance
-          const auditLogger = getAuditLogger();
+          const auditLogger = this._auditLogger!;
           const actor: SecurityActor = { sessionId: session.state.id, runId };
           auditLogger.log('tool_execution', 'tool_blocked', actor, {
             toolName: tool.name,
@@ -596,7 +654,7 @@ export class ToolQueueProcessor {
       const tokensSaved = result.metadata?.estimatedTokensSaved as number | undefined;
 
       // Apply intelligent output truncation if output exceeds token limit
-      const outputTruncator = getOutputTruncator();
+      const outputTruncator = this._outputTruncator!;
       const truncationResult = outputTruncator.truncate(result.output, tool.name);
       
       // Log truncation if it occurred
@@ -623,7 +681,7 @@ export class ToolQueueProcessor {
       
       if (!result.success) {
         // Get recovery suggestion with alternative approach if error is repeated
-        const errorRecoveryManager = getErrorRecoveryManager();
+        const errorRecoveryManager = this._errorRecovery!;
         const recoverySuggestion = errorRecoveryManager.analyzeError(
           result.output,
           tool.name,
@@ -671,17 +729,11 @@ export class ToolQueueProcessor {
         recordToolSuccess(session.state.id, tool.name);
       } else {
         recordToolError(session.state.id, tool.name, result.output.slice(0, 500));
-        // Also record to ErrorRecoveryManager for session error history tracking
-        getErrorRecoveryManager().recordError(
-          session.state.id,
-          tool.name,
-          result.output.slice(0, 500)
-        );
       }
 
       // Audit log: tool execution result
       {
-        const auditLogger = getAuditLogger();
+        const auditLogger = this._auditLogger!;
         const actor: SecurityActor = { sessionId: session.state.id, runId };
         auditLogger.log('tool_execution', result.success ? 'tool_success' : 'tool_failure', actor, {
           toolName: tool.name,
@@ -768,7 +820,7 @@ export class ToolQueueProcessor {
           tool: tool.name,
           duration,
           tokensSaved,
-          cacheStats: getToolResultCache().getStats(),
+          cacheStats: this._toolResultCache!.getStats(),
         });
       } else {
         toolExecutionLogger.logCacheEvent(tool.name, false);
@@ -780,6 +832,20 @@ export class ToolQueueProcessor {
       }
 
       agentMetrics.recordToolExecution(runId, result.success, false, tool.name);
+
+      // Record tool usage for discovery/recommendation tracking
+      try {
+        getToolUsageTracker().recordUsage(
+          tool.name,
+          result.success,
+          duration,
+          session.state.id,
+          session.state.workspacePath || undefined
+        );
+      } catch {
+        // Non-critical: usage tracking should not block tool execution
+      }
+
       this.progressTracker.finishToolProgress(session, runId, progressId, toolLabel, toolDetail, result.success ? 'success' : 'error');
       this.updateSessionState(session.state.id, {
         messages: session.state.messages,
@@ -791,15 +857,9 @@ export class ToolQueueProcessor {
 
       // Track error for context-aware tool selection
       recordToolError(session.state.id, tool.name, errorMsg);
-      // Also record to ErrorRecoveryManager for session error history tracking
-      getErrorRecoveryManager().recordError(
-        session.state.id,
-        tool.name,
-        errorMsg
-      );
 
-      // Get recovery suggestion with alternative approach if error is repeated
-      const errorRecoveryManager = getErrorRecoveryManager();
+      // Get recovery suggestion (reuse for both error content and logging)
+      const errorRecoveryManager = this._errorRecovery!;
       const recoverySuggestion = errorRecoveryManager.analyzeError(
         errorMsg,
         tool.name,
@@ -807,7 +867,7 @@ export class ToolQueueProcessor {
       );
 
       // Log tool error with structured logging including recovery suggestions
-      const toolExecutionLoggerForError = getToolExecutionLogger();
+      const toolExecutionLoggerForError = this._toolExecLogger!;
       toolExecutionLoggerForError.logError(
         {
           sessionId: session.state.id,
@@ -909,22 +969,6 @@ export class ToolQueueProcessor {
    */
   markToolAborted(session: InternalSession, runId: string, tool: ToolCallPayload): void {
     this.progressTracker.markToolAborted(session, runId, tool);
-  }
-
-  private ensureToolProgressId(tool: ToolCallPayload): string {
-    const annotated = tool as AnnotatedToolCall;
-    if (!annotated.__progressId) {
-      annotated.__progressId = tool.callId ? `tool-${tool.callId}` : `tool-${randomUUID()}`;
-    }
-    return annotated.__progressId;
-  }
-
-  private describeToolTarget(tool: ToolCallPayload): string | undefined {
-    const args = tool.arguments || {};
-    const path = (args.path || args.filePath) as string | undefined;
-    const command = args.command as string | undefined;
-    const query = (args.pattern || args.query) as string | undefined;
-    return path || command || query;
   }
 
   /**

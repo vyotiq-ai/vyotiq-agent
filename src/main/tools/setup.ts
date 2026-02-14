@@ -8,6 +8,7 @@ import { ToolRegistry } from './registry';
 import { ALL_TOOLS } from './implementations';
 import { ProcessTerminalManager } from './terminalManager';
 import type { ToolLogger, TerminalManager } from './types';
+import { getCapabilityMatcher } from './discovery/CapabilityMatcher';
 import { createLogger } from '../logger';
 
 const logger = createLogger('ToolSystem');
@@ -46,9 +47,12 @@ export function buildToolingSystem(config: ToolingConfig): ToolingSystem {
     initializationCount: toolingSystemInitCount,
   });
 
-  // Register all tools
+  // Register all tools with registry and capability matcher
+  const capabilityMatcher = getCapabilityMatcher();
   for (const tool of ALL_TOOLS) {
     registry.register(tool);
+    // Also register with capability matcher for tool chaining / discovery
+    capabilityMatcher.registerTool(tool);
   }
 
   // Register common aliases for compatibility
@@ -73,16 +77,6 @@ export function buildToolingSystem(config: ToolingConfig): ToolingSystem {
   registry.registerAlias('tasks', 'TodoWrite');
   registry.registerAlias('checklist', 'TodoWrite');
 
-  // Semantic search aliases
-  registry.registerAlias('semantic', 'semantic_search');
-  registry.registerAlias('vector_search', 'semantic_search');
-  registry.registerAlias('embedding_search', 'semantic_search');
-  registry.registerAlias('find_code', 'code_query');
-  registry.registerAlias('ask_code', 'code_query');
-  registry.registerAlias('similar_code', 'code_similarity');
-  registry.registerAlias('find_similar', 'code_similarity');
-  registry.registerAlias('code_clone', 'code_similarity');
-
   // Full-text search aliases (BM25 ranked keyword search)
   registry.registerAlias('fulltext_search', 'full_text_search');
   registry.registerAlias('text_search', 'full_text_search');
@@ -93,6 +87,11 @@ export function buildToolingSystem(config: ToolingConfig): ToolingSystem {
   registry.registerAlias('fetch', 'browser_fetch');
   registry.registerAlias('fetch_url', 'browser_fetch');
   registry.registerAlias('get_page', 'browser_fetch');
+
+  // Terminal tool aliases (LLMs may use longer names)
+  registry.registerAlias('check_terminal_output', 'check_terminal');
+  registry.registerAlias('kill_process', 'kill_terminal');
+  registry.registerAlias('stop_terminal', 'kill_terminal');
 
   return {
     registry,

@@ -213,10 +213,16 @@ const DANGEROUS_PATH_PATTERNS = [
   /^\/var\//,                // Variable data
   /^\/usr\//,                // User programs
   /^\/root\//,               // Root home
-  /^\/home\/[^/]+\/\./,      // Hidden files in home
+  /^\/home\/[^/]+\/\./,      // Hidden files in home (e.g., .ssh, .gnupg)
+  /\.ssh\//i,                // SSH keys in any path
+  /\.gnupg\//i,              // GPG keys in any path
+  /private[_-]?key/i,        // Private key files
+  /\.pem$/i,                 // PEM certificate/key files
   /^C:\\Windows/i,           // Windows system
   /^C:\\Program Files/i,     // Windows programs
   /^C:\\Users\\[^\\]+\\AppData/i, // Windows app data
+  /^C:\\Users\\[^\\]+\\\.ssh/i,   // Windows user SSH keys
+  /^C:\\Users\\[^\\]+\\\.gnupg/i, // Windows user GPG keys
   /%[0-9a-f]{2}/i,           // URL encoded characters
   // eslint-disable-next-line no-control-regex -- Intentional: detecting control characters for security
   /[\x00-\x1f]/,             // Control characters
@@ -601,11 +607,13 @@ export const IpcSchemas = {
   
   'agent:confirm-tool': {
     type: 'object',
-    required: ['sessionId', 'callId', 'approved'],
+    required: ['sessionId', 'runId', 'approved'],
     properties: {
       sessionId: { type: 'string', minLength: 1 },
-      callId: { type: 'string', minLength: 1 },
+      runId: { type: 'string', minLength: 1 },
       approved: { type: 'boolean' },
+      feedback: { type: 'string', optional: true },
+      action: { type: 'string', optional: true },
     },
   },
   

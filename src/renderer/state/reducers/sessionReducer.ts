@@ -238,6 +238,8 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
   const { [sessionId]: _deletedRouting, ...remainingRouting } = state.routingDecisions ?? {};
   const { [sessionId]: _deletedMetrics, ...remainingMetrics } = state.contextMetrics ?? {};
   const { [sessionId]: _deletedTodos, ...remainingTodos } = state.todos ?? {};
+  const { [sessionId]: _deletedCost, ...remainingCost } = state.sessionCost ?? {};
+  const { [sessionId]: _deletedErrors, ...remainingErrors } = state.runErrors ?? {};
   
   // Extract unique runIds from deleted session's messages to clean up run-keyed state
   const runIdsToClean = new Set<string>();
@@ -253,12 +255,22 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
   let remainingToolResults = state.toolResults;
   let remainingInlineArtifacts = state.inlineArtifacts;
   
+  // Clean up run-keyed state (toolResults, inlineArtifacts, executingTools, queuedTools)
+  let remainingExecutingTools = state.executingTools;
+  let remainingQueuedTools = state.queuedTools;
+
   if (runIdsToClean.size > 0) {
     remainingToolResults = Object.fromEntries(
       Object.entries(state.toolResults).filter(([runId]) => !runIdsToClean.has(runId))
     );
     remainingInlineArtifacts = Object.fromEntries(
       Object.entries(state.inlineArtifacts).filter(([runId]) => !runIdsToClean.has(runId))
+    );
+    remainingExecutingTools = Object.fromEntries(
+      Object.entries(state.executingTools).filter(([runId]) => !runIdsToClean.has(runId))
+    );
+    remainingQueuedTools = Object.fromEntries(
+      Object.entries(state.queuedTools).filter(([runId]) => !runIdsToClean.has(runId))
     );
   }
   
@@ -269,6 +281,8 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
   void _deletedRouting;
   void _deletedMetrics;
   void _deletedTodos;
+  void _deletedCost;
+  void _deletedErrors;
   
   // Clear streaming state
   const streamingSessions = safeCreateSet(state.streamingSessions);
@@ -286,6 +300,10 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
     todos: remainingTodos,
     toolResults: remainingToolResults,
     inlineArtifacts: remainingInlineArtifacts,
+    sessionCost: remainingCost,
+    runErrors: remainingErrors,
+    executingTools: remainingExecutingTools,
+    queuedTools: remainingQueuedTools,
     streamingSessions,
   };
 }
@@ -455,6 +473,13 @@ export function sessionReducer(
         inlineArtifacts: {},
         sessionCost: {},
         terminalStreams: {},
+        // Clear run/communication state to prevent orphaned references
+        runErrors: {},
+        executingTools: {},
+        queuedTools: {},
+        pendingQuestions: [] as typeof state.pendingQuestions,
+        pendingDecisions: [] as typeof state.pendingDecisions,
+        communicationProgress: [] as typeof state.communicationProgress,
       };
       
     default:

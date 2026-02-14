@@ -14,6 +14,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createLogger } from '../../utils/logger';
 import { useStableCallback } from '../../utils/performance';
+import { useToast } from '../../components/ui/Toast';
 import type { 
   FileTreeNode, 
   ContextMenuState, 
@@ -239,6 +240,7 @@ export interface UseFileTreeReturn {
 
 export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
   const { workspacePath, maxDepth = 20, onFileOpen } = options;
+  const { toast } = useToast();
   
   // State
   const [nodes, setNodes] = useState<FileTreeNode[]>([]);
@@ -666,7 +668,8 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
       ? path.replace(workspacePath, '').replace(/^[/\\]/, '')
       : path;
     navigator.clipboard.writeText(textToCopy);
-  }, [workspacePath]);
+    toast({ type: 'success', message: 'Path copied to clipboard' });
+  }, [workspacePath, toast]);
   
   const revealInExplorer = useCallback((path: string) => {
     window.vyotiq.files.reveal(path);

@@ -17,46 +17,6 @@ import type {
 export * from './types';
 
 // =============================================================================
-// Legacy exports for backward compatibility with agent/index.ts
-// =============================================================================
-
-/** Legacy model capabilities interface */
-export interface ModelCapabilities {
-  reasoning: number;
-  coding: number;
-  analysis: number;
-  creativity: number;
-  speed: number;
-}
-
-/** Legacy model config interface */
-export interface ModelConfig {
-  id: string;
-  name: string;
-  provider: string;
-  capabilities: ModelCapabilities;
-  contextWindow: number;
-  costPerToken: number;
-}
-
-/** Legacy model configurations - kept for backward compatibility */
-export const MODEL_CONFIGS: Record<string, ModelConfig> = {};
-
-/** 
- * Legacy ModelRouter class - kept for backward compatibility
- * New code should use analyzeUserQuery() and selectBestModel() directly
- */
-export class ModelRouter {
-  analyzeTask(userMessage: string): TaskAnalysis {
-    return analyzeUserQuery(userMessage);
-  }
-
-  selectModel(taskAnalysis: TaskAnalysis, availableProviders: string[]): RoutingDecision | null {
-    return selectBestModel(taskAnalysis, availableProviders as LLMProviderName[]);
-  }
-}
-
-// =============================================================================
 // Core routing functions
 // =============================================================================
 
@@ -288,17 +248,6 @@ export function selectBestModel(
     reason: `Selected ${best.model.name} (${best.model.provider}) for ${taskType} task based on capabilities`,
     usedDefault: false,
   };
-}
-
-/**
- * Get the best provider for a specific task type from available providers
- */
-export function selectBestProvider(
-  taskAnalysis: TaskAnalysis,
-  availableProviders: LLMProviderName[]
-): LLMProviderName | null {
-  const decision = selectBestModel(taskAnalysis, availableProviders);
-  return decision?.selectedProvider ?? null;
 }
 
 /**

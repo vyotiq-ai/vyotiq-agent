@@ -155,7 +155,6 @@ Comprehensive documentation has been created for the Vyotiq AI project. All docu
 - Metrics dashboard
 
 ### Advanced Features
-- **Semantic Search**: Local vector embeddings for codebase search
 - Context compression and summarization
 - Prompt caching (provider-specific)
 - Tool result caching

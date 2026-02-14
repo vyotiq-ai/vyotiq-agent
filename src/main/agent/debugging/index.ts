@@ -1,14 +1,14 @@
 /**
- * Debugging Module Index
+ * Debugging Module
  *
- * Re-exports all debugging-related types and classes for
- * tracing, state inspection, and breakpoint management.
+ * Provides agent debugging, tracing, state inspection, and breakpoint management.
  */
 
 // Types
 export * from './types';
+export { DEFAULT_DEBUG_CONFIG } from './types';
 
-// Single-agent debugging exports
+// Core debugger
 export { AgentDebugger } from './AgentDebugger';
 export type {
   DebugConfig,
@@ -18,18 +18,6 @@ export type {
   BreakpointCondition,
   TraceExportOptions,
 } from './types';
-export { DEFAULT_DEBUG_CONFIG } from './types';
-
-// Execution recording
-export {
-  ExecutionRecorder,
-  type Recording,
-  type RecordingEntry,
-  type RecordingEntryType,
-  type RecordingMetadata,
-  type ExecutionRecorderConfig,
-  DEFAULT_EXECUTION_RECORDER_CONFIG,
-} from './ExecutionRecorder';
 
 // State inspection
 export {
@@ -62,27 +50,13 @@ export {
 // =============================================================================
 
 import { VyotiqLogger, type Logger } from '../../logger';
-import { ExecutionRecorder } from './ExecutionRecorder';
 import { StateInspector } from './StateInspector';
 import { BreakpointManager } from './BreakpointManager';
 
-let executionRecorderInstance: ExecutionRecorder | null = null;
 let stateInspectorInstance: StateInspector | null = null;
 let breakpointManagerInstance: BreakpointManager | null = null;
 
-/**
- * Get or create the ExecutionRecorder singleton
- */
-export function getExecutionRecorder(logger?: Logger): ExecutionRecorder {
-  if (!executionRecorderInstance) {
-    executionRecorderInstance = new ExecutionRecorder(logger || new VyotiqLogger('ExecutionRecorder'));
-  }
-  return executionRecorderInstance;
-}
-
-/**
- * Get or create the StateInspector singleton
- */
+/** Get or create the StateInspector singleton */
 export function getStateInspector(logger?: Logger): StateInspector {
   if (!stateInspectorInstance) {
     stateInspectorInstance = new StateInspector(logger || new VyotiqLogger('StateInspector'));
@@ -90,9 +64,7 @@ export function getStateInspector(logger?: Logger): StateInspector {
   return stateInspectorInstance;
 }
 
-/**
- * Get or create the BreakpointManager singleton
- */
+/** Get or create the BreakpointManager singleton */
 export function getBreakpointManager(logger?: Logger): BreakpointManager {
   if (!breakpointManagerInstance) {
     breakpointManagerInstance = new BreakpointManager(logger || new VyotiqLogger('BreakpointManager'));
@@ -100,11 +72,8 @@ export function getBreakpointManager(logger?: Logger): BreakpointManager {
   return breakpointManagerInstance;
 }
 
-/**
- * Reset all debugging singletons (for testing)
- */
+/** Reset all debugging singletons (for testing) */
 export function resetDebuggingSingletons(): void {
-  executionRecorderInstance = null;
   stateInspectorInstance = null;
   breakpointManagerInstance = null;
 }

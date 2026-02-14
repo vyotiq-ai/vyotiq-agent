@@ -5,10 +5,9 @@ use axum::{
 
 use crate::error::AppResult;
 use crate::search::{self, GrepQuery, GrepResponse, SearchQuery, SearchResponse};
-use crate::embedder::SemanticSearchResponse;
 use crate::state::AppState;
 
-/// Spawn a background task that runs both full-text and vector indexing.
+/// Spawn a background task that runs full-text indexing.
 /// This deduplicates the identical pattern used in index_workspace, create_workspace,
 /// activate_workspace, and trigger_index WS commands.
 /// Each inner function has its own CAS guard + smart hash dedup, so duplicate
@@ -18,7 +17,6 @@ pub fn spawn_background_indexing(
     workspace_id: String,
     workspace_path: String,
     index_manager: std::sync::Arc<crate::indexer::IndexManager>,
-    embedding_manager: std::sync::Arc<crate::embedder::EmbeddingManager>,
     workspace_manager: std::sync::Arc<crate::workspace::WorkspaceManager>,
     event_tx: tokio::sync::broadcast::Sender<crate::state::ServerEvent>,
 ) {
@@ -34,8 +32,6 @@ pub fn spawn_background_indexing(
     }
 
     tokio::spawn(async move {
-        let mut fulltext_ok = false;
-
         // Full-text indexing (Tantivy)
         if let Err(e) = index_manager.index_workspace(&workspace_id, &workspace_path, event_tx.clone()).await {
             tracing::error!("Full-text indexing failed for {}: {}", workspace_id, e);
@@ -44,7 +40,6 @@ pub fn spawn_background_indexing(
                 error: e.to_string(),
             });
         } else {
-            fulltext_ok = true;
             let status = index_manager
                 .get_index_status(&workspace_id)
                 .unwrap_or_default();
@@ -54,35 +49,8 @@ pub fn spawn_background_indexing(
                 status.total_size_bytes,
                 true,
             );
-        }
 
-        // Vector embedding indexing (fastembed + usearch)
-        let emb = embedding_manager.clone();
-        let ws_id2 = workspace_id.clone();
-        let ws_path2 = workspace_path.clone();
-        let etx2 = event_tx.clone();
-        let vector_ok = tokio::task::spawn_blocking(move || {
-            let files = collect_indexable_files_pub(&ws_path2);
-            match emb.index_workspace_vectors(&ws_id2, &files, Some(&etx2)) {
-                Ok(chunks) => {
-                    tracing::info!("Vector indexing complete for {}: {} chunks", ws_id2, chunks);
-                    true
-                }
-                Err(e) => {
-                    tracing::error!("Vector indexing failed for {}: {}", ws_id2, e);
-                    let _ = etx2.send(crate::state::ServerEvent::IndexingError {
-                        workspace_id: ws_id2.clone(),
-                        error: format!("Vector indexing failed: {}", e),
-                    });
-                    false
-                }
-            }
-        })
-        .await
-        .unwrap_or(false);
-
-        // Emit SearchReady when both indexes are available
-        if fulltext_ok || vector_ok {
+            // Emit SearchReady when indexing is complete
             let _ = event_tx.send(crate::state::ServerEvent::SearchReady {
                 workspace_id: workspace_id.clone(),
             });
@@ -109,7 +77,6 @@ pub async fn index_workspace(
         workspace_id.clone(),
         ws.path.clone(),
         state.index_manager.clone(),
-        state.embedding_manager.clone(),
         state.workspace_manager.clone(),
         state.event_tx.clone(),
     );
@@ -120,7 +87,7 @@ pub async fn index_workspace(
     })))
 }
 
-/// Collect files suitable for embedding from a workspace path.
+/// Collect files suitable for indexing from a workspace path.
 /// Uses rayon for parallel file reading to maximize I/O throughput.
 pub fn collect_indexable_files_pub(
     workspace_path: &str,
@@ -153,7 +120,7 @@ pub fn collect_indexable_files_pub(
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_lowercase();
-            is_embeddable_ext(&ext)
+            crate::config::is_supported_extension(&ext)
         })
         .map(|entry| entry.into_path())
         .collect();
@@ -175,20 +142,10 @@ pub fn collect_indexable_files_pub(
                 .to_string_lossy()
                 .to_lowercase();
 
-            let language = detect_language_for_embedding(&ext);
+            let language = crate::lang::detect_language(&ext).to_string();
             Some((path.to_path_buf(), relative, content, language))
         })
         .collect()
-}
-
-/// Check if a file extension is suitable for embedding.
-/// Delegates to the shared canonical list in config.rs.
-fn is_embeddable_ext(ext: &str) -> bool {
-    crate::config::is_supported_extension(ext)
-}
-
-fn detect_language_for_embedding(ext: &str) -> String {
-    crate::lang::detect_language(ext).to_string()
 }
 
 pub async fn index_status(
@@ -196,24 +153,16 @@ pub async fn index_status(
     Path(workspace_id): Path<String>,
 ) -> AppResult<Json<serde_json::Value>> {
     let status = state.index_manager.get_index_status(&workspace_id)?;
-    let (vector_count, vector_ready) = state.embedding_manager.get_stats(&workspace_id);
-    let model_ready = state.embedding_manager.is_model_ready();
-
-    let is_vector_indexing = state.embedding_manager.is_indexing();
 
     Ok(Json(serde_json::json!({
         "indexed": status.indexed,
         "is_indexing": status.is_indexing,
-        "is_vector_indexing": is_vector_indexing,
         "indexed_count": status.indexed_count,
         "total_count": status.total_count,
-        "vector_count": vector_count,
-        "vector_ready": vector_ready,
-        "embedding_model_ready": model_ready,
     })))
 }
 
-/// Full-text search (Tantivy BM25) — renamed from misleading "semantic_search"
+/// Full-text search (Tantivy BM25)
 pub async fn fulltext_search(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
@@ -234,55 +183,6 @@ pub async fn fulltext_search(
         )));
     }
     let response = search::search_workspace(&state.index_manager, &workspace_id, &query)?;
-    Ok(Json(response))
-}
-
-/// True semantic search using vector embeddings (fastembed + usearch)
-pub async fn semantic_search(
-    State(state): State<AppState>,
-    Path(workspace_id): Path<String>,
-    Json(body): Json<serde_json::Value>,
-) -> AppResult<Json<SemanticSearchResponse>> {
-    let query = body
-        .get("query")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    
-    // Validate query is not empty
-    if query.trim().is_empty() {
-        return Err(crate::error::AppError::BadRequest(
-            "Search query must not be empty".to_string(),
-        ));
-    }
-
-    // Validate query length to prevent abuse
-    if query.len() > crate::config::MAX_SEARCH_QUERY_LENGTH {
-        return Err(crate::error::AppError::BadRequest(format!(
-            "Search query too long ({} chars). Maximum allowed is {}.",
-            query.len(),
-            crate::config::MAX_SEARCH_QUERY_LENGTH,
-        )));
-    }
-    
-    let limit = body
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(20) as usize;
-    
-    // Clamp limit to a reasonable upper bound
-    let limit = limit.min(1000);
-
-    // Run embedding + search in blocking context (candle model is sync)
-    let emb = state.embedding_manager.clone();
-    let ws_id = workspace_id.clone();
-
-    let response = tokio::task::spawn_blocking(move || {
-        search::vector_semantic_search(&emb, &ws_id, &query, limit)
-    })
-    .await
-    .map_err(|e| crate::error::AppError::IndexError(format!("Semantic search task failed: {}", e)))??;
-
     Ok(Json(response))
 }
 

@@ -60,6 +60,10 @@ export function useLocalStorage<T>(
 
     const [storedValue, setStoredValue] = useState<T>(readValue);
 
+    // Keep a ref to the current stored value for stable setValue callback
+    const storedValueRef = useRef(storedValue);
+    storedValueRef.current = storedValue;
+
     // Set value to localStorage
     const setValue = useCallback((value: SetValue<T>) => {
         if (typeof window === 'undefined') {
@@ -68,8 +72,8 @@ export function useLocalStorage<T>(
         }
 
         try {
-            // Allow value to be a function
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
+            // Allow value to be a function — use ref to avoid stale closure
+            const valueToStore = value instanceof Function ? value(storedValueRef.current) : value;
             
             // Save to local storage
             window.localStorage.setItem(keyRef.current, serializer(valueToStore));
@@ -84,7 +88,7 @@ export function useLocalStorage<T>(
         } catch (error) {
             logger.warn(`Error setting key "${keyRef.current}"`, { error });
         }
-    }, [storedValue, serializer]);
+    }, [serializer]);
 
     // Remove value from localStorage
     const removeValue = useCallback(() => {
@@ -172,17 +176,21 @@ export function useSessionStorage<T>(
 
     const [storedValue, setStoredValue] = useState<T>(readValue);
 
+    // Keep a ref to the current stored value for stable setValue callback
+    const storedValueRef = useRef(storedValue);
+    storedValueRef.current = storedValue;
+
     const setValue = useCallback((value: SetValue<T>) => {
         if (typeof window === 'undefined') return;
 
         try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
+            const valueToStore = value instanceof Function ? value(storedValueRef.current) : value;
             window.sessionStorage.setItem(keyRef.current, serializer(valueToStore));
             setStoredValue(valueToStore);
         } catch (error) {
             logger.warn(`Error setting sessionStorage key "${keyRef.current}"`, { error });
         }
-    }, [storedValue, serializer]);
+    }, [serializer]);
 
     const removeValue = useCallback(() => {
         if (typeof window === 'undefined') return;

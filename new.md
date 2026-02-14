@@ -4,7 +4,7 @@ NOTE:- maintain the current existing Terminal/cli styling and designing and aest
 
 ## Launch multiple subagents for
 
-we are not using the latest models for embedding and indexing at all. We are using a 2 year old model. Please search for the latest and best all rounder model from - https://huggingface.co/models?sort=trending&search=em and then complete replace from the current existing old model with it in the entire codebase properly.
+
 
 
 ## Important Instructions and Guidelines

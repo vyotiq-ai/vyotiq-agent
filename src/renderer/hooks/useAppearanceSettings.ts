@@ -94,14 +94,29 @@ export function applyAppearanceSettings(settings: AppearanceSettings): void {
 }
 
 /**
+ * Shallow equality check for appearance settings objects
+ * More efficient than JSON.stringify comparison
+ */
+function shallowAppearanceEqual(a: AppearanceSettings, b: AppearanceSettings): boolean {
+  if (a === b) return true;
+  const keysA = Object.keys(a) as Array<keyof AppearanceSettings>;
+  const keysB = Object.keys(b) as Array<keyof AppearanceSettings>;
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+/**
  * Hook that applies appearance settings from the agent state
  * Call this once in your App component to ensure settings are applied
  */
 export function useAppearanceSettings(): void {
   const appearanceSettings = useAgentSelector(
     (state) => state.settings?.appearanceSettings ?? DEFAULT_APPEARANCE_SETTINGS,
-    // Custom equality check for appearance settings
-    (a, b) => JSON.stringify(a) === JSON.stringify(b)
+    // Shallow equality check — O(k) per key vs O(n) per char for JSON.stringify
+    shallowAppearanceEqual
   );
 
   useEffect(() => {

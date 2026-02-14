@@ -163,7 +163,7 @@ export const terminalStyles = {
   listItemActive: 'bg-[var(--color-surface-2)]/50 text-[var(--color-text-primary)]',
   
   // Blinking cursor
-  cursor: 'inline-block w-2 h-4 bg-[var(--color-accent-primary)] animate-pulse',
+  cursor: 'inline-block w-2 h-4 bg-[var(--color-accent-primary)] animate-[blink_1s_steps(2)_infinite]',
   cursorBlink: 'animate-[blink_1s_steps(1)_infinite]',
 } as const;
 

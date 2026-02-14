@@ -230,6 +230,22 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     }, []),
   });
 
+  // Separate streaming buffer for thinking/reasoning deltas.
+  // Previously thinking deltas were dispatched directly (unbuffered), causing:
+  // 1. Excessive state updates per token (one dispatch per chunk)
+  // 2. No smooth word-by-word rendering — chunks arrived too fast or too slow
+  // Now thinking deltas get the same 32ms batching as content deltas.
+  const { appendDelta: appendThinkingDelta, clearBuffer: clearThinkingBuffer, flushSession: flushThinkingSession } = useStreamingBuffer({
+    flushInterval: 32,
+    maxBufferSize: 100,
+    onFlush: useCallback((sessionId: string, messageId: string, accumulatedDelta: string) => {
+      dispatchRef.current({
+        type: 'STREAM_THINKING_DELTA',
+        payload: { sessionId, messageId, delta: accumulatedDelta },
+      });
+    }, []),
+  });
+
   // Access current state without re-rendering the provider
   const getCurrentState = useCallback(() => store.getState(), [store]);
 
@@ -328,15 +344,11 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
         case 'stream-delta': {
           const deltaEvent = event as StreamDeltaEvent;
           if (deltaEvent.isThinking) {
-            // Dispatch thinking delta directly (not buffered for real-time feedback)
-            dispatchRef.current({
-              type: 'STREAM_THINKING_DELTA',
-              payload: {
-                sessionId: deltaEvent.sessionId,
-                messageId: deltaEvent.messageId,
-                delta: deltaEvent.delta || ''
-              }
-            });
+            // Buffer thinking deltas for smooth word-by-word streaming
+            // Same 32ms batching as content deltas for consistent rendering
+            if (deltaEvent.delta) {
+              appendThinkingDelta(deltaEvent.sessionId, deltaEvent.messageId, deltaEvent.delta);
+            }
           } else if (deltaEvent.toolCall) {
             // Forward tool call deltas directly
             dispatchRef.current({
@@ -364,6 +376,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           }
           if (event.status === 'idle' || event.status === 'error') {
             clearBuffer(event.sessionId);
+            clearThinkingBuffer(event.sessionId);
           }
           dispatchRef.current({
             type: 'RUN_STATUS',
@@ -771,7 +784,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           break;
       }
     },
-    [appendDelta, clearBuffer, flushSession, batchedDispatch, getCurrentState, scheduleTerminalFlush, store],
+    [appendDelta, appendThinkingDelta, clearBuffer, clearThinkingBuffer, flushSession, flushThinkingSession, batchedDispatch, getCurrentState, scheduleTerminalFlush, store],
   );
 
   // Track if vyotiq API is ready

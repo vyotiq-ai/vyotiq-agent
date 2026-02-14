@@ -26,9 +26,10 @@ import { TerminalEventHandler } from './terminalEventHandler';
 import { ProviderManager } from './providerManager';
 import { initRecovery, getSelfHealingAgent } from './recovery';
 import { getLoopDetector } from './loopDetection';
-import { initGitIntegration } from './git';
 import { ModelQualityTracker, getModelQualityTracker } from './modelQuality';
 import { getSessionHealthMonitor } from './sessionHealth';
+import { undoHistory } from './undoHistory';
+import { CostManager } from './providers/CostManager';
 
 interface OrchestratorDeps {
   settingsStore: SettingsStore;
@@ -42,6 +43,7 @@ export class AgentOrchestrator extends EventEmitter {
   private readonly toolRegistry: ToolRegistry;
   private readonly terminalManager: TerminalManager;
   private readonly modelQualityTracker: ModelQualityTracker;
+  private readonly costManager: CostManager;
 
   private sessionManager: SessionManager;
   private runExecutor: RunExecutor;
@@ -65,8 +67,15 @@ export class AgentOrchestrator extends EventEmitter {
     this.settingsStore = deps.settingsStore;
     this.logger = deps.logger;
 
-    // Initialize model quality tracking
-    this.modelQualityTracker = new ModelQualityTracker();
+    // Initialize model quality tracking — use singleton to avoid split-brain
+    // between orchestrator (IPC queries) and runExecutor (recording)
+    this.modelQualityTracker = getModelQualityTracker();
+
+    // Initialize cost manager for budget enforcement
+    this.costManager = new CostManager(
+      this.logger,
+      (event) => this.emitEvent(event as unknown as RendererEvent),
+    );
 
     const toolLogger: ToolLogger = {
       info: (message: string, meta?: Record<string, unknown>) => this.logger.info(`[tool] ${message}`, meta),
@@ -105,6 +114,7 @@ export class AgentOrchestrator extends EventEmitter {
         return toolSettings ? { ...DEFAULT_TOOL_CONFIG_SETTINGS, ...toolSettings } : DEFAULT_TOOL_CONFIG_SETTINGS;
       },
       getWorkspaceDiagnostics: () => this.getWorkspaceDiagnostics(),
+      checkBudget: (sessionId: string) => this.costManager.checkBudget(sessionId, 0),
     });
 
     // Initialize new managers
@@ -153,16 +163,6 @@ export class AgentOrchestrator extends EventEmitter {
     await this.sessionManager.load();
     this.providerManager.validateConfiguration();
 
-    // Initialize git integration components
-    try {
-      initGitIntegration(this.logger);
-      this.logger.info('Git integration initialized');
-    } catch (error) {
-      this.logger.warn('Failed to initialize git integration', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
     // Initialize DynamicToolFactory with registry (Phase 2)
     // This allows dynamically created tools to be registered and available to agents
     await this.initializeDynamicToolFactory();
@@ -174,123 +174,7 @@ export class AgentOrchestrator extends EventEmitter {
     await this.initializeMCPIntegration();
 
     // Initialize recovery/self-healing system
-    try {
-      await initRecovery({
-        logger: this.logger,
-        emitEvent: (event: unknown) => this.emitEvent(event as RendererEvent),
-        getSystemState: () => ({
-          activeRuns: this.sessionManager.getAllActiveSessions().length,
-        }),
-        reduceConcurrency: async (factor: number) => {
-          // Reduce concurrency by pausing a proportion of active sessions
-          const activeSessions = this.sessionManager.getAllActiveSessions();
-          const sessionsToReduce = Math.max(1, Math.ceil(activeSessions.length * Math.min(1, Math.max(0, factor))));
-          const sessionsToPause = activeSessions.slice(0, sessionsToReduce);
-          for (const session of sessionsToPause) {
-            try {
-              this.runExecutor.pauseRun(session.id);
-            } catch (err) {
-              this.logger.warn('Failed to pause session during concurrency reduction', {
-                sessionId: session.id,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }
-          this.logger.info('Self-healing: paused sessions to reduce concurrency', {
-            pausedCount: sessionsToPause.length,
-            totalActive: activeSessions.length,
-            reductionFactor: factor,
-          });
-        },
-        pauseNewTasks: async (durationMs: number) => {
-          // Pause all active sessions and auto-resume after duration
-          const activeSessions = this.sessionManager.getAllActiveSessions();
-          for (const session of activeSessions) {
-            try {
-              this.runExecutor.pauseRun(session.id);
-            } catch (err) {
-              this.logger.warn('Failed to pause session', {
-                sessionId: session.id,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }
-          setTimeout(() => {
-            // Re-fetch active sessions to avoid resuming stale/completed sessions
-            const currentSessions = this.sessionManager.getAllActiveSessions();
-            for (const session of currentSessions) {
-              try {
-                this.runExecutor.resumeRun(session.id);
-              } catch (err) {
-                this.logger.warn('Failed to resume session', {
-                  sessionId: session.id,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-              }
-            }
-            this.logger.info('Self-healing: auto-resumed paused sessions', { durationMs });
-          }, durationMs);
-        },
-        triggerCircuitBreak: async () => {
-          // Cancel all active runs as emergency measure
-          const activeSessions = this.sessionManager.getAllActiveSessions();
-          let cancelledCount = 0;
-          for (const sessionState of activeSessions) {
-            try {
-              const session = this.sessionManager.getSession(sessionState.id);
-              if (session) {
-                this.runExecutor.cancelRun(sessionState.id, session);
-                cancelledCount++;
-              }
-            } catch (err) {
-              this.logger.warn('Failed to cancel session during circuit break', {
-                sessionId: sessionState.id,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }
-          this.logger.warn('Self-healing: circuit break triggered, cancelled all active runs', {
-            cancelledCount,
-          });
-        },
-        clearCaches: async () => {
-          // Prompt cache (stats only; provider-side caching is external)
-          try {
-            getCacheManager().resetStats();
-          } catch (err) {
-            // Cache reset is non-critical; log for debugging
-            this.logger.debug('Failed to reset cache manager stats', { error: err instanceof Error ? err.message : String(err) });
-          }
-
-          // Tool result + context caches
-          try {
-            const toolCache = getToolResultCache();
-            toolCache.invalidateAll();
-            toolCache.resetStats();
-          } catch (err) {
-            // Tool cache reset is non-critical; log for debugging
-            this.logger.debug('Failed to reset tool cache', { error: err instanceof Error ? err.message : String(err) });
-          }
-
-          try {
-            const contextCache = getContextCache();
-            contextCache.clear();
-            contextCache.resetStats();
-          } catch (err) {
-            // Context cache reset is non-critical; log for debugging
-            this.logger.debug('Failed to reset context cache', { error: err instanceof Error ? err.message : String(err) });
-          }
-        },
-      });
-      // Start the self-healing agent for proactive monitoring
-      const selfHealingAgent = getSelfHealingAgent();
-      selfHealingAgent.start();
-      this.logger.info('Recovery/self-healing system initialized and started');
-    } catch (err) {
-      this.logger.warn('Failed to initialize recovery system', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    await this.initializeRecoverySystem();
 
     // Periodic cleanup of orphaned session throttle tracking entries (every 5 minutes)
     // Prevents memory leaks from sessions that expired without explicit deletion
@@ -429,7 +313,18 @@ export class AgentOrchestrator extends EventEmitter {
   }
 
   async startSession(payload: StartSessionPayload): Promise<AgentSessionState> {
-    return this.sessionManagementHandler.startSession(payload, this.settingsStore.get().defaultConfig);
+    const settings = this.settingsStore.get();
+    const defaultConfig = { ...settings.defaultConfig };
+
+    // Link enableAutonomousMode to yoloMode: when autonomous mode is enabled
+    // globally, auto-enable yoloMode for new sessions so tools can execute
+    // without requiring user confirmation at each step
+    if (settings.autonomousFeatureFlags?.enableAutonomousMode && !defaultConfig.yoloMode) {
+      defaultConfig.yoloMode = true;
+      this.logger.info('Autonomous mode enabled — setting yoloMode=true for new session');
+    }
+
+    return this.sessionManagementHandler.startSession(payload, defaultConfig);
   }
 
   async sendMessage(payload: SendMessagePayload): Promise<void> {
@@ -607,6 +502,14 @@ export class AgentOrchestrator extends EventEmitter {
     
     // Clean up session-state emit throttle tracking to prevent memory leaks
     this.cleanupSessionThrottleTracking(sessionId);
+    
+    // Clean up undo history files for the deleted session
+    undoHistory.clearSessionHistory(sessionId).catch(err => {
+      this.logger.error('Failed to clear undo history for deleted session', {
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
     
     // Delete the session from storage and memory
     this.sessionManagementHandler.deleteSession(sessionId);
@@ -898,10 +801,9 @@ export class AgentOrchestrator extends EventEmitter {
       // Health monitor may not be initialized
     }
 
-    // Clear model quality tracker records
+    // Clear model quality tracker records (unified singleton)
     try {
-      const qualityTracker = getModelQualityTracker();
-      qualityTracker.clear();
+      this.modelQualityTracker.clear();
       this.logger.debug('Model quality tracker cleared');
     } catch {
       // Tracker may not be initialized
@@ -933,17 +835,6 @@ export class AgentOrchestrator extends EventEmitter {
         this.logger.debug('Self-healing agent stopped');
       } catch {
         // Recovery system may not be initialized, ignore
-      }
-
-      // Shutdown git integration
-      try {
-        const { shutdownGitIntegration } = await import('./git');
-        shutdownGitIntegration();
-        this.logger.debug('Git integration shutdown complete');
-      } catch (error) {
-        this.logger.warn('Error shutting down git integration', {
-          error: error instanceof Error ? error.message : String(error),
-        });
       }
 
       // Shutdown LSP Manager
@@ -1087,16 +978,22 @@ export class AgentOrchestrator extends EventEmitter {
     try {
       const { initializeMCPServerManager, initializeMCPToolRegistryAdapter, getMCPServerManager } = await import('../mcp');
       
-      // Initialize MCP server manager
-      initializeMCPServerManager();
+      // Initialize MCP server manager with settings from the store
+      const settings = this.settingsStore.get();
+      const mcpSettings = settings.mcpSettings;
+      initializeMCPServerManager(mcpSettings || undefined);
       
       // Initialize the tool registry adapter to sync MCP tools with main registry
-      initializeMCPToolRegistryAdapter(this.toolRegistry);
+      // Pass a getter for the current requireDynamicToolConfirmation setting
+      // so MCP tools respect the live setting value (not just the default)
+      initializeMCPToolRegistryAdapter(this.toolRegistry, () => {
+        const currentSettings = this.settingsStore.get();
+        const toolSettings = currentSettings.autonomousFeatureFlags?.toolSettings;
+        return toolSettings?.requireDynamicToolConfirmation ?? DEFAULT_TOOL_CONFIG_SETTINGS.requireDynamicToolConfirmation;
+      });
       
       // Load saved MCP servers from settings and connect them
-      const settings = this.settingsStore.get();
       const mcpServers = settings.mcpServers ?? [];
-      const mcpSettings = settings.mcpSettings;
       
       if (mcpSettings?.enabled && mcpSettings?.autoStartServers) {
         const manager = getMCPServerManager();
@@ -1147,6 +1044,64 @@ export class AgentOrchestrator extends EventEmitter {
       }
     } catch (err) {
       this.logger.warn('Failed to initialize MCP integration', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Initialize recovery/self-healing system.
+   * Provides hooks for the self-healing agent to manage sessions.
+   */
+  private async initializeRecoverySystem(): Promise<void> {
+    try {
+      await initRecovery({
+        logger: this.logger,
+        emitEvent: (event: unknown) => this.emitEvent(event as RendererEvent),
+        getSystemState: () => ({
+          activeRuns: this.sessionManager.getAllActiveSessions().length,
+        }),
+        reduceConcurrency: async (factor: number) => {
+          const activeSessions = this.sessionManager.getAllActiveSessions();
+          const count = Math.max(1, Math.ceil(activeSessions.length * Math.min(1, Math.max(0, factor))));
+          for (const session of activeSessions.slice(0, count)) {
+            try { this.runExecutor.pauseRun(session.id); } catch { /* non-critical */ }
+          }
+          this.logger.info('Self-healing: reduced concurrency', { pausedCount: count, totalActive: activeSessions.length });
+        },
+        pauseNewTasks: async (durationMs: number) => {
+          const activeSessions = this.sessionManager.getAllActiveSessions();
+          for (const s of activeSessions) {
+            try { this.runExecutor.pauseRun(s.id); } catch { /* non-critical */ }
+          }
+          setTimeout(() => {
+            for (const s of this.sessionManager.getAllActiveSessions()) {
+              try { this.runExecutor.resumeRun(s.id); } catch { /* non-critical */ }
+            }
+            this.logger.info('Self-healing: auto-resumed paused sessions', { durationMs });
+          }, durationMs);
+        },
+        triggerCircuitBreak: async () => {
+          const activeSessions = this.sessionManager.getAllActiveSessions();
+          let cancelledCount = 0;
+          for (const state of activeSessions) {
+            const session = this.sessionManager.getSession(state.id);
+            if (session) {
+              try { this.runExecutor.cancelRun(state.id, session); cancelledCount++; } catch { /* non-critical */ }
+            }
+          }
+          this.logger.warn('Self-healing: circuit break triggered', { cancelledCount });
+        },
+        clearCaches: async () => {
+          try { getCacheManager().resetStats(); } catch { /* non-critical */ }
+          try { const tc = getToolResultCache(); tc.invalidateAll(); tc.resetStats(); } catch { /* non-critical */ }
+          try { const cc = getContextCache(); cc.clear(); cc.resetStats(); } catch { /* non-critical */ }
+        },
+      });
+      getSelfHealingAgent().start();
+      this.logger.info('Recovery/self-healing system initialized');
+    } catch (err) {
+      this.logger.warn('Failed to initialize recovery system', {
         error: err instanceof Error ? err.message : String(err),
       });
     }

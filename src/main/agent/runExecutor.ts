@@ -20,7 +20,6 @@ import type { Logger } from '../logger';
 import type { ProviderMap } from './providers';
 import type { ToolRegistry, TerminalManager } from '../tools';
 import type { LLMProvider, ProviderRequest } from './providers/baseProvider';
-import { ContextWindowManager, ConversationSummarizer } from './context';
 import { AgentDebugger, type AgentTrace } from './debugging';
 import { ComplianceValidator, PromptOptimizer } from './compliance';
 import { agentMetrics } from './metrics';
@@ -40,7 +39,6 @@ import { ProviderSelector } from './execution/providerSelector';
 import { ContextBuilder } from './execution/contextBuilder';
 import { DebugEmitter } from './execution/debugEmitter';
 import { RunLifecycleManager } from './execution/runLifecycle';
-import { StreamHandler } from './execution/streamHandler';
 import { IterationRunner } from './execution/iterationRunner';
 import { ToolQueueProcessor } from './execution/toolQueueProcessor';
 import { SessionQueueManager } from './execution/sessionQueueManager';
@@ -73,14 +71,13 @@ export class RunExecutor {
   // Provider health tracking (can be set after construction)
   private onProviderHealth?: ProviderHealthCallback;
 
+  // Budget checking callback (injected from orchestrator's CostManager)
+  private readonly checkBudget?: (sessionId: string) => { canProceed: boolean; reason?: string };
+
   // Default iteration settings
   private readonly defaultMaxIterations = 20;
   private readonly defaultMaxRetries = 2;
   private readonly defaultRetryDelayMs = 1500;
-
-  // Context window management
-  private contextManager: ContextWindowManager;
-  private conversationSummarizer: ConversationSummarizer;
 
   // Debug infrastructure
   private debugger: AgentDebugger;
@@ -96,7 +93,6 @@ export class RunExecutor {
   private readonly contextBuilder: ContextBuilder;
   private readonly debugEmitter: DebugEmitter;
   private readonly lifecycleManager: RunLifecycleManager;
-  private readonly streamHandler: StreamHandler;
   private readonly iterationRunner: IterationRunner;
   private readonly toolQueueProcessor: ToolQueueProcessor;
   private readonly sessionQueueManager: SessionQueueManager;
@@ -122,6 +118,7 @@ export class RunExecutor {
     this.getEditorState = deps.getEditorState;
     this.getWorkspaceDiagnostics = deps.getWorkspaceDiagnostics;
     this.onProviderHealth = deps.onProviderHealth;
+    this.checkBudget = deps.checkBudget;
 
     // Initialize debugger
     const debugSettings = this.getDebugSettings();
@@ -133,14 +130,6 @@ export class RunExecutor {
       exportFormat: debugSettings?.traceExportFormat ?? 'json',
     });
     this.debugEnabled = debugSettings?.verboseLogging ?? true;
-
-    // Initialize context manager
-    this.contextManager = new ContextWindowManager();
-    this.conversationSummarizer = new ConversationSummarizer({
-      minMessagesForSummary: 100,
-      keepRecentMessages: 40,
-      maxToolResultTokens: 1200,
-    });
 
     // Initialize compliance validator
     const complianceSettings = this.getComplianceSettings();
@@ -174,13 +163,11 @@ export class RunExecutor {
       this.debugger,
       this.updateSessionState
     );
-    this.streamHandler = new StreamHandler(this.logger, this.emitEvent, this.updateSessionState);
     this.iterationRunner = new IterationRunner(
       this.logger,
       this.emitEvent,
       this.progressTracker,
       this.debugEmitter,
-      this.streamHandler,
       this.updateSessionState,
       () => this.onProviderHealth
     );
@@ -215,7 +202,8 @@ export class RunExecutor {
       this.getAccessLevelSettings,
       this.emitEvent,
       this.getEditorState,
-      this.getWorkspaceDiagnostics
+      this.getWorkspaceDiagnostics,
+      this.getToolSettings
     );
   }
 
@@ -241,26 +229,6 @@ export class RunExecutor {
    */
   private getCurrentMaxIterations(session: InternalSession): number {
     return session.state.config.maxIterations ?? this.defaultMaxIterations;
-  }
-
-  /**
-   * Update conversation summarizer for session
-   */
-  private updateSummarizerForSession(session: InternalSession): void {
-    const config = session.state.config;
-    if (config.enableContextSummarization === false) {
-      this.conversationSummarizer = new ConversationSummarizer({
-        minMessagesForSummary: 10000,
-        keepRecentMessages: 10000,
-        maxToolResultTokens: 1200,
-      });
-    } else {
-      this.conversationSummarizer = new ConversationSummarizer({
-        minMessagesForSummary: config.summarizationThreshold ?? 100,
-        keepRecentMessages: config.keepRecentMessages ?? 40,
-        maxToolResultTokens: 1200,
-      });
-    }
   }
 
   updateProviders(providers: ProviderMap): void {
@@ -553,7 +521,6 @@ export class RunExecutor {
     }
 
     this.emitEvent({ type: 'session-state', session: session.state });
-    this.updateSummarizerForSession(session);
 
     const { maxIterations } = this.getIterationSettings(session);
 
@@ -629,6 +596,27 @@ export class RunExecutor {
         await this.pauseResumeManager.waitIfPaused(session.state.id);
 
         if (controller.signal.aborted) break;
+
+        // Budget enforcement — check if cost budget allows proceeding
+        if (this.checkBudget) {
+          const budgetCheck = this.checkBudget(session.state.id);
+          if (!budgetCheck.canProceed) {
+            this.logger.warn('Stopping run due to budget limit', {
+              sessionId: session.state.id,
+              runId,
+              iteration,
+              reason: budgetCheck.reason,
+            });
+            this.emitEvent({
+              type: 'agent-status',
+              sessionId: session.state.id,
+              status: 'error',
+              message: `Run stopped: ${budgetCheck.reason ?? 'Budget exceeded'}`,
+              timestamp: Date.now(),
+            });
+            break;
+          }
+        }
 
         if (loopDetector.shouldTriggerCircuitBreaker(runId)) {
           this.logger.error('Stopping run due to loop detection circuit breaker', {

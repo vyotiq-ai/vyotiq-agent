@@ -65,3 +65,11 @@ export {
   scheduleIdleTask,
   cancelIdleTask,
 } from './performance';
+
+// Rust backend utilities (shared HTTP helper & workspace ID resolution)
+export {
+  rustRequest,
+  resolveWorkspaceId,
+  normalizePath,
+  clearWorkspaceIdCache,
+} from './rustBackend';

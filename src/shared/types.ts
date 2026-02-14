@@ -1319,8 +1319,8 @@ export {
 // =============================================================================
 
 /**
- * Workspace indexing and embedding settings
- * Controls how workspace files are indexed, embedded, and searched
+ * Workspace indexing settings
+ * Controls how workspace files are indexed and searched
  */
 export interface WorkspaceIndexingSettings {
   /** Automatically index workspace files when a workspace is opened or activated */
@@ -1341,35 +1341,11 @@ export interface WorkspaceIndexingSettings {
   /** Batch size for indexing operations (10-500, default: 50) */
   indexBatchSize: number;
 
-  /** Enable vector/semantic embeddings (requires more memory) */
-  enableVectorEmbeddings: boolean;
-
-  /** Maximum chunk size in characters for embedding text splitting */
-  embeddingChunkSize: number;
-
-  /** Chunk overlap in characters for embedding text splitting */
-  embeddingChunkOverlap: number;
-
-  /** Maximum chunks per file for embedding (limits memory usage) */
-  maxChunksPerFile: number;
-
-  /** Embedding batch size (how many chunks to embed at once) */
-  embeddingBatchSize: number;
-
   /** Additional glob patterns of files/directories to exclude from indexing */
   excludePatterns: string[];
 
   /** Glob patterns of files to include (empty = all files) */
   includePatterns: string[];
-
-  /** Enable automatic context injection from semantic search during agent runs */
-  enableAutoContextInjection: boolean;
-
-  /** Max semantic search results to inject into agent context */
-  maxContextResults: number;
-
-  /** Minimum similarity score (0-1) for semantic search results to be included */
-  minSimilarityScore: number;
 }
 
 /**
@@ -1382,11 +1358,6 @@ export const DEFAULT_WORKSPACE_INDEXING_SETTINGS: WorkspaceIndexingSettings = {
   maxFileSizeBytes: 10 * 1024 * 1024, // 10MB
   maxIndexSizeMb: 512,
   indexBatchSize: 50,
-  enableVectorEmbeddings: true,
-  embeddingChunkSize: 1024,
-  embeddingChunkOverlap: 96,
-  maxChunksPerFile: 200,
-  embeddingBatchSize: 128,
   excludePatterns: [
     'node_modules/**',
     '.git/**',
@@ -1405,9 +1376,6 @@ export const DEFAULT_WORKSPACE_INDEXING_SETTINGS: WorkspaceIndexingSettings = {
     'pnpm-lock.yaml',
   ],
   includePatterns: [],
-  enableAutoContextInjection: true,
-  maxContextResults: 10,
-  minSimilarityScore: 0.3,
 };
 
 // =============================================================================
@@ -1520,7 +1488,7 @@ export interface AgentSettings {
   mcpSettings?: import('./types/mcp').MCPSettings;
   /** Configured MCP servers */
   mcpServers?: import('./types/mcp').MCPServerConfig[];
-  /** Workspace indexing and embedding settings */
+  /** Workspace indexing settings */
   workspaceSettings?: WorkspaceIndexingSettings;
 }
 
@@ -1794,7 +1762,44 @@ export interface ThrottleStateChangedEvent {
   };
 }
 
-export type RendererEvent = AgentEvent | SessionsEvent | SessionPatchEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent | SessionHealthUpdateEvent | ThrottleStateChangedEvent;
+/**
+ * MCP (Model Context Protocol) server status change event
+ */
+export interface MCPServerStatusEvent {
+  type: 'mcp:server-status-changed';
+  serverId: string;
+  status: string;
+  error?: string;
+}
+
+/**
+ * MCP server tools changed event
+ */
+export interface MCPServerToolsEvent {
+  type: 'mcp:server-tools-changed';
+  serverId: string;
+  tools: unknown[];
+}
+
+/**
+ * MCP global tools updated event
+ */
+export interface MCPToolsUpdatedEvent {
+  type: 'mcp:tools-updated';
+  tools: unknown[];
+}
+
+/**
+ * Generic MCP event (forwarded from MCP server callbacks)
+ */
+export interface MCPGenericEvent {
+  type: 'mcp:event';
+  [key: string]: unknown;
+}
+
+export type MCPRendererEvent = MCPServerStatusEvent | MCPServerToolsEvent | MCPToolsUpdatedEvent | MCPGenericEvent;
+
+export type RendererEvent = AgentEvent | SessionsEvent | SessionPatchEvent | AgentSettingsEvent | GitEvent | BrowserStateEvent | FileChangedEvent | ClaudeSubscriptionEvent | GLMSubscriptionEvent | TodoUpdateEvent | SessionHealthUpdateEvent | ThrottleStateChangedEvent | MCPRendererEvent;
 
 
 export interface StartSessionPayload {
@@ -1827,18 +1832,6 @@ export interface UpdateConfigPayload {
   sessionId: string;
   config: Partial<AgentConfig>;
 }
-
-export interface UpdateSettingsPayload {
-  settings: Partial<AgentSettings>;
-}
-
-export type RendererToMainRequest =
-  | { type: 'agent:start-session'; payload: StartSessionPayload }
-  | { type: 'agent:send-message'; payload: SendMessagePayload }
-  | { type: 'agent:confirm-tool'; payload: ConfirmToolPayload }
-  | { type: 'agent:update-config'; payload: UpdateConfigPayload }
-  | { type: 'agent:cancel-run'; payload: { sessionId: string; runId: string } }
-  | { type: 'settings:update'; payload: UpdateSettingsPayload };
 
 // ============================================
 // Task-Oriented Architecture Types

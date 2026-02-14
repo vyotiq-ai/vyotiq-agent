@@ -11,10 +11,11 @@
  * - Allows canceling sessions directly
  * - Provides quick navigation to running sessions
  */
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink, Square } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { Spinner } from '../../../components/ui/LoadingState';
+import { ElapsedTime } from '../../../components/ui/ElapsedTime';
 import { useAgentSelector, useAgentActions } from '../../../state/AgentProvider';
 import type { AgentSessionState } from '../../../../shared/types';
 
@@ -44,16 +45,6 @@ interface RunningSessionInfo {
 // Helper Functions
 // =============================================================================
 
-function formatDuration(startTime: number): string {
-  const elapsed = Date.now() - startTime;
-  const seconds = Math.floor(elapsed / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m`;
-}
-
 // =============================================================================
 // Running Session Item Component
 // =============================================================================
@@ -69,16 +60,6 @@ const RunningSessionItem = memo<RunningSessionItemProps>(({
   onCancel,
   onNavigate,
 }) => {
-  const [elapsed, setElapsed] = useState(formatDuration(session.startedAt));
-
-  // Update elapsed time every second
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setElapsed(formatDuration(session.startedAt));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [session.startedAt]);
-
   return (
     <div className={cn(
       "flex items-center gap-2 px-2 py-1.5 text-[11px] font-mono",
@@ -88,7 +69,7 @@ const RunningSessionItem = memo<RunningSessionItemProps>(({
       {/* Status indicator */}
       <div className="flex-shrink-0">
         {session.status === 'awaiting-confirmation' ? (
-          <div className="w-2 h-2 rounded-full bg-[var(--color-warning)] animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-[var(--color-warning)] ring-1 ring-[var(--color-warning)]/40" />
         ) : (
           <Spinner size="sm" colorVariant="success" className="w-3 h-3" />
         )}
@@ -100,7 +81,7 @@ const RunningSessionItem = memo<RunningSessionItemProps>(({
           <span className="truncate">{session.sessionTitle}</span>
         </div>
         <div className="flex items-center gap-2 text-[9px] text-[var(--color-text-muted)]">
-          <span>{elapsed}</span>
+          <ElapsedTime startTime={session.startedAt} format="long" className="text-[9px] text-[var(--color-text-muted)]" />
           {session.iteration !== undefined && session.maxIterations !== undefined && (
             <span>iter {session.iteration}/{session.maxIterations}</span>
           )}

@@ -7,6 +7,7 @@
 
 import React, { useCallback } from 'react';
 import { cn } from '../../../utils/cn';
+import { Tooltip } from '../../../components/ui/Tooltip';
 import { useRustIndexStatus, useRustBackendConnection } from '../../../hooks/useRustBackend';
 
 interface IndexStatusPanelProps {
@@ -18,7 +19,7 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   workspaceId,
   compact = false,
 }) => {
-  const { indexed, isIndexing, isVectorIndexing, indexedCount, totalCount, vectorCount, vectorEmbeddedChunks, vectorTotalChunks, vectorReady, isLoading, triggerIndex } =
+  const { indexed, isIndexing, indexedCount, totalCount, isLoading, triggerIndex } =
     useRustIndexStatus(workspaceId);
   const { isAvailable: isBackendAvailable, isConnecting: isBackendConnecting } = useRustBackendConnection();
 
@@ -39,11 +40,7 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   if (isBackendConnecting) {
     return compact ? null : (
       <div className="flex items-center gap-2 px-3 py-2 text-[9px] text-[var(--color-text-dim)] font-mono">
-        <span className="inline-flex gap-0.5">
-          <span className="animate-[thinking-dot_1.4s_ease-in-out_infinite] w-1 h-1 rounded-full bg-[var(--color-text-dim)]"></span>
-          <span className="animate-[thinking-dot_1.4s_ease-in-out_0.2s_infinite] w-1 h-1 rounded-full bg-[var(--color-text-dim)]"></span>
-          <span className="animate-[thinking-dot_1.4s_ease-in-out_0.4s_infinite] w-1 h-1 rounded-full bg-[var(--color-text-dim)]"></span>
-        </span>
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-dim)]/60 shrink-0"></span>
         <span>connecting</span>
       </div>
     );
@@ -61,10 +58,7 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 text-[9px] text-[var(--color-text-dim)] font-mono">
-        <span className="inline-flex gap-0.5">
-          <span className="animate-[thinking-dot_1.4s_ease-in-out_infinite] w-1 h-1 rounded-full bg-[var(--color-text-dim)]"></span>
-          <span className="animate-[thinking-dot_1.4s_ease-in-out_0.2s_infinite] w-1 h-1 rounded-full bg-[var(--color-text-dim)]"></span>
-        </span>
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-dim)]/60 shrink-0"></span>
         <span>checking index</span>
       </div>
     );
@@ -73,18 +67,17 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   // Compact mode: just show a small status indicator
   if (compact) {
     return (
-      <div className="flex items-center gap-1.5" title={isIndexing || isVectorIndexing ? 'Indexing...' : indexed ? 'Workspace indexed' : 'Not indexed'}>
-        {isIndexing || isVectorIndexing ? (
-          <span className="inline-flex gap-0.5">
-            <span className="animate-[thinking-dot_1.4s_ease-in-out_infinite] w-1 h-1 rounded-full bg-[var(--color-accent-primary)]"></span>
-            <span className="animate-[thinking-dot_1.4s_ease-in-out_0.2s_infinite] w-1 h-1 rounded-full bg-[var(--color-accent-primary)]"></span>
-          </span>
+      <Tooltip content={isIndexing ? 'Indexing...' : indexed ? 'Workspace indexed' : 'Not indexed'}>
+      <div className="flex items-center gap-1.5">
+        {isIndexing ? (
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0"></span>
         ) : indexed ? (
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]"></span>
         ) : (
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-dim)]/40"></span>
         )}
       </div>
+      </Tooltip>
     );
   }
 
@@ -92,11 +85,8 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]/30 font-mono">
       {/* Status dot */}
-      {isIndexing || isVectorIndexing ? (
-        <span className="inline-flex gap-0.5 shrink-0">
-          <span className="animate-[thinking-dot_1.4s_ease-in-out_infinite] w-1 h-1 rounded-full bg-[var(--color-accent-primary)]"></span>
-          <span className="animate-[thinking-dot_1.4s_ease-in-out_0.2s_infinite] w-1 h-1 rounded-full bg-[var(--color-accent-primary)]"></span>
-        </span>
+      {isIndexing ? (
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0"></span>
       ) : indexed ? (
         <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0"></span>
       ) : (
@@ -119,24 +109,9 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
               </div>
             )}
           </div>
-        ) : isVectorIndexing ? (
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[9px] text-[var(--color-text-secondary)]">
-              embedding {vectorTotalChunks > 0 ? `${vectorEmbeddedChunks}/${vectorTotalChunks}` : ''}
-            </span>
-            {vectorTotalChunks > 0 && (
-              <div className="w-full h-0.5 bg-[var(--color-surface-2)] overflow-hidden">
-                <div
-                  className="h-full bg-[var(--color-accent-secondary,var(--color-accent-primary))] transition-all duration-300"
-                  style={{ width: `${Math.round((vectorEmbeddedChunks / vectorTotalChunks) * 100)}%` }}
-                />
-              </div>
-            )}
-          </div>
         ) : indexed ? (
           <span className="text-[9px] text-[var(--color-text-dim)]">
             {indexedCount > 0 ? `${indexedCount} files` : 'indexed'}
-            {vectorReady && vectorCount > 0 && ` · ${vectorCount} vectors`}
           </span>
         ) : (
           <span className="text-[9px] text-[var(--color-text-dim)]">not indexed</span>
@@ -144,19 +119,21 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
       </div>
 
       {/* Reindex button */}
+      <Tooltip content={isIndexing ? 'Indexing in progress...' : 'Re-index workspace'}>
       <button
         onClick={handleReindex}
-        disabled={isIndexing || isVectorIndexing}
+        disabled={isIndexing}
         className={cn(
           'text-[8px] px-1.5 py-0.5 rounded-sm transition-colors uppercase tracking-wider',
-          isIndexing || isVectorIndexing
+          isIndexing
             ? 'text-[var(--color-text-dim)]/40 cursor-not-allowed'
             : 'text-[var(--color-text-dim)] hover:text-[var(--color-accent-primary)] hover:bg-[var(--color-surface-2)]',
         )}
-        title={isIndexing ? 'Indexing in progress...' : isVectorIndexing ? 'Embedding in progress...' : 'Re-index workspace'}
+        aria-label={isIndexing ? 'Indexing in progress...' : 'Re-index workspace'}
       >
-        {isIndexing || isVectorIndexing ? '...' : 'reindex'}
+        {isIndexing ? '...' : 'reindex'}
       </button>
+      </Tooltip>
     </div>
   );
 };

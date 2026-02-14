@@ -1,6 +1,9 @@
 import React, { memo, useCallback, useState, useEffect } from 'react';
 import { Terminal, AlertCircle, FileOutput, Bug } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { Tooltip } from '../ui/Tooltip';
+import { SidebarItem } from './sidebar/SidebarItem';
+import { useKeyboard } from '../../hooks/useKeyboard';
 import { SidebarFileTree } from '../../features/fileTree/components/SidebarFileTree';
 import { SearchPanel, IndexStatusPanel } from '../../features/workspace';
 import { openFileInEditor } from '../../features/editor/components/EditorPanel';
@@ -22,6 +25,7 @@ interface PanelIconProps {
 }
 
 const PanelIcon = memo<PanelIconProps>(({ icon, label, shortcut, onClick, badge, badgeType = 'info' }) => (
+  <Tooltip content={`${label}${badge ? ` (${badge})` : ''}`} shortcut={shortcut} placement="top">
   <button
     onClick={onClick}
     className={cn(
@@ -31,7 +35,6 @@ const PanelIcon = memo<PanelIconProps>(({ icon, label, shortcut, onClick, badge,
       'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/50',
       badge && badge > 0 && badgeType === 'error' && 'text-[var(--color-error)]'
     )}
-    title={`${label}${badge ? ` (${badge})` : ''} (${shortcut})`}
     aria-label={`${label}${badge ? `, ${badge} issues` : ''}`}
   >
     {icon}
@@ -53,6 +56,7 @@ const PanelIcon = memo<PanelIconProps>(({ icon, label, shortcut, onClick, badge,
     {/* Hover indicator line */}
     <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-[var(--color-accent-primary)] rounded-full transition-all duration-150 group-hover:w-3/4" />
   </button>
+  </Tooltip>
 ));
 PanelIcon.displayName = 'PanelIcon';
 
@@ -82,20 +86,18 @@ const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) =>
   }, []);
 
   // Listen for global keyboard shortcuts to switch tabs
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'F') {
-        e.preventDefault();
-        setActiveTab('search');
-      }
-      if (e.ctrlKey && e.shiftKey && e.key === 'E') {
-        e.preventDefault();
-        setActiveTab('files');
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+  useKeyboard([
+    {
+      key: 'ctrl+shift+f',
+      handler: () => setActiveTab('search'),
+      description: 'Switch to search tab',
+    },
+    {
+      key: 'ctrl+shift+e',
+      handler: () => setActiveTab('files'),
+      description: 'Switch to files tab',
+    },
+  ]);
 
   // Dispatch custom events to toggle panels
   const toggleTerminal = useCallback(() => {
@@ -132,19 +134,17 @@ const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) =>
         {/* Tab switcher — replaces activity bar icons */}
         <div className="shrink-0 flex items-center border-b border-[var(--color-border-subtle)] px-1 h-[28px] gap-px">
           {(['files', 'search'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                'px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest rounded-sm transition-colors',
-                activeTab === tab
-                  ? 'text-[var(--color-text-primary)] bg-[var(--color-surface-2)]'
-                  : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
-              )}
-              title={tab === 'files' ? 'Explorer (Ctrl+Shift+E)' : 'Search (Ctrl+Shift+F)'}
-            >
-              {tab === 'files' ? 'explorer' : 'search'}
-            </button>
+            <Tooltip key={tab} content={tab === 'files' ? 'Explorer' : 'Search'} shortcut={tab === 'files' ? 'Ctrl+Shift+E' : 'Ctrl+Shift+F'}>
+              <SidebarItem
+                label={tab === 'files' ? 'explorer' : 'search'}
+                active={activeTab === tab}
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  'px-2 py-0.5 text-[9px] uppercase tracking-widest rounded-sm',
+                  activeTab === tab && 'bg-[var(--color-surface-2)]'
+                )}
+              />
+            </Tooltip>
           ))}
         </div>
 

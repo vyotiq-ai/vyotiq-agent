@@ -4,7 +4,6 @@ use tracing::{info, error};
 use tracing_subscriber::prelude::*;
 
 mod config;
-mod embedder;
 mod error;
 mod indexer;
 pub mod lang;
@@ -100,7 +99,6 @@ async fn main() -> Result<()> {
                 &ws.id,
                 &ws.path,
                 Some(app_state.index_manager.clone()),
-                Some(app_state.embedding_manager.clone()),
             ) {
                 tracing::warn!("Failed to restore watcher for workspace {} ({}): {}", ws.name, ws.id, e);
             } else {
@@ -124,10 +122,6 @@ async fn main() -> Result<()> {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
-
-    // Flush any dirty vector index state to disk before shutting down
-    info!("Flushing vector index state to disk...");
-    app_state_shutdown.embedding_manager.flush_all();
 
     info!("Vyotiq backend shutdown complete");
     Ok(())

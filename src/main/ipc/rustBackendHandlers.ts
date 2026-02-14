@@ -191,20 +191,6 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
     }
   });
 
-  // ---- Semantic Search (Vector Embeddings) ----
-
-  ipcMain.handle('rust-backend:semantic-search', async (_event, workspaceId: string, query: string, options?: { limit?: number }) => {
-    try {
-      const result = await rustRequest<Record<string, unknown>>(`/api/workspaces/${workspaceId}/search/semantic`, {
-        method: 'POST',
-        body: JSON.stringify({ query, limit: options?.limit ?? 10 }),
-      });
-      return { success: true, ...result };
-    } catch (error) {
-      return { success: false, error: (error as Error).message, results: [] };
-    }
-  });
-
   ipcMain.handle('rust-backend:trigger-index', async (_event, workspaceId: string) => {
     try {
       const result = await rustRequest<Record<string, unknown>>(`/api/workspaces/${workspaceId}/index`, { method: 'POST' });

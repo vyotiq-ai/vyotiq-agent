@@ -23,6 +23,7 @@
 import React, { memo, useCallback } from 'react';
 import { Play, Square } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
+import { Kbd } from '../../../../components/ui/Tooltip';
 import { Spinner } from '../../../../components/ui/LoadingState';
 
 // =============================================================================
@@ -68,13 +69,10 @@ const KillButton: React.FC<{ onStop: () => void }> = memo(({ onStop }) => {
         'active:bg-[var(--color-error)]/30 active:scale-[0.97]',
         'transition-all duration-150 text-[9px] font-mono',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-error)]/40',
-        // Subtle pulse animation when running
-        'animate-[pulse-subtle_2s_ease-in-out_infinite]'
+        // Steady glow to communicate urgency without pulsing
+        'shadow-[0_0_8px_rgba(239,68,68,0.3)]',
+        'hover:shadow-[0_0_12px_rgba(239,68,68,0.4)]'
       )}
-      style={{
-        // CSS variable for custom animation
-        '--tw-animate-pulse-subtle': 'pulse-subtle',
-      } as React.CSSProperties}
       title="Stop running (ESC)"
       aria-label="Stop running process. Press Escape key as shortcut."
     >
@@ -85,12 +83,11 @@ const KillButton: React.FC<{ onStop: () => void }> = memo(({ onStop }) => {
         aria-hidden="true" 
       />
       <span className="font-medium tracking-wide">kill</span>
-      <kbd 
-        className="ml-0.5 px-1 py-0.5 text-[8px] bg-[var(--color-error)]/20 rounded opacity-60 group-hover:opacity-100 transition-opacity" 
-        aria-hidden="true"
+      <Kbd 
+        className="ml-0.5 text-[8px] bg-[var(--color-error)]/20 opacity-60 group-hover:opacity-100 transition-opacity" 
       >
         ESC
-      </kbd>
+      </Kbd>
     </button>
   );
 });

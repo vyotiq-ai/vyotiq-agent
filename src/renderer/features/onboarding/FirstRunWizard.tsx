@@ -8,6 +8,7 @@
  * 4. Completion
  */
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { Kbd } from '../../components/ui/Tooltip';
 import {
   Sparkles,
   Key,
@@ -311,15 +312,15 @@ export const FirstRunWizard: React.FC<FirstRunWizardProps> = ({ onComplete, onSk
               </div>
               <div className="p-3 space-y-1.5 text-[10px] font-mono">
                 <div className="flex items-center gap-2">
-                  <kbd className="px-1.5 py-0.5 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-accent-primary)] text-[9px]">Ctrl+,</kbd>
+                  <Kbd>Ctrl+,</Kbd>
                   <span className="text-[var(--color-text-secondary)]">open config</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <kbd className="px-1.5 py-0.5 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-accent-primary)] text-[9px]">Ctrl+K</kbd>
+                  <Kbd>Ctrl+K</Kbd>
                   <span className="text-[var(--color-text-secondary)]">command palette</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <kbd className="px-1.5 py-0.5 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-accent-primary)] text-[9px]">/</kbd>
+                  <Kbd>/</Kbd>
                   <span className="text-[var(--color-text-secondary)]">focus chat input</span>
                 </div>
               </div>

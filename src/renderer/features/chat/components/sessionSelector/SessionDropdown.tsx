@@ -8,7 +8,6 @@ import React, { memo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, MessageSquare, RefreshCw, Search, Filter } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
-import { Spinner } from '../../../../components/ui/LoadingState';
 import { SessionOption } from './SessionOption';
 import type { SessionDropdownProps, SessionViewMode } from './types';
 import { getSessionStats } from './utils';
@@ -93,9 +92,9 @@ const ViewModeToggle = memo<{
           title="Show running sessions"
         >
           {mode === 'running' ? (
-            <Spinner size="sm" colorVariant="success" className="w-2 h-2" />
+            <span className="text-[8px] text-[var(--color-success)]/60 uppercase tracking-wider font-medium">run</span>
           ) : (
-            <span className="w-2 h-2 rounded-full bg-[var(--color-text-dim)]/30" />
+            <span className="text-[8px] text-[var(--color-text-dim)]/30 uppercase tracking-wider">idle</span>
           )}
           {runningCount}
         </button>

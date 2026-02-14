@@ -62,19 +62,11 @@ import { browserConsoleTool } from './console';
 import { browserNetworkTool } from './network';
 import { browserTabsTool } from './tabs';
 import type { ToolDefinition } from '../../types';
+import { markAsDeferred as markAsDeferredBase } from '../index';
 
-/**
- * Mark secondary tools as deferred for context-aware loading
- */
+/** Mark a browser tool as deferred with browser-specific keywords */
 function markAsDeferred<T extends ToolDefinition>(tool: T): T {
-  return {
-    ...tool,
-    deferLoading: true,
-    searchKeywords: [
-      ...(tool.searchKeywords || []),
-      'browser', 'web', 'automation',
-    ],
-  };
+  return markAsDeferredBase(tool, ['browser', 'web', 'automation']);
 }
 
 /**

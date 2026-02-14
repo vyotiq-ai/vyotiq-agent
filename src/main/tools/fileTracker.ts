@@ -83,9 +83,9 @@ export function getReadFilesCache(): Map<string, number> {
 
 /**
  * Normalize the file path key for consistent lookups
+ * Uses case-insensitive normalization on Windows, case-sensitive on Unix
  */
 function normalizeKey(filePath: string): string {
-  // Use lowercase for case-insensitive matching on Windows
-  // Replace backslashes with forward slashes for consistency
-  return filePath.toLowerCase().replace(/\\/g, '/');
+  const normalized = filePath.replace(/\\/g, '/');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }

@@ -396,8 +396,8 @@ export const DYNAMIC_TOOL_CATEGORIES: Record<string, { tools: string[]; descript
     description: 'File operations, bulk rename/move/copy/delete, diagnostics',
   },
   search: {
-    tools: ['semantic_search', 'full_text_search', 'code_query', 'code_similarity'],
-    description: 'Semantic vector search, BM25 keyword search, natural language code queries, code similarity detection',
+    tools: ['full_text_search'],
+    description: 'BM25 keyword search with fuzzy matching',
   },
   terminal: {
     tools: ['run', 'check_terminal', 'kill_terminal'],

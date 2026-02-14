@@ -461,7 +461,7 @@ const createWindow = async () => {
       getOrchestrator: () => orchestrator,
       getSettingsStore: () => settingsStore,
       getMainWindow: () => mainWindow,
-      emitToRenderer: emitToRenderer as (event: Record<string, unknown>) => void,
+      emitToRenderer,
     });
     ipcRegistered = true;
     logger.info('IPC handlers registered before window load');
@@ -552,6 +552,15 @@ app.on('before-quit', async (event) => {
       const { getRequestCoalescer } = await import('./main/ipc/requestCoalescer');
       getRequestCoalescer().dispose();
       logger.info('Request coalescer disposed');
+    } catch {
+      // May not be initialized
+    }
+
+    // Shutdown LSP servers gracefully
+    try {
+      const { shutdownLSPManager } = await import('./main/lsp');
+      await shutdownLSPManager();
+      logger.info('LSP servers shut down');
     } catch {
       // May not be initialized
     }

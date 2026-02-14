@@ -1,10 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { readFileSync } from 'node:fs';
+
+// Read version from package.json for injection into renderer
+const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 // https://vitejs.dev/config
 // Performance optimizations based on 2026 best practices
 export default defineConfig({
+  define: {
+    // Inject app version from package.json so renderer can display it
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(packageJson.version),
+  },
   plugins: [
     react({
       // Enable React compiler/fast refresh optimizations

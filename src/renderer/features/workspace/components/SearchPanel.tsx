@@ -2,7 +2,7 @@
  * SearchPanel Component
  *
  * Global search across workspace files using the Rust backend's full-text search
- * and grep capabilities. Provides both semantic and text search.
+ * and grep capabilities.
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -12,9 +12,10 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
-import { useRustSearch, useRustGrep, useRustSemanticSearch, useRustBackendEvents } from '../../../hooks/useRustBackend';
+import { Tooltip } from '../../../components/ui/Tooltip';
+import { useRustSearch, useRustGrep, useRustBackendEvents } from '../../../hooks/useRustBackend';
 import { usePagination } from '../../../hooks/usePagination';
-import type { RustSearchResult, RustGrepMatch, RustSemanticResult } from '../../../utils/rustBackendClient';
+import type { RustSearchResult, RustGrepMatch } from '../../../utils/rustBackendClient';
 
 interface SearchPanelProps {
   workspaceId: string | null;
@@ -23,7 +24,7 @@ interface SearchPanelProps {
 
 export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpen }) => {
   const [query, setQuery] = useState('');
-  const [searchMode, setSearchMode] = useState<'fulltext' | 'grep' | 'semantic'>('fulltext');
+  const [searchMode, setSearchMode] = useState<'fulltext' | 'grep'>('fulltext');
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
   const [includePattern, setIncludePattern] = useState('');
@@ -34,7 +35,6 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
 
   const fulltext = useRustSearch(workspaceId);
   const grep = useRustGrep(workspaceId);
-  const semantic = useRustSemanticSearch(workspaceId);
 
   // Paginate grep results (they can be very large)
   const grepPagination = usePagination(grep.matches, { pageSize: 50 });
@@ -48,8 +48,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
     }
   }, []));
 
-  const isSearching = searchMode === 'fulltext' ? fulltext.isSearching : searchMode === 'grep' ? grep.isSearching : semantic.isSearching;
-  const error = searchMode === 'fulltext' ? fulltext.error : searchMode === 'grep' ? grep.error : semantic.error;
+  const isSearching = searchMode === 'fulltext' ? fulltext.isSearching : grep.isSearching;
+  const error = searchMode === 'fulltext' ? fulltext.error : grep.error;
 
   // Execute search
   const executeSearch = useCallback(async () => {
@@ -60,7 +60,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
 
     if (searchMode === 'fulltext') {
       await fulltext.search(query, { limit: 50 });
-    } else if (searchMode === 'grep') {
+    } else {
       await grep.grep(query, {
         case_sensitive: caseSensitive,
         is_regex: useRegex,
@@ -68,10 +68,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
         exclude_patterns: excludePattern ? excludePattern.split(',').map((s) => s.trim()) : undefined,
         max_results: 200,
       });
-    } else {
-      await semantic.search(query, { limit: 30 });
     }
-  }, [query, workspaceId, searchMode, fulltext, grep, semantic, caseSensitive, useRegex, includePattern, excludePattern]);
+  }, [query, workspaceId, searchMode, fulltext, grep, caseSensitive, useRegex, includePattern, excludePattern]);
 
   // Search on Enter
   const handleKeyDown = useCallback(
@@ -99,9 +97,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
     setQuery('');
     fulltext.clear();
     grep.clear();
-    semantic.clear();
     inputRef.current?.focus();
-  }, [fulltext, grep, semantic]);
+  }, [fulltext, grep]);
 
   return (
     <div className="flex flex-col h-full">
@@ -116,7 +113,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={searchMode === 'fulltext' ? 'search files...' : searchMode === 'grep' ? 'grep pattern...' : 'semantic query...'}
+              placeholder={searchMode === 'fulltext' ? 'search files...' : 'grep pattern...'}
               className="w-full bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] rounded-sm pl-6 pr-6 py-1.5 text-[10px] font-mono text-[var(--color-text-primary)] placeholder:text-[var(--color-text-dim)] focus:outline-none focus:border-[var(--color-accent-primary)]/50 transition-colors"
             />
             {query && (
@@ -130,7 +127,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
         {/* Search mode toggles — terminal text tabs */}
         <div className="flex items-center gap-1 mt-1.5">
           <div className="flex items-center gap-px bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] rounded-sm overflow-hidden">
-            {(['fulltext', 'grep', 'semantic'] as const).map((mode) => (
+            {(['fulltext', 'grep'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setSearchMode(mode)}
@@ -148,6 +145,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
 
           {searchMode === 'grep' && (
             <div className="flex items-center gap-0.5 ml-1">
+              <Tooltip content="Match Case">
               <button
                 onClick={() => setCaseSensitive(!caseSensitive)}
                 className={cn(
@@ -156,10 +154,12 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
                     ? 'bg-[var(--color-accent-primary)]/15 text-[var(--color-accent-primary)]'
                     : 'text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)]',
                 )}
-                title="Match Case"
+                aria-label="Match Case"
               >
                 Aa
               </button>
+              </Tooltip>
+              <Tooltip content="Use Regular Expression">
               <button
                 onClick={() => setUseRegex(!useRegex)}
                 className={cn(
@@ -168,10 +168,11 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
                     ? 'bg-[var(--color-accent-primary)]/15 text-[var(--color-accent-primary)]'
                     : 'text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)]',
                 )}
-                title="Use Regular Expression"
+                aria-label="Use Regular Expression"
               >
                 .*
               </button>
+              </Tooltip>
             </div>
           )}
 
@@ -211,11 +212,6 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
           <div className="flex items-center gap-2 px-3 py-5 font-mono">
             <span className="text-[var(--color-accent-primary)] text-[10px] opacity-50">λ</span>
             <span className="text-[9px] text-[var(--color-text-dim)]">searching</span>
-            <span className="flex gap-0.5">
-              <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
-              <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
-              <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
-            </span>
           </div>
         )}
 
@@ -261,47 +257,38 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onFileOpe
             <GrepResultsList matches={grepPagination.currentItems} onClick={handleFileClick} />
             {grep.matches.length > 50 && (
               <div className="flex items-center justify-center gap-2 px-3 py-2 border-t border-[var(--color-border)]">
+                <Tooltip content="Previous page">
                 <button
                   onClick={grepPagination.prevPage}
                   disabled={!grepPagination.hasPrevPage}
                   className="p-1 rounded hover:bg-[var(--color-surface-2)] disabled:opacity-30"
-                  title="Previous page"
+                  aria-label="Previous page"
                 >
                   <ChevronLeft size={14} />
                 </button>
+                </Tooltip>
                 <span className="text-[10px] text-[var(--color-text-secondary)]">
                   {grepPagination.pageInfo}
                 </span>
+                <Tooltip content="Next page">
                 <button
                   onClick={grepPagination.nextPage}
                   disabled={!grepPagination.hasNextPage}
                   className="p-1 rounded hover:bg-[var(--color-surface-2)] disabled:opacity-30"
-                  title="Next page"
+                  aria-label="Next page"
                 >
                   <ChevronRight size={14} />
                 </button>
+                </Tooltip>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Semantic results */}
-        {searchMode === 'semantic' && !isSearching && semantic.results.length > 0 && (
-          <div className="py-1">
-            <div className="px-3 py-1 text-[10px] text-[var(--color-text-tertiary)]">
-              {semantic.results.length} results in {semantic.queryTimeMs}ms
-            </div>
-            {semantic.results.map((result, idx) => (
-              <SemanticResultItem key={`${result.relative_path}-${result.line_start}-${idx}`} result={result} onClick={handleFileClick} />
-            ))}
           </div>
         )}
 
         {/* Empty state — only check the active search mode's results */}
         {!isSearching && !error && query && (
           (searchMode === 'fulltext' && fulltext.results.length === 0) ||
-          (searchMode === 'grep' && grep.matches.length === 0) ||
-          (searchMode === 'semantic' && semantic.results.length === 0)
+          (searchMode === 'grep' && grep.matches.length === 0)
         ) && (
           <div className="flex flex-col gap-1 px-3 py-6 font-mono">
             <span className="text-[10px] text-[var(--color-text-dim)]">no results found</span>
@@ -421,46 +408,4 @@ const GrepFileGroup: React.FC<{
   );
 };
 
-const SemanticResultItem: React.FC<{
-  result: RustSemanticResult;
-  onClick: (path: string, line?: number) => void;
-}> = ({ result, onClick }) => {
-  const fileName = result.relative_path.split(/[/\\]/).pop() || result.relative_path;
-  const score = Math.round(result.score * 100);
 
-  return (
-    <button
-      onClick={() => onClick(result.path, result.line_start || undefined)}
-      className="w-full flex items-start gap-2 px-3 py-1.5 text-left hover:bg-[var(--color-surface-2)] transition-colors group font-mono"
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-medium text-[var(--color-text-primary)] truncate group-hover:text-[var(--color-accent-primary)] transition-colors">
-            {fileName}
-          </span>
-          {result.line_start > 0 && (
-            <span className="text-[8px] text-[var(--color-text-dim)] tabular-nums">
-              {result.line_start}–{result.line_end}
-            </span>
-          )}
-          <span className="text-[8px] text-[var(--color-text-dim)] truncate">
-            {result.relative_path}
-          </span>
-        </div>
-        {result.chunk_text && (
-          <div className="text-[9px] text-[var(--color-text-dim)] line-clamp-3 mt-0.5 whitespace-pre-wrap">
-            {result.chunk_text.slice(0, 300)}
-          </div>
-        )}
-      </div>
-      <div className="flex flex-col items-end gap-0.5 shrink-0">
-        <span className="text-[8px] text-[var(--color-text-dim)] tabular-nums">
-          {result.language}
-        </span>
-        <span className="text-[8px] text-[var(--color-accent-primary)] tabular-nums">
-          {score}%
-        </span>
-      </div>
-    </button>
-  );
-};

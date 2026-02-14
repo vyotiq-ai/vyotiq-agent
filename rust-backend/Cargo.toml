@@ -64,14 +64,6 @@ dunce = "1"
 # Platform directories
 dirs = "6"
 
-# Embedding model — Qwen3-Embedding-0.6B via candle backend (2025 SOTA, decoder-only LLM embedder)
-# The "qwen3" feature enables Qwen3TextEmbedding backed by candle (pure Rust, no ONNX).
-fastembed = { version = "5", default-features = false, features = ["qwen3"] }
-candle-core = "0.9"
-
-# High-performance HNSW vector index
-usearch = "2"
-
 # Parallel iteration for indexing
 rayon = "1.11"
 

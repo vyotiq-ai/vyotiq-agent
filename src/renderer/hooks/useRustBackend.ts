@@ -11,7 +11,6 @@ import rustBackend, {
   type RustWorkspace,
   type RustSearchResult,
   type RustGrepMatch,
-  type RustSemanticResult,
   type IndexProgress,
 } from '../utils/rustBackendClient';
 import { createLogger } from '../utils/logger';
@@ -204,59 +203,6 @@ export function useRustGrep(workspaceId: string | null) {
 }
 
 // ---------------------------------------------------------------------------
-// Semantic search hook
-// ---------------------------------------------------------------------------
-
-interface SemanticSearchState {
-  results: RustSemanticResult[];
-  queryTimeMs: number;
-  isSearching: boolean;
-  error: string | null;
-}
-
-export function useRustSemanticSearch(workspaceId: string | null) {
-  const [state, setState] = useState<SemanticSearchState>({
-    results: [],
-    queryTimeMs: 0,
-    isSearching: false,
-    error: null,
-  });
-
-  const search = useCallback(
-    async (query: string, options: { limit?: number } = {}) => {
-      if (!workspaceId || !query.trim()) {
-        setState((prev) => ({ ...prev, results: [], error: null }));
-        return;
-      }
-
-      setState((prev) => ({ ...prev, isSearching: true, error: null }));
-      try {
-        const result = await rustBackend.semanticSearch(workspaceId, query, options);
-        setState({
-          results: result.results,
-          queryTimeMs: result.query_time_ms,
-          isSearching: false,
-          error: null,
-        });
-      } catch (err) {
-        setState((prev) => ({
-          ...prev,
-          isSearching: false,
-          error: err instanceof Error ? err.message : 'Semantic search failed',
-        }));
-      }
-    },
-    [workspaceId],
-  );
-
-  const clear = useCallback(() => {
-    setState({ results: [], queryTimeMs: 0, isSearching: false, error: null });
-  }, []);
-
-  return { ...state, search, clear };
-}
-
-// ---------------------------------------------------------------------------
 // Workspace management hook
 // ---------------------------------------------------------------------------
 
@@ -382,13 +328,8 @@ export function useRustFileWatcher(
 interface IndexStatusState {
   indexed: boolean;
   isIndexing: boolean;
-  isVectorIndexing: boolean;
   indexedCount: number;
   totalCount: number;
-  vectorCount: number;
-  vectorEmbeddedChunks: number;
-  vectorTotalChunks: number;
-  vectorReady: boolean;
   searchReady: boolean;
   isLoading: boolean;
 }
@@ -398,13 +339,8 @@ export function useRustIndexStatus(workspaceId: string | null) {
   const [state, setState] = useState<IndexStatusState>({
     indexed: false,
     isIndexing: false,
-    isVectorIndexing: false,
     indexedCount: 0,
     totalCount: 0,
-    vectorCount: 0,
-    vectorEmbeddedChunks: 0,
-    vectorTotalChunks: 0,
-    vectorReady: false,
     searchReady: false,
     isLoading: true,
   });
@@ -425,14 +361,9 @@ export function useRustIndexStatus(workspaceId: string | null) {
           setState({
             indexed: status.indexed,
             isIndexing: status.is_indexing,
-            isVectorIndexing: status.is_vector_indexing ?? false,
             indexedCount: status.indexed_count,
             totalCount: status.total_count,
-            vectorCount: status.vector_count ?? 0,
-            vectorEmbeddedChunks: 0,
-            vectorTotalChunks: 0,
-            vectorReady: status.vector_ready ?? false,
-            searchReady: status.indexed && (status.vector_ready ?? false),
+            searchReady: status.indexed,
             isLoading: false,
           });
         }
@@ -468,20 +399,6 @@ export function useRustIndexStatus(workspaceId: string | null) {
           indexedCount: event.data.total_files,
           totalCount: event.data.total_files,
         }));
-      } else if (event.type === 'vector_index_progress' && event.data.workspace_id === workspaceId) {
-        setState((prev) => ({
-          ...prev,
-          isVectorIndexing: true,
-          vectorEmbeddedChunks: event.data.embedded_chunks,
-          vectorTotalChunks: event.data.total_chunks,
-        }));
-      } else if (event.type === 'vector_index_complete' && event.data.workspace_id === workspaceId) {
-        setState((prev) => ({
-          ...prev,
-          isVectorIndexing: false,
-          vectorReady: true,
-          vectorCount: event.data.total_chunks,
-        }));
       } else if (event.type === 'search_ready' && event.data.workspace_id === workspaceId) {
         setState((prev) => ({
           ...prev,
@@ -497,7 +414,6 @@ export function useRustIndexStatus(workspaceId: string | null) {
         setState((prev) => ({
           ...prev,
           isIndexing: false,
-          isVectorIndexing: false,
         }));
       }
     });
@@ -617,7 +533,7 @@ export function useUnifiedWorkspace(electronWorkspacePath: string | null) {
           throw createErr;
         }
       } catch (err) {
-        console.warn('[useUnifiedWorkspace] Failed to register workspace:', err);
+        logger.warn('Failed to register workspace', { error: err instanceof Error ? err.message : String(err) });
         setState((prev) => ({ ...prev, isLoading: false }));
         return null;
       }

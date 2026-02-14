@@ -12,6 +12,7 @@ interface UIStateType {
   commandPaletteOpen: boolean;
   quickOpenOpen: boolean;
   metricsDashboardOpen: boolean;
+  debugPanelOpen: boolean;
 }
 
 interface UIActionsType {
@@ -36,6 +37,9 @@ interface UIActionsType {
   openMetricsDashboard: () => void;
   closeMetricsDashboard: () => void;
   toggleMetricsDashboard: () => void;
+  openDebugPanel: () => void;
+  closeDebugPanel: () => void;
+  toggleDebugPanel: () => void;
 }
 
 // Combined type for backwards compatibility with useUI()
@@ -139,6 +143,13 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const closeMetricsDashboard = useCallback(() => setMetricsDashboardOpen(false), []);
   const toggleMetricsDashboard = useCallback(() => setMetricsDashboardOpen(prev => !prev), []);
 
+  // Debug panel state
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+
+  const openDebugPanel = useCallback(() => setDebugPanelOpen(true), []);
+  const closeDebugPanel = useCallback(() => setDebugPanelOpen(false), []);
+  const toggleDebugPanel = useCallback(() => setDebugPanelOpen(prev => !prev), []);
+
   // Undo history panel state
   const [undoHistoryOpen, setUndoHistoryOpen] = useState(false);
 
@@ -213,11 +224,17 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         e.preventDefault();
         toggleMetricsDashboard();
       }
+
+      // Ctrl/Cmd + Shift + D to toggle debug panel
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        toggleDebugPanel();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [settingsOpen, shortcutsOpen, metricsDashboardOpen, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard]);
+  }, [settingsOpen, shortcutsOpen, metricsDashboardOpen, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard, toggleDebugPanel]);
 
   // Listen for custom events from activity bar
   useEffect(() => {
@@ -238,6 +255,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     commandPaletteOpen,
     quickOpenOpen,
     metricsDashboardOpen,
+    debugPanelOpen,
   }), [
     settingsOpen,
     shortcutsOpen,
@@ -247,6 +265,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     commandPaletteOpen,
     quickOpenOpen,
     metricsDashboardOpen,
+    debugPanelOpen,
   ]);
 
   // Actions are all stable useCallback refs — this value never changes
@@ -272,6 +291,9 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     openMetricsDashboard,
     closeMetricsDashboard,
     toggleMetricsDashboard,
+    openDebugPanel,
+    closeDebugPanel,
+    toggleDebugPanel,
   }), [
     openSettings,
     closeSettings,
@@ -294,6 +316,9 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     openMetricsDashboard,
     closeMetricsDashboard,
     toggleMetricsDashboard,
+    openDebugPanel,
+    closeDebugPanel,
+    toggleDebugPanel,
   ]);
 
   // Combined value for backwards compatibility with useUI()

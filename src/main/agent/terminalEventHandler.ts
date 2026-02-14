@@ -21,6 +21,18 @@ export class TerminalEventHandler {
      */
     private terminalBuffers = new Map<number, TerminalBuffer>();
 
+    /**
+     * Stored references to bound event listeners for proper cleanup.
+     * Using bound references ensures removeListener removes only our handlers.
+     */
+    private boundListeners: {
+        stdout?: (data: { pid: number; chunk: string }) => void;
+        stderr?: (data: { pid: number; chunk: string }) => void;
+        exit?: (data: { pid: number; code: number | null }) => void;
+        error?: (data: { pid: number; error: string }) => void;
+        warning?: (data: { pid: number; message: string }) => void;
+    } = {};
+
     constructor(
         private readonly terminalManager: TerminalManager,
         private readonly logger: Logger,
@@ -107,19 +119,16 @@ export class TerminalEventHandler {
     }
 
     public setupEventListeners(): void {
-        // Forward terminal output events to UI for real-time visibility
-        // Note: This only applies to the 'run' tool (run_terminal_command), not git_* tools
-        // Output is now batched to reduce IPC message frequency
-        this.terminalManager.on('stdout', ({ pid, chunk }: { pid: number; chunk: string }) => {
+        // Store bound listener references so we can remove only our handlers later
+        this.boundListeners.stdout = ({ pid, chunk }: { pid: number; chunk: string }) => {
             this.bufferTerminalOutput(pid, 'stdout', chunk);
-        });
+        };
 
-        this.terminalManager.on('stderr', ({ pid, chunk }: { pid: number; chunk: string }) => {
+        this.boundListeners.stderr = ({ pid, chunk }: { pid: number; chunk: string }) => {
             this.bufferTerminalOutput(pid, 'stderr', chunk);
-        });
+        };
 
-        // Forward terminal exit events to UI so it can mark commands as complete
-        this.terminalManager.on('exit', ({ pid, code }: { pid: number; code: number | null }) => {
+        this.boundListeners.exit = ({ pid, code }: { pid: number; code: number | null }) => {
             // Flush any remaining buffered output before sending exit
             this.cleanupTerminalBuffer(pid);
             
@@ -129,11 +138,11 @@ export class TerminalEventHandler {
                 code: code ?? 0,
                 timestamp: Date.now(),
             } as RendererEvent);
-        });
+        };
 
         // Handle terminal error events (timeouts, spawn failures, etc.)
         // This is critical - unhandled 'error' events on EventEmitter cause uncaught exceptions
-        this.terminalManager.on('error', ({ pid, error }: { pid: number; error: string }) => {
+        this.boundListeners.error = ({ pid, error }: { pid: number; error: string }) => {
             // Cleanup buffer on error
             this.cleanupTerminalBuffer(pid);
             
@@ -150,12 +159,26 @@ export class TerminalEventHandler {
                 error,
                 timestamp: Date.now(),
             } as RendererEvent);
-        });
+        };
+
+        // Handle terminal warning events (e.g., long-running commands)
+        // Note: warnings are logged but not emitted as RendererEvent 
+        // since the type system doesn't include terminal-warning
+        this.boundListeners.warning = ({ pid, message }: { pid: number; message: string }) => {
+            this.logger.warn('Terminal process warning', { pid, message });
+        };
+
+        // Register all bound listeners
+        this.terminalManager.on('stdout', this.boundListeners.stdout);
+        this.terminalManager.on('stderr', this.boundListeners.stderr);
+        this.terminalManager.on('exit', this.boundListeners.exit);
+        this.terminalManager.on('error', this.boundListeners.error);
+        this.terminalManager.on('warning', this.boundListeners.warning);
     }
 
     /**
-     * Remove all event listeners from the terminal manager.
-     * Should be called during orchestrator cleanup to prevent memory leaks.
+     * Remove only this handler's event listeners from the terminal manager.
+     * Uses stored bound references to avoid removing listeners registered by other code.
      */
     public removeEventListeners(): void {
         // Clear all pending flush timers
@@ -166,11 +189,23 @@ export class TerminalEventHandler {
         }
         this.terminalBuffers.clear();
 
-        // Remove all listeners from terminal manager
-        this.terminalManager.removeAllListeners('stdout');
-        this.terminalManager.removeAllListeners('stderr');
-        this.terminalManager.removeAllListeners('exit');
-        this.terminalManager.removeAllListeners('error');
+        // Remove only our specific listeners (not all listeners on the emitter)
+        if (this.boundListeners.stdout) {
+            this.terminalManager.removeListener('stdout', this.boundListeners.stdout);
+        }
+        if (this.boundListeners.stderr) {
+            this.terminalManager.removeListener('stderr', this.boundListeners.stderr);
+        }
+        if (this.boundListeners.exit) {
+            this.terminalManager.removeListener('exit', this.boundListeners.exit);
+        }
+        if (this.boundListeners.error) {
+            this.terminalManager.removeListener('error', this.boundListeners.error);
+        }
+        if (this.boundListeners.warning) {
+            this.terminalManager.removeListener('warning', this.boundListeners.warning);
+        }
+        this.boundListeners = {};
         
         this.logger.debug('Terminal event listeners removed');
     }

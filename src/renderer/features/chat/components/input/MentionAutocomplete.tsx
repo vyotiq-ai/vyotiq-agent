@@ -8,6 +8,7 @@ import React, { memo, useRef, useEffect } from 'react';
 import { File, FolderOpen, Code2 } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 import { Spinner } from '../../../../components/ui/LoadingState';
+import { Kbd } from '../../../../components/ui/Tooltip';
 import type { MentionItem } from '../../hooks/useMentions';
 
 // =============================================================================
@@ -204,7 +205,7 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = memo(({
       aria-label="File suggestions"
     >
       {/* Terminal-style header */}
-      <div className="px-2.5 py-1.5 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)] flex items-center justify-between">
+      <div className="px-2.5 py-1.5 border-b border-[var(--color-border-subtle)]/20 bg-[var(--color-surface-1)]/40 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {/* Terminal dots */}
           <div className="flex items-center gap-1">
@@ -270,20 +271,20 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = memo(({
 
       {/* Footer with keyboard hints */}
       {suggestions.length > 0 && (
-        <div className="px-2.5 py-1.5 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
+        <div className="px-2.5 py-1.5 border-t border-[var(--color-border-subtle)]/20 bg-[var(--color-surface-1)]/40">
           <div className="flex items-center justify-between text-[8px] text-[var(--color-text-dim)]">
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1">
-                <kbd className="px-1 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">↑</kbd>
-                <kbd className="px-1 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">↓</kbd>
+                <Kbd>↑</Kbd>
+                <Kbd>↓</Kbd>
                 <span className="opacity-70">nav</span>
               </span>
               <span className="flex items-center gap-1">
-                <kbd className="px-1 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">⏎</kbd>
+                <Kbd>⏎</Kbd>
                 <span className="opacity-70">select</span>
               </span>
               <span className="flex items-center gap-1">
-                <kbd className="px-1 py-0.5 rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">esc</kbd>
+                <Kbd>esc</Kbd>
                 <span className="opacity-70">close</span>
               </span>
             </div>

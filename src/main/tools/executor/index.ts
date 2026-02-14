@@ -1,7 +1,6 @@
 /**
  * Tool Executor Index
  */
-export { ToolExecutor, type ToolExecutionMetrics } from './ToolExecutor';
 export {
   executeToolsParallel,
   canBenefitFromParallel,

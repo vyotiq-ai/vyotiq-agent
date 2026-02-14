@@ -11,6 +11,7 @@ import { createLogger } from '../logger';
 import { getMCPServerManager } from './MCPServerManager';
 import type { ToolDefinition, ToolExecutionContext } from '../tools/types/toolTypes';
 import type { ToolExecutionResult, ToolSpecification, DynamicToolState } from '../../shared/types';
+import { DEFAULT_TOOL_CONFIG_SETTINGS } from '../../shared/types/tools';
 import type { MCPToolWithContext } from '../../shared/types/mcp';
 import type { ToolRegistry } from '../tools/registry/ToolRegistry';
 import { getDynamicToolValidator } from '../agent/compliance';
@@ -23,8 +24,13 @@ const logger = createLogger('MCPToolAdapter');
 
 /**
  * Converts an MCP tool to a Vyotiq ToolDefinition
+ * @param mcpTool - The MCP tool with context
+ * @param requireDynamicConfirmation - Whether dynamic tools require confirmation (read from current settings)
  */
-export function mcpToolToToolDefinition(mcpTool: MCPToolWithContext): ToolDefinition {
+export function mcpToolToToolDefinition(
+  mcpTool: MCPToolWithContext,
+  requireDynamicConfirmation?: boolean
+): ToolDefinition {
   const { serverId, serverName, tool } = mcpTool;
   
   // Create a unique tool name with server prefix to avoid collisions
@@ -41,12 +47,15 @@ export function mcpToolToToolDefinition(mcpTool: MCPToolWithContext): ToolDefini
       };
     }
   }
+
+  // Use the provided setting or fall back to the default
+  const needsApproval = requireDynamicConfirmation ?? DEFAULT_TOOL_CONFIG_SETTINGS.requireDynamicToolConfirmation;
   
   return {
     name: toolName,
     description: `[MCP: ${serverName}] ${tool.description}`,
     category: 'other', // Use 'other' as MCP is a meta-category
-    requiresApproval: true, // MCP tools from external sources require user approval
+    requiresApproval: needsApproval, // Respect current user setting for dynamic tool confirmation
     riskLevel: 'moderate', // Default to moderate risk for external tools
     schema: {
       type: 'object',
@@ -59,6 +68,8 @@ export function mcpToolToToolDefinition(mcpTool: MCPToolWithContext): ToolDefini
 
 /**
  * Creates an executor function for an MCP tool
+ * Includes auto-reconnection logic: if the server is disconnected,
+ * attempts to reconnect before failing.
  */
 function createMCPToolExecutor(
   serverId: string,
@@ -71,6 +82,37 @@ function createMCPToolExecutor(
     logger.info('Executing MCP tool', { serverId, toolName, args });
     
     try {
+      // Check if server is disconnected and attempt reconnection
+      const serverState = manager.getServerState(serverId);
+      if (serverState && serverState.status !== 'connected') {
+        const serverConfig = manager.getServer(serverId);
+        if (serverConfig?.enabled) {
+          logger.info('MCP server disconnected, attempting reconnection before tool call', {
+            serverId,
+            toolName,
+            currentStatus: serverState.status,
+          });
+          try {
+            await manager.connectServer(serverId);
+            logger.info('MCP server reconnected successfully', { serverId });
+          } catch (reconnectError) {
+            const reconnectErr = reconnectError instanceof Error ? reconnectError : new Error(String(reconnectError));
+            logger.warn('MCP server reconnection failed', { serverId, error: reconnectErr.message });
+            return {
+              toolName: registeredToolName,
+              success: false,
+              output: `MCP server "${serverId}" is disconnected and reconnection failed: ${reconnectErr.message}. Please check the server status in MCP settings.`,
+            };
+          }
+        } else {
+          return {
+            toolName: registeredToolName,
+            success: false,
+            output: `MCP server "${serverId}" is disabled. Enable it in MCP settings to use this tool.`,
+          };
+        }
+      }
+
       const result = await manager.callTool({
         serverId,
         toolName,
@@ -136,7 +178,7 @@ export function getAllMCPToolDefinitions(): ToolDefinition[] {
   const manager = getMCPServerManager();
   const mcpTools = manager.getAllTools();
   
-  return mcpTools.map(mcpToolToToolDefinition);
+  return mcpTools.map((tool) => mcpToolToToolDefinition(tool));
 }
 
 /**
@@ -280,12 +322,16 @@ function createMCPToolState(mcpTool: MCPToolWithContext): DynamicToolState {
 export class MCPToolRegistryAdapter {
   private registeredTools = new Set<string>();
   private toolRegistry: ToolRegistry | null = null;
+  private getRequireDynamicConfirmation: (() => boolean) | null = null;
 
   /**
    * Initialize the adapter with the main tool registry
+   * @param registry - The main tool registry
+   * @param getRequireDynamicConfirmation - Optional getter for the current requireDynamicToolConfirmation setting
    */
-  initialize(registry: ToolRegistry): void {
+  initialize(registry: ToolRegistry, getRequireDynamicConfirmation?: () => boolean): void {
     this.toolRegistry = registry;
+    this.getRequireDynamicConfirmation = getRequireDynamicConfirmation ?? null;
     
     // Subscribe to MCP tool changes
     const manager = getMCPServerManager();
@@ -304,6 +350,10 @@ export class MCPToolRegistryAdapter {
    */
   private syncTools(mcpTools: MCPToolWithContext[]): void {
     if (!this.toolRegistry) return;
+    
+    // Read the current dynamic tool confirmation setting
+    const requireConfirmation = this.getRequireDynamicConfirmation?.() 
+      ?? DEFAULT_TOOL_CONFIG_SETTINGS.requireDynamicToolConfirmation;
     
     const currentToolNames = new Set(
       mcpTools.map(
@@ -326,7 +376,7 @@ export class MCPToolRegistryAdapter {
     
     // Register new tools
     for (const mcpTool of mcpTools) {
-      const toolDef = mcpToolToToolDefinition(mcpTool);
+      const toolDef = mcpToolToToolDefinition(mcpTool, requireConfirmation);
       if (!this.registeredTools.has(toolDef.name)) {
         try {
           const spec = createMCPToolSpec(mcpTool);
@@ -395,8 +445,11 @@ export function getMCPToolRegistryAdapter(): MCPToolRegistryAdapter {
   return adapterInstance;
 }
 
-export function initializeMCPToolRegistryAdapter(registry: ToolRegistry): MCPToolRegistryAdapter {
+export function initializeMCPToolRegistryAdapter(
+  registry: ToolRegistry,
+  getRequireDynamicConfirmation?: () => boolean
+): MCPToolRegistryAdapter {
   const adapter = getMCPToolRegistryAdapter();
-  adapter.initialize(registry);
+  adapter.initialize(registry, getRequireDynamicConfirmation);
   return adapter;
 }

@@ -97,12 +97,27 @@ export class DynamicToolFactory {
     this.createdTools.set(name, options);
 
     // Register the composite tool
+    // Derive approval requirement and risk level from the most dangerous step
+    let requiresApproval = false;
+    let riskLevel: 'safe' | 'moderate' | 'dangerous' = 'safe';
+    const riskOrder = { safe: 0, moderate: 1, dangerous: 2 } as const;
+    for (const step of steps) {
+      const stepDef = this.registry.getDefinition(step.toolName);
+      if (stepDef) {
+        if (stepDef.requiresApproval) requiresApproval = true;
+        const stepRisk = (stepDef.riskLevel ?? 'safe') as 'safe' | 'moderate' | 'dangerous';
+        if (riskOrder[stepRisk] > riskOrder[riskLevel]) {
+          riskLevel = stepRisk;
+        }
+      }
+    }
+
     this.registry.register({
       name,
       description,
       category: category ?? 'other',
-      requiresApproval: false,
-      riskLevel: 'safe',
+      requiresApproval,
+      riskLevel,
       schema: {
         type: 'object' as const,
         properties: {
@@ -114,9 +129,10 @@ export class DynamicToolFactory {
       },
       execute: async (params: Record<string, unknown>, context: ToolExecutionContext) => {
         const result = await this.executeComposite(options, params, context);
+        const isSuccess = result !== null && result !== undefined;
         return {
           toolName: name,
-          success: true,
+          success: isSuccess,
           output: typeof result === 'string' ? result : JSON.stringify(result),
         };
       },
@@ -282,7 +298,8 @@ export class DynamicToolFactory {
       return false;
     }
     this.createdTools.delete(name);
-    // Note: Can't unregister from ToolRegistry, but the definition is gone
+    // Unregister from ToolRegistry so the tool can no longer be called
+    this.registry.unregisterDynamic(name);
     logger.info(`Removed composite tool: ${name}`);
     return true;
   }

@@ -14,7 +14,6 @@
 import React, { memo, useMemo } from 'react';
 import { CheckCircle, Circle } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
-import { Spinner } from '../../../../components/ui/LoadingState';
 import type { TodoItem, TodoStats } from '../../../../../shared/types/todo';
 
 // ============================================================================
@@ -61,8 +60,7 @@ const StatusIconMinimal: React.FC<{ status: 'completed' | 'in_progress' | 'pendi
     case 'completed':
       return <CheckCircle size={size} className="text-[var(--color-success)] flex-shrink-0" />;
     case 'in_progress':
-      // Static spinner icon without animation - avoids pulsing
-      return <Spinner size="sm" colorVariant="primary" className="w-2.5 h-2.5 flex-shrink-0" />;
+      return <Circle size={size} className="text-[var(--color-accent-primary)] flex-shrink-0 fill-[var(--color-accent-primary)]/20" />;
     case 'pending':
     default:
       return <Circle size={size} className="text-[var(--color-text-dim)] flex-shrink-0" />;

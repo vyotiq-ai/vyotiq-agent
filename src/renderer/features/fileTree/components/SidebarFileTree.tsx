@@ -128,11 +128,6 @@ export const SidebarFileTree: React.FC<SidebarFileTreeProps> = ({ collapsed, onF
             <div className="flex items-center gap-2 px-3 py-6 font-mono">
               <span className="text-[var(--color-accent-primary)] text-[10px] opacity-50">λ</span>
               <span className="text-[9px] text-[var(--color-text-dim)]">loading</span>
-              <span className="flex gap-0.5">
-                <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
-                <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
-                <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
-              </span>
             </div>
           )}
           

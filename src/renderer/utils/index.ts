@@ -3,6 +3,14 @@ export { cn } from './cn';
 export * from './constants';
 export * from './styles';
 
+// Path helper utilities
+export {
+  getFileName,
+  getFileExtension,
+  getDirectoryPath,
+  normalizePath,
+} from './pathHelpers';
+
 // Time formatting utilities
 export {
   formatRelativeTime,

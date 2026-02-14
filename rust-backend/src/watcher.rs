@@ -1,4 +1,3 @@
-use crate::embedder::EmbeddingManager;
 use crate::indexer::IndexManager;
 use crate::state::ServerEvent;
 use dashmap::DashMap;
@@ -15,7 +14,7 @@ use tokio::sync::broadcast;
 use tracing::{info, warn};
 
 /// Minimum interval between re-index operations for the same file (in ms).
-/// Prevents rapid saves from triggering redundant re-embeddings.
+/// Prevents rapid saves from triggering redundant re-indexing.
 const REINDEX_COOLDOWN_MS: u64 = 2000;
 
 pub struct FileWatcherManager {
@@ -74,7 +73,6 @@ impl FileWatcherManager {
         workspace_id: &str,
         path: &str,
         index_manager: Option<Arc<IndexManager>>,
-        embedding_manager: Option<Arc<EmbeddingManager>>,
     ) -> Result<(), notify::Error> {
         if self.watchers.contains_key(workspace_id) {
             return Ok(()); // Already watching
@@ -85,7 +83,6 @@ impl FileWatcherManager {
         let ws_path = PathBuf::from(path);
         let ws_path_str = path.to_string();
         let idx_mgr = index_manager;
-        let emb_mgr = embedding_manager;
         let cooldown = Arc::new(Mutex::new(ReindexCooldownTracker::new()));
         let cleanup_counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
@@ -155,41 +152,6 @@ impl FileWatcherManager {
                                     }
                                 });
                             }
-
-                            // Trigger incremental vector re-indexing via tokio (not raw OS thread)
-                            if let (Some(emb), Some(handle)) = (&emb_mgr, &rt_handle) {
-                                let emb = emb.clone();
-                                let ws = ws_id.clone();
-                                let abs = path.to_string_lossy().to_string();
-                                let rel = relative.clone();
-                                let ct = change_type.clone();
-                                let file_path = path.clone();
-
-                                handle.spawn(async move {
-                                    // Run file I/O + embedding in blocking context
-                                    let _ = tokio::task::spawn_blocking(move || {
-                                        let content = if ct != "remove" {
-                                            std::fs::read_to_string(&file_path).unwrap_or_default()
-                                        } else {
-                                            String::new()
-                                        };
-
-                                        let ext = file_path
-                                            .extension()
-                                            .unwrap_or_default()
-                                            .to_string_lossy()
-                                            .to_lowercase();
-
-                                        let language = detect_language_ext(&ext);
-
-                                        if let Err(e) = emb.reindex_file_vectors(
-                                            &ws, &abs, &rel, &content, language, &ct,
-                                        ) {
-                                            tracing::debug!("Vector reindex skipped: {}", e);
-                                        }
-                                    }).await;
-                                });
-                            }
                         }
                     }
                     Err(errors) => {
@@ -235,9 +197,4 @@ fn classify_debounced_event(event: &DebouncedEvent) -> &'static str {
         EventKind::Access(_) => "access",
         _ => "other",
     }
-}
-
-/// Detect language from file extension — delegates to shared utility
-fn detect_language_ext(ext: &str) -> &'static str {
-    crate::lang::detect_language(ext)
 }

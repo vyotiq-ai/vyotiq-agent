@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 
 /**
  * Debounce a callback function
@@ -84,4 +84,30 @@ export function useThrottle<T extends (...args: unknown[]) => unknown>(
     },
     [limit]
   );
+}
+
+/**
+ * Debounce a value - returns the value after it stops changing for `delay` ms.
+ * Useful for debouncing search queries, filter inputs, etc.
+ * @param value The value to debounce
+ * @param delay Delay in milliseconds
+ * @returns The debounced value
+ */
+export function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    timerRef.current = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
 }

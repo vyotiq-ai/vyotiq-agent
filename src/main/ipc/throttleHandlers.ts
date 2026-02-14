@@ -15,6 +15,7 @@ import {
 } from '../agent/performance/BackgroundThrottleController';
 import {
   getThrottleEventLogger,
+  type ThrottleLogCategory,
   type ThrottleLogEntry,
 } from '../agent/performance/ThrottleEventLogger';
 
@@ -137,7 +138,7 @@ export function registerThrottleHandlers(): void {
         const throttleLogger = getThrottleEventLogger();
         const entries = throttleLogger.getRecentEntries(
           options?.count ?? 100,
-          options?.category as unknown as undefined
+          options?.category as ThrottleLogCategory | undefined
         );
         const stats = throttleLogger.getStats();
 

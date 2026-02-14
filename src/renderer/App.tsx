@@ -15,8 +15,15 @@ import { SettingsPanel, MetricsDashboard } from './features/settings';
 import { useProfilerKeyboard } from './utils/profiler';
 import BrowserPanel from './features/browser/BrowserPanel';
 import { UndoHistoryPanel } from './features/undo/UndoHistoryPanel';
+import { DebugPanel } from './features/debugging/DebugPanel';
 import { FirstRunWizard } from './features/onboarding/FirstRunWizard';
+import { ConnectedLoadingIndicator } from './components/ui/LoadingState';
 import { createLogger } from './utils/logger';
+
+// Browser panel resize constraints
+const BROWSER_PANEL_MIN_WIDTH = 320;
+const BROWSER_PANEL_MAX_WIDTH = 900;
+const BROWSER_PANEL_CHAT_MIN_WIDTH = 240;
 
 const logger = createLogger('App');
 
@@ -30,6 +37,7 @@ const App: React.FC = () => {
     commandPaletteOpen,
     quickOpenOpen,
     metricsDashboardOpen,
+    debugPanelOpen,
   } = useUIState();
 
   const {
@@ -47,6 +55,8 @@ const App: React.FC = () => {
     closeMetricsDashboard,
     openQuickOpen,
     closeQuickOpen,
+    closeDebugPanel: _closeDebugPanel,
+    toggleDebugPanel,
   } = useUIActions();
 
   const actions = useAgentActions();
@@ -233,6 +243,15 @@ const App: React.FC = () => {
       category: 'Panels',
       action: openMetricsDashboard,
     },
+    {
+      id: 'toggle-debug-panel',
+      label: 'Toggle Debug Panel',
+      description: 'Open trace viewer, breakpoints, and state inspector',
+      icon: CommandIcons.settings,
+      shortcut: 'Ctrl+Shift+D',
+      category: 'Panels',
+      action: toggleDebugPanel,
+    },
     // Action commands
     {
       id: 'cancel-run',
@@ -299,6 +318,7 @@ const App: React.FC = () => {
     openUndoHistory,
     closeUndoHistory,
     openMetricsDashboard,
+    toggleDebugPanel,
     confirm,
   ]);
 
@@ -311,9 +331,8 @@ const App: React.FC = () => {
     if (!isResizingBrowser) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const minWidth = 320;
-      const maxWidth = Math.min(900, Math.max(320, window.innerWidth - 240));
-      const nextWidth = Math.max(minWidth, Math.min(maxWidth, window.innerWidth - e.clientX));
+      const maxWidth = Math.min(BROWSER_PANEL_MAX_WIDTH, Math.max(BROWSER_PANEL_MIN_WIDTH, window.innerWidth - BROWSER_PANEL_CHAT_MIN_WIDTH));
+      const nextWidth = Math.max(BROWSER_PANEL_MIN_WIDTH, Math.min(maxWidth, window.innerWidth - e.clientX));
       setBrowserPanelWidth(nextWidth);
     };
 
@@ -384,6 +403,16 @@ const App: React.FC = () => {
               />
           </FeatureErrorBoundary>
         )}
+        {debugPanelOpen && (
+          <FeatureErrorBoundary featureName="DebugPanel">
+            <DebugPanel
+              sessionId={agentSnapshot.activeSessionId ?? undefined}
+              runId={agentSnapshot.activeRunId ?? undefined}
+              isRunning={agentSnapshot.activeSessionStatus === 'running'}
+              className="fixed right-0 top-[32px] bottom-0 w-[400px] z-50 bg-[var(--color-surface-base)] border-l border-[var(--color-border-subtle)] shadow-xl"
+            />
+          </FeatureErrorBoundary>
+        )}
         <FeatureErrorBoundary featureName="Shortcuts">
           <KeyboardShortcutsModal open={shortcutsOpen} onClose={closeShortcuts} />
         </FeatureErrorBoundary>
@@ -450,6 +479,8 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Global loading indicator — reads from LoadingProvider for app-wide loading states */}
+      <ConnectedLoadingIndicator position="top" variant="bar" />
       {/* Confirmation dialog rendered at root level */}
       <ConfirmDialog />
     </>

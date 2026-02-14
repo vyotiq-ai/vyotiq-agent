@@ -32,16 +32,15 @@ const mockVyotiq = {
     onEvent: vi.fn().mockReturnValue(() => {}),
   },
 
-  // Settings API
+  // Settings API - matches preload.ts settingsAPI
   settings: {
     get: vi.fn().mockResolvedValue({}),
-    set: vi.fn(),
-    reset: vi.fn(),
-    export: vi.fn(),
-    import: vi.fn(),
-    getProviderSettings: vi.fn(),
-    setProviderSettings: vi.fn(),
-    onSettingsChanged: vi.fn().mockReturnValue(() => {}),
+    getSafe: vi.fn().mockResolvedValue({}),
+    update: vi.fn().mockResolvedValue({ success: true }),
+    reset: vi.fn().mockResolvedValue({ success: true }),
+    validate: vi.fn().mockResolvedValue({ valid: true, errors: [] }),
+    export: vi.fn().mockResolvedValue({ success: true }),
+    import: vi.fn().mockResolvedValue({ success: true }),
   },
 
   // Files API
@@ -133,22 +132,24 @@ const mockVyotiq = {
     discard: vi.fn(),
   },
 
-  // Cache API
+  // Cache API - matches preload.ts cacheAPI
   cache: {
-    get: vi.fn(),
-    set: vi.fn(),
-    delete: vi.fn(),
-    clear: vi.fn(),
-    getStats: vi.fn().mockResolvedValue({ hits: 0, misses: 0 }),
+    getStats: vi.fn().mockResolvedValue({ promptCache: { hits: 0, misses: 0, hitRate: 0, tokensSaved: 0, costSaved: 0 }, toolCache: { size: 0, maxSize: 0, hits: 0, misses: 0, hitRate: 0, evictions: 0, expirations: 0 } }),
+    clear: vi.fn().mockResolvedValue({ success: true, cleared: [] }),
+    updateToolConfig: vi.fn().mockResolvedValue({ success: true }),
+    cleanupToolResults: vi.fn().mockResolvedValue({ success: true, removed: 0 }),
+    invalidatePath: vi.fn().mockResolvedValue({ success: true, invalidated: 0 }),
   },
 
-  // Undo API
+  // Undo API - matches preload.ts undoAPI
   undo: {
     getHistory: vi.fn().mockResolvedValue([]),
-    undo: vi.fn(),
-    redo: vi.fn(),
-    canUndo: vi.fn().mockResolvedValue(false),
-    canRedo: vi.fn().mockResolvedValue(false),
+    getGroupedHistory: vi.fn().mockResolvedValue([]),
+    undoChange: vi.fn().mockResolvedValue({ success: true }),
+    redoChange: vi.fn().mockResolvedValue({ success: true }),
+    undoRun: vi.fn().mockResolvedValue({ success: true }),
+    getUndoableCount: vi.fn().mockResolvedValue(0),
+    clearHistory: vi.fn().mockResolvedValue({ success: true }),
   },
 
   // MCP API
@@ -159,6 +160,48 @@ const mockVyotiq = {
     getTools: vi.fn().mockResolvedValue([]),
     onToolsUpdated: vi.fn().mockReturnValue(() => {}),
     onEvent: vi.fn().mockReturnValue(() => {}),
+  },
+
+  // Workspace API - matches preload.ts workspaceAPI
+  workspace: {
+    getPath: vi.fn().mockResolvedValue({ success: true, path: '' }),
+    setPath: vi.fn().mockResolvedValue({ success: true }),
+    selectFolder: vi.fn().mockResolvedValue({ success: false }),
+    close: vi.fn().mockResolvedValue({ success: true }),
+    getRecent: vi.fn().mockResolvedValue({ success: true, paths: [] }),
+    onWorkspaceChanged: vi.fn().mockReturnValue(() => {}),
+  },
+
+  // Throttle API - matches preload.ts throttleAPI
+  throttle: {
+    getState: vi.fn().mockResolvedValue(null),
+    getStats: vi.fn().mockResolvedValue(null),
+    getLogs: vi.fn().mockResolvedValue([]),
+    getAnomalies: vi.fn().mockResolvedValue([]),
+    startCriticalOperation: vi.fn().mockResolvedValue(true),
+    endCriticalOperation: vi.fn().mockResolvedValue(true),
+    getEffectiveInterval: vi.fn().mockResolvedValue(1000),
+    shouldBypass: vi.fn().mockResolvedValue(false),
+    exportLogs: vi.fn().mockResolvedValue(''),
+    onStateChanged: vi.fn().mockReturnValue(() => {}),
+  },
+
+  // Rust Backend API - matches preload.ts rustBackendAPI
+  rustBackend: {
+    health: vi.fn().mockResolvedValue({ success: true }),
+    isAvailable: vi.fn().mockResolvedValue(false),
+    getAuthToken: vi.fn().mockResolvedValue(''),
+    listWorkspaces: vi.fn().mockResolvedValue({ success: true, workspaces: [] }),
+    createWorkspace: vi.fn().mockResolvedValue({ success: true }),
+    activateWorkspace: vi.fn().mockResolvedValue({ success: true }),
+    removeWorkspace: vi.fn().mockResolvedValue({ success: true }),
+    listFiles: vi.fn().mockResolvedValue({ success: true, files: [] }),
+    readFile: vi.fn().mockResolvedValue({ success: true, content: '' }),
+    writeFile: vi.fn().mockResolvedValue({ success: true }),
+    search: vi.fn().mockResolvedValue({ success: true, results: [] }),
+    grep: vi.fn().mockResolvedValue({ success: true, results: [] }),
+    triggerIndex: vi.fn().mockResolvedValue({ success: true }),
+    indexStatus: vi.fn().mockResolvedValue({ success: true }),
   },
 
   // Debug API

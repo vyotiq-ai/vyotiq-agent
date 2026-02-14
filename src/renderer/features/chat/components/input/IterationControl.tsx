@@ -168,7 +168,7 @@ export const IterationControl: React.FC<IterationControlProps> = memo(({
           onClick={handleToggle}
           className={cn(
             'flex items-center gap-0.5 text-[10px] font-mono',
-            'px-1.5 py-0.5 rounded-sm',
+            'px-1.5 py-0.5 rounded-md',
             'hover:bg-[var(--color-surface-2)] transition-colors duration-150',
             'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
             'text-[var(--color-text-muted)]'
@@ -188,8 +188,8 @@ export const IterationControl: React.FC<IterationControlProps> = memo(({
       {isExpanded && (
         <div className={cn(
           'flex items-center gap-2 px-2 py-1',
-          'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
-          'rounded-sm',
+          'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]/20',
+          'rounded-md',
           'animate-in fade-in-0 zoom-in-95 duration-150'
         )}>
           {/* Current iteration indicator */}
@@ -204,7 +204,7 @@ export const IterationControl: React.FC<IterationControlProps> = memo(({
             onClick={handleDecrement}
             disabled={localValue <= (currentIteration ?? MIN_ITERATIONS)}
             className={cn(
-              'p-0.5 rounded-sm',
+              'p-0.5 rounded-md',
               'hover:bg-[var(--color-surface-3)] transition-colors duration-150',
               'disabled:opacity-30 disabled:cursor-not-allowed',
               'text-[var(--color-text-muted)]'
@@ -231,7 +231,7 @@ export const IterationControl: React.FC<IterationControlProps> = memo(({
             type="button"
             onClick={handleIncrement}
             className={cn(
-              'p-0.5 rounded-sm',
+              'p-0.5 rounded-md',
               'hover:bg-[var(--color-surface-3)] transition-colors duration-150',
               'text-[var(--color-text-muted)]'
             )}
@@ -251,7 +251,7 @@ export const IterationControl: React.FC<IterationControlProps> = memo(({
             type="button"
             onClick={handleClose}
             className={cn(
-              'p-0.5 rounded-sm ml-1',
+              'p-0.5 rounded-md ml-1',
               'hover:bg-[var(--color-surface-3)] transition-colors duration-150',
               'text-[var(--color-text-dim)]'
             )}

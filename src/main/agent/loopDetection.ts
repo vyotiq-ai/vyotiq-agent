@@ -662,7 +662,7 @@ export class LoopDetector {
     const args = toolCall.arguments || {};
     
     // Common argument names for file/directory paths
-    const pathKeys = ['path', 'file', 'filePath', 'directory', 'dir', 'target', 'source', 'url'];
+    const pathKeys = ['path', 'file', 'filePath', 'file_path', 'filename', 'fileName', 'directory', 'dir', 'target', 'source', 'src', 'dest', 'destination', 'url'];
     
     for (const key of pathKeys) {
       if (typeof args[key] === 'string' && args[key]) {

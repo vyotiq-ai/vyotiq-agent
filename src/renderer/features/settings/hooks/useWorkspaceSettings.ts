@@ -1,12 +1,10 @@
 /**
  * useWorkspaceSettings Hook
  * 
- * Manages workspace indexing and embedding settings:
+ * Manages workspace indexing settings:
  * - Auto-indexing configuration
  * - File watcher settings
- * - Vector embedding configuration
  * - Exclude/include patterns
- * - Agent context injection settings
  */
 
 import { useCallback } from 'react';

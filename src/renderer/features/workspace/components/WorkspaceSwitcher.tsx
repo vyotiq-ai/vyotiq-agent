@@ -104,10 +104,7 @@ export const WorkspaceSwitcher: React.FC = () => {
                 {/* Indexing status */}
                 {isIndexing && (
                   <span className="flex items-center gap-1 text-[8px] text-[var(--color-text-dim)] shrink-0" title="Indexing...">
-                    <span className="inline-flex gap-0.5">
-                      <span className="animate-[thinking-dot_1.4s_ease-in-out_infinite] w-1 h-1 rounded-full bg-[var(--color-accent-primary)]"></span>
-                      <span className="animate-[thinking-dot_1.4s_ease-in-out_0.2s_infinite] w-1 h-1 rounded-full bg-[var(--color-accent-primary)]"></span>
-                    </span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0"></span>
                   </span>
                 )}
                 {isIndexed && !isIndexing && (

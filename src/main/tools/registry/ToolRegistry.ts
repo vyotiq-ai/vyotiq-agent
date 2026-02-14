@@ -168,6 +168,75 @@ export class ToolRegistry {
   }
 
   /**
+   * Resolve a tool name with fuzzy matching fallback
+   * Tries exact match, then alias, then normalized variants (hyphens/underscores, case)
+   */
+  resolveToolNameFuzzy(name: string): string | undefined {
+    // 1. Exact match or alias
+    const exact = this.resolveToolName(name);
+    if (exact) return exact;
+
+    // 2. Try with hyphens replaced by underscores and vice versa
+    const withUnderscores = name.replace(/-/g, '_');
+    const withHyphens = name.replace(/_/g, '-');
+    if (this.tools.has(withUnderscores)) return withUnderscores;
+    if (this.tools.has(withHyphens)) return withHyphens;
+
+    // 3. Case-insensitive match
+    const nameLower = name.toLowerCase();
+    for (const [registeredName] of this.tools) {
+      if (registeredName.toLowerCase() === nameLower) return registeredName;
+    }
+
+    // 4. Case-insensitive with underscore/hyphen normalization
+    const normalizedName = nameLower.replace(/[-_]/g, '_');
+    for (const [registeredName] of this.tools) {
+      const normalizedRegistered = registeredName.toLowerCase().replace(/[-_]/g, '_');
+      if (normalizedRegistered === normalizedName) return registeredName;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Get suggested tool names for a mistyped/unknown tool name
+   * Returns up to 3 closest matches
+   */
+  private getSuggestedTools(name: string): string[] {
+    const nameLower = name.toLowerCase().replace(/[-_]/g, '');
+    const scored: Array<{ name: string; score: number }> = [];
+
+    for (const [registeredName] of this.tools) {
+      const regLower = registeredName.toLowerCase().replace(/[-_]/g, '');
+      let score = 0;
+
+      // Check if one contains the other
+      if (regLower.includes(nameLower) || nameLower.includes(regLower)) {
+        score += 5;
+      }
+
+      // Check word overlap
+      const nameWords = new Set(name.toLowerCase().split(/[-_]/));
+      const regWords = registeredName.toLowerCase().split(/[-_]/);
+      for (const word of regWords) {
+        if (nameWords.has(word)) score += 3;
+      }
+
+      // Check prefix match
+      if (regLower.startsWith(nameLower.slice(0, 4))) score += 2;
+
+      if (score > 0) {
+        scored.push({ name: registeredName, score });
+      }
+    }
+
+    return scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map(s => s.name);
+  }
+
+  /**
    * Resolve multiple tool names to their canonical forms
    * Filters out tools that don't exist
    */
@@ -346,19 +415,32 @@ export class ToolRegistry {
     context: ToolExecutionContext
   ): Promise<EnhancedToolResult> {
     const startedAt = Date.now();
-    const tool = this.getDefinition(name);
+    
+    // Resolve the tool name — check aliases and try fuzzy matching for unresolved names
+    const resolvedName = this.resolveToolNameFuzzy(name);
+    const tool = resolvedName ? this.getDefinition(resolvedName) : undefined;
 
-    if (!tool) {
+    if (!tool || !resolvedName) {
+      // Build helpful suggestions for unregistered tools
+      const suggestions = this.getSuggestedTools(name);
+      const suggestionText = suggestions.length > 0
+        ? ` Did you mean one of: ${suggestions.join(', ')}?`
+        : '';
       return {
         toolName: name,
         success: false,
-        output: `Tool "${name}" is not registered.`,
+        output: `Tool "${name}" is not registered.${suggestionText} Use the "request_tools" tool to discover and load available tools.`,
         timing: {
           startedAt,
           completedAt: Date.now(),
           durationMs: Date.now() - startedAt,
         },
       };
+    }
+
+    // If the name was resolved to a different canonical name, log it
+    if (resolvedName !== name) {
+      logger.debug('Tool name resolved', { original: name, resolved: resolvedName });
     }
 
     // Validate and normalize arguments before execution
@@ -880,7 +962,7 @@ export class ToolRegistry {
     result: ToolExecutionResult
   ): Array<{ path: string; action: 'created' | 'modified' | 'deleted' | 'read' }> {
     const changes: Array<{ path: string; action: 'created' | 'modified' | 'deleted' | 'read' }> = [];
-    const filePath = (args.path || args.filePath) as string | undefined;
+    const filePath = (args.path || args.filePath || args.file_path) as string | undefined;
 
     if (!filePath) return changes;
 

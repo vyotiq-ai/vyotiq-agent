@@ -123,7 +123,7 @@ const ContextIndicator: React.FC<{
       title={tooltip}
     >
       <span className="text-[var(--color-text-dim)]">ctx=</span>
-      <span className={cn(valueColor, info.needsPruning && 'animate-pulse')}>{pct}%</span>
+      <span className={cn(valueColor)}>{pct}%</span>
     </span>
   );
 });
@@ -152,7 +152,7 @@ const AttachButton: React.FC<AttachButtonProps> = memo(({ onClick, disabled }) =
         'flex items-center gap-1 text-[10px] font-mono whitespace-nowrap',
         'transition-all duration-150',
         'text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)]',
-        'rounded-sm py-0.5 px-1',
+        'rounded-md py-0.5 px-1',
         'hover:bg-[var(--color-surface-2)]/50',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
         disabled && 'opacity-40 cursor-not-allowed pointer-events-none'
@@ -192,7 +192,7 @@ const AutoConfirmToggle: React.FC<AutoConfirmToggleProps> = memo(({ enabled, onT
       className={cn(
         'flex items-center gap-1 text-[10px] font-mono whitespace-nowrap',
         'transition-all duration-150',
-        'rounded-sm py-0.5 px-1',
+        'rounded-md py-0.5 px-1',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
         enabled 
           ? 'text-[var(--color-warning)] bg-[var(--color-warning)]/5 hover:bg-[var(--color-warning)]/10' 

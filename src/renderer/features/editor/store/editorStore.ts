@@ -7,6 +7,7 @@
 
 import { useCallback, useSyncExternalStore } from 'react';
 import { createLogger } from '../../../utils/logger';
+import { getFileName } from '../../../utils/pathHelpers';
 
 const logger = createLogger('EditorStore');
 
@@ -92,9 +93,7 @@ function getLanguageFromPath(filePath: string): string {
   return langMap[ext] ?? 'plaintext';
 }
 
-function getFileName(filePath: string): string {
-  return filePath.split(/[/\\]/).pop() ?? filePath;
-}
+// getFileName imported from utils/pathHelpers
 
 export function openFile(
   filePath: string,

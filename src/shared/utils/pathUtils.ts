@@ -3,9 +3,69 @@
  * 
  * Centralized path handling utilities for consistent cross-platform
  * path operations throughout the application.
+ * 
+ * NOTE: This file is shared between main and renderer processes.
+ * All implementations must be browser-safe (no node:path dependency).
  */
 
-import * as path from 'node:path';
+// =============================================================================
+// Browser-safe path helpers (replaces node:path for renderer compatibility)
+// =============================================================================
+
+/** Get the last segment of a path (like path.basename) */
+function _basename(p: string, ext?: string): string {
+  const normalized = p.replace(/\\/g, '/').replace(/\/+$/, '');
+  const lastSlash = normalized.lastIndexOf('/');
+  const base = lastSlash === -1 ? normalized : normalized.slice(lastSlash + 1);
+  if (ext && base.endsWith(ext)) {
+    return base.slice(0, -ext.length);
+  }
+  return base;
+}
+
+/** Get the extension of a path including the dot (like path.extname) */
+function _extname(p: string): string {
+  const base = _basename(p);
+  const dotIndex = base.lastIndexOf('.');
+  if (dotIndex <= 0) return '';
+  return base.slice(dotIndex);
+}
+
+/** Get the directory portion of a path (like path.dirname) */
+function _dirname(p: string): string {
+  const normalized = p.replace(/\\/g, '/').replace(/\/+$/, '');
+  const lastSlash = normalized.lastIndexOf('/');
+  if (lastSlash === -1) return '.';
+  if (lastSlash === 0) return '/';
+  return normalized.slice(0, lastSlash);
+}
+
+/** Join path segments (like path.join) */
+function _join(...parts: string[]): string {
+  return parts
+    .filter(Boolean)
+    .join('/')
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/');
+}
+
+/** Check if a path is absolute (like path.isAbsolute) */
+function _isAbsolute(p: string): boolean {
+  // Unix absolute or Windows drive letter (C:\) or UNC (\\server)
+  return /^\/|^[A-Za-z]:[/\\]|^\\\\/.test(p);
+}
+
+/** Simple relative path calculation (like path.relative) */
+function _relative(from: string, to: string): string {
+  const fromParts = from.replace(/\\/g, '/').replace(/\/+$/, '').split('/').filter(Boolean);
+  const toParts = to.replace(/\\/g, '/').replace(/\/+$/, '').split('/').filter(Boolean);
+  let common = 0;
+  while (common < fromParts.length && common < toParts.length && fromParts[common] === toParts[common]) {
+    common++;
+  }
+  const ups = Array(fromParts.length - common).fill('..');
+  return [...ups, ...toParts.slice(common)].join('/') || '.';
+}
 
 // =============================================================================
 // Path Normalization
@@ -43,8 +103,8 @@ export function normalizePathPreserveTrailing(inputPath: string): string {
  * Check if a path is within a workspace/directory
  */
 export function isWithinDirectory(filePath: string, directoryPath: string): boolean {
-  const normalizedFile = normalizePath(path.resolve(filePath));
-  const normalizedDir = normalizePath(path.resolve(directoryPath));
+  const normalizedFile = normalizePath(filePath);
+  const normalizedDir = normalizePath(directoryPath);
   
   return normalizedFile.startsWith(normalizedDir + '/') || 
          normalizedFile === normalizedDir;
@@ -54,7 +114,7 @@ export function isWithinDirectory(filePath: string, directoryPath: string): bool
  * Check if two paths point to the same location
  */
 export function pathsEqual(path1: string, path2: string): boolean {
-  return normalizePath(path.resolve(path1)) === normalizePath(path.resolve(path2));
+  return normalizePath(path1).toLowerCase() === normalizePath(path2).toLowerCase();
 }
 
 /**
@@ -75,7 +135,7 @@ export function comparePaths(a: string, b: string): number {
  * Returns normalized path with forward slashes
  */
 export function getRelativePath(filePath: string, basePath: string): string {
-  const relativePath = path.relative(basePath, filePath);
+  const relativePath = _relative(basePath, filePath);
   return normalizePath(relativePath);
 }
 
@@ -83,7 +143,7 @@ export function getRelativePath(filePath: string, basePath: string): string {
  * Get the file extension (without the dot)
  */
 export function getExtension(filePath: string): string {
-  const ext = path.extname(filePath);
+  const ext = _extname(filePath);
   return ext.startsWith('.') ? ext.slice(1).toLowerCase() : ext.toLowerCase();
 }
 
@@ -91,21 +151,21 @@ export function getExtension(filePath: string): string {
  * Get the file name without extension
  */
 export function getBasename(filePath: string): string {
-  return path.basename(filePath, path.extname(filePath));
+  return _basename(filePath, _extname(filePath));
 }
 
 /**
  * Get the directory name from a path
  */
 export function getDirname(filePath: string): string {
-  return normalizePath(path.dirname(filePath));
+  return normalizePath(_dirname(filePath));
 }
 
 /**
  * Get the file name including extension
  */
 export function getFilename(filePath: string): string {
-  return path.basename(filePath);
+  return _basename(filePath);
 }
 
 // =============================================================================
@@ -116,14 +176,14 @@ export function getFilename(filePath: string): string {
  * Join paths and normalize the result
  */
 export function joinPaths(...paths: string[]): string {
-  return normalizePath(path.join(...paths));
+  return normalizePath(_join(...paths));
 }
 
 /**
  * Resolve paths to an absolute path and normalize
  */
 export function resolvePath(...paths: string[]): string {
-  return normalizePath(path.resolve(...paths));
+  return normalizePath(_join(...paths));
 }
 
 /**
@@ -325,7 +385,7 @@ export function isBinaryFile(filePath: string): boolean {
  * Check if a path is absolute
  */
 export function isAbsolutePath(inputPath: string): boolean {
-  return path.isAbsolute(inputPath);
+  return _isAbsolute(inputPath);
 }
 
 /**
@@ -341,8 +401,8 @@ export function isValidPath(inputPath: string): boolean {
     return false;
   }
   
-  // Check for very long paths
-  if (inputPath.length > 260 && process.platform === 'win32') {
+  // Check for very long paths (Windows limit)
+  if (inputPath.length > 260 && typeof process !== 'undefined' && process.platform === 'win32') {
     return false;
   }
   

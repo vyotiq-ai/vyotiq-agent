@@ -8,6 +8,7 @@ use axum::{
     Router,
 };
 use futures_util::{SinkExt, StreamExt};
+use std::sync::Arc;
 use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
@@ -23,13 +24,14 @@ pub fn create_app(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // Public routes — no auth required (health probes + graceful shutdown)
+    // Public routes — no auth required (health probes only)
     let public_routes = Router::new()
-        .route("/health", get(routes::health::health_check))
-        .route("/shutdown", post(routes::health::shutdown_handler));
+        .route("/health", get(routes::health::health_check));
 
     // Protected routes — require VYOTIQ_AUTH_TOKEN when configured
     let protected_routes = Router::new()
+        // Graceful shutdown (requires auth to prevent unauthorized termination)
+        .route("/shutdown", post(routes::health::shutdown_handler))
         // Workspace management
         .route("/api/workspaces", get(routes::workspace::list_workspaces))
         .route("/api/workspaces", post(routes::workspace::create_workspace))
@@ -104,10 +106,6 @@ pub fn create_app(state: AppState) -> Router {
             post(routes::search::fulltext_search),
         )
         .route(
-            "/api/workspaces/{workspace_id}/search/semantic",
-            post(routes::search::semantic_search),
-        )
-        .route(
             "/api/workspaces/{workspace_id}/search/grep",
             post(routes::search::grep_search),
         )
@@ -126,7 +124,7 @@ pub fn create_app(state: AppState) -> Router {
 /// Middleware that validates `Authorization: Bearer <token>` against the
 /// `VYOTIQ_AUTH_TOKEN` environment variable.  If the env var is not set or
 /// empty, auth is skipped (development mode).
-async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCode> {
+async fn auth_middleware(req: Request, next: Next) -> Result<Response, (StatusCode, axum::Json<serde_json::Value>)> {
     // Read expected token from env.  Cache via OnceLock so we only read once.
     use std::sync::OnceLock;
     static AUTH_TOKEN: OnceLock<Option<String>> = OnceLock::new();
@@ -153,12 +151,18 @@ async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCod
                 Ok(next.run(req).await)
             } else {
                 tracing::warn!("Auth token mismatch — rejecting request");
-                Err(StatusCode::UNAUTHORIZED)
+                Err((
+                    StatusCode::UNAUTHORIZED,
+                    axum::Json(serde_json::json!({"error": "Unauthorized", "status": 401})),
+                ))
             }
         }
         _ => {
             tracing::warn!("Missing or malformed Authorization header — rejecting request");
-            Err(StatusCode::UNAUTHORIZED)
+            Err((
+                StatusCode::UNAUTHORIZED,
+                axum::Json(serde_json::json!({"error": "Unauthorized", "status": 401})),
+            ))
         }
     }
 }
@@ -171,18 +175,32 @@ async fn ws_handler(
 }
 
 /// Bidirectional WebSocket handler
-/// Server → Client: broadcasts ServerEvents as JSON
+/// Server → Client: broadcasts ServerEvents as JSON (filtered by subscribed workspaces)
 /// Client → Server: accepts commands for real-time operations
 async fn handle_socket(socket: WebSocket, state: AppState) {
     tracing::info!("WebSocket client connected");
     let mut rx = state.event_tx.subscribe();
     let (mut sender, mut receiver) = socket.split();
 
-    // Server → Client: forward broadcast events
+    // Shared set of subscribed workspace IDs.
+    // Arc<parking_lot::Mutex<HashSet>> for cross-task communication.
+    let subscribed: Arc<parking_lot::Mutex<std::collections::HashSet<String>>> =
+        Arc::new(parking_lot::Mutex::new(std::collections::HashSet::new()));
+    let subscribed_for_send = subscribed.clone();
+
+    // Server → Client: forward broadcast events, filtered by subscription
     let mut send_task = tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(event) => {
+                    // Filter: only send events for subscribed workspaces
+                    // If no subscriptions yet, send all events (backward compat)
+                    {
+                        let subs = subscribed_for_send.lock();
+                        if !subs.is_empty() && !subs.contains(event.workspace_id()) {
+                            continue;
+                        }
+                    }
                     if let Ok(json) = serde_json::to_string(&event) {
                         if sender
                             .send(Message::Text(json.into()))
@@ -207,7 +225,6 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     // Client → Server: handle incoming commands
     let index_manager = state.index_manager.clone();
-    let embedding_manager = state.embedding_manager.clone();
     let workspace_manager = state.workspace_manager.clone();
     let event_tx = state.event_tx.clone();
 
@@ -225,7 +242,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             let change_type = cmd.get("change_type").and_then(|v| v.as_str()).unwrap_or("modify");
 
                             if !ws_id.is_empty() && !file_path.is_empty() {
-                                if let Ok(ws) = workspace_manager.get_workspace(ws_id) {
+                                // Validate the file path against the workspace to prevent path traversal
+                                if let Err(e) = workspace_manager.validate_path(ws_id, file_path) {
+                                    tracing::warn!("WebSocket reindex_file path validation failed: {}", e);
+                                } else if let Ok(ws) = workspace_manager.get_workspace(ws_id) {
                                     if let Err(e) = index_manager
                                         .reindex_file(ws_id, file_path, &ws.path, change_type)
                                         .await
@@ -237,10 +257,17 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         }
                         "subscribe_workspace" => {
                             // Client registers for workspace-specific events
-                            tracing::debug!(
-                                "Client subscribed to workspace: {}",
-                                cmd.get("workspace_id").and_then(|v| v.as_str()).unwrap_or("?")
-                            );
+                            if let Some(ws_id) = cmd.get("workspace_id").and_then(|v| v.as_str()) {
+                                subscribed.lock().insert(ws_id.to_string());
+                                tracing::debug!("Client subscribed to workspace: {}", ws_id);
+                            }
+                        }
+                        "unsubscribe_workspace" => {
+                            // Client unregisters from workspace events
+                            if let Some(ws_id) = cmd.get("workspace_id").and_then(|v| v.as_str()) {
+                                subscribed.lock().remove(ws_id);
+                                tracing::debug!("Client unsubscribed from workspace: {}", ws_id);
+                            }
                         }
                         "trigger_index" => {
                             let ws_id = cmd.get("workspace_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -250,7 +277,6 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                                         ws_id,
                                         ws.path.clone(),
                                         index_manager.clone(),
-                                        embedding_manager.clone(),
                                         workspace_manager.clone(),
                                         event_tx.clone(),
                                     );

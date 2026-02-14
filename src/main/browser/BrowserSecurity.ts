@@ -223,6 +223,10 @@ export class BrowserSecurity extends EventEmitter {
   private events: SecurityEvent[] = [];
   private sessionPartition: string;
   private isInitialized = false;
+  /** Tracks whether external filter lists have been loaded */
+  private filtersReady = false;
+  /** Promise resolving when filters finish loading (for callers that need to await) */
+  private filterReadyPromise: Promise<void> | null = null;
 
   constructor(sessionPartition = 'persist:agent-browser', config: Partial<SecurityConfig> = {}) {
     super();
@@ -246,13 +250,16 @@ export class BrowserSecurity extends EventEmitter {
    * Initialize security features for the browser session.
    * This method is idempotent - calling it multiple times is safe and will only
    * initialize once.
+   * 
+   * Returns a promise that resolves once external filter lists have been loaded,
+   * allowing callers to await full initialization if needed.
    */
-  initialize(): void {
+  initialize(): Promise<void> {
     if (this.isInitialized) {
       // Already initialized - this is expected when called from multiple places
       // (e.g., initBrowserManager + ensureBrowserView)
       logger.debug('BrowserSecurity already initialized, skipping');
-      return;
+      return this.filterReadyPromise ?? Promise.resolve();
     }
 
     logger.info('Initializing BrowserSecurity', {
@@ -263,9 +270,10 @@ export class BrowserSecurity extends EventEmitter {
 
     // Initialize FilterManager for ad blocking (downloads external filter lists)
     const filterManager = getFilterManager();
-    filterManager
+    this.filterReadyPromise = filterManager
       .initialize()
       .then(() => {
+        this.filtersReady = true;
         const filterStats = getFilterManager().getStats();
         logger.info('BrowserSecurity filter lists ready', {
           filterDomainCount: filterStats.domainCount,
@@ -276,6 +284,8 @@ export class BrowserSecurity extends EventEmitter {
         logger.error('Failed to initialize FilterManager', {
           error: err instanceof Error ? err.message : String(err),
         });
+        // Mark ready even on failure so callers aren't blocked forever
+        this.filtersReady = true;
       });
 
     const browserSession = session.fromPartition(this.sessionPartition);
@@ -301,6 +311,8 @@ export class BrowserSecurity extends EventEmitter {
       filterDomainCount: 0,
       filterPatternCount: 0,
     });
+
+    return this.filterReadyPromise;
   }
 
   /**
@@ -493,38 +505,47 @@ export class BrowserSecurity extends EventEmitter {
     if (this.config.adBlockingEnabled || this.config.trackerBlockingEnabled) {
       // Use FilterManager for ad/tracker blocking (external filter lists)
       const filterManager = getFilterManager();
+
+      // If filter lists haven't loaded yet, skip domain/URL blocking for this request
+      // (safety: don't silently let ads through without notifying)
+      if (!this.filtersReady) {
+        logger.debug('Filter lists not yet loaded, skipping ad/tracker blocking for request', {
+          url: url.slice(0, 80),
+        });
+      } else {
       
-      // Check domain against filter lists
-      if (filterManager.shouldBlockDomain(hostname) || filterManager.shouldBlockDomain(domain)) {
-        if (this.config.adBlockingEnabled) {
+        // Check domain against filter lists
+        if (filterManager.shouldBlockDomain(hostname) || filterManager.shouldBlockDomain(domain)) {
+          if (this.config.adBlockingEnabled) {
+            this.stats.blockedAds++;
+            logger.debug('Blocking ad domain', { hostname, domain, url: url.slice(0, 100) });
+            return {
+              blocked: true,
+              category: 'ad',
+              reason: `Blocked ad/tracker domain: ${hostname}`,
+            };
+          }
+          if (this.config.trackerBlockingEnabled) {
+            this.stats.blockedTrackers++;
+            return {
+              blocked: true,
+              category: 'tracker',
+              reason: `Blocked tracker domain: ${hostname}`,
+            };
+          }
+        }
+      
+        // Check full URL against filter patterns
+        if (this.config.adBlockingEnabled && filterManager.shouldBlockUrl(url)) {
           this.stats.blockedAds++;
-          logger.debug('Blocking ad domain', { hostname, domain, url: url.slice(0, 100) });
+          logger.debug('Blocking ad URL pattern', { url: url.slice(0, 100) });
           return {
             blocked: true,
             category: 'ad',
-            reason: `Blocked ad/tracker domain: ${hostname}`,
+            reason: `Blocked by ad filter: ${hostname}`,
           };
         }
-        if (this.config.trackerBlockingEnabled) {
-          this.stats.blockedTrackers++;
-          return {
-            blocked: true,
-            category: 'tracker',
-            reason: `Blocked tracker domain: ${hostname}`,
-          };
-        }
-      }
-      
-      // Check full URL against filter patterns
-      if (this.config.adBlockingEnabled && filterManager.shouldBlockUrl(url)) {
-        this.stats.blockedAds++;
-        logger.debug('Blocking ad URL pattern', { url: url.slice(0, 100) });
-        return {
-          blocked: true,
-          category: 'ad',
-          reason: `Blocked by ad filter: ${hostname}`,
-        };
-      }
+      } // end filtersReady else
     }
     
     // Check custom block list

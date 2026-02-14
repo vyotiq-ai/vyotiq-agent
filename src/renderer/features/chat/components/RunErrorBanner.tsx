@@ -7,6 +7,7 @@
  * Uses the terminal/CLI aesthetic consistent with the rest of the app.
  */
 import React, { memo, useCallback, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { useActiveSessionRunError } from '../../../hooks/useAgentSelectors';
 import { useAgentActions, useAgentSelector } from '../../../state/AgentProvider';
@@ -198,8 +199,8 @@ export const RunErrorBanner: React.FC<RunErrorBannerProps> = memo(({
         'flex flex-col gap-1.5',
         'mx-2 mb-2 px-3 py-2',
         'font-mono text-[10px]',
-        'border rounded-sm',
-        'border-[var(--color-error)]/30 bg-[var(--color-error)]/5',
+        'border rounded-md',
+        'border-[var(--color-error)]/20 bg-[var(--color-error)]/5',
         'animate-in slide-in-from-top-1 fade-in duration-200',
         className,
       )}
@@ -219,7 +220,7 @@ export const RunErrorBanner: React.FC<RunErrorBannerProps> = memo(({
         </span>
         <button
           onClick={handleDismiss}
-          className="flex-shrink-0 p-0.5 text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] transition-colors"
+          className="flex-shrink-0 p-0.5 text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] transition-colors duration-150 rounded-md"
           aria-label="Dismiss error"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -242,23 +243,17 @@ export const RunErrorBanner: React.FC<RunErrorBannerProps> = memo(({
       {runError.message.length > 100 && (
         <button
           onClick={() => setShowDetails(!showDetails)}
-          className="flex items-center gap-1 ml-5 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+          className="flex items-center gap-1 ml-5 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors duration-150"
         >
-          <svg
-            className={cn('w-2.5 h-2.5 transition-transform', showDetails && 'rotate-90')}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-          {showDetails ? 'hide details' : 'show details'}
+          <ChevronRight
+            className={cn('w-2.5 h-2.5 transition-transform duration-150', showDetails && 'rotate-90')}
+          />
+          details
         </button>
       )}
 
       {showDetails && (
-        <pre className="ml-5 p-1.5 text-[9px] text-[var(--color-text-muted)] bg-[var(--color-surface-2)]/50 rounded-sm overflow-x-auto whitespace-pre-wrap break-words">
+        <pre className="ml-5 p-1.5 text-[9px] text-[var(--color-text-muted)] bg-[var(--color-surface-2)]/50 rounded-md overflow-x-auto whitespace-pre-wrap break-words">
           {runError.message}
         </pre>
       )}

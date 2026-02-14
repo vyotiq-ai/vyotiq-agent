@@ -466,22 +466,26 @@ export function useMCPStore(): UseMCPStoreResult {
   // Load featured, categories, and registry stats on mount
   useEffect(() => {
     const loadData = async () => {
-      // Load featured
-      const featuredResult = await window.vyotiq.mcp.storeGetFeatured();
-      setFeatured(featuredResult);
+      try {
+        // Load featured
+        const featuredResult = await window.vyotiq.mcp.storeGetFeatured();
+        setFeatured(featuredResult);
 
-      // If featured is empty, trigger a refresh
-      if (featuredResult.length === 0) {
-        logger.info('Featured empty, triggering registry refresh');
-        try {
-          await window.vyotiq.mcp.storeRefresh();
-          const refreshedFeatured = await window.vyotiq.mcp.storeGetFeatured();
-          setFeatured(refreshedFeatured);
-        } catch (err) {
-          logger.warn('Failed to refresh registry on mount', {
-            error: err instanceof Error ? err.message : String(err),
-          });
+        // If featured is empty, trigger a refresh
+        if (featuredResult.length === 0) {
+          logger.info('Featured empty, triggering registry refresh');
+          try {
+            await window.vyotiq.mcp.storeRefresh();
+            const refreshedFeatured = await window.vyotiq.mcp.storeGetFeatured();
+            setFeatured(refreshedFeatured);
+          } catch (err) {
+            logger.warn('Failed to refresh registry on mount', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
+      } catch (err) {
+        logger.warn('Failed to load MCP featured data', { error: err instanceof Error ? err.message : String(err) });
       }
 
       // Load categories
@@ -503,7 +507,9 @@ export function useMCPStore(): UseMCPStoreResult {
         logger.debug('Failed to load MCP registry stats', { error: err instanceof Error ? err.message : String(err) });
       }
 
-      window.vyotiq.mcp.registryGetSources().then(setEnabledSources).catch(() => { });
+      window.vyotiq.mcp.registryGetSources().then(setEnabledSources).catch((err) => {
+        logger.debug('Failed to load MCP registry sources', { error: err instanceof Error ? err.message : String(err) });
+      });
     };
 
     loadData();

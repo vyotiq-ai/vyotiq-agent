@@ -1,190 +1,136 @@
 /**
  * ConversationSearchBar Component
  * 
- * A compact search bar for filtering and navigating through chat messages.
- * Shows match count and navigation controls when search is active.
+ * A compact search bar for finding messages within the current conversation.
+ * Integrates with the useConversationSearch hook for debounced filtering,
+ * match navigation (prev/next), and match count display.
  */
-
 import React, { memo, useRef, useEffect, useCallback } from 'react';
+import { Search, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from '../../../utils/cn';
-import { useHotkey } from '../../../hooks/useKeyboard';
+import type { ConversationSearchResult } from '../../../hooks/useConversationSearch';
 
 interface ConversationSearchBarProps {
-  /** Current search query */
-  searchQuery: string;
-  /** Update search query */
-  onSearchChange: (query: string) => void;
-  /** Number of matches found */
-  matchCount: number;
-  /** Current match index (0-based) */
-  currentMatchIndex: number;
-  /** Whether search is active (has matches) */
-  isSearchActive: boolean;
-  /** Navigate to next match */
-  onNextMatch: () => void;
-  /** Navigate to previous match */
-  onPrevMatch: () => void;
-  /** Clear search and close */
+  /** Search state from useConversationSearch hook */
+  search: ConversationSearchResult;
+  /** Callback when the search bar should close */
   onClose: () => void;
-  /** Additional CSS classes */
+  /** Additional CSS class */
   className?: string;
 }
 
-const ConversationSearchBarComponent: React.FC<ConversationSearchBarProps> = ({
-  searchQuery,
-  onSearchChange,
-  matchCount,
-  currentMatchIndex,
-  isSearchActive,
-  onNextMatch,
-  onPrevMatch,
+const ConversationSearchBarInternal: React.FC<ConversationSearchBarProps> = ({
+  search,
   onClose,
   className,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus input on mount
+  // Auto-focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Handle keyboard navigation
+  // Close on Escape
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        onPrevMatch();
-      } else {
-        onNextMatch();
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
+    if (e.key === 'Escape') {
+      search.clearSearch();
       onClose();
+    } else if (e.key === 'Enter') {
+      if (e.shiftKey) {
+        search.goToPrevMatch();
+      } else {
+        search.goToNextMatch();
+      }
     }
-  }, [onNextMatch, onPrevMatch, onClose]);
+  }, [search, onClose]);
 
-  // Keyboard shortcut: Ctrl/Cmd+F to focus search
-  useHotkey('ctrl+f', () => {
+  const handleClear = useCallback(() => {
+    search.clearSearch();
     inputRef.current?.focus();
-    inputRef.current?.select();
-  });
+  }, [search]);
 
   return (
     <div
       className={cn(
-        'flex items-center gap-2 px-2 py-1',
-        'bg-[var(--color-surface-base)] border-b border-[var(--color-border-subtle)]/40',
-        className
+        'flex items-center gap-1.5 px-2 py-1',
+        'bg-[var(--color-surface-1)] border-b border-[var(--color-border-subtle)]',
+        'font-mono text-[10px]',
+        className,
       )}
     >
-      {/* Search Icon */}
-      <svg
-        className="w-4 h-4 text-[var(--color-text-muted)] shrink-0"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-        />
-      </svg>
+      <Search size={11} className="shrink-0 text-[var(--color-text-muted)]" />
 
-      {/* Search Input */}
       <input
         ref={inputRef}
         type="text"
-        value={searchQuery}
-        onChange={(e) => onSearchChange(e.target.value)}
+        value={search.searchQuery}
+        onChange={e => search.setSearchQuery(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Search messages..."
+        placeholder="search messages..."
         className={cn(
-          'flex-1 min-w-0 bg-transparent',
-          'text-[10px] text-[var(--color-text-primary)]',
-          'placeholder:text-[var(--color-text-muted)]',
-          'focus:outline-none',
-          'font-mono'
+          'flex-1 bg-transparent outline-none text-[10px]',
+          'text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]',
+          'min-w-[100px]',
         )}
-        aria-label="Search messages"
+        spellCheck={false}
       />
 
-      {/* Match Count & Navigation */}
-      {searchQuery.length > 0 && (
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Match Count */}
-          <span className="text-[10px] text-[var(--color-text-muted)] font-mono tabular-nums">
-            {isSearchActive ? (
-              matchCount > 0 ? (
-                `${currentMatchIndex + 1}/${matchCount}`
-              ) : (
-                'No matches'
-              )
-            ) : (
-              '...'
-            )}
-          </span>
-
-          {/* Navigation Buttons */}
-          {matchCount > 0 && (
-            <>
-              <button
-                onClick={onPrevMatch}
-                className={cn(
-                  'p-1 rounded',
-                  'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
-                  'hover:bg-[var(--color-surface-3)]',
-                  'transition-colors'
-                )}
-                title="Previous match (Shift+Enter)"
-                aria-label="Previous match"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-              </button>
-              <button
-                onClick={onNextMatch}
-                className={cn(
-                  'p-1 rounded',
-                  'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
-                  'hover:bg-[var(--color-surface-3)]',
-                  'transition-colors'
-                )}
-                title="Next match (Enter)"
-                aria-label="Next match"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-            </>
-          )}
-        </div>
+      {/* Match counter */}
+      {search.isSearchActive && (
+        <span className="text-[9px] tabular-nums text-[var(--color-text-muted)] shrink-0">
+          {search.matchCount > 0
+            ? `${search.currentMatchIndex + 1}/${search.matchCount}`
+            : 'no matches'
+          }
+        </span>
       )}
 
-      {/* Close Button */}
-      <button
-        onClick={onClose}
-        className={cn(
-          'p-1 rounded shrink-0',
-          'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
-          'hover:bg-[var(--color-surface-3)]',
-          'transition-colors'
-        )}
-        title="Close search (Escape)"
-        aria-label="Close search"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      {/* Navigation buttons */}
+      {search.matchCount > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={search.goToPrevMatch}
+            className="p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+            aria-label="Previous match"
+          >
+            <ChevronUp size={11} />
+          </button>
+          <button
+            type="button"
+            onClick={search.goToNextMatch}
+            className="p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+            aria-label="Next match"
+          >
+            <ChevronDown size={11} />
+          </button>
+        </>
+      )}
+
+      {/* Clear/Close */}
+      {search.searchQuery ? (
+        <button
+          type="button"
+          onClick={handleClear}
+          className="p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+          aria-label="Clear search"
+        >
+          <X size={11} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+          aria-label="Close search"
+        >
+          <X size={11} />
+        </button>
+      )}
     </div>
   );
 };
 
-export const ConversationSearchBar = memo(ConversationSearchBarComponent);
+export const ConversationSearchBar = memo(ConversationSearchBarInternal);
 ConversationSearchBar.displayName = 'ConversationSearchBar';
-export default ConversationSearchBar;

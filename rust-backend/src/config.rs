@@ -3,9 +3,8 @@ use serde::{Deserialize, Serialize};
 /// Maximum allowed length for search queries (characters).
 pub const MAX_SEARCH_QUERY_LENGTH: usize = 1000;
 
-/// Canonical list of file extensions considered indexable and embeddable.
-/// Both the Tantivy full-text indexer and the vector embedding pipeline
-/// use this single list so they never diverge.
+/// Canonical list of file extensions considered indexable.
+/// The Tantivy full-text indexer uses this list.
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
     // JavaScript / TypeScript
     "ts", "tsx", "js", "jsx", "mjs", "cjs",
@@ -39,6 +38,54 @@ pub const SUPPORTED_EXTENSIONS: &[&str] = &[
 /// shared supported-extensions list.
 pub fn is_supported_extension(ext: &str) -> bool {
     SUPPORTED_EXTENSIONS.contains(&ext)
+}
+
+/// Canonical list of directories to exclude from indexing, file walking, and tree display.
+/// Both `IndexManager::is_build_or_output_dir` and `WorkspaceManager::should_exclude`
+/// reference this single list so they never diverge.
+pub const EXCLUDED_DIRECTORY_NAMES: &[&str] = &[
+    "node_modules",
+    ".git",
+    "target",
+    "dist",
+    "build",
+    "out",
+    ".next",
+    ".nuxt",
+    ".output",
+    ".vite",
+    ".turbo",
+    ".svelte-kit",
+    ".parcel-cache",
+    "__pycache__",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "coverage",
+    ".nyc_output",
+    ".cache",
+    "vendor",
+    ".gradle",
+    ".maven",
+    ".terraform",
+    ".eggs",
+    ".vscode",
+    ".idea",
+    ".angular",
+    ".expo",
+    ".vercel",
+    ".netlify",
+    ".serverless",
+    ".aws-sam",
+    "__generated__",
+    ".cargo",
+];
+
+/// Check whether a directory name matches an excluded pattern.
+/// Also handles suffix-based patterns like `*.egg-info`.
+pub fn is_excluded_directory(name: &str) -> bool {
+    EXCLUDED_DIRECTORY_NAMES.contains(&name) || name.ends_with(".egg-info")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

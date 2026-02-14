@@ -133,7 +133,7 @@ async fn read_file_inner(
         return Err(AppError::FileNotFound(file_path.to_string()));
     }
 
-    let metadata = std::fs::metadata(&full_path)?;
+    let metadata = tokio::fs::metadata(&full_path).await?;
     if metadata.len() > state.config.max_file_size_bytes as u64 {
         warn!(workspace_id, path = file_path, size = metadata.len(), max = state.config.max_file_size_bytes, "File too large to read");
         return Err(AppError::BadRequest("File too large to read".into()));
@@ -190,19 +190,31 @@ pub async fn create_file(
 ) -> AppResult<Json<serde_json::Value>> {
     let full_path = state.workspace_manager.validate_path(&workspace_id, &req.path)?;
 
-    if full_path.exists() {
-        warn!(path = %req.path, "Cannot create file: already exists");
-        return Err(AppError::BadRequest(format!(
-            "File already exists: {}",
-            req.path
-        )));
-    }
-
+    // Ensure parent directory exists
     if let Some(parent) = full_path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
 
-    tokio::fs::write(&full_path, &req.content).await?;
+    // Use create_new(true) for atomic "create only if not exists" to avoid TOCTOU races
+    match tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&full_path)
+        .await
+    {
+        Ok(_file) => {
+            // File created successfully, now write the content
+            tokio::fs::write(&full_path, &req.content).await?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            warn!(path = %req.path, "Cannot create file: already exists");
+            return Err(AppError::BadRequest(format!(
+                "File already exists: {}",
+                req.path
+            )));
+        }
+        Err(e) => return Err(e.into()),
+    }
 
     info!(path = %req.path, size = req.content.len(), "File created");
 

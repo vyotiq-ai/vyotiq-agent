@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
+import { getFileName } from '../../../../utils/pathHelpers';
 import { createLogger } from '../../../../utils/logger';
 import { detectLanguage } from '../../../../../shared/utils/pathUtils';
 import { 
@@ -85,9 +86,7 @@ function generateDiffId(filePath: string, original: string, modified: string): s
 // Helper Functions
 // ============================================================================
 
-function getFileName(filePath: string): string {
-  return filePath.split(/[/\\]/).pop() || filePath;
-}
+// getFileName imported from utils/pathHelpers
 
 // ============================================================================
 // Props

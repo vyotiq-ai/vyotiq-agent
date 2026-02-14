@@ -38,6 +38,7 @@ import { InputToolbar } from './InputToolbar';
 import { InputDropZone } from './InputDropZone';
 import { MentionAutocomplete } from './MentionAutocomplete';
 import { DraftIndicator } from './DraftIndicator';
+import { InputStatusBar } from './InputStatusBar';
 import { ChatAttachmentList } from '../ChatAttachmentList';
 import { useTodos } from '../../../../hooks/useTodos';
 
@@ -129,7 +130,7 @@ const ClearButton: React.FC<ClearButtonProps> = memo(({ onClick, visible, disabl
       onClick={handleClick}
       disabled={disabled}
       className={cn(
-        'flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm',
+        'flex items-center gap-0.5 px-1.5 py-0.5 rounded-md',
         'text-[9px] text-[var(--color-text-muted)]',
         'transition-all duration-200 ease-out',
         visible 
@@ -498,64 +499,62 @@ export const ChatInput: React.FC = memo(() => {
         </div>
 
         {/* Footer - clean and minimal */}
-        <div 
+        <InputStatusBar
           id="chat-input-hints"
-          className="flex items-center gap-3 text-[9px] font-mono text-[var(--color-text-muted)] border-t border-[var(--color-border-subtle)]/40 px-2 py-1 min-w-0"
-          aria-label="Message options and shortcuts"
-        >
-          {/* Toolbar */}
-          <InputToolbar
-            onAddAttachments={handleAddAttachments}
-            provider={selectedProvider}
-            modelId={selectedModelId}
-            onProviderSelect={handleProviderSelect}
-            availableProviders={availableProviders}
-            providersCooldown={providersCooldown}
-            yoloEnabled={yoloEnabled}
-            onToggleYolo={handleToggleYolo}
-            disabled={agentBusy ?? false}
-            hasSession={!!activeSession}
-            hasWorkspace={hasWorkspace}
-            messageCount={messageCount}
-            costInfo={costInfo}
-            contextInfo={contextInfo}
-            className="flex-1 min-w-0"
-            activeProvider={activeProvider}
-            activeModelId={activeModelId}
-            isWorking={isWorking}
-          />
-
-          {/* Right: Minimal status */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* History indicator */}
-            {isBrowsingHistory && (
-              <span 
-                className="flex items-center gap-0.5 text-[var(--color-info)]"
-                title="Use ↑↓ to navigate history"
-              >
-                <History size={8} />
-                <span className="text-[8px] tabular-nums">{historyIndex + 1}/{historyLength}</span>
-              </span>
-            )}
-
-            {/* Draft indicator */}
-            <DraftIndicator
-              status={draft.status}
-              lastSavedAt={draft.lastSavedAt}
-              visible={draft.hasDraft || draft.status !== 'idle'}
-            />
-
-            {/* Keyboard hints - very compact */}
-            <span className="hidden lg:inline text-[8px] text-[var(--color-text-dim)]">⏎ run</span>
-
-            {/* Clear button */}
-            <ClearButton
-              onClick={clearMessage}
-              visible={hasContent || attachments.length > 0}
+          lineCount={message.split('\n').length}
+          charCount={message.length}
+          attachmentCount={attachments.length}
+          showKeyboardHints={false}
+          hasContent={hasContent}
+          leftContent={
+            <InputToolbar
+              onAddAttachments={handleAddAttachments}
+              provider={selectedProvider}
+              modelId={selectedModelId}
+              onProviderSelect={handleProviderSelect}
+              availableProviders={availableProviders}
+              providersCooldown={providersCooldown}
+              yoloEnabled={yoloEnabled}
+              onToggleYolo={handleToggleYolo}
               disabled={agentBusy ?? false}
+              hasSession={!!activeSession}
+              hasWorkspace={hasWorkspace}
+              messageCount={messageCount}
+              costInfo={costInfo}
+              contextInfo={contextInfo}
+              className="flex-1 min-w-0"
+              activeProvider={activeProvider}
+              activeModelId={activeModelId}
+              isWorking={isWorking}
             />
-          </div>
-        </div>
+          }
+          rightContent={
+            <>
+              {/* History indicator */}
+              {isBrowsingHistory && (
+                <span 
+                  className="flex items-center gap-0.5 text-[var(--color-info)]"
+                  title="Use ↑↓ to navigate history"
+                >
+                  <History size={8} />
+                  <span className="text-[8px] tabular-nums">{historyIndex + 1}/{historyLength}</span>
+                </span>
+              )}
+              {/* Draft indicator */}
+              <DraftIndicator
+                status={draft.status}
+                lastSavedAt={draft.lastSavedAt}
+                visible={draft.hasDraft || draft.status !== 'idle'}
+              />
+              {/* Clear button */}
+              <ClearButton
+                onClick={clearMessage}
+                visible={hasContent || attachments.length > 0}
+                disabled={agentBusy ?? false}
+              />
+            </>
+          }
+        />
       </div>
     </div>
   );

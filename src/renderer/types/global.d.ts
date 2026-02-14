@@ -2,24 +2,12 @@ import type {
   AgentSessionState,
   AgentSettings,
   AttachmentPayload,
-  BulkOperation as _BulkOperation,
-  BulkOperationResult as _BulkOperationResult,
   ConfirmToolPayload,
-  DiagnosticInfo as _DiagnosticInfo,
-  DiagnosticsSummary as _DiagnosticsSummary,
-  FileChangeEvent as _FileChangeEvent,
-  FileTreeNode as _FileTreeNode,
-  HoverInfo as _HoverInfo,
   RendererEvent,
   SendMessagePayload,
   SessionSummary,
   StartSessionPayload,
-  SymbolInfo as _SymbolInfo,
-  SymbolKind as _SymbolKind,
-  SymbolLocation as _SymbolLocation,
   UpdateConfigPayload,
-  WatcherStatus as _WatcherStatus,
-  WatchOptions as _WatchOptions,
   GitRepoStatus,
   GitCommit,
   GitBranch,
@@ -100,7 +88,12 @@ declare global {
       };
       settings: {
         get: () => Promise<AgentSettings>;
+        getSafe: () => Promise<Partial<AgentSettings>>;
         update: (payload: Partial<AgentSettings>) => Promise<{ success: boolean; data?: AgentSettings; error?: string; validationErrors?: Array<{ field: string; message: string }> }>;
+        reset: (section?: keyof AgentSettings) => Promise<{ success: boolean; data?: AgentSettings; error?: string }>;
+        validate: (settings: Partial<AgentSettings>) => Promise<{ valid: boolean; errors: Array<{ field: string; message: string }> }>;
+        export: () => Promise<{ success: boolean; data?: Partial<AgentSettings>; error?: string }>;
+        import: (settings: Partial<AgentSettings>) => Promise<{ success: boolean; data?: AgentSettings; error?: string }>;
       };
       openrouter: {
         fetchModels: () => Promise<{
@@ -1795,11 +1788,6 @@ declare global {
           pattern: string,
           options?: { is_regex?: boolean; case_sensitive?: boolean; limit?: number },
         ) => Promise<{ success: boolean; results?: Array<{ path: string; line_number: number; line_content: string; context_before?: string[]; context_after?: string[] }>; total?: number; error?: string }>;
-        semanticSearch: (
-          workspaceId: string,
-          query: string,
-          options?: { limit?: number },
-        ) => Promise<{ success: boolean; results?: Array<{ path: string; relative_path: string; chunk_text: string; score: number; line_start: number; line_end: number; language: string }>; query_time_ms?: number; error?: string }>;
         triggerIndex: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
         indexStatus: (workspaceId: string) => Promise<{ success: boolean; status?: string; total_files?: number; indexed_files?: number; error?: string }>;
       };

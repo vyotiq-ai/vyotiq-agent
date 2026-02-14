@@ -1,90 +1,140 @@
-import React, { memo } from 'react';
-import { cn } from '../../../../utils/cn';
-import { Spinner } from '../../../../components/ui/LoadingState';
-
 /**
- * Context-aware tool execution header
- * Shows descriptive status of ongoing operations without icons
+ * ToolExecutionHeader Component
+ * 
+ * Header row for a tool execution block, showing the tool name,
+ * status indicator, execution duration, and collapse toggle.
  */
-export const ToolExecutionHeader: React.FC<{
-  toolCount: number;
-  runningCount: number;
-  completedCount: number;
-  errorCount: number;
-  isRunning: boolean;
-  onStop?: () => void;
-  /** Optional label for what's currently being processed */
-  currentOperationLabel?: string;
-}> = memo(({ 
-  toolCount, 
-  runningCount, 
-  completedCount, 
-  errorCount, 
-  isRunning, 
-  onStop,
-  currentOperationLabel,
+import React, { memo, useMemo } from 'react';
+import {
+  ChevronDown,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Clock,
+  Layers,
+} from 'lucide-react';
+import { cn } from '../../../../utils/cn';
+import { getToolActionDescription } from '../../utils/toolActionDescriptions';
+import { formatDurationMs } from '../../utils/toolDisplay';
+import type { ToolCall } from './types';
+
+interface ToolExecutionHeaderProps {
+  /** Tool call data */
+  tool: ToolCall;
+  /** Whether the details section is expanded */
+  isExpanded: boolean;
+  /** Toggle expand/collapse */
+  onToggle: () => void;
+  /** Number of total tools in the batch */
+  batchSize?: number;
+  /** Position in the batch (1-based) */
+  batchPosition?: number;
+  /** Additional CSS class */
+  className?: string;
+}
+
+const ToolExecutionHeaderInternal: React.FC<ToolExecutionHeaderProps> = ({
+  tool,
+  isExpanded,
+  onToggle,
+  batchSize,
+  batchPosition,
+  className,
 }) => {
-  // Generate context-aware status description
-  const getStatusDescription = () => {
-    if (runningCount > 0) {
-      if (runningCount === 1 && currentOperationLabel) {
-        return currentOperationLabel;
-      }
-      return `Processing ${runningCount} operation${runningCount > 1 ? 's' : ''}`;
+  const statusIcon = useMemo(() => {
+    switch (tool.status) {
+      case 'completed':
+        return tool.result?.toolSuccess === false
+          ? <XCircle size={10} style={{ color: 'var(--color-error)' }} />
+          : <CheckCircle2 size={10} style={{ color: 'var(--color-success)' }} />;
+      case 'error':
+        return <XCircle size={10} style={{ color: 'var(--color-error)' }} />;
+      case 'running':
+        return <Loader2 size={10} className="animate-spin" style={{ color: 'var(--color-accent-primary)' }} />;
+      case 'queued':
+        return <Clock size={10} style={{ color: 'var(--color-text-muted)' }} />;
+      default:
+        return <Clock size={10} style={{ color: 'var(--color-text-dim)' }} />;
     }
-    if (errorCount > 0 && completedCount === 0) {
-      return `${errorCount} operation${errorCount > 1 ? 's' : ''} failed`;
-    }
-    if (errorCount > 0) {
-      return `${completedCount} completed, ${errorCount} failed`;
-    }
-    if (completedCount > 0) {
-      return `${completedCount} operation${completedCount > 1 ? 's' : ''} completed`;
-    }
-    return `${toolCount} operation${toolCount > 1 ? 's' : ''} pending`;
-  };
+  }, [tool.status, tool.result?.toolSuccess]);
+
+  const duration = useMemo(() => {
+    if (!tool.startTime) return null;
+    if (tool.status === 'running') return null;
+    const result = tool.result;
+    if (!result) return null;
+    const end = result.createdAt ?? Date.now();
+    const ms = end - tool.startTime;
+    return formatDurationMs(ms);
+  }, [tool.startTime, tool.status, tool.result]);
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={onToggle}
       className={cn(
-        'px-2 py-1.5 flex items-center justify-between gap-2',
-        'mb-1 rounded-md',
-        'bg-[var(--color-surface-2)]/30',
+        'flex items-center gap-1.5 w-full px-1.5 py-1 font-mono text-[10px]',
+        'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+        'transition-colors duration-100 rounded',
+        'hover:bg-[var(--color-surface-2)]',
+        className,
       )}
     >
-      <div className="min-w-0 flex items-center gap-2 text-[10px] font-mono">
-        {/* Show spinner for running operations */}
-        {runningCount > 0 && (
-          <Spinner size="sm" variant="default" className="w-3 h-3" />
-        )}
-        
-        {/* Context-aware status description */}
-        <span className={cn(
-          runningCount > 0 && 'text-[var(--color-warning)]',
-          errorCount > 0 && runningCount === 0 && 'text-[var(--color-error)]',
-          completedCount > 0 && errorCount === 0 && runningCount === 0 && 'text-[var(--color-success)]',
-          !runningCount && !errorCount && !completedCount && 'text-[var(--color-text-muted)]',
-        )}>
-          {getStatusDescription()}
-        </span>
-      </div>
+      {/* Collapse chevron */}
+      {isExpanded
+        ? <ChevronDown size={10} className="shrink-0 opacity-50" />
+        : <ChevronRight size={10} className="shrink-0 opacity-50" />
+      }
 
-      {isRunning && onStop && (
-        <button
-          onClick={onStop}
-          className={cn(
-            'text-[9px] px-2 py-0.5 rounded',
-            'text-[var(--color-error)]',
-            'hover:bg-[var(--color-error)]/10',
-            'transition-colors',
-          )}
-          title="Stop execution (ESC)"
+      {/* Status */}
+      {statusIcon}
+
+      {/* Tool name */}
+      {/* Tool action description */}
+      <span className="truncate" title={tool.name}>
+        {getToolActionDescription(tool.name, tool.status, tool.arguments ?? {}, tool._argsJson)}
+      </span>
+
+      {/* Dynamic indicator */}
+      {tool.isDynamic && (
+        <span
+          className="text-[8px] uppercase tracking-wider px-1 rounded"
+          style={{ color: 'var(--color-accent-primary)', backgroundColor: 'var(--color-surface-2)' }}
         >
-          stop
-        </button>
+          dyn
+        </span>
       )}
-    </div>
-  );
-});
 
+      {/* Batch position */}
+      {batchSize && batchSize > 1 && batchPosition && (
+        <span className="flex items-center gap-0.5 opacity-40 text-[8px]">
+          <Layers size={8} />
+          {batchPosition}/{batchSize}
+        </span>
+      )}
+
+      {/* Queue position */}
+      {tool.status === 'queued' && tool.queuePosition != null && (
+        <span className="tabular-nums opacity-40 text-[8px]">
+          #{tool.queuePosition}
+        </span>
+      )}
+
+      {/* Duration */}
+      {duration && (
+        <span className="ml-auto tabular-nums opacity-40 text-[9px]">
+          {duration}
+        </span>
+      )}
+
+      {/* Running indicator */}
+      {tool.status === 'running' && (
+        <span className="ml-auto text-[8px] opacity-50">executing</span>
+      )}
+    </button>
+  );
+};
+
+export const ToolExecutionHeader = memo(ToolExecutionHeaderInternal);
 ToolExecutionHeader.displayName = 'ToolExecutionHeader';

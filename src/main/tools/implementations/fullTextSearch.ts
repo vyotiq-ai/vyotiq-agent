@@ -5,11 +5,11 @@
  * Provides ranked keyword search across the entire indexed codebase with
  * optional fuzzy matching and file/language filtering.
  *
- * Complements grep (exact pattern) and semantic_search (meaning-based) by
- * offering ranked relevance search with Tantivy's BM25 scoring algorithm.
+ * Complements grep (exact pattern matching) by offering ranked relevance search with Tantivy's BM25 scoring algorithm.
  */
 import { rustSidecar } from '../../rustSidecar';
 import { createLogger } from '../../logger';
+import { resolveWorkspaceId } from '../../utils/rustBackend';
 import { formatToolError, formatToolSuccess, checkCancellation, formatCancelled } from '../types/formatUtils';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
@@ -85,35 +85,8 @@ interface SearchResponse {
 interface IndexStatusResponse {
   indexed: boolean;
   is_indexing: boolean;
-  is_vector_indexing: boolean;
   indexed_count: number;
   total_count: number;
-  vector_count: number;
-  vector_ready: boolean;
-  embedding_model_ready: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Workspace ID resolution
-// ---------------------------------------------------------------------------
-
-async function resolveWorkspaceId(workspacePath: string): Promise<string | null> {
-  try {
-    const data = await rustRequest<{ workspaces: Array<{ id: string; path: string }> }>('/api/workspaces');
-    const workspaces = data.workspaces ?? (data as unknown as Array<{ id: string; path: string }>);
-    const list = Array.isArray(workspaces) ? workspaces : [];
-
-    const normalize = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-    const target = normalize(workspacePath);
-
-    for (const ws of list) {
-      if (normalize(ws.path) === target) return ws.id;
-    }
-    return null;
-  } catch (err) {
-    logger.error('Failed to resolve workspace ID', { error: (err as Error).message });
-    return null;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -133,8 +106,6 @@ export const fullTextSearchTool: ToolDefinition<FullTextSearchArgs> = {
 
 ## When NOT to Use
 - Exact regex pattern matching → use grep
-- Finding code by meaning/intent → use semantic_search
-- Searching for exact variable or function names → use grep
 
 ## How It Works
 Uses Tantivy (Rust search engine) with BM25 scoring to rank documents by keyword relevance. Searches across file content, filenames, and symbols. Optional fuzzy mode tolerates edit distance up to 2.
@@ -321,7 +292,7 @@ Uses Tantivy (Rust search engine) with BM25 scoring to rank documents by keyword
               language ? `Language: ${language}` : '',
               `Indexed files: ${status.indexed_count}`,
               '',
-              fuzzy ? 'Try different keywords or broader terms.' : 'Try enabling fuzzy matching or using semantic_search for meaning-based search.',
+              fuzzy ? 'Try different keywords or broader terms.' : 'Try enabling fuzzy matching or broadening your search terms.',
             ].filter(Boolean).join('\n'),
             durationMs: response.query_time_ms,
           }),

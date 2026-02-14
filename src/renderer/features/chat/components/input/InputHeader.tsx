@@ -13,13 +13,13 @@
  * />
  */
 import React, { memo, useMemo, useState, useCallback } from 'react';
-import { Pause, Play, CheckCircle, Circle, ChevronDown } from 'lucide-react';
-import { Spinner } from '../../../../components/ui/LoadingState';
+import { Pause, Play, CheckCircle, Circle, ChevronRight } from 'lucide-react';
 import type { AgentStatusInfo } from '../../../../state/agentReducer';
 import { cn } from '../../../../utils/cn';
 import { getStatusDisplayMessage } from '../../../../utils';
 import type { TodoItem, TodoStats } from '../../../../../shared/types/todo';
 import { IterationControl } from './IterationControl';
+import { TodoProgressInline } from './TodoProgressInline';
 
 // =============================================================================
 // Types
@@ -57,7 +57,7 @@ export interface InputHeaderProps {
 // Sub-Components
 // =============================================================================
 
-/** Status indicator dot - simple and clean */
+/** Status indicator — text-only, clean static labels, no dots or pulse */
 const StatusDot: React.FC<{ status: InputHeaderProps['statusPhase'] }> = memo(({ status }) => {
   const isActive = status === 'executing'
     || status === 'planning'
@@ -65,16 +65,23 @@ const StatusDot: React.FC<{ status: InputHeaderProps['statusPhase'] }> = memo(({
     || status === 'reasoning'
     || status === 'summarizing';
 
-  const dotClass = cn(
-    'terminal-status-dot flex-shrink-0',
-    'transition-colors duration-200',
-    status === 'error' && 'error',
-    (status === 'recovering' || status === 'paused') && 'warning',
-    isActive && 'active',
-    (!status || status === 'idle' || status === 'completed') && 'idle'
+  return (
+    <span 
+      className={cn(
+        'text-[8px] font-mono uppercase tracking-wider flex-shrink-0',
+        status === 'error' && 'text-[var(--color-error)]',
+        (status === 'recovering' || status === 'paused') && 'text-[var(--color-warning)]',
+        isActive && 'text-[var(--color-accent-primary)]/70',
+        (!status || status === 'idle' || status === 'completed') && 'text-[var(--color-text-dim)]/30'
+      )}
+      aria-hidden="true"
+    >
+      {status === 'error' ? 'err' : 
+       status === 'recovering' ? 'retry' :
+       status === 'paused' ? 'pause' :
+       isActive ? 'active' : ''}
+    </span>
   );
-  
-  return <div className={dotClass} aria-hidden="true" />;
 });
 StatusDot.displayName = 'StatusDot';
 
@@ -136,11 +143,6 @@ const TypewriterStatus: React.FC<{
     return (
       <div className="vyotiq-typewriter">
         <span className="vyotiq-typewriter-text transition-opacity duration-300">vyotiq</span>
-        <span className="typewriter-dots" aria-hidden="true">
-          <span className="typewriter-dot">.</span>
-          <span className="typewriter-dot">.</span>
-          <span className="typewriter-dot">.</span>
-        </span>
         <span className="sr-only" role="status" aria-live="polite">{getStatusDescription()}</span>
       </div>
     );
@@ -178,16 +180,16 @@ function calculateTodoStats(todos: TodoItem[]): TodoStats {
 // Todo Progress Sub-Components  
 // =============================================================================
 
-/** Minimal status icon for todo progress */
+/** Minimal status label for todo progress - clean text-only indicators */
 const TodoStatusIcon: React.FC<{ status: 'completed' | 'in_progress' | 'pending'; size?: number }> = memo(({ status, size = 10 }) => {
   switch (status) {
     case 'completed':
-      return <CheckCircle size={size} className="text-[var(--color-success)] flex-shrink-0" />;
+      return <CheckCircle size={size} className="text-[var(--color-success)]/70 flex-shrink-0" />;
     case 'in_progress':
-      return <Spinner size="sm" colorVariant="primary" className="w-2.5 h-2.5 flex-shrink-0" />;
+      return <Circle size={size} className="text-[var(--color-accent-primary)]/60 flex-shrink-0 fill-[var(--color-accent-primary)]/15" />;
     case 'pending':
     default:
-      return <Circle size={size} className="text-[var(--color-text-dim)] flex-shrink-0" />;
+      return <Circle size={size} className="text-[var(--color-text-dim)]/30 flex-shrink-0" />;
   }
 });
 TodoStatusIcon.displayName = 'TodoStatusIcon';
@@ -287,7 +289,7 @@ const TaskListPanel: React.FC<{
   return (
     <div 
       className={cn(
-        'border-t border-[var(--color-border-subtle)]',
+        'border-t border-[var(--color-border-subtle)]/20',
         'bg-[var(--color-surface-1)]',
         'animate-in slide-in-from-top-1 duration-200 ease-out'
       )}
@@ -311,7 +313,7 @@ const TaskListPanel: React.FC<{
               count={todoStats.inProgress} 
               label="active" 
               colorClass="text-[var(--color-accent-primary)]"
-              icon={<Spinner size="sm" className="w-2.5 h-2.5" colorVariant="primary" />}
+              icon={<Circle size={9} className="fill-[var(--color-accent-primary)]/20" />}
             />
           )}
           {todoStats.pending > 0 && (
@@ -376,7 +378,7 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
       <div 
         className={cn(
           'flex items-center justify-between px-2 py-0.5',
-          'border-b border-[var(--color-border-subtle)]/40',
+          'border-b border-[var(--color-border-subtle)]/20',
           'bg-transparent',
           'font-mono transition-all duration-200 text-[9px]'
         )}
@@ -402,9 +404,9 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
             type="button"
             onClick={toggleTasksExpanded}
             className={cn(
-              'flex items-center gap-1 flex-shrink-0 mx-2 min-w-0 py-0.5 px-1.5 rounded-sm',
+              'flex items-center gap-1 flex-shrink-0 mx-2 min-w-0 py-0.5 px-1.5 rounded-md',
               'border border-transparent',
-              'hover:border-[var(--color-border-subtle)]/50',
+              'hover:border-[var(--color-border-subtle)]/30',
               'transition-all duration-150',
               'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
               isTasksExpanded && 'border-[var(--color-border-subtle)]/30'
@@ -413,39 +415,17 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
             aria-expanded={isTasksExpanded}
             aria-label={`Task progress: ${todoStats.completed} of ${todoStats.total} complete`}
           >
-            <TodoStatusIcon 
-              status={isComplete ? 'completed' : (hasActiveTodo ? 'in_progress' : 'pending')} 
-              size={10} 
+            <TodoProgressInline
+              todos={todos}
+              stats={todoStats}
+              compact={true}
             />
-            {/* Active task name - truncated */}
-            {activeTodo && (
-              <span className="hidden xl:inline truncate max-w-[140px] text-[var(--color-text-secondary)]">
-                {activeTodo.content}
-              </span>
-            )}
-            <TodoProgressBar 
-              percentage={todoStats.completionPercentage} 
-              isComplete={isComplete}
-              showGlow={hasActiveTodo}
-            />
-            <span className={cn(
-              'tabular-nums whitespace-nowrap font-medium',
-              isComplete ? 'text-[var(--color-success)]' : 'text-[var(--color-text-muted)]'
-            )}>
-              {todoStats.completed}/{todoStats.total}
-            </span>
-            <span className={cn(
-              'hidden xl:inline tabular-nums',
-              isComplete ? 'text-[var(--color-success)]' : 'text-[var(--color-text-dim)]'
-            )}>
-              ({todoStats.completionPercentage}%)
-            </span>
             {/* Expand/collapse indicator with rotation */}
-            <ChevronDown 
+            <ChevronRight 
               size={10} 
               className={cn(
-                'text-[var(--color-text-muted)] flex-shrink-0 transition-transform duration-200',
-                isTasksExpanded && 'rotate-180'
+                'text-[var(--color-text-muted)] flex-shrink-0 transition-transform duration-150',
+                isTasksExpanded && 'rotate-90'
               )} 
             />
           </button>
@@ -482,7 +462,7 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
               type="button"
               onClick={onTogglePause}
               className={cn(
-                'p-1 rounded-sm border border-transparent',
+                'p-1 rounded-md border border-transparent',
                 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
                 'hover:border-[var(--color-border-subtle)] transition-colors duration-150'
               )}

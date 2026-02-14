@@ -1,15 +1,13 @@
 /**
  * Context Builder
  * Builds terminal and workspace context for system prompts.
- * Integrates with the Rust backend for indexed workspace search, semantic search,
- * and file discovery.
+ * Integrates with the Rust backend for indexed workspace search and file discovery.
  */
 
 import type { TerminalManager } from '../../tools';
 import type { Logger } from '../../logger';
 import type { TerminalContextInfo, TerminalProcessInfo, WorkspaceStructureContext, InternalTerminalSettings } from '../systemPrompt';
 import { mainRustBackend } from '../resources/mainRustBackendClient';
-import type { MainSemanticSearchResult } from '../resources/mainRustBackendClient';
 
 /**
  * Default terminal settings for AI context (hardcoded since terminal settings UI was removed)
@@ -133,13 +131,19 @@ export class ContextBuilder {
         'pnpm-lock.yaml', 'yarn.lock', 'package-lock.json', 'bun.lockb',
       ];
 
-      for (const file of filesToCheck) {
-        try {
-          await fs.access(path.join(workspacePath, file));
-          configFiles.push(file);
-        } catch {
-          // File doesn't exist
-        }
+      // Check all config files in parallel for better I/O performance
+      const fileCheckResults = await Promise.all(
+        filesToCheck.map(async (file) => {
+          try {
+            await fs.access(path.join(workspacePath, file));
+            return file;
+          } catch {
+            return null;
+          }
+        })
+      );
+      for (const file of fileCheckResults) {
+        if (file) configFiles.push(file);
       }
 
       // Detect project type and framework
@@ -179,20 +183,28 @@ export class ContextBuilder {
         packageManager = 'npm';
       }
 
-      // Check for common directories
+      // Check for common directories in parallel
       const dirsToCheck = ['src', 'lib', 'app', 'pages', 'components', 'test', 'tests', '__tests__', 'spec'];
-      for (const dir of dirsToCheck) {
-        try {
-          const stat = await fs.stat(path.join(workspacePath, dir));
-          if (stat.isDirectory()) {
-            if (['test', 'tests', '__tests__', 'spec'].includes(dir)) {
-              testDirectories.push(dir);
-            } else {
-              sourceDirectories.push(dir);
+      const dirCheckResults = await Promise.all(
+        dirsToCheck.map(async (dir) => {
+          try {
+            const stat = await fs.stat(path.join(workspacePath, dir));
+            if (stat.isDirectory()) {
+              return { dir, isTest: ['test', 'tests', '__tests__', 'spec'].includes(dir) };
             }
+          } catch {
+            // Directory doesn't exist
           }
-        } catch {
-          // Directory doesn't exist
+          return null;
+        })
+      );
+      for (const result of dirCheckResults) {
+        if (result) {
+          if (result.isTest) {
+            testDirectories.push(result.dir);
+          } else {
+            sourceDirectories.push(result.dir);
+          }
         }
       }
 
@@ -316,7 +328,7 @@ export class ContextBuilder {
       if (!workspace) {
         const name = workspacePath.split(/[/\\]/).pop() || 'workspace';
         workspace = await mainRustBackend.createWorkspace(name, workspacePath);
-        // Trigger indexing for new workspace (both full-text and vector)
+        // Trigger indexing for new workspace
         await mainRustBackend.triggerIndex(workspace.id);
         needsWait = true;
         this.logger.info('Registered and triggered indexing for workspace', {
@@ -337,13 +349,12 @@ export class ContextBuilder {
         }
       }
 
-      // Wait for full-text AND vector indexing to complete (max 30s) so searches return results
+      // Wait for full-text indexing to complete (max 30s) so searches return results
       if (needsWait && workspace) {
         const maxWaitMs = 30_000;
         const pollIntervalMs = 500;
         const deadline = Date.now() + maxWaitMs;
         let fullTextReady = false;
-        let vectorReady = false;
 
         while (Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, pollIntervalMs));
@@ -353,12 +364,7 @@ export class ContextBuilder {
               fullTextReady = true;
               this.logger.info('Full-text indexing completed', { workspaceId: workspace.id });
             }
-            if (status.vector_ready && !vectorReady) {
-              vectorReady = true;
-              this.logger.info('Vector indexing completed', { workspaceId: workspace.id });
-            }
-            // Exit once both are ready
-            if (fullTextReady && vectorReady) {
+            if (fullTextReady) {
               break;
             }
           } catch {
@@ -366,10 +372,9 @@ export class ContextBuilder {
           }
         }
 
-        if (!vectorReady) {
-          this.logger.warn('Vector indexing did not complete within timeout, semantic search may use fallback', {
+        if (!fullTextReady) {
+          this.logger.warn('Full-text indexing did not complete within timeout', {
             workspaceId: workspace.id,
-            fullTextReady,
           });
         }
       }
@@ -392,54 +397,8 @@ export class ContextBuilder {
   }
 
   /**
-   * Perform true semantic search using vector embeddings.
-   * Returns code chunks ranked by meaning similarity, not keyword match.
-   * Falls back to full-text search if vector index is not available.
-   */
-  async semanticSearchWorkspace(
-    workspacePath: string,
-    query: string,
-    options?: { limit?: number },
-  ): Promise<Array<{ path: string; chunk: string; score: number; lineStart: number; lineEnd: number; language: string }>> {
-    try {
-      const available = await mainRustBackend.isAvailable();
-      if (!available) return [];
-
-      const workspace = await mainRustBackend.findWorkspaceByPath(workspacePath);
-      if (!workspace) return [];
-
-      const response = await mainRustBackend.semanticSearch(workspace.id, query, {
-        limit: options?.limit ?? 15,
-      });
-
-      return response.results.map((r: MainSemanticSearchResult) => ({
-        path: r.relative_path,
-        chunk: r.chunk_text,
-        score: r.score,
-        lineStart: r.line_start,
-        lineEnd: r.line_end,
-        language: r.language,
-      }));
-    } catch (error) {
-      this.logger.debug('Semantic search failed, falling back to full-text', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      // Fallback to full-text search
-      return (await this.searchWorkspaceIndex(workspacePath, query, { limit: options?.limit }))
-        .map((r) => ({
-          path: r.path,
-          chunk: r.snippet,
-          score: r.score,
-          lineStart: 0,
-          lineEnd: 0,
-          language: '',
-        }));
-    }
-  }
-
-  /**
    * Build relevant code context from the workspace for the current user query.
-   * Uses semantic search to find the most relevant code snippets.
+   * Uses full-text search (BM25) to find the most relevant code snippets.
    * Returns formatted context string for system prompt injection.
    */
   async buildWorkspaceCodeContext(
@@ -450,23 +409,20 @@ export class ContextBuilder {
     if (!workspacePath || !userQuery) return undefined;
 
     try {
-      const results = await this.semanticSearchWorkspace(workspacePath, userQuery, {
-        limit: maxSnippets,
-      });
+      const results = await this.searchWorkspaceIndex(workspacePath, userQuery, { limit: maxSnippets });
 
       if (results.length === 0) return undefined;
 
       const snippets = results
-        .filter((r) => r.score > 0.3) // Only include reasonably relevant results
+        .filter((r) => r.score > 0.3)
         .slice(0, maxSnippets)
         .map((r) => {
-          const lineInfo = r.lineStart > 0 ? ` (lines ${r.lineStart}-${r.lineEnd})` : '';
-          return `### ${r.path}${lineInfo}\n\`\`\`${r.language}\n${r.chunk}\n\`\`\``;
+          return `### ${r.path}\n\`\`\`\n${r.snippet}\n\`\`\``;
         });
 
       if (snippets.length === 0) return undefined;
 
-      return `<relevant_code>\nThe following code snippets from the workspace are semantically relevant to the current query:\n\n${snippets.join('\n\n')}\n</relevant_code>`;
+      return `<relevant_code>\nThe following code snippets from the workspace are relevant to the current query:\n\n${snippets.join('\n\n')}\n</relevant_code>`;
     } catch (error) {
       this.logger.debug('Failed to build workspace code context', {
         error: error instanceof Error ? error.message : String(error),

@@ -4,6 +4,8 @@
  * Displays file changes made by the agent with undo/redo capabilities.
  */
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getFileName } from '../../utils/pathHelpers';
+import { Tooltip } from '../../components/ui/Tooltip';
 import {
   ChevronDown,
   ChevronRight,
@@ -55,9 +57,7 @@ function getChangeTypeLabel(changeType: FileChange['changeType']): string {
   }
 }
 
-function getFileName(filePath: string): string {
-  return filePath.split(/[/\\]/).pop() || filePath;
-}
+// getFileName imported from utils/pathHelpers
 
 interface ChangeItemProps {
   change: FileChange;
@@ -123,8 +123,8 @@ const ChangeItem: React.FC<ChangeItemProps> = memo(({
           <div className="text-[9px] text-[var(--color-text-muted)] truncate">{change.description}</div>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {canUndo && <button onClick={() => void onUndo(change.id)} disabled={isProcessing} className={cn('p-1 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-warning)]', isProcessing && 'opacity-50')} title="Undo"><RotateCcw size={12} /></button>}
-          {canRedo && <button onClick={() => void onRedo(change.id)} disabled={isProcessing} className={cn('p-1 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)]', isProcessing && 'opacity-50')} title="Redo"><RotateCw size={12} /></button>}
+          {canUndo && <Tooltip content="Undo"><button onClick={() => void onUndo(change.id)} disabled={isProcessing} className={cn('p-1 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-warning)]', isProcessing && 'opacity-50')} aria-label="Undo"><RotateCcw size={12} /></button></Tooltip>}
+          {canRedo && <Tooltip content="Redo"><button onClick={() => void onRedo(change.id)} disabled={isProcessing} className={cn('p-1 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)]', isProcessing && 'opacity-50')} aria-label="Redo"><RotateCw size={12} /></button></Tooltip>}
         </div>
       </div>
       {showPreview && (change.previousContent || change.newContent) && <ContentPreview change={change} position={previewPosition} />}
@@ -243,9 +243,9 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
         <div className="h-10 flex items-center justify-between px-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">
           <div className="flex items-center gap-2"><History size={14} className="text-[var(--color-accent-primary)]" aria-hidden="true" /><span className="text-xs font-medium">Undo History</span>{undoableCount > 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]" aria-label={`${undoableCount} undoable changes`}>{undoableCount}</span>}</div>
           <div className="flex items-center gap-1" role="toolbar" aria-label="History actions">
-            <button onClick={() => void refresh()} disabled={isLoading} className={cn('p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)]', isLoading && 'opacity-50')} title="Refresh" aria-label="Refresh history"><RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} aria-hidden="true" /></button>
-            <button onClick={() => void handleClearHistory()} disabled={isLoading || groupedHistory.length === 0} className={cn('p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-error)]', (isLoading || groupedHistory.length === 0) && 'opacity-50')} title="Clear" aria-label="Clear all history"><Trash2 size={12} aria-hidden="true" /></button>
-            <button onClick={onClose} className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)]" title="Close" aria-label="Close undo history panel"><X size={12} aria-hidden="true" /></button>
+            <Tooltip content="Refresh"><button onClick={() => void refresh()} disabled={isLoading} className={cn('p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)]', isLoading && 'opacity-50')} aria-label="Refresh history"><RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} aria-hidden="true" /></button></Tooltip>
+            <Tooltip content="Clear history"><button onClick={() => void handleClearHistory()} disabled={isLoading || groupedHistory.length === 0} className={cn('p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-error)]', (isLoading || groupedHistory.length === 0) && 'opacity-50')} aria-label="Clear all history"><Trash2 size={12} aria-hidden="true" /></button></Tooltip>
+            <Tooltip content="Close" shortcut="Ctrl+Shift+H"><button onClick={onClose} className="p-1.5 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)]" aria-label="Close undo history panel"><X size={12} aria-hidden="true" /></button></Tooltip>
           </div>
         </div>
         {groupedHistory.length > 0 && <div className="px-2 py-2 border-b border-[var(--color-border-subtle)]"><div className="relative"><Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" aria-hidden="true" /><input ref={searchInputRef} type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search... (Ctrl+F)" aria-label="Search history" className="w-full pl-7 pr-2 py-1.5 text-[11px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] rounded-sm focus-visible:border-[var(--color-accent-primary)] focus-visible:outline-none" />{searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" aria-label="Clear search"><X size={10} aria-hidden="true" /></button>}</div></div>}

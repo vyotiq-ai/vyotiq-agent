@@ -25,6 +25,7 @@ import { registerMCPHandlers } from './mcpHandlers';
 import { registerThrottleHandlers } from './throttleHandlers';
 import { registerRustBackendHandlers } from './rustBackendHandlers';
 import { registerToolHandlers } from './toolHandlers';
+import { registerUndoHandlers } from './undoHandlers';
 
 // Re-export types
 export type { IpcContext } from './types';
@@ -96,6 +97,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   registerThrottleHandlers();
   registerRustBackendHandlers(context);
   registerToolHandlers(context);
+  registerUndoHandlers();
 }
 
 // Export individual handler registration functions for testing/selective use

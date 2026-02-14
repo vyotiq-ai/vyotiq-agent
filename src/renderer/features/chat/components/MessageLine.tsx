@@ -1,723 +1,362 @@
 /**
- * Message Line Component
+ * MessageLine Component
  * 
- * Renders a single message in terminal-style format with editing support.
- * Supports thinking/reasoning content display for thinking models (Gemini 2.5/3).
- * Supports generated media display for multimodal models (images, audio).
+ * Renders a single chat message (user, assistant, or tool role).
+ * Handles markdown rendering, attachments, thinking panels, tool executions,
+ * reactions, generated media, routing badges, and message editing.
+ * 
+ * Follows the existing terminal aesthetic with monospace fonts,
+ * lambda branding, and CSS variable-based theming.
  */
-import React, { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Pencil, X, Check, GitBranch, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown, RefreshCw } from 'lucide-react';
-
-import type { ChatMessage } from '../../../../shared/types';
-import { formatTokenUsageEnhanced } from '../../../utils/messageFormatting';
+import React, { memo, useState, useCallback, useMemo } from 'react';
+import {
+  User,
+  Bot,
+  Wrench,
+  ThumbsUp,
+  ThumbsDown,
+  Pencil,
+  Copy,
+  Check,
+} from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import type { ChatMessage } from '../../../../shared/types';
+import { MarkdownRenderer } from '../../../components/ui/MarkdownRenderer';
+import { MessageAttachments } from './MessageAttachments';
 import { ThinkingPanel } from './ThinkingPanel';
+import { ToolExecution } from './ToolExecution';
 import { GeneratedMedia } from './GeneratedMedia';
 import { RoutingBadge } from './RoutingBadge';
-import { MessageAttachments } from './MessageAttachments';
+import { DynamicToolIndicator } from './DynamicToolIndicator';
+import { MessageEditDialog } from './MessageEditDialog';
+import { formatTokenUsageEnhanced, formatModelDisplayName } from '../../../utils/messageFormatting';
 
-interface TokenUsageDisplay {
-  text: string;
-  tooltip: string;
-}
-
-function formatTokenUsage(usage?: ChatMessage['usage']): TokenUsageDisplay | undefined {
-  const enhanced = formatTokenUsageEnhanced(usage);
-  if (!enhanced) return undefined;
-  
-  return {
-    text: enhanced.text,
-    tooltip: enhanced.tooltip,
-  };
-}
-
-/**
- * Get a concise model name for thinking panel display
- * Maps model IDs to user-friendly short names
- * 
- * @see https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
- * @see https://api-docs.deepseek.com/guides/thinking_mode
- */
-function getThinkingModelName(modelId?: string): string | undefined {
-  if (!modelId) return undefined;
-  
-  const lowerModelId = modelId.toLowerCase();
-  
-  // Anthropic Claude models with extended thinking
-  // Claude 3.7+ supports extended thinking, Claude 4+ has it by default
-  if (lowerModelId.includes('claude-4.5') || lowerModelId.includes('claude-opus-4.5')) return 'Claude 4.5 Opus';
-  if (lowerModelId.includes('claude-4') && lowerModelId.includes('opus')) return 'Claude 4 Opus';
-  if (lowerModelId.includes('claude-4') && lowerModelId.includes('sonnet')) return 'Claude 4 Sonnet';
-  if (lowerModelId.includes('claude-3.7')) return 'Claude 3.7 Sonnet';
-  if (lowerModelId.includes('claude-3.5') && lowerModelId.includes('sonnet')) return 'Claude 3.5 Sonnet';
-  if (lowerModelId.includes('claude')) return 'Claude';
-  
-  // OpenAI reasoning models (o-series)
-  if (lowerModelId.includes('o3')) return 'OpenAI o3';
-  if (lowerModelId.includes('o1-pro')) return 'OpenAI o1 Pro';
-  if (lowerModelId.includes('o1-mini')) return 'OpenAI o1 Mini';
-  if (lowerModelId.includes('o1')) return 'OpenAI o1';
-  
-  // DeepSeek thinking models (V3.2)
-  if (lowerModelId.includes('deepseek-reasoner')) return 'DeepSeek V3.2 Reasoner';
-  if (lowerModelId.includes('deepseek')) return 'DeepSeek';
-  
-  // Gemini thinking models
-  if (lowerModelId.includes('gemini-3')) return 'Gemini 3';
-  if (lowerModelId.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
-  if (lowerModelId.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
-  if (lowerModelId.includes('gemini')) return 'Gemini';
-  
-  // GLM thinking models - extract version for precise display
-  // GLM models follow pattern: glm-4, glm-4.5, glm-4.7, glm-4-plus, etc.
-  const glmMatch = lowerModelId.match(/glm-(\d+(?:\.\d+)?(?:-[a-z]+)?)/i);
-  if (glmMatch) {
-    const version = glmMatch[1];
-    // Format: GLM-4.7, GLM-4, GLM-4-plus, etc.
-    return `GLM-${version.toUpperCase()}`;
-  }
-  if (lowerModelId.includes('glm')) return 'GLM';
-  
-  return undefined;
-}
-
-function looksLikeMarkdown(content: string): boolean {
-  // Cheap heuristics to avoid rendering plain text through the markdown pipeline.
-  // This keeps the UI fast while enabling proper formatting for structured replies.
-  
-  // Code blocks (fenced or indented)
-  if (content.includes('```')) return true;
-  
-  // Headings
-  if (/(^|\n)#{1,6}\s+/.test(content)) return true;
-  
-  // Lists (unordered and ordered)
-  if (/(^|\n)\s*([-*+]\s+|\d+\.\s+)/.test(content)) return true;
-  
-  // Blockquotes
-  if (/(^|\n)>\s+/.test(content)) return true;
-  
-  // Tables
-  if (/(^|\n)\|.+\|/.test(content)) return true;
-  
-  // Links [text](url) or [text][ref]
-  if (/\[.+?\]\(.+?\)/.test(content)) return true;
-  if (/\[.+?\]\[.+?\]/.test(content)) return true;
-  
-  // Bold text (**text** or __text__)
-  if (/\*\*[^*]+\*\*/.test(content)) return true;
-  if (/__[^_]+__/.test(content)) return true;
-  
-  // Italic text (*text* or _text_) - be careful not to match underscores in identifiers
-  if (/(?<!\*)\*(?!\*)[^*\n]+(?<!\*)\*(?!\*)/.test(content)) return true;
-  
-  // Inline code `code`
-  if (/`[^`]+`/.test(content)) return true;
-  
-  // Strikethrough ~~text~~
-  if (/~~[^~]+~~/.test(content)) return true;
-  
-  // Horizontal rules
-  if (/(^|\n)(---|\*\*\*|___)\s*(\n|$)/.test(content)) return true;
-  
-  // Math expressions
-  if (content.includes('$') && /\$[^$]+\$/.test(content)) return true;
-  if (content.includes('\\(') || content.includes('\\[')) return true;
-  
-  // Task lists
-  if (/\[[ x]\]/i.test(content)) return true;
-  
-  // Images ![alt](url)
-  if (/!\[.*?\]\(.+?\)/.test(content)) return true;
-  
-  return false;
-}
-
-interface RoutingInfo {
-  taskType: string;
-  provider: string | null;
-  model: string | null;
-  confidence: number;
-  reason?: string;
-  usedFallback?: boolean;
-  originalProvider?: string;
-}
-
-/**
- * Format model ID for compact display
- * Extracts the meaningful part of model IDs like "gemini-2.5-flash-preview-05-20"
- */
-function formatModelIdShort(modelId: string): string {
-  // Remove provider prefix if present (e.g., "openai/gpt-4" -> "gpt-4")
-  const withoutPrefix = modelId.split('/').pop() || modelId;
-  // For long model names, take first 3 segments
-  const parts = withoutPrefix.split('-');
-  if (parts.length > 3) {
-    return parts.slice(0, 3).join('-');
-  }
-  return withoutPrefix;
-}
-
-/** Compact provider/model badge for message headers */
-const ProviderModelBadge: React.FC<{
-  provider: string;
-  modelId?: string;
-  iteration?: number;
-  isAutoRouted?: boolean;
-}> = memo(({ provider, modelId, iteration, isAutoRouted }) => {
-  const shortModel = modelId ? formatModelIdShort(modelId) : null;
-  const tooltip = [
-    `Provider: ${provider}`,
-    modelId && `Model: ${modelId}`,
-    iteration && `Iteration: ${iteration}`,
-    isAutoRouted && 'Auto-routed',
-  ].filter(Boolean).join('\n');
-
-  return (
-    <span 
-      className="inline-flex items-center gap-1 text-[9px] text-[var(--color-text-muted)] font-mono"
-      title={tooltip}
-    >
-      <span className="text-[var(--color-text-secondary)]">{provider}</span>
-      {shortModel && (
-        <>
-          <span className="text-[var(--color-text-dim)]">/</span>
-          <span>{shortModel}</span>
-        </>
-      )}
-      {iteration && (
-        <span className="text-[var(--color-text-dim)]">[{iteration}]</span>
-      )}
-    </span>
-  );
-});
-ProviderModelBadge.displayName = 'ProviderModelBadge';
-
-/** Threshold for collapsible long messages (in characters) */
-const COLLAPSE_THRESHOLD = 1500;
-/** Number of characters to show when collapsed */
-const COLLAPSED_PREVIEW_LENGTH = 800;
+// =============================================================================
+// Types
+// =============================================================================
 
 interface MessageLineProps {
+  /** The message to render */
   message: ChatMessage;
-  type: 'user' | 'assistant';
+  /** All messages (for tool result matching) */
+  messages: ChatMessage[];
+  /** Whether this message should be highlighted (search match) */
+  isHighlighted?: boolean;
+  /** Whether the message is currently streaming */
   isStreaming?: boolean;
-  onEdit?: (messageId: string, newContent: string) => void;
-  onFork?: (messageId: string) => void;
-  onRunCode?: (code: string, language: string) => void;
-  onInsertCode?: (code: string, language: string) => void;
-  /** Routing decision info for assistant messages */
-  routingInfo?: RoutingInfo;
-  /** Callback for message reactions/ratings */
+  /** Routing decision info for this message */
+  routingDecision?: {
+    taskType: string;
+    selectedProvider: string | null;
+    selectedModel: string | null;
+    confidence: number;
+    reason: string;
+    usedFallback?: boolean;
+    originalProvider?: string;
+  };
+  /** Executing tools map from agent state */
+  executingTools?: Record<string, { callId: string; name: string; startedAt: number }>;
+  /** Queued tools from agent state */
+  queuedTools?: Array<{ callId: string; name: string; queuePosition: number }>;
+  /** Callback for adding a reaction */
   onReaction?: (messageId: string, reaction: 'up' | 'down' | null) => void;
-  /** Current reaction state */
-  reaction?: 'up' | 'down' | null;
-  /** Whether this message matches the current search query */
-  isSearchMatch?: boolean;
-  /** Whether this is the currently focused search match */
-  isCurrentSearchMatch?: boolean;
-  /** Children to render inside the message (e.g., tool executions) */
-  children?: React.ReactNode;
-  /** Whether to show lambda branding (first assistant message after user) */
-  showBranding?: boolean;
-  /** Callback to regenerate the response (only for last assistant message) */
-  onRegenerate?: () => Promise<void>;
+  /** Callback for editing a message */
+  onEdit?: (messageId: string, newContent: string) => void;
+  /** Additional CSS class */
+  className?: string;
 }
 
-const MessageLineComponent: React.FC<MessageLineProps> = ({
+// =============================================================================
+// Helpers
+// =============================================================================
+
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// =============================================================================
+// Sub-components
+// =============================================================================
+
+const RoleIcon: React.FC<{ role: string }> = memo(({ role }) => {
+  if (role === 'user') {
+    return <User size={10} className="shrink-0" style={{ color: 'var(--color-text-secondary)' }} />;
+  }
+  if (role === 'assistant') {
+    return <span className="shrink-0 text-[10px] font-bold" style={{ color: 'var(--color-accent-primary)' }}>λ</span>;
+  }
+  if (role === 'tool') {
+    return <Wrench size={10} className="shrink-0" style={{ color: 'var(--color-text-muted)' }} />;
+  }
+  return <Bot size={10} className="shrink-0" />;
+});
+RoleIcon.displayName = 'RoleIcon';
+
+// =============================================================================
+// Main Component
+// =============================================================================
+
+const MessageLineInternal: React.FC<MessageLineProps> = ({
   message,
-  type,
+  messages,
+  isHighlighted = false,
   isStreaming = false,
-  onEdit,
-  onFork,
-  onRunCode,
-  onInsertCode,
-  routingInfo,
+  routingDecision,
+  executingTools,
+  queuedTools,
   onReaction,
-  reaction,
-  isSearchMatch = false,
-  isCurrentSearchMatch = false,
-  children,
-  showBranding = true,
-  onRegenerate,
+  onEdit,
+  className,
 }) => {
-  const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editContent, setEditContent] = useState(message.content);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [copied, setCopied] = useState(false);
+  const [showActions, setShowActions] = useState(false);
 
-  // Check if message is long enough to be collapsible
-  const isLongMessage = useMemo(() => 
-    message.content.length > COLLAPSE_THRESHOLD && !isStreaming,
-    [message.content.length, isStreaming]
-  );
+  const isUser = message.role === 'user';
+  const isAssistant = message.role === 'assistant';
+  const isTool = message.role === 'tool';
 
-  // Get truncated content for collapsed view
-  const collapsedContent = useMemo(() => {
-    if (!isLongMessage || isExpanded) return message.content;
-    // Find a good break point (end of sentence or paragraph)
-    const truncated = message.content.slice(0, COLLAPSED_PREVIEW_LENGTH);
-    const lastPeriod = truncated.lastIndexOf('.');
-    const lastNewline = truncated.lastIndexOf('\n');
-    const breakPoint = Math.max(lastPeriod, lastNewline);
-    return breakPoint > COLLAPSED_PREVIEW_LENGTH / 2 
-      ? truncated.slice(0, breakPoint + 1) 
-      : truncated;
-  }, [message.content, isLongMessage, isExpanded]);
-
-  const handleToggleExpand = useCallback(() => setIsExpanded(prev => !prev), []);
-
-  const handleReaction = useCallback((newReaction: 'up' | 'down') => {
-    if (!onReaction) return;
-    // Toggle off if clicking the same reaction
-    onReaction(message.id, reaction === newReaction ? null : newReaction);
-  }, [onReaction, message.id, reaction]);
-
-  // Focus textarea when entering edit mode
-  useEffect(() => {
-    if (isEditing && editTextareaRef.current) {
-      editTextareaRef.current.focus();
-      editTextareaRef.current.setSelectionRange(editContent.length, editContent.length);
-    }
-  }, [isEditing, editContent.length]);
-
-  const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(message.content);
+  // Copy message content
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(message.content || '');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [message.content]);
 
-  const handleRegenerate = useCallback(async () => {
-    if (!onRegenerate || isRegenerating) return;
-    setIsRegenerating(true);
-    try {
-      await onRegenerate();
-    } finally {
-      setIsRegenerating(false);
-    }
-  }, [onRegenerate, isRegenerating]);
+  // Toggle reaction
+  const handleReaction = useCallback((type: 'up' | 'down') => {
+    if (!onReaction) return;
+    const current = message.reaction;
+    onReaction(message.id, current === type ? null : type);
+  }, [onReaction, message.id, message.reaction]);
 
-  const handleStartEdit = useCallback(() => {
-    setEditContent(message.content);
-    setIsEditing(true);
-  }, [message.content]);
-
-  const handleCancelEdit = useCallback(() => {
+  // Edit message
+  const handleEditSubmit = useCallback((messageId: string, newContent: string) => {
+    onEdit?.(messageId, newContent);
     setIsEditing(false);
-    setEditContent(message.content);
-  }, [message.content]);
+  }, [onEdit]);
 
-  const handleSaveEdit = useCallback(() => {
-    if (editContent.trim() && editContent !== message.content && onEdit) {
-      onEdit(message.id, editContent.trim());
-    }
-    setIsEditing(false);
-  }, [editContent, message.content, message.id, onEdit]);
+  // Token usage display
+  const usageInfo = useMemo(() => {
+    if (!message.usage) return null;
+    return formatTokenUsageEnhanced(message.usage);
+  }, [message.usage]);
 
-  const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSaveEdit();
-      return;
-    }
+  // Model display name
+  const modelDisplay = useMemo(() => {
+    if (!message.modelId) return null;
+    return formatModelDisplayName(message.modelId, message.provider);
+  }, [message.modelId, message.provider]);
 
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      handleCancelEdit();
-    }
-  }, [handleCancelEdit, handleSaveEdit]);
+  // Check if message has tool calls to render
+  const hasToolCalls = isAssistant && message.toolCalls && message.toolCalls.length > 0;
 
-  const timeStr = new Date(message.createdAt).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return (
+    <div
+      className={cn(
+        'group relative font-mono',
+        isHighlighted && 'bg-[var(--color-accent-primary)] bg-opacity-5 rounded',
+        className,
+      )}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
+    >
+      {/* Message header */}
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <RoleIcon role={message.role} />
 
-  const tokenSummary = formatTokenUsage(message.usage);
+        {/* Role label */}
+        <span className={cn(
+          'text-[9px] uppercase tracking-wider',
+          isUser ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-muted)]',
+        )}>
+          {isUser ? 'you' : isTool ? (message.toolName ?? 'tool') : 'assistant'}
+        </span>
 
-  const displayContent = message.content;
-
-  // Memoize expensive markdown detection — avoids running 20+ regex tests per render
-  const isMarkdownContent = useMemo(
-    () => Boolean(displayContent && looksLikeMarkdown(displayContent)),
-    [displayContent]
-  );
-
-  // User message - terminal/CLI style, right-aligned
-  if (type === 'user') {
-    const renderMarkdownUser = isMarkdownContent;
-
-    return (
-      <div 
-        className={cn(
-          'py-1 group relative font-mono min-w-0 w-full',
-          isSearchMatch && 'bg-[var(--color-warning)]/10',
-          isCurrentSearchMatch && 'ring-1 ring-[var(--color-warning)]'
+        {/* Model info */}
+        {isAssistant && modelDisplay && (
+          <span className="text-[8px] text-[var(--color-text-dim)] truncate">
+            {modelDisplay.shortName ?? modelDisplay.name}
+          </span>
         )}
-        data-message-id={message.id}
-      >
-        {/* Header row */}
-        <div className="flex items-center justify-between gap-2 text-[9px] mb-1">
-          {/* Left - actions on hover */}
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={handleCopy}
-              className="px-1.5 py-0.5 text-[9px] text-[var(--color-text-placeholder)] hover:text-[var(--color-accent-primary)] rounded transition-colors"
-            >
-              {copied ? 'copied' : 'copy'}
-            </button>
-            {onFork && !isEditing && (
+
+        {/* Auto-routed badge */}
+        {isAssistant && message.isAutoRouted && (
+          <span className="text-[8px] text-[var(--color-text-dim)] uppercase tracking-wider">
+            auto
+          </span>
+        )}
+
+        {/* Routing decision */}
+        {isAssistant && routingDecision && (
+          <RoutingBadge
+            taskType={routingDecision.taskType}
+            provider={routingDecision.selectedProvider ?? undefined}
+            model={routingDecision.selectedModel ?? undefined}
+            confidence={routingDecision.confidence}
+            reason={routingDecision.reason}
+            usedFallback={routingDecision.usedFallback}
+            originalProvider={routingDecision.originalProvider}
+            compact
+          />
+        )}
+
+        {/* Timestamp */}
+        <span className="ml-auto text-[8px] tabular-nums text-[var(--color-text-dim)]">
+          {formatTimestamp(message.createdAt)}
+        </span>
+      </div>
+
+      {/* Thinking panel (before content) */}
+      {isAssistant && message.thinking && (
+        <ThinkingPanel
+          content={message.thinking}
+          isStreaming={message.isThinkingStreaming}
+          className="mb-1"
+        />
+      )}
+
+      {/* Message content */}
+      {isEditing && isUser ? (
+        <MessageEditDialog
+          messageId={message.id}
+          originalContent={message.content || ''}
+          onSubmit={handleEditSubmit}
+          onClose={() => setIsEditing(false)}
+        />
+      ) : (
+        <>
+          {message.content && (
+            <div className={cn(
+              'text-[11px] leading-relaxed',
+              isUser
+                ? 'text-[var(--color-text-primary)]'
+                : isTool
+                  ? 'text-[var(--color-text-secondary)] text-[10px]'
+                  : 'text-[var(--color-text-primary)]',
+            )}>
+              {isAssistant ? (
+                <MarkdownRenderer content={message.content} compact />
+              ) : (
+                <span className="whitespace-pre-wrap break-words">{message.content}</span>
+              )}
+              {/* Streaming cursor */}
+              {isStreaming && isAssistant && (
+                <span className="animate-blink text-[var(--color-accent-primary)]">▍</span>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Attachments (user messages) */}
+      {isUser && message.attachments && message.attachments.length > 0 && (
+        <MessageAttachments attachments={message.attachments} variant="inline" />
+      )}
+
+      {/* Tool executions (assistant messages with tool calls) */}
+      {hasToolCalls && (
+        <ToolExecution
+          message={message}
+          messages={messages}
+          executingTools={executingTools}
+          queuedTools={queuedTools}
+          className="mt-1"
+        />
+      )}
+
+      {/* Generated media */}
+      {isAssistant && (message.generatedImages || message.generatedAudio) && (
+        <GeneratedMedia
+          images={message.generatedImages}
+          audio={message.generatedAudio}
+        />
+      )}
+
+      {/* Footer: usage, reactions, actions */}
+      <div className="flex items-center gap-1.5 mt-0.5">
+        {/* Token usage */}
+        {usageInfo && (
+          <span
+            className="text-[8px] tabular-nums text-[var(--color-text-dim)]"
+            title={usageInfo.tooltip}
+          >
+            {usageInfo.text}
+          </span>
+        )}
+
+        {/* Iteration badge */}
+        {message.iteration != null && message.iteration > 0 && (
+          <span className="text-[8px] tabular-nums text-[var(--color-text-dim)]">
+            iter {message.iteration}
+          </span>
+        )}
+
+        {/* Hover actions */}
+        {showActions && (
+          <div className="flex items-center gap-0.5 ml-auto">
+            {/* Copy */}
+            {message.content && (
               <button
-                onClick={() => onFork(message.id)}
-                className="p-1 text-[var(--color-text-placeholder)] hover:text-[var(--color-info)] rounded transition-colors"
-                title="fork"
+                type="button"
+                onClick={handleCopy}
+                className="p-0.5 text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] transition-colors"
+                title={copied ? 'Copied' : 'Copy message'}
               >
-                <GitBranch size={10} />
+                {copied ? <Check size={10} style={{ color: 'var(--color-success)' }} /> : <Copy size={10} />}
               </button>
             )}
-            {onEdit && !isEditing && (
+
+            {/* Edit (user messages only) */}
+            {isUser && onEdit && (
               <button
-                onClick={handleStartEdit}
-                className="p-1 text-[var(--color-text-placeholder)] hover:text-[var(--color-accent-primary)] rounded transition-colors"
-                title="edit"
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="p-0.5 text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] transition-colors"
+                title="Edit message"
               >
                 <Pencil size={10} />
               </button>
             )}
-          </div>
-          
-          {/* Right - timestamp and label */}
-          <div className="flex items-center gap-2 text-[9px]">
-            <span className="text-[var(--color-text-dim)]">{timeStr}</span>
-            <span className="text-[var(--color-accent-primary)] font-medium">you</span>
-          </div>
-        </div>
 
-        {/* Content - full width with subtle left accent */}
-          <div className="pl-2 ml-2 border-l border-[var(--color-accent-primary)]/20 min-w-0 w-full">
-          {/* Attachments with image previews */}
-          {message.attachments && message.attachments.length > 0 && (
-            <MessageAttachments attachments={message.attachments} variant="block" />
-          )}
-          
-          {/* Content */}
-          {isEditing ? (
-            <div className="space-y-2 text-left">
-              <textarea
-                ref={editTextareaRef}
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                onKeyDown={handleEditKeyDown}
-                aria-label="Edit message content"
-                className="w-full min-h-[60px] p-2 text-[12px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] focus:border-[var(--color-accent-primary)] text-[var(--color-text-primary)] resize-none outline-none"
-              />
-              <div className="flex justify-end gap-2" role="toolbar" aria-label="Edit actions">
-                <button onClick={handleCancelEdit} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]" aria-label="Cancel edit">
-                  <X size={12} aria-hidden="true" />
-                </button>
-                <button onClick={handleSaveEdit} className="p-1 text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)]" aria-label="Save edit">
-                  <Check size={12} aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-          ) : displayContent && (
-            <div className="text-[12px] text-[var(--color-text-primary)] leading-relaxed break-words">
-              <ContentRenderer content={displayContent} useMarkdown={renderMarkdownUser} messageType="user" />
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Assistant message - left-aligned with different styling
-  const renderMarkdown = Boolean(displayContent);
-
-  const isSummaryMessage = Boolean(message.isSummary);
-
-  return (
-    <div 
-      className={cn(
-        'py-1 group relative font-mono min-w-0 w-full',
-        isSearchMatch && 'bg-[var(--color-warning)]/10',
-        isCurrentSearchMatch && 'ring-1 ring-[var(--color-warning)]'
-      )}
-      data-message-id={message.id}
-    >
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-2 text-[9px] mb-1">
-        <div className="min-w-0 flex items-center gap-2 font-mono">
-          {showBranding ? (
-            <>
-              <span className="text-[var(--color-accent-primary)] text-[11px] font-medium">λ</span>
-              <span className="text-[var(--color-text-muted)] text-[9px]">vyotiq</span>
-              <span className="text-[var(--color-text-dim)] text-[9px]">{timeStr}</span>
-            </>
-          ) : (
-            <span className="text-[var(--color-text-dim)] text-[9px]">{timeStr}</span>
-          )}
-          {/* Provider/model badge - show on first message with routing, or inline on all */}
-          {routingInfo && routingInfo.provider && showBranding && (
-            <RoutingBadge
-              taskType={routingInfo.taskType}
-              provider={routingInfo.provider}
-              model={routingInfo.model ?? undefined}
-              confidence={routingInfo.confidence}
-              reason={routingInfo.reason}
-              usedFallback={routingInfo.usedFallback}
-              originalProvider={routingInfo.originalProvider}
-              compact
-            />
-          )}
-          {/* Show provider/model inline when no routing info or on continuation messages */}
-          {message.provider && (!routingInfo || !showBranding) && (
-            <span 
-              className="text-[9px] font-mono text-[var(--color-text-muted)]"
-              title={message.modelId || message.provider}
-            >
-              <span className="text-[var(--color-text-secondary)]">{message.provider}</span>
-              {message.modelId && (
-                <>
-                  <span className="text-[var(--color-text-dim)]">/</span>
-                  <span className="text-[var(--color-text-dim)]">{message.modelId.split('-').slice(0, 2).join('-')}</span>
-                </>
-              )}
-            </span>
-          )}
-          {isSummaryMessage && (
-            <span className="text-[var(--color-accent-secondary)] text-[9px]">summary</span>
-          )}
-        </div>
-
-        {/* Right side: tokens + actions */}
-        <div className="flex items-center gap-2">
-          {tokenSummary && (
-            <span className="text-[var(--color-text-dim)] text-[9px] tabular-nums" title={tokenSummary.tooltip}>{tokenSummary.text}</span>
-          )}
-          
-          {displayContent && (
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              {onReaction && !isStreaming && (
-                <>
-                  <button
-                    onClick={() => handleReaction('up')}
-                    className={cn(
-                      'p-1 rounded transition-colors',
-                      reaction === 'up'
-                        ? 'opacity-100 text-[var(--color-success)] bg-[var(--color-success)]/10'
-                        : 'text-[var(--color-text-placeholder)] hover:text-[var(--color-success)] hover:bg-[var(--color-surface-2)]/50'
-                    )}
-                    title="Good response"
-                  >
-                    <ThumbsUp size={10} />
-                  </button>
-                  <button
-                    onClick={() => handleReaction('down')}
-                    className={cn(
-                      'p-1 rounded transition-colors',
-                      reaction === 'down'
-                        ? 'opacity-100 text-[var(--color-error)] bg-[var(--color-error)]/10'
-                        : 'text-[var(--color-text-placeholder)] hover:text-[var(--color-error)] hover:bg-[var(--color-surface-2)]/50'
-                    )}
-                    title="Poor response"
-                  >
-                    <ThumbsDown size={10} />
-                  </button>
-                </>
-              )}
-              {onFork && !isStreaming && (
+            {/* Reactions (assistant messages only) */}
+            {isAssistant && onReaction && (
+              <>
                 <button
-                  onClick={() => onFork(message.id)}
-                  className="p-1 text-[var(--color-text-placeholder)] hover:text-[var(--color-info)] hover:bg-[var(--color-surface-2)]/50 rounded transition-colors"
-                  title="fork from here"
-                >
-                  <GitBranch size={10} />
-                </button>
-              )}
-              {onRegenerate && !isStreaming && (
-                <button
-                  onClick={handleRegenerate}
-                  disabled={isRegenerating}
+                  type="button"
+                  onClick={() => handleReaction('up')}
                   className={cn(
-                    "p-1 rounded transition-colors",
-                    isRegenerating 
-                      ? "text-[var(--color-warning)] animate-spin"
-                      : "text-[var(--color-text-placeholder)] hover:text-[var(--color-warning)] hover:bg-[var(--color-surface-2)]/50"
+                    'p-0.5 transition-colors',
+                    message.reaction === 'up'
+                      ? 'text-[var(--color-success)]'
+                      : 'text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)]',
                   )}
-                  title="regenerate response"
+                  title="Good response"
                 >
-                  <RefreshCw size={10} />
+                  <ThumbsUp size={10} />
                 </button>
-              )}
-              <button
-                onClick={handleCopy}
-                className="px-1.5 py-0.5 text-[9px] text-[var(--color-text-placeholder)] hover:text-[var(--color-info)] hover:bg-[var(--color-surface-2)]/50 rounded transition-colors"
-                title="copy response"
-              >
-                {copied ? <span className="text-[var(--color-success)]">copied</span> : 'copy'}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Content area */}
-      <div className={cn(
-        'pl-2 border-l min-w-0 w-full',
-        showBranding 
-          ? 'ml-2 border-[var(--color-accent-primary)]/15' 
-          : 'ml-3 border-[var(--color-border-subtle)]/30'
-      )}>
-        {/* Thinking Panel */}
-        {(message.thinking || message.isThinkingStreaming) && (
-          <div className="mb-2">
-            <ThinkingPanel
-              thinking={message.thinking || ''}
-              isStreaming={message.isThinkingStreaming}
-              modelName={getThinkingModelName(message.modelId)}
-              defaultCollapsed={!message.isThinkingStreaming}
-            />
+                <button
+                  type="button"
+                  onClick={() => handleReaction('down')}
+                  className={cn(
+                    'p-0.5 transition-colors',
+                    message.reaction === 'down'
+                      ? 'text-[var(--color-error)]'
+                      : 'text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)]',
+                  )}
+                  title="Bad response"
+                >
+                  <ThumbsDown size={10} />
+                </button>
+              </>
+            )}
           </div>
         )}
-
-        {/* Response content */}
-        <div className="break-words min-w-0 w-full">
-          {isSummaryMessage ? (
-            <details className="group/summary">
-              <summary className="cursor-pointer select-none list-none text-[10px] font-mono text-[var(--color-text-muted)] flex items-center gap-2">
-                <span>Summary (context compression)</span>
-                <span className="text-[var(--color-text-dim)] text-[9px] group-open/summary:hidden">show</span>
-                <span className="text-[var(--color-text-dim)] text-[9px] hidden group-open/summary:inline">hide</span>
-              </summary>
-              <div className="pt-2">
-                {displayContent && (
-                  <ContentRenderer
-                    content={displayContent}
-                    useMarkdown={renderMarkdown}
-                    messageType="assistant"
-                    onRunCode={onRunCode}
-                    onInsertCode={onInsertCode}
-                  />
-                )}
-              </div>
-            </details>
-          ) : isLongMessage ? (
-            <div>
-              <ContentRenderer
-                content={isExpanded ? displayContent : collapsedContent}
-                useMarkdown={renderMarkdown}
-                messageType="assistant"
-                onRunCode={onRunCode}
-                onInsertCode={onInsertCode}
-              />
-              {!isExpanded && (
-                <span className="text-[var(--color-text-muted)] text-[10px]">...</span>
-              )}
-              <button
-                onClick={handleToggleExpand}
-                className="mt-2 flex items-center gap-1 px-2 py-1 rounded text-[10px] text-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary)]/10 transition-colors"
-              >
-                {isExpanded ? <><ChevronUp size={12} /><span>Show less</span></> : <><ChevronDown size={12} /><span>Show more</span></>}
-              </button>
-            </div>
-          ) : (
-            displayContent && (
-              <ContentRenderer
-                content={displayContent}
-                useMarkdown={renderMarkdown}
-                messageType="assistant"
-                onRunCode={onRunCode}
-                onInsertCode={onInsertCode}
-              />
-            )
-          )}
-
-          {(message.generatedImages || message.generatedAudio) && (
-            <GeneratedMedia
-              images={message.generatedImages}
-              audio={message.generatedAudio}
-            />
-          )}
-          
-          {/* Streaming indicator - static cursor */}
-          {isStreaming && displayContent && (
-            <span 
-              className={cn(
-                "inline-block w-[3px] h-[14px] rounded-[1px] ml-0.5 align-middle",
-                "bg-[var(--color-accent-primary)] opacity-80"
-              )}
-              aria-label="Streaming content"
-              role="status"
-            />
-          )}
-          
-          {/* Empty streaming state - static indicator */}
-          {isStreaming && !displayContent && (
-            <span 
-              className="inline-flex items-center gap-1 text-[var(--color-text-muted)] text-[10px] font-mono"
-              aria-label="Processing"
-              role="status"
-            >
-              <span className="text-[var(--color-accent-primary)]">▸</span>
-              <span>processing</span>
-            </span>
-          )}
-        </div>
-
-        {/* Tool executions */}
-        {children && <div className="mt-2">{children}</div>}
       </div>
     </div>
   );
 };
 
-// Lazy load MarkdownRenderer outside component for proper code splitting
-const LazyMarkdownRenderer = React.lazy(() => import('../../../components/ui/MarkdownRenderer'));
-
-/**
- * Render content with markdown and code block support
- */
-const ContentRenderer: React.FC<{ 
-  content: string;
-  useMarkdown: boolean;
-  messageType?: 'user' | 'assistant';
-  onRunCode?: (code: string, language: string) => void;
-  onInsertCode?: (code: string, language: string) => void;
-}> = memo(({ content, useMarkdown, messageType = 'assistant', onRunCode, onInsertCode }) => {
-  // Use CSS variables for consistent text colors across themes
-  const textColorClass = messageType === 'user' 
-    ? 'text-[var(--color-text-primary)]' 
-    : 'text-[var(--color-text-secondary)]';
-
-  if (useMarkdown) {
-    return (
-      <React.Suspense
-        fallback={
-          <div className={`text-[12px] ${textColorClass} leading-relaxed whitespace-pre-wrap break-words`}>
-            {content}
-          </div>
-        }
-      >
-        <LazyMarkdownRenderer 
-          content={content} 
-          onRunCode={onRunCode} 
-          onInsertCode={onInsertCode}
-          messageType={messageType}
-          interactive
-        />
-      </React.Suspense>
-    );
-  }
-  
-  return (
-    <div className={`text-[12px] ${textColorClass} leading-relaxed whitespace-pre-wrap break-words`}>
-      {content}
-    </div>
-  );
-});
-
-ContentRenderer.displayName = 'ContentRenderer';
-
-export const MessageLine = memo(MessageLineComponent);
+export const MessageLine = memo(MessageLineInternal);
 MessageLine.displayName = 'MessageLine';

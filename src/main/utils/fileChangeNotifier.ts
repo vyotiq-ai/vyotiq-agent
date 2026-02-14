@@ -2,7 +2,7 @@
  * Rust Backend File Change Notifier
  *
  * Utility for notifying the Rust backend when the agent modifies files,
- * so the full-text and vector indexes are incrementally updated.
+ * so the full-text indexes are incrementally updated.
  *
  * The Rust backend's file watcher (notify crate) will eventually detect changes,
  * but this notification provides faster re-indexing by sending explicit events
@@ -19,8 +19,7 @@ const pendingNotifications = new Map<string, ReturnType<typeof setTimeout>>();
 
 /**
  * Notify the Rust backend that a file has been changed by the agent.
- * This triggers incremental re-indexing for both Tantivy (full-text) and
- * vector (embedding) indexes.
+ * This triggers incremental re-indexing for the Tantivy (full-text) index.
  *
  * Non-blocking and non-critical — failures are silently logged.
  *

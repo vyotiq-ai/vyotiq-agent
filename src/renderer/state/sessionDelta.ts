@@ -13,6 +13,9 @@
 
 import type { AgentSessionState, ChatMessage } from '../../shared/types';
 
+// Internal version tracking — avoids polluting AgentSessionState with hidden properties
+const sessionVersions = new WeakMap<AgentSessionState, number>();
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -61,7 +64,7 @@ export function computeSessionDelta(
   const delta: SessionDelta = {
     sessionId: newSession.id,
     timestamp: Date.now(),
-    version: ((oldSession as unknown as { _version?: number })._version ?? 0) + 1,
+    version: (sessionVersions.get(oldSession) ?? 0) + 1,
   };
 
   let hasChanges = false;
@@ -136,14 +139,22 @@ function computeMessagePatch(
 ): Partial<ChatMessage> | null {
   const patch: Partial<ChatMessage> = {};
   
-  // Check content changes
+  // Check content changes — preserve longer streamed content for assistant messages
   if (oldMsg.content !== newMsg.content) {
-    patch.content = newMsg.content;
+    const oldLen = oldMsg.content?.length ?? 0;
+    const newLen = newMsg.content?.length ?? 0;
+    if (oldMsg.role !== 'assistant' || newLen >= oldLen) {
+      patch.content = newMsg.content;
+    }
   }
   
-  // Check thinking changes
+  // Check thinking changes — preserve longer streamed thinking
   if (oldMsg.thinking !== newMsg.thinking) {
-    patch.thinking = newMsg.thinking;
+    const oldLen = oldMsg.thinking?.length ?? 0;
+    const newLen = newMsg.thinking?.length ?? 0;
+    if (oldMsg.role !== 'assistant' || newLen >= oldLen) {
+      patch.thinking = newMsg.thinking;
+    }
   }
   
   // Check tool calls (if any changed)
@@ -237,7 +248,7 @@ export function applySessionDelta(
   }
 
   // Apply version
-  (updatedSession as unknown as { _version?: number })._version = delta.version;
+  sessionVersions.set(updatedSession, delta.version);
 
   return {
     session: updatedSession,

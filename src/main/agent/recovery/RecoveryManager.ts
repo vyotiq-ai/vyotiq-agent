@@ -26,8 +26,6 @@ import {
   getStrategiesForCategory,
   RetryExecutor,
   FallbackExecutor,
-  RollbackExecutor,
-  ScaleDownExecutor,
   EscalateExecutor,
 } from './strategies';
 
@@ -85,8 +83,6 @@ export class RecoveryManager extends EventEmitter {
   // Strategy executors
   private readonly retryExecutor: RetryExecutor;
   private readonly fallbackExecutor: FallbackExecutor;
-  private readonly rollbackExecutor: RollbackExecutor;
-  private readonly scaleDownExecutor: ScaleDownExecutor;
   private readonly escalateExecutor: EscalateExecutor;
 
   // State
@@ -112,8 +108,6 @@ export class RecoveryManager extends EventEmitter {
       strategyPriorities: config.strategyPriorities ?? {
         retry: 1,
         fallback: 2,
-        rollback: 3,
-        'scale-down': 5,
         escalate: 10,
       },
       enableAutoRecovery: config.enableAutoRecovery ?? true,
@@ -133,8 +127,6 @@ export class RecoveryManager extends EventEmitter {
     // Initialize executors
     this.retryExecutor = new RetryExecutor(this.deps);
     this.fallbackExecutor = new FallbackExecutor(this.deps);
-    this.rollbackExecutor = new RollbackExecutor(this.deps);
-    this.scaleDownExecutor = new ScaleDownExecutor(this.deps);
     this.escalateExecutor = new EscalateExecutor(this.deps);
   }
 
@@ -326,42 +318,6 @@ export class RecoveryManager extends EventEmitter {
         session.attempts.push(result.attempt);
         this.emit('recovery-attempt', result.attempt, session);
         return { success: result.attempt.outcome === 'success', value: result.result };
-      }
-
-      case 'rollback': {
-        // For rollback, we need runId and rollback functions
-        // Since we don't have these, we'll mark as skipped
-        const attempt: RecoveryAttempt = {
-          id: randomUUID(),
-          strategy: 'rollback',
-          attemptNumber: 1,
-          startedAt: Date.now(),
-          outcome: 'skipped',
-          actionsTaken: ['Rollback skipped - no rollback context available'],
-          endedAt: Date.now(),
-          durationMs: 0,
-        };
-        session.attempts.push(attempt);
-        this.emit('recovery-attempt', attempt, session);
-        return { success: false };
-      }
-
-      case 'scale-down': {
-        // For scale-down, we need actions and apply function
-        // Since we don't have these, we'll mark as skipped
-        const attempt: RecoveryAttempt = {
-          id: randomUUID(),
-          strategy: 'scale-down',
-          attemptNumber: 1,
-          startedAt: Date.now(),
-          outcome: 'skipped',
-          actionsTaken: ['Scale-down skipped - no scale-down context available'],
-          endedAt: Date.now(),
-          durationMs: 0,
-        };
-        session.attempts.push(attempt);
-        this.emit('recovery-attempt', attempt, session);
-        return { success: false };
       }
 
       case 'escalate': {
@@ -628,19 +584,5 @@ export class RecoveryManager extends EventEmitter {
    */
   getDiagnosticEngine(): DiagnosticEngine {
     return this.diagnosticEngine;
-  }
-
-  /**
-   * Create rollback point
-   */
-  createRollbackPoint(runId: string, description: string, actions: Array<{ id: string; type: string; description: string; canRollback: boolean }>): string {
-    return this.rollbackExecutor.createRollbackPoint(runId, description, actions as never);
-  }
-
-  /**
-   * Record file change for rollback
-   */
-  recordFileChange(runId: string, filePath: string, previousContent: string | null): void {
-    this.rollbackExecutor.recordFileChange(runId, filePath, previousContent);
   }
 }

@@ -4,7 +4,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::state::{AppState, ServerEvent};
 
 #[derive(Debug, Deserialize)]
@@ -26,24 +26,34 @@ pub async fn create_workspace(
     State(state): State<AppState>,
     Json(req): Json<CreateWorkspaceRequest>,
 ) -> AppResult<Json<crate::workspace::Workspace>> {
-    let workspace = state.workspace_manager.create_workspace(req.name, req.path.clone())?;
+    // Validate workspace name
+    let name = req.name.trim().to_string();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("Workspace name cannot be empty".into()));
+    }
+    if name.len() > 200 {
+        return Err(AppError::BadRequest("Workspace name too long (max 200 characters)".into()));
+    }
+    if name.chars().any(|c| c.is_control()) {
+        return Err(AppError::BadRequest("Workspace name cannot contain control characters".into()));
+    }
+
+    let workspace = state.workspace_manager.create_workspace(name, req.path.clone())?;
 
     // Start watching the workspace with incremental re-indexing
     if let Err(e) = state.watcher_manager.start_watching(
         &workspace.id,
         &workspace.path,
         Some(state.index_manager.clone()),
-        Some(state.embedding_manager.clone()),
     ) {
         tracing::warn!("Failed to start file watcher for workspace: {}", e);
     }
 
-    // Start background indexing (full-text + vector) using shared helper
+    // Start background indexing (full-text) using shared helper
     crate::routes::search::spawn_background_indexing(
         workspace.id.clone(),
         workspace.path.clone(),
         state.index_manager.clone(),
-        state.embedding_manager.clone(),
         state.workspace_manager.clone(),
         state.event_tx.clone(),
     );
@@ -70,7 +80,6 @@ pub async fn remove_workspace(
 ) -> AppResult<Json<serde_json::Value>> {
     state.watcher_manager.stop_watching(&workspace_id);
     let _ = state.index_manager.remove_index(&workspace_id);
-    let _ = state.embedding_manager.remove_workspace(&workspace_id);
     state.workspace_manager.remove_workspace(&workspace_id)?;
 
     let _ = state.event_tx.send(ServerEvent::WorkspaceRemoved {
@@ -92,7 +101,6 @@ pub async fn activate_workspace(
             &workspace_id,
             &workspace.path,
             Some(state.index_manager.clone()),
-            Some(state.embedding_manager.clone()),
         ) {
             tracing::warn!("Failed to start file watcher: {}", e);
         }
@@ -105,9 +113,6 @@ pub async fn activate_workspace(
     if let Err(e) = state.index_manager.get_or_create_index(&workspace_id) {
         tracing::warn!("Failed to load full-text index for {}: {} — will re-index", workspace_id, e);
     }
-    if let Err(e) = state.embedding_manager.ensure_workspace_loaded(&workspace_id) {
-        tracing::warn!("Failed to load vector index for {}: {} — will re-index", workspace_id, e);
-    }
 
     // Auto-trigger background indexing if workspace is not yet indexed
     let index_status = state.index_manager.get_index_status(&workspace_id).unwrap_or_default();
@@ -116,7 +121,6 @@ pub async fn activate_workspace(
             workspace_id.clone(),
             workspace.path.clone(),
             state.index_manager.clone(),
-            state.embedding_manager.clone(),
             state.workspace_manager.clone(),
             state.event_tx.clone(),
         );

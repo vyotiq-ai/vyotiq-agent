@@ -58,6 +58,8 @@ export interface RunExecutorDeps {
   getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>;
   /** Callback for tracking provider health (success/failure, latency) */
   onProviderHealth?: ProviderHealthCallback;
+  /** Budget check callback — returns false reason if budget exceeded */
+  checkBudget?: (sessionId: string) => { canProceed: boolean; reason?: string };
 }
 
 /**

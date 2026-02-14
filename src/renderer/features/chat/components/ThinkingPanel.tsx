@@ -1,167 +1,101 @@
 /**
  * ThinkingPanel Component
  * 
- * Displays the model's thinking/reasoning content in a collapsible panel.
- * Follows the terminal/CLI design language matching ToolItem.
- * Features smooth transitions and visual feedback for streaming state.
+ * Displays the model's reasoning/thinking content with a collapsible panel.
+ * Supports streaming state with a pulsing indicator while the model is thinking.
+ * Used to show extended thinking from models like Gemini, Claude, DeepSeek.
  */
-import React, { memo, useState, useCallback, useEffect, useRef } from 'react';
+import React, { memo, useState, useCallback, useMemo } from 'react';
+import { Brain, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { MarkdownRenderer } from '../../../components/ui/MarkdownRenderer';
 
 interface ThinkingPanelProps {
-  thinking: string;
+  /** The thinking/reasoning text content */
+  content: string;
+  /** Whether thinking is currently being streamed */
   isStreaming?: boolean;
-  modelName?: string;
-  defaultCollapsed?: boolean;
+  /** Whether the panel starts expanded */
+  defaultExpanded?: boolean;
+  /** Additional CSS class */
+  className?: string;
 }
 
-const ThinkingPanelComponent: React.FC<ThinkingPanelProps> = ({
-  thinking,
+const ThinkingPanelInternal: React.FC<ThinkingPanelProps> = ({
+  content,
   isStreaming = false,
-  modelName,
-  defaultCollapsed = true,
+  defaultExpanded = false,
+  className,
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
-  const [copied, setCopied] = useState(false);
-  const contentRef = useRef<HTMLPreElement | null>(null);
-  const [showScrollHint, setShowScrollHint] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
-  // Auto-expand when streaming starts
-  useEffect(() => {
-    if (isStreaming) setIsCollapsed(false);
-  }, [isStreaming]);
+  const toggleExpanded = useCallback(() => {
+    setIsExpanded(prev => !prev);
+  }, []);
 
-  // Auto-scroll to bottom when streaming
-  useEffect(() => {
-    if (isStreaming && contentRef.current) {
-      contentRef.current.scrollTop = contentRef.current.scrollHeight;
-    }
-  }, [thinking, isStreaming]);
+  const truncatedPreview = useMemo(() => {
+    if (!content) return '';
+    const firstLine = content.split('\n')[0] ?? '';
+    return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
+  }, [content]);
 
-  // Check if content is scrollable
-  useEffect(() => {
-    if (contentRef.current) {
-      setShowScrollHint(contentRef.current.scrollHeight > contentRef.current.clientHeight);
-    }
-  }, [thinking, isCollapsed]);
-
-  const handleToggle = useCallback(() => setIsCollapsed(prev => !prev), []);
-
-  const handleCopy = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    await navigator.clipboard.writeText(thinking);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [thinking]);
-
-  if (!thinking && !isStreaming) return null;
-
-  const charDisplay = thinking 
-    ? thinking.length >= 1000 ? `${(thinking.length / 1000).toFixed(1)}k` : String(thinking.length)
-    : '0';
+  if (!content && !isStreaming) return null;
 
   return (
-    <div className={cn(
-      'group/thinking font-mono min-w-0',
-      'transition-all duration-300 ease-out'
-    )}>
+    <div
+      className={cn(
+        'rounded border font-mono text-[10px]',
+        'border-[var(--color-border-subtle)]',
+        'bg-[var(--color-surface-1)]',
+        className,
+      )}
+    >
       {/* Header */}
-      <div
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
+        onClick={toggleExpanded}
         className={cn(
-          'flex items-center gap-1.5 py-0.5 min-w-0 w-full cursor-pointer',
-          'hover:bg-[var(--color-surface-1)]/30 rounded-sm px-1 -mx-1',
-          'transition-all duration-200',
-          'outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/25',
-          isStreaming && 'bg-[var(--color-info)]/5'
+          'flex items-center gap-1.5 w-full px-2 py-1 text-left',
+          'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+          'transition-colors duration-100',
         )}
-        onClick={handleToggle}
-        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleToggle())}
-        aria-expanded={!isCollapsed}
       >
-        {/* Label */}
-        <span className={cn(
-          'text-[11px] font-medium transition-colors duration-200',
-          isStreaming ? 'text-[var(--color-info)]' : 'text-[var(--color-text-secondary)]'
-        )}>
-          Reasoning
+        {isExpanded
+          ? <ChevronDown size={10} className="shrink-0" />
+          : <ChevronRight size={10} className="shrink-0" />
+        }
+        <Brain size={10} className="shrink-0" style={{ color: 'var(--color-accent-primary)' }} />
+        <span className="text-[9px] uppercase tracking-wider opacity-70">
+          reasoning
         </span>
-
-        {/* Model name */}
-        {modelName && (
-          <span className="text-[10px] text-[var(--color-text-muted)] transition-opacity duration-200">
-            {modelName}
+        {isStreaming && (
+          <span
+            className="ml-1 h-1.5 w-1.5 rounded-full animate-pulse"
+            style={{ backgroundColor: 'var(--color-accent-primary)' }}
+          />
+        )}
+        {!isExpanded && truncatedPreview && (
+          <span className="ml-1 truncate opacity-40 text-[9px]">
+            {truncatedPreview}
           </span>
         )}
+      </button>
 
-        {/* Right side */}
-        <span className="ml-auto flex items-center gap-2 text-[9px] font-mono">
-          {thinking && (
-            <span className={cn(
-              'text-[var(--color-text-dim)] tabular-nums transition-all duration-200',
-              isStreaming && 'text-[var(--color-info)]/70'
-            )}>
-              {charDisplay} chars
-            </span>
+      {/* Content */}
+      {isExpanded && (
+        <div
+          className={cn(
+            'px-2 pb-2 text-[10px] leading-relaxed overflow-auto',
+            'text-[var(--color-text-secondary)]',
+            'max-h-[300px]',
           )}
-          <span className="text-[var(--color-text-dim)]/70">
-            {isCollapsed ? 'show' : 'hide'}
-          </span>
-          {thinking && !isStreaming && (
-            <button
-              type="button"
-              onClick={handleCopy}
-              className={cn(
-                'px-1 py-0.5 rounded text-[var(--color-text-muted)] text-[9px]',
-                'hover:text-[var(--color-text-secondary)]',
-                'transition-all duration-150 opacity-0 group-hover/thinking:opacity-100',
-                'active:scale-95'
-              )}
-              title={copied ? 'Copied!' : 'Copy'}
-            >
-              {copied ? 'copied' : 'copy'}
-            </button>
-          )}
-        </span>
-      </div>
-      
-      {/* Content with smooth expand/collapse */}
-      <div className={cn(
-        'overflow-hidden transition-all duration-300 ease-out',
-        isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'
-      )}>
-        <div className="ml-3 mt-0.5 border-l border-[var(--color-border-subtle)] pl-2 relative">
-          {thinking ? (
-            <>
-              <pre 
-                ref={contentRef}
-                className={cn(
-                  'text-[11px] whitespace-pre-wrap break-words',
-                  'text-[var(--color-text-reasoning)] leading-relaxed',
-                  'max-h-[400px] overflow-y-auto scrollbar-thin py-0.5 italic',
-                  'transition-all duration-200'
-                )}
-              >
-                {thinking}
-                {isStreaming && (
-                  <span 
-                    className="inline-block w-[2px] h-[12px] bg-[var(--color-info)] ml-0.5 align-middle opacity-70"
-                    aria-hidden="true"
-                  />
-                )}
-              </pre>
-              {/* Scroll hint gradient */}
-              {showScrollHint && !isStreaming && (
-                <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-[var(--color-surface-base)] to-transparent pointer-events-none" />
-              )}
-            </>
-          ) : null}
+        >
+          <MarkdownRenderer content={content} compact />
         </div>
-      </div>
+      )}
     </div>
   );
 };
 
-export const ThinkingPanel = memo(ThinkingPanelComponent);
+export const ThinkingPanel = memo(ThinkingPanelInternal);
 ThinkingPanel.displayName = 'ThinkingPanel';

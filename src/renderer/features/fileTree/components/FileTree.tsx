@@ -24,6 +24,7 @@ import {
 import { cn } from '../../../utils/cn';
 import { createLogger } from '../../../utils/logger';
 import { useFileTree } from '../useFileTree';
+import { useFileTreeKeyboard } from '../hooks/useFileTreeKeyboard';
 import { FileTreeItem } from './FileTreeItem';
 import { FileTreeContextMenu } from './FileTreeContextMenu';
 import { NewItemInput } from './NewItemInput';
@@ -267,134 +268,102 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
     setNewItemState({ type: 'folder', parentPath: workspacePath });
   }, [workspacePath]);
 
-  // Keyboard navigation
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (flatNodes.length === 0 || renamingPath || newItemState) return;
-    
-    // Handle keyboard shortcuts
-    const isMac = navigator.platform.toLowerCase().includes('mac');
-    const modKey = isMac ? e.metaKey : e.ctrlKey;
-    
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        navigateDown();
-        break;
-        
-      case 'ArrowUp':
-        e.preventDefault();
-        navigateUp();
-        break;
-        
-      case 'ArrowRight':
-        e.preventDefault();
-        navigateInto();
-        break;
-        
-      case 'ArrowLeft':
-        e.preventDefault();
-        navigateOut();
-        break;
-        
-      case 'Enter':
-        e.preventDefault();
-        if (focusedPath) {
-          const node = flatNodes.find(n => n.path === focusedPath);
-          if (node) {
-            if (node.type === 'directory') {
-              toggleExpand(node.path);
-            } else {
-              openFile(node.path);
-            }
-          }
+  // Keyboard navigation — delegated to useFileTreeKeyboard hook
+  const handleSelect = useCallback(() => {
+    if (focusedPath) {
+      const node = flatNodes.find(n => n.path === focusedPath);
+      if (node) {
+        if (node.type === 'directory') {
+          toggleExpand(node.path);
+        } else {
+          openFile(node.path);
         }
-        break;
-        
-      case 'F2':
-        e.preventDefault();
-        if (focusedPath) {
-          startRenaming(focusedPath);
-        }
-        break;
-        
-      case 'Delete':
-      case 'Backspace':
-        if (!modKey) {
-          e.preventDefault();
-          if (focusedPath) {
-            const node = flatNodes.find(n => n.path === focusedPath);
-            if (node) {
-              if (!preferences.confirmDelete) {
-                deleteItem(focusedPath);
-              } else {
-                void (async () => {
-                  const confirmed = await confirm({
-                    title: 'Delete Item',
-                    message: `Are you sure you want to delete "${node.name}"?`,
-                    confirmLabel: 'Delete',
-                    variant: 'destructive',
-                  });
-                  if (confirmed) {
-                    deleteItem(focusedPath);
-                  }
-                })();
-              }
-            }
-          }
-        }
-        break;
-        
-      case ' ':
-        e.preventDefault();
-        if (focusedPath) {
-          selectPath(focusedPath, 'toggle');
-        }
-        break;
-        
-      case 'a':
-        if (modKey) {
-          e.preventDefault();
-          // Select all visible nodes
-          flatNodes.forEach(node => selectPath(node.path, 'toggle'));
-        }
-        break;
-        
-      case 'c':
-        if (modKey) {
-          e.preventDefault();
-          copy();
-        }
-        break;
-        
-      case 'x':
-        if (modKey) {
-          e.preventDefault();
-          cut();
-        }
-        break;
-        
-      case 'v':
-        if (modKey && canPaste() && focusedPath) {
-          e.preventDefault();
-          paste(focusedPath);
-        }
-        break;
-        
-      case 'f':
-        if (modKey) {
-          e.preventDefault();
-          setShowSearch(true);
-        }
-        break;
-        
-      case 'Escape':
-        if (showSearch) {
-          clearSearch();
-          setShowSearch(false);
-        }
-        break;
+      }
     }
-  }, [flatNodes, renamingPath, newItemState, focusedPath, navigateDown, navigateUp, navigateInto, navigateOut, toggleExpand, openFile, startRenaming, deleteItem, selectPath, copy, cut, paste, canPaste, showSearch, clearSearch, preferences.confirmDelete, confirm]);
+  }, [focusedPath, flatNodes, toggleExpand, openFile]);
+
+  const handleToggleSelect = useCallback(() => {
+    if (focusedPath) {
+      selectPath(focusedPath, 'toggle');
+    }
+  }, [focusedPath, selectPath]);
+
+  const handleRename = useCallback(() => {
+    if (focusedPath) {
+      startRenaming(focusedPath);
+    }
+  }, [focusedPath, startRenaming]);
+
+  const handleDelete = useCallback(() => {
+    if (focusedPath) {
+      const node = flatNodes.find(n => n.path === focusedPath);
+      if (node) {
+        if (!preferences.confirmDelete) {
+          deleteItem(focusedPath);
+        } else {
+          void (async () => {
+            const confirmed = await confirm({
+              title: 'Delete Item',
+              message: `Are you sure you want to delete "${node.name}"?`,
+              confirmLabel: 'Delete',
+              variant: 'destructive',
+            });
+            if (confirmed) {
+              deleteItem(focusedPath);
+            }
+          })();
+        }
+      }
+    }
+  }, [focusedPath, flatNodes, deleteItem, preferences.confirmDelete, confirm]);
+
+  const handleCopy = useCallback(() => {
+    copy();
+  }, [copy]);
+
+  const handleCut = useCallback(() => {
+    cut();
+  }, [cut]);
+
+  const handlePaste = useCallback(() => {
+    if (canPaste() && focusedPath) {
+      paste(focusedPath);
+    }
+  }, [canPaste, focusedPath, paste]);
+
+  const handleSearch = useCallback(() => {
+    setShowSearch(true);
+  }, []);
+
+  const handleEscape = useCallback(() => {
+    if (showSearch) {
+      clearSearch();
+      setShowSearch(false);
+    }
+  }, [showSearch, clearSearch]);
+
+  const handleSelectAll = useCallback(() => {
+    flatNodes.forEach(node => selectPath(node.path, 'toggle'));
+  }, [flatNodes, selectPath]);
+
+  useFileTreeKeyboard({
+    containerRef,
+    isEnabled: flatNodes.length > 0 && !renamingPath && !newItemState,
+    onNavigateUp: navigateUp,
+    onNavigateDown: navigateDown,
+    onNavigateInto: navigateInto,
+    onNavigateOut: navigateOut,
+    onSelect: handleSelect,
+    onToggleSelect: handleToggleSelect,
+    onRename: handleRename,
+    onDelete: handleDelete,
+    onCopy: handleCopy,
+    onCut: handleCut,
+    onPaste: handlePaste,
+    onSearch: handleSearch,
+    onEscape: handleEscape,
+    onSelectAll: handleSelectAll,
+  });
   
   // Focus container when clicking empty area
   const handleContainerClick = useCallback(() => {
@@ -517,7 +486,6 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
         ref={containerRef}
         className="flex-1 overflow-hidden focus:outline-none"
         onContextMenu={handleRootContextMenu}
-        onKeyDown={handleKeyDown}
         onClick={handleContainerClick}
         tabIndex={0}
         role="tree"

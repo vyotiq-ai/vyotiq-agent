@@ -11,6 +11,9 @@ import { GitBranch, Circle, Wifi, WifiOff } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { createLogger } from '../../utils/logger';
 import { useWorkspaceState } from '../../state/WorkspaceProvider';
+import { StatusIndicator } from '../ui/StatusIndicator';
+import { getStatusDisplayMessage, isSignificantStatus } from '../../utils/statusMessages';
+import { useAgentSelector } from '../../state/AgentProvider';
 
 const logger = createLogger('GlobalStatusBar');
 
@@ -31,6 +34,25 @@ export const GlobalStatusBar: React.FC = memo(() => {
   const { workspacePath } = useWorkspaceState();
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null);
   const [isConnected, setIsConnected] = useState(true);
+
+  // Track current agent session status for the status bar
+  const agentStatus = useAgentSelector(
+    (s) => {
+      const activeSession = s.activeSessionId ? s.sessions.find((x) => x.id === s.activeSessionId) : undefined;
+      return {
+        status: activeSession?.status ?? 'idle' as const,
+        statusMessage: activeSession?.statusMessage,
+        statusPhase: activeSession?.statusPhase,
+        modelId: activeSession?.modelId ?? s.settings?.defaultModel,
+      };
+    },
+    (a, b) => a.status === b.status && a.statusMessage === b.statusMessage && a.statusPhase === b.statusPhase && a.modelId === b.modelId,
+  );
+
+  const statusDisplayMessage = agentStatus.status !== 'idle'
+    ? getStatusDisplayMessage(agentStatus.statusPhase ?? agentStatus.status, agentStatus.statusMessage)
+    : '';
+  const showAgentStatus = isSignificantStatus(agentStatus.statusPhase ?? agentStatus.status, agentStatus.statusMessage);
 
   // Fetch git branch info when workspace changes
   useEffect(() => {
@@ -143,6 +165,16 @@ export const GlobalStatusBar: React.FC = memo(() => {
             )}
           </div>
         )}
+
+        {/* Agent status */}
+        {agentStatus.status !== 'idle' && showAgentStatus && (
+          <div className="flex items-center gap-1.5 pl-2 ml-2 border-l border-[var(--color-border-subtle)]/30">
+            <StatusIndicator status={agentStatus.status} size="sm" showLabel={false} />
+            <span className="truncate max-w-[150px] text-[var(--color-text-muted)]">
+              {statusDisplayMessage}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Right section: connection + indicators */}
@@ -156,6 +188,11 @@ export const GlobalStatusBar: React.FC = memo(() => {
         >
           {isConnected ? <Wifi size={10} /> : <WifiOff size={10} />}
         </div>
+        {agentStatus.modelId && (
+          <span className="text-[var(--color-text-dim)] truncate max-w-[100px]" title={agentStatus.modelId}>
+            {agentStatus.modelId.split('/').pop()?.split('-').slice(0, 2).join('-') ?? agentStatus.modelId}
+          </span>
+        )}
         <span className="text-[var(--color-text-dim)] opacity-50">vyotiq</span>
       </div>
     </div>

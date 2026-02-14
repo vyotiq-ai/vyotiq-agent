@@ -81,7 +81,7 @@ export { useAppearanceSettings, applyAppearanceSettings } from './useAppearanceS
 // =============================================================================
 
 export { useClickOutside } from './useClickOutside';
-export { useDebounce, useThrottle } from './useDebounce';
+export { useDebounce, useThrottle, useDebouncedValue } from './useDebounce';
 export { useKeyboard, useHotkey, useEscapeKey, formatShortcut, isMac } from './useKeyboard';
 export { useLocalStorage, useSessionStorage } from './useLocalStorage';
 
@@ -234,3 +234,19 @@ export {
   useLoading,
   useLoadingOperation,
 } from '../state/LoadingProvider';
+
+// =============================================================================
+// Rust Backend Hooks
+// =============================================================================
+
+export {
+  useRustBackendConnection,
+  useRustBackendEvents,
+  useRustSearch,
+  useRustGrep,
+  useRustWorkspaces,
+  useIndexProgress,
+  useRustFileWatcher,
+  useRustIndexStatus,
+  useUnifiedWorkspace,
+} from './useRustBackend';

@@ -7,6 +7,7 @@
 import type { BrowserWindow } from 'electron';
 import type { AgentOrchestrator } from '../agent/orchestrator';
 import type { SettingsStore } from '../agent/settingsStore';
+import type { RendererEvent } from '../../shared/types';
 
 /**
  * Context object passed to all IPC handlers
@@ -16,7 +17,7 @@ export interface IpcContext {
   getOrchestrator: () => AgentOrchestrator | null;
   getSettingsStore: () => SettingsStore;
   getMainWindow: () => BrowserWindow | null;
-  emitToRenderer: (event: Record<string, unknown>) => void;
+  emitToRenderer: (event: RendererEvent) => void;
 }
 
 /**

@@ -20,6 +20,7 @@ import {
 import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
 import { Button } from '../../../../components/ui/Button';
+import { useToast } from '../../../../components/ui/Toast';
 import type { MCPServerConfig } from '../../../../../shared/types/mcp';
 
 interface ImportExportPanelProps {
@@ -41,7 +42,7 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
     const [exporting, setExporting] = useState(false);
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState<ImportResult | null>(null);
-    const [copied, setCopied] = useState(false);
+    const { toast } = useToast();
 
     // Fetch server configs for export
     const fetchServerConfigs = useCallback(async (): Promise<MCPServerConfig[]> => {
@@ -104,12 +105,11 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
         };
 
         await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        toast({ type: 'success', message: 'Config copied to clipboard' });
       } finally {
         setExporting(false);
       }
-    }, [fetchServerConfigs]);
+    }, [fetchServerConfigs, toast]);
 
     // Handle file selection
     const handleFileSelect = useCallback(
@@ -211,14 +211,10 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = memo(
                 onClick={handleCopyToClipboard}
                 disabled={exporting}
                 leftIcon={
-                  copied ? (
-                    <CheckCircle className="w-3 h-3 text-[var(--color-success)]" />
-                  ) : (
                     <Copy className="w-3 h-3" />
-                  )
                 }
               >
-                {copied ? 'Copied' : 'Copy'}
+                Copy
               </Button>
             </div>
             <p className="text-[8px] sm:text-[9px] text-[var(--color-text-muted)]">

@@ -15,10 +15,6 @@ import { runTerminalTool } from './runTerminal';
 import { checkTerminalTool } from './checkTerminal';
 import { killTerminalTool } from './killTerminal';
 import { readLintsTool } from './readLints';
-// Semantic search tools (vector embeddings + NL queries + code similarity)
-import { semanticSearchTool } from './semanticSearch';
-import { codeQueryTool } from './codeQuery';
-import { codeSimilarityTool } from './codeSimilarity';
 // Full-text search tool (BM25 ranked keyword search via Tantivy)
 import { fullTextSearchTool } from './fullTextSearch';
 
@@ -70,11 +66,6 @@ export { runTerminalTool } from './runTerminal';
 export { checkTerminalTool } from './checkTerminal';
 export { killTerminalTool } from './killTerminal';
 export { readLintsTool } from './readLints';
-
-// Semantic search tools
-export { semanticSearchTool } from './semanticSearch';
-export { codeQueryTool } from './codeQuery';
-export { codeSimilarityTool } from './codeSimilarity';
 
 // Full-text search tool (BM25 ranked keyword search)
 export { fullTextSearchTool } from './fullTextSearch';
@@ -160,10 +151,6 @@ export const ALL_TOOLS: ToolDefinition[] = [
   killTerminalTool,
   // Code intelligence (legacy)
   readLintsTool,
-  // Semantic search (vector embeddings + NL queries + code similarity)
-  semanticSearchTool,
-  codeQueryTool,
-  codeSimilarityTool,
   // Full-text search (BM25 ranked keyword search via Tantivy)
   fullTextSearchTool,
   // Dynamic tool creation

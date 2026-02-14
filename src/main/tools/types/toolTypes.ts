@@ -232,9 +232,12 @@ export interface TerminalManager {
   on(event: 'stderr', listener: (payload: TerminalOutputPayload) => void): this;
   on(event: 'exit', listener: (payload: TerminalExitPayload) => void): this;
   on(event: 'error', listener: (payload: TerminalErrorPayload) => void): this;
+  on(event: 'warning', listener: (payload: { pid: number; message: string }) => void): this;
   
   // Event listener removal methods for cleanup
-  removeAllListeners(event: 'stdout' | 'stderr' | 'exit' | 'error'): this;
+  removeAllListeners(event: 'stdout' | 'stderr' | 'exit' | 'error' | 'warning'): this;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  removeListener(event: 'stdout' | 'stderr' | 'exit' | 'error' | 'warning', listener: (...args: any[]) => void): this;
 }
 
 export interface TerminalRunOptions {

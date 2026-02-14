@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Terminal, AlertCircle, FileOutput, Bug, X, Plus, ChevronDown, ChevronUp, Trash2, RefreshCw } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { Tooltip } from '../../../components/ui/Tooltip';
 import { createLogger } from '../../../utils/logger';
 import { TerminalView } from '../../terminal/components/TerminalView';
 import { useResizablePanel } from '../../../hooks';
@@ -61,7 +62,16 @@ interface OutputLogEntry {
 }
 
 const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) => {
-  const [activeTab, setActiveTab] = useState<BottomPanelTab>('terminal');
+  const [activeTab, setActiveTab] = useState<BottomPanelTab>(() => {
+    // Persist active tab across sessions
+    try {
+      const saved = localStorage.getItem('vyotiq-bottom-panel-tab');
+      if (saved && ['terminal', 'problems', 'output'].includes(saved)) {
+        return saved as BottomPanelTab;
+      }
+    } catch { /* ignore */ }
+    return 'terminal';
+  });
 
   // Resize via shared hook (vertical, bottom-anchored)
   const {
@@ -82,6 +92,12 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
   const panelRef = useRef<HTMLDivElement>(null);
   const terminalCounterRef = useRef(0);
 
+  // Persist tab selection to localStorage
+  const handleSetActiveTab = useCallback((tab: BottomPanelTab) => {
+    setActiveTab(tab);
+    try { localStorage.setItem('vyotiq-bottom-panel-tab', tab); } catch { /* ignore */ }
+  }, []);
+
   // Diagnostics state for Problems tab
   const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
@@ -99,7 +115,7 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
     const handlers: Record<string, () => void> = {
       'vyotiq:terminal:toggle': () => {
         if (!isOpen || activeTab !== 'terminal') {
-          setActiveTab('terminal');
+          handleSetActiveTab('terminal');
           if (!isOpen) onToggle();
         } else {
           onToggle();
@@ -107,7 +123,7 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
       },
       'vyotiq:problems:toggle': () => {
         if (!isOpen || activeTab !== 'problems') {
-          setActiveTab('problems');
+          handleSetActiveTab('problems');
           if (!isOpen) onToggle();
         } else {
           onToggle();
@@ -115,7 +131,7 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
       },
       'vyotiq:output:toggle': () => {
         if (!isOpen || activeTab !== 'output') {
-          setActiveTab('output');
+          handleSetActiveTab('output');
           if (!isOpen) onToggle();
         } else {
           onToggle();
@@ -123,7 +139,7 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
       },
       'vyotiq:debug-console:toggle': () => {
         if (!isOpen || activeTab !== 'debug-console') {
-          setActiveTab('debug-console');
+          handleSetActiveTab('debug-console');
           if (!isOpen) onToggle();
         } else {
           onToggle();
@@ -150,7 +166,7 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {
         e.preventDefault();
         if (!isOpen || activeTab !== 'terminal') {
-          setActiveTab('terminal');
+          handleSetActiveTab('terminal');
           if (!isOpen) onToggle();
         } else {
           onToggle();
@@ -350,13 +366,15 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
               <span className="text-[10px] font-mono text-[var(--color-text-secondary)]">
                 {diagnostics.length === 0 ? 'No problems' : `${diagnostics.filter(d => d.severity === 'error').length} errors, ${diagnostics.filter(d => d.severity === 'warning').length} warnings`}
               </span>
+              <Tooltip content="Refresh diagnostics">
               <button
                 onClick={fetchDiagnostics}
                 className="ml-auto p-0.5 rounded hover:bg-[var(--color-surface-3)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
-                title="Refresh diagnostics"
+                aria-label="Refresh diagnostics"
               >
                 <RefreshCw size={10} className={diagnosticsLoading ? 'animate-spin' : ''} />
               </button>
+              </Tooltip>
             </div>
             {diagnostics.length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
@@ -400,13 +418,15 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
               <span className="text-[10px] font-mono text-[var(--color-text-secondary)]">
                 {outputLogs.length} entries
               </span>
+              <Tooltip content="Clear output">
               <button
                 onClick={() => setOutputLogs([])}
                 className="ml-auto p-0.5 rounded hover:bg-[var(--color-surface-3)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
-                title="Clear output"
+                aria-label="Clear output"
               >
                 <Trash2 size={10} />
               </button>
+              </Tooltip>
             </div>
             {outputLogs.length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
@@ -455,13 +475,15 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
               <span className="text-[10px] font-mono text-[var(--color-text-secondary)]">
                 {debugTraces.length} traces
               </span>
+              <Tooltip content="Refresh traces">
               <button
                 onClick={fetchDebugTraces}
                 className="ml-auto p-0.5 rounded hover:bg-[var(--color-surface-3)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
-                title="Refresh traces"
+                aria-label="Refresh traces"
               >
                 <RefreshCw size={10} className={debugLoading ? 'animate-spin' : ''} />
               </button>
+              </Tooltip>
             </div>
             {debugTraces.length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
@@ -539,7 +561,7 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
               aria-selected={activeTab === tab}
               aria-controls={`panel-${tab}`}
               id={`tab-${tab}`}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => handleSetActiveTab(tab)}
               className={cn(
                 'flex items-center gap-1 px-2 py-1 text-[10px] font-mono uppercase tracking-wide transition-colors',
                 activeTab === tab
@@ -556,40 +578,48 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
         <div className="flex items-center gap-1">
           {/* New terminal button (only visible on terminal tab) */}
           {activeTab === 'terminal' && (
+            <Tooltip content="New Terminal">
             <button
               onClick={spawnTerminal}
               className="p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
-              title="New Terminal"
+              aria-label="New Terminal"
             >
               <Plus size={12} />
             </button>
+            </Tooltip>
           )}
           {/* Kill terminal button */}
           {activeTab === 'terminal' && activeTerminalId && (
+            <Tooltip content="Kill Terminal">
             <button
               onClick={() => activeTerminalId && killTerminal(activeTerminalId)}
               className="p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-error)] transition-colors"
-              title="Kill Terminal"
+              aria-label="Kill Terminal"
             >
               <Trash2 size={12} />
             </button>
+            </Tooltip>
           )}
           {/* Maximize panel */}
+          <Tooltip content={panelHeight >= 500 ? 'Restore Panel Size' : 'Maximize Panel'}>
           <button
             onClick={() => setPanelHeight(panelHeight >= 500 ? 250 : 600)}
             className="p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
-            title={panelHeight >= 500 ? 'Restore Panel Size' : 'Maximize Panel'}
+            aria-label={panelHeight >= 500 ? 'Restore Panel Size' : 'Maximize Panel'}
           >
             {panelHeight >= 500 ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
           </button>
+          </Tooltip>
           {/* Minimize / close */}
+          <Tooltip content="Minimize Panel">
           <button
             onClick={onToggle}
             className="p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
-            title="Minimize Panel"
+            aria-label="Minimize Panel"
           >
             <ChevronDown size={12} />
           </button>
+          </Tooltip>
         </div>
       </div>
 

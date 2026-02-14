@@ -1,240 +1,137 @@
-import React, { memo, useMemo } from 'react';
-import { Clock } from 'lucide-react';
-
-import type { ChatMessage, ToolResultEvent } from '../../../../shared/types';
+/**
+ * RunGroupHeader Component
+ * 
+ * Header for a group of messages that share the same runId.
+ * Shows the run number, collapse toggle, iteration count,
+ * and a summary of tools executed in the run.
+ */
+import React, { memo, useCallback, useMemo } from 'react';
+import { ChevronDown, ChevronRight, Play, StopCircle, Loader2, Pause } from 'lucide-react';
 import { cn } from '../../../utils/cn';
-import { calculateSessionCost, formatTokenCount, formatCost } from '../../../../shared/utils/costEstimation';
-import { formatDurationMs } from '../utils/toolDisplay';
+import type { ChatMessage, AgentRunStatus } from '../../../../shared/types';
 
 interface RunGroupHeaderProps {
-  runId?: string;
+  /** The run ID for this group */
+  runId: string | undefined;
+  /** Index of this group (0-based) */
+  groupIndex: number;
+  /** Messages in this run group */
   messages: ChatMessage[];
-  toolResults?: Map<string, ToolResultEvent>;
-  isRunning?: boolean;
+  /** Whether this group is collapsed */
+  isCollapsed: boolean;
+  /** Callback to toggle collapse */
+  onToggleCollapse: () => void;
+  /** Current run status (for the active run) */
+  runStatus?: AgentRunStatus;
+  /** Additional CSS class */
+  className?: string;
 }
 
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function truncateOneLine(text: string, max = 90): string {
-  const oneLine = text.replace(/\s+/g, ' ').trim();
-  if (oneLine.length <= max) return oneLine;
-  return `${oneLine.slice(0, max)}…`;
-}
-
-function getDurationMsFromToolResult(result?: ToolResultEvent): number | undefined {
-  const meta = result?.result.metadata as Record<string, unknown> | undefined;
-  if (!meta) return undefined;
-
-  const timing = meta.timing as { durationMs?: unknown } | undefined;
-  if (typeof timing?.durationMs === 'number') return timing.durationMs;
-
-  const durationMs = meta.durationMs;
-  if (typeof durationMs === 'number') return durationMs;
-
-  return undefined;
-}
-
-/** Extract provider/model info from the first assistant message in a run */
-function getRunModelInfo(messages: ChatMessage[]): { provider?: string; modelId?: string } | null {
-  const firstAssistant = messages.find(m => m.role === 'assistant' && m.provider);
-  if (!firstAssistant) return null;
-  return {
-    provider: firstAssistant.provider,
-    modelId: firstAssistant.modelId,
-  };
-}
-
-/** Format model ID for compact display */
-function formatModelIdShort(modelId: string): string {
-  // Remove provider prefix if present (e.g., "openai/gpt-4" -> "gpt-4")
-  const withoutPrefix = modelId.split('/').pop() || modelId;
-  // For long model names, take first 2-3 segments
-  const parts = withoutPrefix.split('-');
-  if (parts.length > 3) {
-    return parts.slice(0, 3).join('-');
-  }
-  return withoutPrefix;
-}
-
-export const RunGroupHeader: React.FC<RunGroupHeaderProps> = memo(({
+const RunGroupHeaderInternal: React.FC<RunGroupHeaderProps> = ({
+  runId,
+  groupIndex,
   messages,
-  toolResults,
-  isRunning = false,
+  isCollapsed,
+  onToggleCollapse,
+  runStatus,
+  className,
 }) => {
-  const startAt = messages[0]?.createdAt;
-  const firstUser = messages.find(m => m.role === 'user');
+  const handleClick = useCallback(() => {
+    onToggleCollapse();
+  }, [onToggleCollapse]);
 
-  const lastAssistantPreview = useMemo(() => {
-    const reversed = [...messages].reverse();
-    const nonSummary = reversed.find(m => m.role === 'assistant' && !m.isSummary && typeof m.content === 'string' && m.content.trim().length > 0);
-    const anyAssistant = reversed.find(m => m.role === 'assistant' && typeof m.content === 'string' && m.content.trim().length > 0);
-    const msg = nonSummary ?? anyAssistant;
-    if (!msg?.content) return null;
-    return truncateOneLine(msg.content, 100);
-  }, [messages]);
-
-  const modelInfo = useMemo(() => getRunModelInfo(messages), [messages]);
-
-  const toolCallCount = useMemo(() => {
-    let count = 0;
-    for (const m of messages) {
-      if (m.role === 'assistant' && Array.isArray(m.toolCalls)) {
-        count += m.toolCalls.length;
-      }
-    }
-    return count;
-  }, [messages]);
-
-  const toolOutcome = useMemo(() => {
+  // Summarize the run
+  const summary = useMemo(() => {
+    const assistantMsgs = messages.filter(m => m.role === 'assistant');
     const toolMsgs = messages.filter(m => m.role === 'tool');
-    const completed = toolMsgs.length;
-    const success = toolMsgs.filter(m => m.toolSuccess).length;
-    const error = toolMsgs.filter(m => m.toolSuccess === false).length;
-    return { completed, success, error };
-  }, [messages]);
-
-  const aggregate = useMemo(() => {
-    let durationMsTotal = 0;
-    let durationCount = 0;
-
-    if (toolResults) {
-      for (const [, result] of toolResults) {
-        const d = getDurationMsFromToolResult(result);
-        if (typeof d === 'number' && Number.isFinite(d)) {
-          durationMsTotal += d;
-          durationCount += 1;
-        }
-      }
-    }
+    const userMsgs = messages.filter(m => m.role === 'user');
+    const iterations = new Set(messages.map(m => m.iteration).filter(Boolean));
+    const toolNames = [...new Set(toolMsgs.map(m => m.toolName).filter(Boolean))];
+    const successCount = toolMsgs.filter(m => m.toolSuccess === true).length;
+    const failCount = toolMsgs.filter(m => m.toolSuccess === false).length;
 
     return {
-      durationMsTotal: durationCount > 0 ? durationMsTotal : undefined,
-    };
-  }, [toolResults]);
-
-  const costSummary = useMemo(() => {
-    const summary = calculateSessionCost(messages);
-    const totalTokens = summary.totalInputTokens + summary.totalOutputTokens;
-    return {
-      ...summary,
-      totalTokens,
-      hasUsage: summary.messageCount > 0 && totalTokens > 0,
+      messageCount: messages.length,
+      assistantCount: assistantMsgs.length,
+      toolCount: toolMsgs.length,
+      userCount: userMsgs.length,
+      iterationCount: iterations.size,
+      toolNames: toolNames.slice(0, 4),
+      hasMoreTools: toolNames.length > 4,
+      successCount,
+      failCount,
     };
   }, [messages]);
+
+  const StatusIcon = useMemo(() => {
+    if (!runStatus || runStatus === 'idle') return null;
+    if (runStatus === 'running') return <Loader2 size={9} className="animate-spin" style={{ color: 'var(--color-accent-primary)' }} />;
+    if (runStatus === 'paused') return <Pause size={9} style={{ color: 'var(--color-warning)' }} />;
+    if (runStatus === 'error') return <StopCircle size={9} style={{ color: 'var(--color-error)' }} />;
+    return null;
+  }, [runStatus]);
 
   return (
-    <div className={cn(
-      'px-2 sm:px-3 md:px-4 lg:px-5 py-1 min-w-0 w-full'
-    )}>
-      <div className="flex items-center justify-between gap-2 min-w-0 w-full">
-        {/* Left: Status + Request preview */}
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-            {/* Minimal status dot */}
-            <span className={cn(
-              'w-2 h-2 rounded-full flex-shrink-0',
-              isRunning && 'bg-[var(--color-warning)]',
-              !isRunning && toolOutcome.error > 0 && 'bg-[var(--color-error)]',
-              !isRunning && toolOutcome.error === 0 && 'bg-[var(--color-text-muted)]',
-            )} />
+    <button
+      type="button"
+      onClick={handleClick}
+      className={cn(
+        'flex items-center gap-1.5 w-full px-2 py-1 font-mono text-[9px]',
+        'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
+        'transition-colors duration-100',
+        'rounded hover:bg-[var(--color-surface-1)]',
+        className,
+      )}
+    >
+      {/* Collapse icon */}
+      {isCollapsed
+        ? <ChevronRight size={10} className="shrink-0" />
+        : <ChevronDown size={10} className="shrink-0" />
+      }
 
-            {/* Request text */}
-            <div className="min-w-0 flex-1 overflow-hidden">
-              {firstUser?.content ? (
-                <span className="text-[11px] text-[var(--color-text-secondary)] truncate block">
-                  {truncateOneLine(firstUser.content, 80)}
-                </span>
-              ) : (
-                <span className={cn(
-                  'text-[11px] italic',
-                  isRunning ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-muted)]'
-                )}>
-                  {isRunning ? 'Processing...' : 'Completed'}
-                </span>
-              )}
-            </div>
-          </div>
+      {/* Run marker */}
+      <Play size={8} className="shrink-0 opacity-40" />
+      <span className="uppercase tracking-wider opacity-60">
+        run {groupIndex + 1}
+      </span>
 
-          {/* Result preview - only when not running */}
-          {!isRunning && lastAssistantPreview && (
-            <div className="mt-1 ml-7 text-[10px] text-[var(--color-text-muted)] truncate">
-              {lastAssistantPreview}
-            </div>
+      {/* Status */}
+      {StatusIcon}
+
+      {/* Iteration count */}
+      {summary.iterationCount > 0 && (
+        <span className="tabular-nums opacity-50">
+          {summary.iterationCount} iter
+        </span>
+      )}
+
+      {/* Tool summary */}
+      {summary.toolCount > 0 && (
+        <span className="opacity-40">
+          {summary.toolCount} tool{summary.toolCount > 1 ? 's' : ''}
+          {summary.failCount > 0 && (
+            <span style={{ color: 'var(--color-error)' }}> ({summary.failCount} err)</span>
           )}
-        </div>
+        </span>
+      )}
 
-        {/* Right: Stats badges */}
-        <div className="flex items-center gap-1.5 flex-shrink-0 overflow-hidden flex-wrap justify-end max-w-[55%]">
-          {/* Time */}
-          {typeof startAt === 'number' && (
-            <span className="text-[9px] font-mono text-[var(--color-text-dim)] tabular-nums">
-              {formatTime(startAt)}
-            </span>
-          )}
+      {/* Tool names preview when collapsed */}
+      {isCollapsed && summary.toolNames.length > 0 && (
+        <span className="truncate ml-auto opacity-30 text-[8px]">
+          {summary.toolNames.join(', ')}
+          {summary.hasMoreTools && '...'}
+        </span>
+      )}
 
-          {/* Model info */}
-          {modelInfo?.provider && (
-            <span 
-              className={cn(
-                'inline-flex items-center gap-1',
-                'text-[9px] font-mono text-[var(--color-text-dim)]',
-                'max-w-[180px] overflow-hidden'
-              )}
-              title={modelInfo.modelId ? `${modelInfo.provider}/${modelInfo.modelId}` : modelInfo.provider}
-            >
-              <span className="text-[var(--color-text-secondary)] truncate">{modelInfo.provider}</span>
-              {modelInfo.modelId && (
-                <>
-                  <span className="text-[var(--color-text-dim)] flex-shrink-0">/</span>
-                  <span className="text-[var(--color-text-dim)] truncate">{formatModelIdShort(modelInfo.modelId)}</span>
-                </>
-              )}
-            </span>
-          )}
-
-          {/* Tools count */}
-          {toolCallCount > 0 && (
-            <span className={cn(
-              'inline-flex items-center gap-1',
-              'text-[9px] font-mono text-[var(--color-text-dim)]'
-            )}>
-              <span>{toolCallCount} tools</span>
-              {toolOutcome.error > 0 && (
-                <span className="text-[var(--color-error)]">({toolOutcome.error} err)</span>
-              )}
-            </span>
-          )}
-
-          {/* Tokens + Cost */}
-          {costSummary.hasUsage && (
-            <span 
-              className={cn(
-                'inline-flex items-center gap-1',
-                'text-[9px] font-mono text-[var(--color-text-dim)]'
-              )}
-              title={`Input: ${formatTokenCount(costSummary.totalInputTokens)} • Output: ${formatTokenCount(costSummary.totalOutputTokens)}`}
-            >
-              <span>{formatTokenCount(costSummary.totalTokens)}</span>
-              <span className="text-[var(--color-accent-primary)]">${formatCost(costSummary.totalCost)}</span>
-            </span>
-          )}
-
-          {/* Duration */}
-          {typeof aggregate.durationMsTotal === 'number' && (
-            <span className={cn(
-              'inline-flex items-center gap-1',
-              'text-[9px] font-mono text-[var(--color-text-dim)]'
-            )}>
-              <Clock size={9} className="text-[var(--color-text-dim)]" />
-              {formatDurationMs(aggregate.durationMsTotal)}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
+      {/* Message count badge */}
+      {isCollapsed && (
+        <span className="ml-auto shrink-0 tabular-nums opacity-30">
+          {summary.messageCount} msg{summary.messageCount > 1 ? 's' : ''}
+        </span>
+      )}
+    </button>
   );
-});
+};
 
+export const RunGroupHeader = memo(RunGroupHeaderInternal);
 RunGroupHeader.displayName = 'RunGroupHeader';

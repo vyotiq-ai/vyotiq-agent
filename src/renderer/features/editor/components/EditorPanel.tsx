@@ -5,10 +5,12 @@
  * Supports preview tabs, diff view mode, and code view.
  */
 
-import React, { memo, useCallback, useMemo } from 'react';
+import React, { memo, useCallback, useMemo, useRef, useEffect } from 'react';
 import { X, FileText, Eye, Code2, GitCompare } from 'lucide-react';
+import hljs from 'highlight.js';
 import { cn } from '../../../utils/cn';
 import { useEditorStore, openFile as openFileAction, type EditorViewMode } from '../store/editorStore';
+import { MarkdownRenderer } from '../../../components/ui/MarkdownRenderer';
 
 // =============================================================================
 // Imperative API — exported for use across the app
@@ -74,8 +76,164 @@ const Tab = memo<TabProps>(({ fileName, isActive, isPreview, isDirty, onClick, o
 Tab.displayName = 'Tab';
 
 // =============================================================================
-// Main Component
+// Syntax-highlighted code viewer
 // =============================================================================
+
+/** Map editor store language names to highlight.js language identifiers */
+function mapLanguage(lang: string): string {
+  const map: Record<string, string> = {
+    typescriptreact: 'typescript', javascriptreact: 'javascript',
+    shell: 'bash', batch: 'dos', plaintext: 'plaintext',
+  };
+  return map[lang] ?? lang;
+}
+
+const HighlightedCode = memo<{ content: string; language: string }>(({ content, language }) => {
+  const codeRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!codeRef.current || !content) return;
+    const hljsLang = mapLanguage(language);
+    try {
+      if (hljsLang !== 'plaintext' && hljs.getLanguage(hljsLang)) {
+        const result = hljs.highlight(content, { language: hljsLang, ignoreIllegals: true });
+        codeRef.current.innerHTML = result.value;
+      } else {
+        codeRef.current.textContent = content;
+      }
+    } catch {
+      codeRef.current.textContent = content;
+    }
+  }, [content, language]);
+
+  const lines = content.split('\n');
+
+  return (
+    <div className="flex h-[calc(100%-28px)] overflow-auto">
+      {/* Line numbers gutter */}
+      <div className="flex-shrink-0 select-none pr-3 pl-3 pt-3 pb-3 text-right border-r border-[var(--color-border-subtle)]/20 bg-[var(--color-surface-1)]/30">
+        {lines.map((_, i) => (
+          <div key={i} className="text-[10px] font-mono leading-relaxed text-[var(--color-text-dim)] opacity-50">
+            {i + 1}
+          </div>
+        ))}
+      </div>
+      {/* Code content with syntax highlighting */}
+      <pre className="flex-1 p-3 text-[11px] font-mono leading-relaxed whitespace-pre overflow-x-auto">
+        <code ref={codeRef} className={cn('hljs', `language-${mapLanguage(language)}`)}>{content}</code>
+      </pre>
+    </div>
+  );
+});
+HighlightedCode.displayName = 'HighlightedCode';
+
+// =============================================================================
+// Inline Diff Viewer for editor panel
+// =============================================================================
+
+const InlineDiffView = memo<{ original: string; modified: string; language: string }>(({ original, modified }) => {
+  const originalLines = (original || '').split('\n');
+  const modifiedLines = (modified || '').split('\n');
+
+  // Simple line-by-line diff (added/removed/unchanged)
+  const diffLines = useMemo(() => {
+    const result: Array<{ type: 'added' | 'removed' | 'unchanged'; content: string; lineNum: number }> = [];
+    const maxLen = Math.max(originalLines.length, modifiedLines.length);
+    let origIdx = 0;
+    let modIdx = 0;
+
+    while (origIdx < originalLines.length || modIdx < modifiedLines.length) {
+      const origLine = origIdx < originalLines.length ? originalLines[origIdx] : undefined;
+      const modLine = modIdx < modifiedLines.length ? modifiedLines[modIdx] : undefined;
+
+      if (origLine === modLine) {
+        result.push({ type: 'unchanged', content: modLine ?? '', lineNum: modIdx + 1 });
+        origIdx++;
+        modIdx++;
+      } else if (origLine !== undefined && !modifiedLines.includes(origLine)) {
+        result.push({ type: 'removed', content: origLine, lineNum: origIdx + 1 });
+        origIdx++;
+      } else if (modLine !== undefined && !originalLines.includes(modLine)) {
+        result.push({ type: 'added', content: modLine, lineNum: modIdx + 1 });
+        modIdx++;
+      } else {
+        // Changed line
+        if (origLine !== undefined) {
+          result.push({ type: 'removed', content: origLine, lineNum: origIdx + 1 });
+          origIdx++;
+        }
+        if (modLine !== undefined) {
+          result.push({ type: 'added', content: modLine, lineNum: modIdx + 1 });
+          modIdx++;
+        }
+      }
+
+      // Safety: prevent infinite loop on very large files
+      if (result.length > maxLen * 3) break;
+    }
+    return result;
+  }, [originalLines, modifiedLines]);
+
+  if (!original && !modified) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100%-28px)] text-[var(--color-text-dim)] text-[10px] font-mono">
+        <div className="text-center space-y-1">
+          <GitCompare size={16} className="mx-auto opacity-40" />
+          <p>no changes detected</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-[calc(100%-28px)] overflow-auto">
+      <pre className="text-[11px] font-mono leading-relaxed">
+        {diffLines.map((line, i) => (
+          <div
+            key={i}
+            className={cn(
+              'flex',
+              line.type === 'added' && 'bg-[var(--color-diff-added-bg)] text-[var(--color-diff-added-text)]',
+              line.type === 'removed' && 'bg-[var(--color-diff-removed-bg)] text-[var(--color-diff-removed-text)]',
+              line.type === 'unchanged' && 'text-[var(--color-text-secondary)]',
+            )}
+          >
+            <span className="w-8 text-right pr-2 flex-shrink-0 select-none text-[10px] opacity-50">
+              {line.lineNum}
+            </span>
+            <span className="w-4 flex-shrink-0 select-none text-center text-[10px] opacity-70">
+              {line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}
+            </span>
+            <span className="flex-1 whitespace-pre px-2">{line.content}</span>
+          </div>
+        ))}
+      </pre>
+    </div>
+  );
+});
+InlineDiffView.displayName = 'InlineDiffView';
+
+// =============================================================================
+// Markdown Preview
+// =============================================================================
+
+const PREVIEW_LANGUAGES = new Set(['markdown', 'html']);
+
+const MarkdownPreview = memo<{ content: string; language: string }>(({ content, language }) => {
+  if (language === 'html') {
+    return (
+      <div className="p-4 h-[calc(100%-28px)] overflow-auto">
+        <div className="prose prose-sm prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: content }} />
+      </div>
+    );
+  }
+  return (
+    <div className="p-4 h-[calc(100%-28px)] overflow-auto">
+      <MarkdownRenderer content={content} />
+    </div>
+  );
+});
+MarkdownPreview.displayName = 'MarkdownPreview';
 
 export const EditorPanel: React.FC = memo(() => {
   const { state, closeTab, setActiveTab, closeAllTabs } = useEditorStore();
@@ -145,9 +303,25 @@ export const EditorPanel: React.FC = memo(() => {
               </span>
             </div>
             {/* Code content */}
-            <pre className="p-3 text-[11px] font-mono leading-relaxed text-[var(--color-text-secondary)] whitespace-pre-wrap break-words overflow-auto h-[calc(100%-28px)]">
-              <code>{activeTab.content || 'Loading...'}</code>
-            </pre>
+            {activeTab.viewMode === 'diff' ? (
+              <InlineDiffView
+                original={activeTab.originalContent || ''}
+                modified={activeTab.content || ''}
+                language={activeTab.language}
+              />
+            ) : activeTab.viewMode === 'preview' && PREVIEW_LANGUAGES.has(activeTab.language) ? (
+              <MarkdownPreview content={activeTab.content || ''} language={activeTab.language} />
+            ) : activeTab.viewMode === 'preview' ? (
+              <div className="flex items-center justify-center h-[calc(100%-28px)] text-[var(--color-text-dim)] text-[10px] font-mono">
+                <div className="text-center space-y-1">
+                  <Eye size={16} className="mx-auto opacity-40" />
+                  <p>preview not available for {activeTab.language} files</p>
+                  <p className="text-[8px] opacity-50">preview is available for markdown and html files</p>
+                </div>
+              </div>
+            ) : (
+              <HighlightedCode content={activeTab.content || ''} language={activeTab.language} />
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-[var(--color-text-dim)] text-[10px] font-mono">

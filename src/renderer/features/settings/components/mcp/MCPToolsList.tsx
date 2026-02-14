@@ -15,12 +15,12 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  CheckCircle,
   Filter,
 } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 import { Input } from '../../../../components/ui/Input';
 import { useMCPTools } from '../../../../hooks/useMCP';
+import { useToast } from '../../../../components/ui/Toast';
 import type { MCPToolWithContext } from '../../../../../shared/types/mcp';
 
 interface MCPToolsListProps {
@@ -41,12 +41,11 @@ interface ToolCardProps {
 }
 
 const ToolCard: React.FC<ToolCardProps> = memo(({ tool, expanded, onToggle }) => {
-  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
 
   const handleCopySchema = () => {
     navigator.clipboard.writeText(JSON.stringify(tool.tool.inputSchema, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    toast({ type: 'success', message: 'Schema copied to clipboard' });
   };
 
   return (
@@ -146,24 +145,10 @@ const ToolCard: React.FC<ToolCardProps> = memo(({ tool, expanded, onToggle }) =>
           <div className="flex justify-end pt-2 border-t border-[var(--color-border)]">
             <button
               onClick={handleCopySchema}
-              className={cn(
-                'flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-colors',
-                copied
-                  ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
-                  : 'bg-[var(--color-surface-base)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]'
-              )}
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-colors bg-[var(--color-surface-base)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
             >
-              {copied ? (
-                <>
-                  <CheckCircle className="w-3 h-3" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3 h-3" />
-                  Copy Schema
-                </>
-              )}
+              <Copy className="w-3 h-3" />
+              Copy Schema
             </button>
           </div>
         </div>

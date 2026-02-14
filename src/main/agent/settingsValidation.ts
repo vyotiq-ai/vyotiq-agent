@@ -255,6 +255,33 @@ export function validateAgentConfig(config: Partial<AgentConfig>): ValidationRes
     );
   }
 
+  // Validate reasoning effort enum
+  if (config.reasoningEffort !== undefined) {
+    validateEnum(config.reasoningEffort, ['none', 'low', 'medium', 'high', 'xhigh'] as const, 'reasoningEffort', errors);
+  }
+
+  // Validate verbosity enum
+  if (config.verbosity !== undefined) {
+    validateEnum(config.verbosity, ['low', 'medium', 'high'] as const, 'verbosity', errors);
+  }
+
+  // Validate boolean thinking flags
+  if (config.enableAnthropicThinking !== undefined && typeof config.enableAnthropicThinking !== 'boolean') {
+    errors.push({ field: 'enableAnthropicThinking', message: 'enableAnthropicThinking must be a boolean', value: config.enableAnthropicThinking });
+  }
+  if (config.enableInterleavedThinking !== undefined && typeof config.enableInterleavedThinking !== 'boolean') {
+    errors.push({ field: 'enableInterleavedThinking', message: 'enableInterleavedThinking must be a boolean', value: config.enableInterleavedThinking });
+  }
+  if (config.enableDeepSeekThinking !== undefined && typeof config.enableDeepSeekThinking !== 'boolean') {
+    errors.push({ field: 'enableDeepSeekThinking', message: 'enableDeepSeekThinking must be a boolean', value: config.enableDeepSeekThinking });
+  }
+  if (config.enableProviderFallback !== undefined && typeof config.enableProviderFallback !== 'boolean') {
+    errors.push({ field: 'enableProviderFallback', message: 'enableProviderFallback must be a boolean', value: config.enableProviderFallback });
+  }
+  if (config.enableAutoModelSelection !== undefined && typeof config.enableAutoModelSelection !== 'boolean') {
+    errors.push({ field: 'enableAutoModelSelection', message: 'enableAutoModelSelection must be a boolean', value: config.enableAutoModelSelection });
+  }
+
   // Warnings for high-risk configurations
   if (config.yoloMode === true) {
     warnings.push({
@@ -376,9 +403,9 @@ export function validateTaskRoutingSettings(settings: Partial<TaskRoutingSetting
         });
       }
 
-      // Validate priority range (1 to 10)
+      // Validate priority range (1 to 100)
       if (mapping.priority !== undefined) {
-        validateRange(mapping.priority, 1, 10, `taskMappings[${i}].priority`, errors);
+        validateRange(mapping.priority, 1, 100, `taskMappings[${i}].priority`, errors);
       }
     }
 
@@ -402,6 +429,16 @@ export function validateTaskRoutingSettings(settings: Partial<TaskRoutingSetting
         message: 'Default mapping requires a provider',
       });
     }
+  }
+
+  // Validate confidenceThreshold (0 to 1)
+  if (settings.confidenceThreshold !== undefined) {
+    validateRange(settings.confidenceThreshold, 0, 1, 'confidenceThreshold', errors);
+  }
+
+  // Validate contextWindowSize (1 to 20)
+  if (settings.contextWindowSize !== undefined) {
+    validateRange(settings.contextWindowSize, 1, 20, 'contextWindowSize', errors);
   }
 
   return { valid: errors.length === 0, errors, warnings };
@@ -825,36 +862,10 @@ export function validateWorkspaceSettings(settings: Partial<WorkspaceIndexingSet
   validateRange(settings.maxFileSizeBytes, 512 * 1024, 50 * 1024 * 1024, 'maxFileSizeBytes', errors);
   validateRange(settings.maxIndexSizeMb, 64, 2048, 'maxIndexSizeMb', errors);
   validateRange(settings.indexBatchSize, 10, 500, 'indexBatchSize', errors);
-  validateRange(settings.embeddingChunkSize, 256, 4096, 'embeddingChunkSize', errors);
-  validateRange(settings.embeddingChunkOverlap, 0, 512, 'embeddingChunkOverlap', errors);
-  validateRange(settings.maxChunksPerFile, 10, 1000, 'maxChunksPerFile', errors);
-  validateRange(settings.embeddingBatchSize, 16, 512, 'embeddingBatchSize', errors);
-  validateRange(settings.maxContextResults, 1, 50, 'maxContextResults', errors);
-  validateRange(settings.minSimilarityScore, 0, 1, 'minSimilarityScore', errors);
 
   // Validate arrays
   validateStringArray(settings.excludePatterns, 'excludePatterns', errors);
   validateStringArray(settings.includePatterns, 'includePatterns', errors);
-
-  // Warn if chunk overlap >= chunk size
-  if (settings.embeddingChunkOverlap !== undefined && settings.embeddingChunkSize !== undefined) {
-    if (settings.embeddingChunkOverlap >= settings.embeddingChunkSize) {
-      warnings.push({
-        field: 'embeddingChunkOverlap',
-        message: 'Chunk overlap should be less than chunk size for meaningful chunking',
-        suggestion: 'Set embeddingChunkOverlap to less than embeddingChunkSize',
-      });
-    }
-  }
-
-  // Warn if similarity score is too low
-  if (settings.minSimilarityScore !== undefined && settings.minSimilarityScore < 0.1) {
-    warnings.push({
-      field: 'minSimilarityScore',
-      message: 'Very low similarity threshold may inject irrelevant code into agent context',
-      suggestion: 'Consider setting minSimilarityScore to at least 0.2',
-    });
-  }
 
   return { valid: errors.length === 0, errors, warnings };
 }

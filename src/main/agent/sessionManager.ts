@@ -465,6 +465,7 @@ export class SessionManager {
     }
     this.pendingPersist.delete(sessionId);
     this.lastPersistTime.delete(sessionId);
+    this.persistFailures.delete(sessionId);
 
     const result = this.sessions.delete(sessionId);
     if (result) {

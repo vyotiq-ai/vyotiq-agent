@@ -8,7 +8,10 @@ import React, { useCallback, useState, useEffect, memo } from 'react';
 import { ChatArea, ChatInput } from '../features/chat';
 import { FeatureErrorBoundary } from '../components/layout/ErrorBoundary';
 import { useWorkspaceState, useWorkspaceActions } from '../state/WorkspaceProvider';
+import { useAgentSelector } from '../state/AgentProvider';
+import { GlobalRunningSessionsPanel } from '../features/sessions/components/GlobalRunningSessionsPanel';
 import { cn } from '../utils/cn';
+import { APP_VERSION } from '../utils/version';
 
 // =============================================================================
 // Animated typing text for terminal feel
@@ -81,7 +84,7 @@ const WorkspacePrompt: React.FC = () => {
             <span className="text-[13px] font-medium text-[var(--color-text-primary)] tracking-tight">
               Vyotiq AI
             </span>
-            <span className="text-[9px] text-[var(--color-text-dim)] ml-1 tabular-nums">v1.0</span>
+            <span className="text-[9px] text-[var(--color-text-dim)] ml-1 tabular-nums">v{APP_VERSION}</span>
           </div>
 
           {/* Description as terminal output lines */}
@@ -205,6 +208,10 @@ const WorkspacePrompt: React.FC = () => {
 
 export const Home: React.FC = () => {
   const { workspacePath, isLoading } = useWorkspaceState();
+  const hasRunningSessions = useAgentSelector(
+    (s) => (s.sessions ?? []).some(x => x.status === 'running' || x.status === 'awaiting-confirmation'),
+    (a, b) => a === b
+  );
 
   // Show loading placeholder briefly — terminal style
   if (isLoading) {
@@ -213,11 +220,6 @@ export const Home: React.FC = () => {
         <div className="flex items-center gap-2">
           <span className="text-[var(--color-accent-primary)] text-sm opacity-60">λ</span>
           <span className="text-[10px] text-[var(--color-text-dim)]">loading</span>
-          <span className="flex gap-0.5">
-            <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
-            <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
-            <span className="thinking-dot w-1 h-1 rounded-full bg-[var(--color-accent-primary)]" />
-          </span>
         </div>
       </div>
     );
@@ -233,6 +235,12 @@ export const Home: React.FC = () => {
       id="home-split-container"
       className="flex flex-col h-full w-full min-h-0 min-w-0 overflow-hidden"
     >
+      {/* Running sessions banner */}
+      {hasRunningSessions && (
+        <FeatureErrorBoundary featureName="GlobalRunningSessions">
+          <GlobalRunningSessionsPanel defaultCollapsed={true} />
+        </FeatureErrorBoundary>
+      )}
       {/* Chat panel - full width */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden w-full">
         <FeatureErrorBoundary featureName="Chat">

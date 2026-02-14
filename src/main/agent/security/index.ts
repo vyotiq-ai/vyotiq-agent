@@ -1,20 +1,9 @@
 /**
- * Security Module Index
+ * Security Module
  *
- * Exports security components for the autonomous agent system.
+ * Provides security audit logging for the agent system.
  */
 
-// Rate Limiter
-export {
-  RateLimiter,
-  getRateLimiter,
-  createRateLimiter,
-  DEFAULT_RATE_LIMITS,
-  type RateLimitBucket,
-  type RateLimitCheckResult,
-} from './RateLimiter';
-
-// Security Audit Log
 export {
   SecurityAuditLog,
   getSecurityAuditLog,
@@ -22,13 +11,3 @@ export {
   type AuditLogQuery,
   type AuditLogStats,
 } from './SecurityAuditLog';
-
-// Anomaly Detector
-export {
-  AnomalyDetector,
-  getAnomalyDetector,
-  DEFAULT_THRESHOLDS,
-  type AnomalyType,
-  type AnomalyThresholds,
-  type DetectedAnomaly,
-} from './AnomalyDetector';

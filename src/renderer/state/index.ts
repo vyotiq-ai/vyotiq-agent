@@ -33,3 +33,18 @@ export {
   type LoadingOperation,
   type LoadingState,
 } from './LoadingProvider';
+
+// Workspace state provider
+export {
+  WorkspaceProvider,
+  useWorkspace,
+  useWorkspaceState,
+  useWorkspaceActions,
+  getCurrentWorkspacePath,
+} from './WorkspaceProvider';
+
+// Rust backend state provider
+export {
+  RustBackendProvider,
+  useRustBackendContext,
+} from './RustBackendProvider';

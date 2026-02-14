@@ -24,8 +24,9 @@
  * } = useConversationSearch(messages);
  */
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import type { ChatMessage } from '../../shared/types';
+import { useDebouncedValue } from './useDebounce';
 
 export interface MessageMatch {
   messageId: string;
@@ -71,28 +72,6 @@ export interface UseConversationSearchOptions {
   minQueryLength?: number;
   /** Whether to filter messages or just highlight (default: false = highlight only) */
   filterMessages?: boolean;
-}
-
-/**
- * Hook to debounce a value
- */
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    timerRef.current = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-      }
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
 }
 
 /**
@@ -178,6 +157,15 @@ export function useConversationSearch(
 
   // Match count
   const matchCount = matches.length;
+
+  // Reset currentMatchIndex when match count changes to prevent stale index
+  useEffect(() => {
+    if (matchCount === 0) {
+      setCurrentMatchIndex(0);
+    } else if (currentMatchIndex >= matchCount) {
+      setCurrentMatchIndex(matchCount - 1);
+    }
+  }, [matchCount, currentMatchIndex]);
 
   // Current match message ID
   const currentMatchMessageId = useMemo(() => {

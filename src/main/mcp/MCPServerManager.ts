@@ -83,6 +83,20 @@ export class MCPServerManager extends EventEmitter {
   // ---------------------------------------------------------------------------
 
   registerServer(config: MCPServerConfig): void {
+    // Validate required fields before registration
+    if (!config.id || typeof config.id !== 'string') {
+      logger.error('Cannot register MCP server: missing or invalid id', { config });
+      throw new Error('MCP server config must have a valid "id" string');
+    }
+    if (!config.name || typeof config.name !== 'string') {
+      logger.error('Cannot register MCP server: missing or invalid name', { id: config.id });
+      throw new Error('MCP server config must have a valid "name" string');
+    }
+    if (!config.transport) {
+      logger.error('Cannot register MCP server: missing transport config', { id: config.id });
+      throw new Error('MCP server config must have a "transport" configuration');
+    }
+
     if (this.servers.has(config.id)) {
       // Silently update config when server already registered (common during settings reload)
       logger.debug('Server already registered, updating config', { serverId: config.id });
@@ -295,6 +309,34 @@ export class MCPServerManager extends EventEmitter {
         managed.state.prompts = [];
         this.updateServerStatus(serverId, 'disconnected');
         this.emitToolsUpdated();
+
+        // Auto-reconnect if the server is still enabled and the disconnect was unexpected
+        // Don't reconnect if explicitly disabled or unregistered
+        if (
+          managed.config.enabled &&
+          managed.config.autoStart &&
+          this.settings.retryFailedConnections &&
+          managed.retryCount < this.settings.retryCount
+        ) {
+          managed.retryCount++;
+          const delay = this.settings.retryDelayMs * managed.retryCount;
+          logger.info('Scheduling auto-reconnect after unexpected disconnect', {
+            serverId,
+            reason,
+            attempt: managed.retryCount,
+            maxAttempts: this.settings.retryCount,
+            delayMs: delay,
+          });
+          managed.retryTimeout = setTimeout(() => {
+            // Double-check server is still registered and enabled before reconnecting
+            const current = this.servers.get(serverId);
+            if (current && current.config.enabled && !current.client) {
+              this.connectServer(serverId).catch((err) => {
+                logger.error('Auto-reconnect failed', { serverId, error: err.message });
+              });
+            }
+          }, delay);
+        }
       }
       logger.info('Server disconnected', { serverId, reason });
     });

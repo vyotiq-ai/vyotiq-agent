@@ -59,21 +59,6 @@ export interface MainGrepResponse {
   query_time_ms: number;
 }
 
-export interface MainSemanticSearchResult {
-  path: string;
-  relative_path: string;
-  chunk_text: string;
-  score: number;
-  line_start: number;
-  line_end: number;
-  language: string;
-}
-
-export interface MainSemanticSearchResponse {
-  results: MainSemanticSearchResult[];
-  query_time_ms: number;
-}
-
 export interface MainWorkspace {
   id: string;
   name: string;
@@ -90,12 +75,8 @@ export interface MainWorkspace {
 export interface MainIndexStatus {
   indexed: boolean;
   is_indexing: boolean;
-  is_vector_indexing: boolean;
   indexed_count: number;
   total_count: number;
-  vector_count: number;
-  vector_ready: boolean;
-  embedding_model_ready: boolean;
 }
 
 // =============================================================================
@@ -147,31 +128,6 @@ class MainRustBackendClient {
     const result: MainSearchResponse = await res.json();
     logger.debug('Search completed', { workspaceId, query, totalHits: result.total_hits });
     return result;
-  }
-
-  /**
-   * True semantic search using vector embeddings (fastembed + usearch)
-   * Returns code chunks ranked by meaning similarity, not just keyword match
-   */
-  async semanticSearch(
-    workspaceId: string,
-    query: string,
-    options?: { limit?: number },
-  ): Promise<MainSemanticSearchResponse> {
-    const body = {
-      query,
-      limit: options?.limit ?? 20,
-    };
-
-    const res = await fetch(`${getBaseUrl()}/api/workspaces/${workspaceId}/search/semantic`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!res.ok) throw new Error(`Semantic search failed: ${res.status}`);
-    return res.json();
   }
 
   /**

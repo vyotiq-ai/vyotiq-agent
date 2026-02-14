@@ -106,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced language server lifecycle management
   - Better diagnostic handling and caching
 - **Code Chunker Optimization**:
-  - Improved language-aware chunking for semantic search
+  - Improved language-aware chunking for search indexing
   - Better handling of large files
 - **IPC System**:
   - Added event batching for reduced IPC overhead
@@ -190,7 +190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Markdown formatting across all documentation files
 - Type safety improvements in IPC handlers
-- Error handling in semantic indexer and vector store
+- Error handling in file indexer and search
 
 ## [1.3.0] - 2026-01-25
 

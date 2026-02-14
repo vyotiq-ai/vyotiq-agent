@@ -26,6 +26,10 @@ import type {
 } from './types';
 
 const logger = createLogger('TerminalManager');
+
+// Cache for invalid regex filter strings to avoid logging the same error repeatedly.
+// Bounded to prevent unbounded memory growth in long-running sessions.
+const MAX_INVALID_FILTER_CACHE = 500;
 const invalidOutputFilterCache = new Set<string>();
 
 // Lazy load node-pty to avoid issues in renderer process
@@ -72,6 +76,7 @@ interface ProcessInfo {
   isRunning: boolean;
   lastReadIndex: number;
   timeout?: NodeJS.Timeout;
+  warningTimeout?: NodeJS.Timeout;
 }
 
 // Default and maximum timeout values
@@ -292,6 +297,11 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
             clearTimeout(processInfo.timeout);
             processInfo.timeout = undefined;
           }
+          // Clear warning timeout if set
+          if (processInfo.warningTimeout) {
+            clearTimeout(processInfo.warningTimeout);
+            processInfo.warningTimeout = undefined;
+          }
 
           // Emit exit event
           this.emit('exit', { pid, code: exitCode } as TerminalExitPayload);
@@ -322,7 +332,7 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
             }, TIMEOUT_WARNING_THRESHOLD_MS);
             
             // Store warning timeout for cleanup
-            (processInfo as ProcessInfo & { warningTimeout?: NodeJS.Timeout }).warningTimeout = warningTimeout;
+            processInfo.warningTimeout = warningTimeout;
           }
 
           processInfo.timeout = setTimeout(() => {
@@ -408,6 +418,11 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
       } catch (error) {
         // Invalid regex, return unfiltered output (log once per filter to avoid noise)
         if (!invalidOutputFilterCache.has(filter)) {
+          // Evict oldest entries if cache is full to prevent unbounded growth
+          if (invalidOutputFilterCache.size >= MAX_INVALID_FILTER_CACHE) {
+            const first = invalidOutputFilterCache.values().next().value;
+            if (first !== undefined) invalidOutputFilterCache.delete(first);
+          }
           invalidOutputFilterCache.add(filter);
           logger.debug('Invalid output filter regex', {
             pid,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { ExternalLink } from 'lucide-react';
 import type { AgentSettings, LLMProviderName } from '../../../../shared/types';
 import { PROVIDERS, PROVIDER_ORDER, type ProviderInfo } from '../../../../shared/providers';
@@ -153,6 +153,25 @@ export const SettingsProviders: React.FC<SettingsProvidersProps> = ({
   onApiKeyChange,
   onProviderSettingChange,
 }) => {
+  // Prevent disabling all providers — at least one must remain enabled
+  const handleToggleEnabled = useCallback((providerId: LLMProviderName) => {
+    const currentlyEnabled = providerSettings[providerId]?.enabled ?? true;
+    
+    // If trying to disable, check that at least one other provider will remain enabled
+    if (currentlyEnabled) {
+      const otherEnabledCount = PROVIDER_ORDER.filter(
+        (id) => id !== providerId && (providerSettings[id]?.enabled ?? true)
+      ).length;
+      
+      if (otherEnabledCount === 0) {
+        // Don't allow disabling the last provider
+        return;
+      }
+    }
+    
+    onProviderSettingChange(providerId, 'enabled', !currentlyEnabled);
+  }, [providerSettings, onProviderSettingChange]);
+
   return (
     <div className="space-y-6">
       {/* Claude Code Subscription Section */}
@@ -182,7 +201,7 @@ export const SettingsProviders: React.FC<SettingsProvidersProps> = ({
                 isEnabled={settings?.enabled ?? true}
                 priority={settings?.priority ?? 1}
                 onApiKeyChange={(value) => onApiKeyChange(providerId, value)}
-                onToggleEnabled={() => onProviderSettingChange(providerId, 'enabled', !(settings?.enabled ?? true))}
+                onToggleEnabled={() => handleToggleEnabled(providerId)}
                 onPriorityChange={(priority) => onProviderSettingChange(providerId, 'priority', priority)}
               />
             );
