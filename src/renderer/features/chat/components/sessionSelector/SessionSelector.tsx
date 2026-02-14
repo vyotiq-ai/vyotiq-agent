@@ -20,11 +20,9 @@
  */
 import React, { memo } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
 import { SessionDropdown } from './SessionDropdown';
 import { useSessionDropdown } from './useSessionDropdown';
-import { isSessionRunning } from './utils';
 import type { SessionSelectorProps } from './types';
 
 // =============================================================================
@@ -72,9 +70,6 @@ export const SessionSelector: React.FC<SessionSelectorProps> = memo(function Ses
     handleViewModeChange,
   } = actions;
 
-  // Check if active session is running
-  const isActiveRunning = activeSession ? isSessionRunning(activeSession.status) : false;
-
   return (
     <>
       <button
@@ -84,7 +79,7 @@ export const SessionSelector: React.FC<SessionSelectorProps> = memo(function Ses
         onKeyDown={handleKeyDown}
         disabled={disabled}
         className={cn(
-          'flex items-center gap-0.5 text-[10px] font-mono whitespace-nowrap',
+          'flex items-center gap-0.5 text-[10px] font-mono whitespace-nowrap no-drag',
           'transition-colors duration-75',
           'text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)]',
           'focus-visible:outline-none',
@@ -101,14 +96,6 @@ export const SessionSelector: React.FC<SessionSelectorProps> = memo(function Ses
       >
         {/* Session label */}
         <span className="text-[var(--color-accent-secondary)]">session=</span>
-        
-        {/* Running indicator */}
-        {isActiveRunning && (
-          <Spinner 
-            size="sm" 
-            className="w-2 h-2 text-[var(--color-success)]" 
-          />
-        )}
         
         {/* Session title */}
         <span className="text-[var(--color-text-secondary)] truncate max-w-[100px] sm:max-w-[140px]">

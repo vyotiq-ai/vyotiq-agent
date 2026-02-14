@@ -14,16 +14,12 @@ import {
   Globe,
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
-import { StatusIndicator } from '../ui/StatusIndicator';
-import type { AgentPhase } from '../ui/StatusIndicator';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { useUIState, useUIActions } from '../../state/UIProvider';
-import { useAgentSelector } from '../../state/AgentProvider';
 import { useLifecycleProfiler } from '../../utils/profiler';
 import { cn } from '../../utils/cn';
 import { SessionSelector } from '../../features/chat/components/sessionSelector';
 import { WorkspaceSwitcher } from '../../features/workspace';
-import { GlobalRunningIndicator } from '../../features/sessions/components/GlobalRunningSessionsPanel';
 
 // =============================================================================
 // Types
@@ -50,7 +46,7 @@ const IconButton: React.FC<{
 }> = memo(({ onClick, label, active, children }) => (
   <button
     className={cn(
-      'p-1.5 transition-colors rounded-sm',
+      'p-1.5 transition-colors rounded-sm no-drag',
       'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
       active
         ? 'text-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10'
@@ -58,6 +54,7 @@ const IconButton: React.FC<{
     )}
     onClick={onClick}
     aria-label={label}
+    type="button"
   >
     {children}
   </button>
@@ -78,17 +75,6 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
   useLifecycleProfiler('Header');
 
   const { handleNewSession } = useAgentStatus();
-
-  const sessionStatus = useAgentSelector(
-    (s) => {
-      const activeSession = s.activeSessionId ? s.sessions.find((x) => x.id === s.activeSessionId) : undefined;
-      return {
-        status: activeSession?.status ?? ('idle' as const),
-        phase: activeSession?.statusPhase as AgentPhase | undefined,
-      };
-    },
-    (a, b) => a.status === b.status && a.phase === b.phase,
-  );
 
   const {
     undoHistoryOpen, browserPanelOpen,
@@ -128,18 +114,6 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
         <div className="ml-1 pl-1 border-l border-[var(--color-border-subtle)]">
           <SessionSelector />
         </div>
-
-        {/* Agent status */}
-        {sessionStatus.status !== 'idle' && (
-          <div className="ml-1 pl-1 border-l border-[var(--color-border-subtle)]">
-            <StatusIndicator
-              status={sessionStatus.status}
-              phase={sessionStatus.phase}
-              size="sm"
-              showLabel={true}
-            />
-          </div>
-        )}
       </div>
 
       {/* Right: Actions */}
@@ -148,7 +122,7 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
         <Tooltip content="New session" shortcut="Ctrl+N">
         <button
           className={cn(
-            'flex items-center gap-1 px-2 py-1 text-[10px] rounded-sm',
+            'flex items-center gap-1 px-2 py-1 text-[10px] rounded-sm no-drag',
             'text-[var(--color-accent-primary)]',
             'hover:bg-[var(--color-accent-primary)]/10',
             'transition-colors active:scale-95',
@@ -156,17 +130,12 @@ export const Header: React.FC<HeaderProps> = memo(function Header({
           )}
           onClick={handleNewSession}
           aria-label="New session"
+          type="button"
         >
           <Plus size={12} />
           {!isMobile && !isTablet && <span>new</span>}
         </button>
         </Tooltip>
-
-        {/* Running sessions indicator */}
-        <GlobalRunningIndicator
-          showCount={!isMobile}
-          className="ml-0.5"
-        />
 
         {/* Panel Toggles - grouped */}
         <div className="flex items-center gap-0.5 ml-1 pl-1.5 border-l border-[var(--color-border-subtle)]">

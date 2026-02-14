@@ -153,31 +153,15 @@ export function Tooltip({
         };
     }, []);
 
-    // Clone children with merged event handlers.
-    // We attach the DOM ref to a wrapper element to avoid relying on ref support in arbitrary children.
-    const trigger = React.cloneElement(children, {
-        onMouseEnter: (e: React.MouseEvent) => {
-            show();
-            children.props.onMouseEnter?.(e);
-        },
-        onMouseLeave: (e: React.MouseEvent) => {
-            hide();
-            children.props.onMouseLeave?.(e);
-        },
-        onFocus: (e: React.FocusEvent) => {
-            show();
-            children.props.onFocus?.(e);
-        },
-        onBlur: (e: React.FocusEvent) => {
-            hide();
-            children.props.onBlur?.(e);
-        },
-    });
-
     return (
         <>
-            <span ref={triggerRef} className="inline-flex">
-                {trigger}
+            <span
+                ref={triggerRef}
+                className="inline-flex no-drag"
+                onPointerEnter={show}
+                onPointerLeave={hide}
+            >
+                {children}
             </span>
             {isVisible && createPortal(
                 <div
@@ -188,6 +172,7 @@ export function Tooltip({
                         top: position.top,
                         left: position.left,
                         zIndex: 9999,
+                        pointerEvents: 'none',
                     }}
                     className={cn(
                         'px-2 py-1.5 bg-[var(--color-surface-header)] border border-[var(--color-border-subtle)] shadow-lg shadow-black/40',

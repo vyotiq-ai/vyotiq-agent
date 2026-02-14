@@ -6,7 +6,7 @@
  */
 import React, { memo, useRef, useEffect } from 'react';
 import { Trash2, Circle } from 'lucide-react';
-import { Spinner } from '../../../../components/ui/LoadingState';
+
 import { cn } from '../../../../utils/cn';
 import type { SessionOptionProps } from './types';
 import { formatRelativeTime, getStatusLabel, isSessionRunning } from './utils';
@@ -62,12 +62,7 @@ export const SessionOption = memo<SessionOptionProps>(function SessionOption({
     >
       {/* Status indicator - dot style */}
       <div className="w-3 flex justify-center flex-shrink-0">
-        {isRunning ? (
-          <Spinner 
-            size="sm" 
-            className="w-2 h-2 text-[var(--color-success)]" 
-          />
-        ) : isSelected ? (
+        {isSelected ? (
           <Circle size={6} className="fill-[var(--color-accent-primary)] text-[var(--color-accent-primary)]" />
         ) : (
           <Circle size={4} className="text-[var(--color-text-dim)]/40" />

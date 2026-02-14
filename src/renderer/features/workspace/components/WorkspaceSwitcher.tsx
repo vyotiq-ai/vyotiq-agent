@@ -62,11 +62,12 @@ export const WorkspaceSwitcher: React.FC = () => {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-mono transition-colors max-w-[200px]',
+          'flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-mono transition-colors max-w-[200px] no-drag',
           'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
           'hover:bg-[var(--color-surface-2)]',
           isOpen && 'bg-[var(--color-surface-2)] text-[var(--color-text-primary)]',
         )}
+        type="button"
       >
         <span className="text-[var(--color-accent-primary)] shrink-0">λ</span>
         <span className="truncate">{workspaceName}</span>
