@@ -31,16 +31,30 @@ export const useAgentStatus = () => {
       a.contextMetricsInfo === b.contextMetricsInfo,
   );
   
-  // Use the actual message from the backend - strip iteration counters from display
+  // Use the actual message from the backend.
+  // Only clean duplicate iteration text when the IterationControl component
+  // is able to display the iteration count (both values are defined).
+  // Otherwise, preserve the iteration info in the status message as it's
+  // the only indication of progress the user sees.
   const statusMessage = useMemo(() => {
     const rawMessage = snapshot.agentStatusInfo?.message ?? '';
     if (!rawMessage) return '';
-    // Remove iteration counters like "Iteration 3/20" or "Iteration 3 of 20" while keeping other status text
-    const cleaned = rawMessage
-      .replace(/iteration[s]?:?\s*\d+\s*(?:\/|of)\s*\d+/gi, '')
-      .trim();
-    return cleaned || '';
-  }, [snapshot.agentStatusInfo?.message]);
+    
+    // Only strip iteration text if the structured iteration metadata
+    // is available (so IterationControl can display it instead)
+    const hasStructuredIteration = 
+      snapshot.agentStatusInfo?.currentIteration !== undefined &&
+      snapshot.agentStatusInfo?.maxIterations !== undefined;
+    
+    if (hasStructuredIteration) {
+      const cleaned = rawMessage
+        .replace(/iteration[s]?:?\s*\d+\s*(?:\/|of)\s*\d+/gi, '')
+        .trim();
+      return cleaned || '';
+    }
+    
+    return rawMessage;
+  }, [snapshot.agentStatusInfo?.message, snapshot.agentStatusInfo?.currentIteration, snapshot.agentStatusInfo?.maxIterations]);
   
   // Check if paused from status or metadata flag
   const isPaused = snapshot.sessionStatus === 'paused' 

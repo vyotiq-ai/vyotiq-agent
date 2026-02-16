@@ -47,3 +47,9 @@ export {
   type UseChatScrollManagerOptions,
   type ChatScrollManagerResult,
 } from './useChatScrollManager';
+
+export {
+  useSmartPlaceholder,
+  type SmartPlaceholderOptions,
+  type SmartPlaceholderResult,
+} from './useSmartPlaceholder';

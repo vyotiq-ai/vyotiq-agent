@@ -56,7 +56,9 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(config: AppConfig) -> AppResult<Self> {
-        let (event_tx, _) = broadcast::channel(1024);
+        // MEMORY FIX: Reduce broadcast channel from 1024 to 256 buffered events.
+        // Each event contains strings; 256 is plenty for real-time UI updates.
+        let (event_tx, _) = broadcast::channel(256);
 
         let data_dir = std::path::PathBuf::from(&config.data_dir);
         tokio::fs::create_dir_all(&data_dir).await.map_err(|e| {
@@ -68,6 +70,7 @@ impl AppState {
             data_dir.join("indexes"),
             config.max_file_size_bytes,
             config.index_batch_size,
+            config.max_indexed_files,
         ));
         let watcher_manager = Arc::new(FileWatcherManager::new(
             config.watcher_debounce_ms,

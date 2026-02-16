@@ -1,4 +1,4 @@
-import type { AgentSessionState, ToolCallPayload, LLMProviderName, RoutingDecision } from '../../shared/types';
+import type { AgentSessionState, ToolCallPayload, LLMProviderName, RoutingDecision, ChatMessage } from '../../shared/types';
 
 /**
  * Context maintained during an agentic run for tracking state and metrics.
@@ -31,6 +31,19 @@ export interface AgenticContext {
   traceId?: string;
 }
 
+/**
+ * A follow-up message queued for injection into the agent context.
+ * These are user messages sent while the agent is actively running.
+ */
+export interface PendingFollowUp {
+  /** The ChatMessage that was added to the session messages array */
+  message: ChatMessage;
+  /** Timestamp when the follow-up was received */
+  receivedAt: number;
+  /** Whether this follow-up has been acknowledged by the agent run loop */
+  acknowledged: boolean;
+}
+
 export interface InternalSession {
   state: AgentSessionState;
   pendingTool?: {
@@ -41,4 +54,6 @@ export interface InternalSession {
   toolQueue?: ToolCallPayload[];
   /** Tracks the current agentic run context for proper resumption */
   agenticContext?: AgenticContext;
+  /** Queue of follow-up messages sent by the user while the agent is running */
+  pendingFollowUps?: PendingFollowUp[];
 }

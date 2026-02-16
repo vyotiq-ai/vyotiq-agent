@@ -71,6 +71,12 @@ export function hasAnsi(text: string): boolean {
   if (!text || typeof text !== 'string') {
     return false;
   }
+  // CRITICAL: Reset lastIndex before calling .test() on global regexes.
+  // RegExp.test() with the 'g' flag advances lastIndex on each call,
+  // which means consecutive calls on different strings produce incorrect
+  // results (false negatives) when lastIndex is past the match position.
+  ANSI_EXTENDED_REGEX.lastIndex = 0;
+  ANSI_SIMPLE_REGEX.lastIndex = 0;
   return ANSI_EXTENDED_REGEX.test(text) || ANSI_SIMPLE_REGEX.test(text);
 }
 

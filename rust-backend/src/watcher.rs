@@ -15,7 +15,9 @@ use tracing::{info, warn};
 
 /// Minimum interval between re-index operations for the same file (in ms).
 /// Prevents rapid saves from triggering redundant re-indexing.
-const REINDEX_COOLDOWN_MS: u64 = 2000;
+/// MEMORY FIX: Increased from 2s to 5s to reduce the frequency of
+/// IndexWriter allocations (each creates a new 3MB buffer).
+const REINDEX_COOLDOWN_MS: u64 = 5000;
 
 pub struct FileWatcherManager {
     watchers: DashMap<String, WatcherHandle>,

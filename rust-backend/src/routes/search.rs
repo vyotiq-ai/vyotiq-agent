@@ -87,67 +87,6 @@ pub async fn index_workspace(
     })))
 }
 
-/// Collect files suitable for indexing from a workspace path.
-/// Uses rayon for parallel file reading to maximize I/O throughput.
-pub fn collect_indexable_files_pub(
-    workspace_path: &str,
-) -> Vec<(std::path::PathBuf, String, String, String)> {
-    use crate::indexer::IndexManager;
-    use ignore::WalkBuilder;
-    use rayon::prelude::*;
-
-    let max_file_size: u64 = 10 * 1024 * 1024; // 10MB
-
-    let walker = WalkBuilder::new(workspace_path)
-        .hidden(false)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
-        .max_depth(Some(20))
-        .build();
-
-    // First pass: collect paths that pass all filters (fast, sequential directory walk)
-    let paths: Vec<std::path::PathBuf> = walker
-        .filter_map(|e| e.ok())
-        .filter(|entry| entry.file_type().is_some_and(|ft| ft.is_file()))
-        .filter(|entry| !IndexManager::is_build_or_output_dir(entry.path()))
-        .filter(|entry| {
-            entry.metadata().map(|m| m.len() > 0 && m.len() <= max_file_size).unwrap_or(false)
-        })
-        .filter(|entry| {
-            let ext = entry.path()
-                .extension()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_lowercase();
-            crate::config::is_supported_extension(&ext)
-        })
-        .map(|entry| entry.into_path())
-        .collect();
-
-    // Second pass: parallel file reading using rayon (I/O-bound, benefits from parallelism)
-    paths
-        .par_iter()
-        .filter_map(|path| {
-            let content = std::fs::read_to_string(path).ok()?;
-            let relative = path
-                .strip_prefix(workspace_path)
-                .unwrap_or(path)
-                .to_string_lossy()
-                .replace('\\', "/");
-
-            let ext = path
-                .extension()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_lowercase();
-
-            let language = crate::lang::detect_language(&ext).to_string();
-            Some((path.to_path_buf(), relative, content, language))
-        })
-        .collect()
-}
-
 pub async fn index_status(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
@@ -159,10 +98,12 @@ pub async fn index_status(
         "is_indexing": status.is_indexing,
         "indexed_count": status.indexed_count,
         "total_count": status.total_count,
+        "total_size_bytes": status.total_size_bytes,
     })))
 }
 
 /// Full-text search (Tantivy BM25)
+/// Uses spawn_blocking to avoid starving the tokio runtime with synchronous I/O.
 pub async fn fulltext_search(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
@@ -182,10 +123,16 @@ pub async fn fulltext_search(
             crate::config::MAX_SEARCH_QUERY_LENGTH,
         )));
     }
-    let response = search::search_workspace(&state.index_manager, &workspace_id, &query)?;
+    let index_manager = state.index_manager.clone();
+    let response = tokio::task::spawn_blocking(move || {
+        search::search_workspace(&index_manager, &workspace_id, &query)
+    })
+    .await
+    .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("Search task failed: {}", e)))??;
     Ok(Json(response))
 }
 
+/// Grep search uses spawn_blocking to avoid starving the tokio runtime.
 pub async fn grep_search(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
@@ -206,6 +153,11 @@ pub async fn grep_search(
         )));
     }
     let ws = state.workspace_manager.get_workspace(&workspace_id)?;
-    let response = search::grep_workspace(ws.root_path(), &query)?;
+    let ws_path = ws.root_path().to_string();
+    let response = tokio::task::spawn_blocking(move || {
+        search::grep_workspace(&ws_path, &query)
+    })
+    .await
+    .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!("Grep task failed: {}", e)))??;
     Ok(Json(response))
 }

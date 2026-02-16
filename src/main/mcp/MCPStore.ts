@@ -545,7 +545,8 @@ export class MCPStore {
     } catch {
       // Fall back to pip + python
       log('Installing via pip...');
-      await execAsync(`${pythonCmd} -m pip install ${packageName}`);
+      const sanitizedPkg = packageName.replace(/[^a-zA-Z0-9._@/\-\[\]]/g, '');
+      await execAsync(`${pythonCmd} -m pip install ${sanitizedPkg}`);
       command = pythonCmd;
       args = ['-m', packageName];
     }

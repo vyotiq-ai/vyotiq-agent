@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 // Read version from package.json for injection into renderer
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'));
@@ -37,6 +38,7 @@ export default defineConfig({
       'lucide-react',
       'clsx',
       'highlight.js',
+      'monaco-editor',
       // xterm needs pre-bundling for proper CJS → ESM interop
       '@xterm/xterm',
       '@xterm/addon-fit',
@@ -100,6 +102,10 @@ export default defineConfig({
           if (id.includes('lucide-react') || id.includes('clsx') || id.includes('highlight.js') || id.includes('katex')) {
             return 'ui-utils';
           }
+          // Monaco Editor - deferred until editor opens
+          if (id.includes('monaco-editor')) {
+            return 'monaco-editor';
+          }
         },
         // Use hashed filenames for better caching
         entryFileNames: '[name]-[hash].js',
@@ -112,7 +118,11 @@ export default defineConfig({
       },
       // Advanced tree shaking configuration
       treeshake: {
-        moduleSideEffects: false,
+        // Allow side effects from Monaco and xterm to ensure language/theme registration survives
+        moduleSideEffects: (id) => {
+          if (id.includes('monaco-editor') || id.includes('@xterm/')) return true;
+          return false;
+        },
         propertyReadSideEffects: false,
         // Enable pure annotations for better tree shaking
         annotations: true,

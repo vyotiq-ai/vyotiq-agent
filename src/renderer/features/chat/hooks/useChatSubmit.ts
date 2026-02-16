@@ -1,13 +1,14 @@
 /**
  * useChatSubmit Hook
  * 
- * Handles sending messages and related actions.
+ * Handles sending messages and follow-up injections.
  * 
  * Features:
  * - Optimistic UI updates with proper state management
  * - Debounced state transitions to avoid flickering
  * - Proper cleanup on unmount
  * - Error recovery with state rollback
+ * - Real-time follow-up injection when agent is running
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
@@ -19,6 +20,10 @@ const logger = createLogger('ChatSubmit');
 export interface ChatSubmitState {
   isSending: boolean;
   canSend: boolean;
+  /** Whether a follow-up can be sent (agent is running and input has content) */
+  canSendFollowUp: boolean;
+  /** Whether the agent is currently running (follow-up mode active) */
+  isFollowUpMode: boolean;
   handleSendMessage: () => Promise<void>;
   handleToggleYolo: () => void;
 }
@@ -38,6 +43,7 @@ interface ChatSubmitOptions {
     attachments: AttachmentPayload[], 
     config?: Partial<{ preferredProvider: LLMProviderName | 'auto'; selectedModelId?: string }>
   ) => Promise<void>;
+  sendFollowUp: (sessionId: string, content: string, attachments?: AttachmentPayload[]) => Promise<void>;
   updateSessionConfig: (sessionId: string, config: Partial<AgentSessionState['config']>) => Promise<void>;
 }
 
@@ -62,6 +68,7 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
     selectedModelId,
     manualModel,
     sendMessage,
+    sendFollowUp,
     updateSessionConfig,
   } = options;
 
@@ -132,7 +139,50 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
     return hasContent && !agentBusy && sessionWorkspaceValid;
   }, [message, attachments.length, agentBusy, sessionWorkspaceValid]);
 
+  // Whether a follow-up can be sent (agent is running and we have content)
+  const canSendFollowUp = useMemo(() => {
+    const hasContent = message.trim().length > 0 || attachments.length > 0;
+    return hasContent && agentBusy && !!activeSession && sessionWorkspaceValid;
+  }, [message, attachments.length, agentBusy, activeSession, sessionWorkspaceValid]);
+
+  // Whether we're in follow-up mode (agent is running with an active session)
+  const isFollowUpMode = useMemo(() => {
+    return agentBusy && !!activeSession;
+  }, [agentBusy, activeSession]);
+
   const handleSendMessage = useCallback(async () => {
+    // Route to follow-up send when agent is busy
+    if (canSendFollowUp && agentBusy && activeSession) {
+      if (isSending) return;
+
+      try {
+        safeSetIsSending(true);
+        const finalMessage = message.trim();
+        
+        logger.info('Sending follow-up to running agent', {
+          sessionId: activeSession.id,
+          messageLength: finalMessage.length,
+          attachmentCount: attachments.length,
+        });
+
+        await sendFollowUp(activeSession.id, finalMessage, attachments.length > 0 ? attachments : undefined);
+        
+        logger.info('Follow-up sent successfully');
+        clearMessage();
+
+        // Brief sending state for visual feedback
+        setTimeout(() => {
+          safeSetIsSending(false);
+        }, MIN_SENDING_DURATION);
+        
+      } catch (error) {
+        logger.error('Failed to send follow-up', { error });
+        safeSetIsSending(false);
+      }
+      return;
+    }
+
+    // Normal message send when agent is idle
     if (!canSend || isSending) return;
 
     try {
@@ -172,7 +222,7 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
       safeSetIsSending(false);
       // Don't clear the message on error - let the user try again
     }
-  }, [message, attachments, isSending, canSend, sendMessage, selectedProvider, selectedModelId, manualModel, clearMessage, safeSetIsSending]);
+  }, [message, attachments, isSending, canSend, canSendFollowUp, agentBusy, activeSession, sendMessage, sendFollowUp, selectedProvider, selectedModelId, manualModel, clearMessage, safeSetIsSending]);
 
   const handleToggleYolo = useCallback(() => {
     if (!activeSession) {
@@ -187,6 +237,8 @@ export function useChatSubmit(options: ChatSubmitOptions): ChatSubmitState {
   return {
     isSending,
     canSend,
+    canSendFollowUp,
+    isFollowUpMode,
     handleSendMessage,
     handleToggleYolo,
   };

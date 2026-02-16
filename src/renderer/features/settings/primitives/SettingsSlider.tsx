@@ -110,7 +110,7 @@ export const SettingsSlider: React.FC<SettingsSliderProps> = ({
       </div>
 
       {/* Range Indicators */}
-      <div className="flex justify-between mt-0.5 sm:mt-1 text-[8px] sm:text-[9px] text-[var(--color-text-dim)]">
+      <div className="flex justify-between mt-0.5 sm:mt-1 text-[9px] sm:text-[10px] text-[var(--color-text-dim)]">
         <span>{format ? format(min) : min}</span>
         <span>{format ? format(max) : max}</span>
       </div>

@@ -18,6 +18,7 @@ import {
   Pencil,
   Copy,
   Check,
+  Zap,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import type { ChatMessage } from '../../../../shared/types';
@@ -161,6 +162,13 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
       )}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
+      onFocus={() => setShowActions(true)}
+      onBlur={(e) => {
+        // Only hide if focus moved outside this message container
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setShowActions(false);
+        }
+      }}
     >
       {/* Message header */}
       <div className="flex items-center gap-1.5 mb-0.5">
@@ -173,6 +181,14 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
         )}>
           {isUser ? 'you' : isTool ? (message.toolName ?? 'tool') : 'assistant'}
         </span>
+
+        {/* Follow-up badge */}
+        {isUser && message.isFollowUp && (
+          <span className="inline-flex items-center gap-0.5 text-[8px] text-[var(--color-accent-primary)] uppercase tracking-wider opacity-80">
+            <Zap size={8} aria-hidden="true" />
+            follow-up
+          </span>
+        )}
 
         {/* Model info */}
         {isAssistant && modelDisplay && (
@@ -235,7 +251,10 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
                 : isTool
                   ? 'text-[var(--color-text-secondary)] text-[10px]'
                   : 'text-[var(--color-text-primary)]',
-            )}>
+              isStreaming && isAssistant && 'streaming-active streaming-text-container',
+            )}
+              {...(isStreaming && isAssistant ? { 'aria-live': 'polite', 'aria-busy': 'true' } : {})}
+            >
               {isAssistant ? (
                 <MarkdownRenderer content={message.content} compact />
               ) : (
@@ -243,7 +262,7 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
               )}
               {/* Streaming cursor */}
               {isStreaming && isAssistant && (
-                <span className="animate-blink text-[var(--color-accent-primary)]">▍</span>
+                <span className="streaming-cursor">▍</span>
               )}
             </div>
           )}
@@ -293,7 +312,17 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
           </span>
         )}
 
-        {/* Hover actions */}
+        {/* Message actions - visible on hover/focus, with a persistent muted copy icon */}
+        {!showActions && message.content && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="ml-auto p-0.5 text-[var(--color-text-dim)]/40 hover:text-[var(--color-text-secondary)] transition-colors focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)] focus-visible:outline-none rounded"
+            title={copied ? 'Copied' : 'Copy message'}
+          >
+            {copied ? <Check size={9} style={{ color: 'var(--color-success)' }} /> : <Copy size={9} />}
+          </button>
+        )}
         {showActions && (
           <div className="flex items-center gap-0.5 ml-auto">
             {/* Copy */}
@@ -358,5 +387,49 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
   );
 };
 
-export const MessageLine = memo(MessageLineInternal);
+// PERF: Custom memo comparator to prevent non-streaming messages from
+// re-rendering when a sibling's streaming delta updates the `messages` array.
+// The `messages` prop (full array) gets a new reference on every delta dispatch
+// because the session's message list is replaced.  We only need to re-render
+// when *this* message's data changes or the props that affect *this* item change.
+function areMessageLinePropsEqual(
+  prev: Readonly<MessageLineProps>,
+  next: Readonly<MessageLineProps>,
+): boolean {
+  // Fast path: if message reference is the same AND non-streaming, nothing changed
+  if (
+    prev.message === next.message &&
+    !prev.isStreaming &&
+    !next.isStreaming &&
+    prev.isHighlighted === next.isHighlighted &&
+    prev.routingDecision === next.routingDecision &&
+    prev.executingTools === next.executingTools &&
+    prev.queuedTools === next.queuedTools &&
+    prev.onReaction === next.onReaction &&
+    prev.onEdit === next.onEdit &&
+    prev.className === next.className
+  ) {
+    return true; // skip re-render
+  }
+
+  // If streaming, always re-render so the cursor and content update
+  if (next.isStreaming) return false;
+
+  // For non-streaming messages: check if the actual message data changed
+  if (prev.message !== next.message) return false;
+  if (prev.isHighlighted !== next.isHighlighted) return false;
+  if (prev.routingDecision !== next.routingDecision) return false;
+  if (prev.executingTools !== next.executingTools) return false;
+  if (prev.queuedTools !== next.queuedTools) return false;
+  if (prev.onReaction !== next.onReaction) return false;
+  if (prev.onEdit !== next.onEdit) return false;
+  if (prev.className !== next.className) return false;
+
+  // `messages` array changes on every streaming delta, but non-streaming
+  // MessageLines only use it for ToolExecution result matching.  Skip
+  // re-render when only the messages reference changed.
+  return true;
+}
+
+export const MessageLine = memo(MessageLineInternal, areMessageLinePropsEqual);
 MessageLine.displayName = 'MessageLine';

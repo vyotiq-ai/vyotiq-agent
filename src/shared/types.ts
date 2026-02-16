@@ -82,6 +82,12 @@ export interface ChatMessage {
    * Parent message ID - for branched messages, points to the message from which this branch forked.
    */
   parentMessageId?: string;
+  /**
+   * Whether this is a follow-up message injected while the agent was running.
+   * Follow-ups are sent by the user mid-run to provide additional context,
+   * corrections, or instructions to the agent in real-time.
+   */
+  isFollowUp?: boolean;
   toolName?: string;
   toolCallId?: string;
   toolCalls?: ToolCallPayload[];
@@ -1828,6 +1834,23 @@ export interface ConfirmToolPayload {
   action?: 'approve' | 'deny' | 'feedback';
 }
 
+/**
+ * Payload for sending a follow-up message while the agent is running.
+ * Follow-ups are injected into the agent's context in real-time,
+ * allowing the user to provide additional instructions, corrections,
+ * or context without stopping the current run.
+ */
+export interface FollowUpPayload {
+  /** Session ID for the active run */
+  sessionId: string;
+  /** Follow-up message content */
+  content: string;
+  /** Optional file attachments */
+  attachments?: AttachmentPayload[];
+  /** Optional metadata for the follow-up */
+  metadata?: Record<string, unknown>;
+}
+
 export interface UpdateConfigPayload {
   sessionId: string;
   config: Partial<AgentConfig>;
@@ -2182,6 +2205,30 @@ export interface HealthStatusEvent {
 }
 
 /**
+ * Event emitted when a file diff is streaming in real-time during tool execution.
+ * Enables the renderer to display line-by-line diffs as they are computed.
+ */
+export interface FileDiffStreamEvent extends AgentEventBase {
+  type: 'file-diff-stream';
+  /** The tool call ID this diff belongs to */
+  toolCallId: string;
+  /** Tool name that produced the change (write_file, edit_file, etc.) */
+  toolName: string;
+  /** Absolute file path being modified */
+  filePath: string;
+  /** Original file content (empty for new files) */
+  originalContent: string;
+  /** Current partial or full modified content */
+  modifiedContent: string;
+  /** Whether this is a new file creation */
+  isNewFile: boolean;
+  /** Whether the stream is complete (final event) */
+  isComplete: boolean;
+  /** Action: 'created' | 'modified' */
+  action: 'created' | 'modified';
+}
+
+/**
  * Event emitted for detailed progress tracking
  */
 export interface DetailedProgressEvent {
@@ -2231,6 +2278,7 @@ export type AgentEvent =
   | SelfHealingActionEvent
   | HealthStatusEvent
   | DetailedProgressEvent
+  | FileDiffStreamEvent
   // Phase 4 communication events
   | { type: 'question-asked'; sessionId: string; question: CommunicationQuestion; timestamp: number }
   | { type: 'question-answered'; sessionId: string; questionId: string; answer: unknown; timestamp: number }
@@ -2238,7 +2286,10 @@ export type AgentEvent =
   | { type: 'decision-requested'; sessionId: string; decision: DecisionRequest; timestamp: number }
   | { type: 'decision-made'; sessionId: string; decisionId: string; selectedOption: string; timestamp: number }
   | { type: 'decision-skipped'; sessionId: string; decisionId: string; timestamp: number }
-  | { type: 'progress-update'; sessionId: string; update: ProgressUpdate; timestamp: number };
+  | { type: 'progress-update'; sessionId: string; update: ProgressUpdate; timestamp: number }
+  // Real-time follow-up injection events
+  | { type: 'follow-up-received'; sessionId: string; messageId: string; content: string; timestamp: number }
+  | { type: 'follow-up-injected'; sessionId: string; messageId: string; runId: string; iteration: number; timestamp: number };
 
 // =============================================================================
 // Progress Update Types

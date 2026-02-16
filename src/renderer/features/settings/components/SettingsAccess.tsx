@@ -85,7 +85,7 @@ export const SettingsAccess: React.FC<SettingsAccessProps> = ({ settings, onChan
                 <LevelIcon level={level} size={14} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[9px] sm:text-[10px] font-medium text-[var(--color-text-primary)]">{info.name}</div>
-                  <div className="text-[8px] sm:text-[9px] text-[var(--color-text-dim)] leading-tight mt-0.5">{info.description}</div>
+                  <div className="text-[9px] sm:text-[10px] text-[var(--color-text-dim)] leading-tight mt-0.5">{info.description}</div>
                 </div>
               </button>
             );
@@ -123,7 +123,7 @@ export const SettingsAccess: React.FC<SettingsAccessProps> = ({ settings, onChan
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-[var(--color-text-primary)]">{category.label}</span>
                     {customized && (
-                      <span className="text-[8px] px-1 py-0.5 bg-[var(--color-warning)]/20 text-[var(--color-text-secondary)]">customized</span>
+                      <span className="text-[9px] px-1 py-0.5 bg-[var(--color-warning)]/20 text-[var(--color-text-secondary)]">customized</span>
                     )}
                   </div>
                   {customized && (

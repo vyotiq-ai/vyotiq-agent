@@ -3,6 +3,9 @@ export { cn } from './cn';
 export * from './constants';
 export * from './styles';
 
+// HTML sanitization
+export { sanitizeHtml, sanitizeInlineHtml } from './sanitizeHtml';
+
 // Path helper utilities
 export {
   getFileName,

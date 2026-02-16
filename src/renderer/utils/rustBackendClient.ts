@@ -178,6 +178,11 @@ class WebSocketManager {
     this.url = url;
   }
 
+  /** Update the WebSocket URL (e.g. to append auth token) */
+  setUrl(url: string): void {
+    this.url = url;
+  }
+
   /** Mark backend as available (called after successful health check) */
   setBackendAvailable(available: boolean): void {
     this.backendAvailable = available;
@@ -354,21 +359,38 @@ class RustBackendClient {
 
   /** Initialize the client — fetches auth token, marks backend as available and connects WebSocket */
   init(): void {
-    // Fetch auth token from main process if available
+    // Fetch auth token from main process BEFORE connecting WebSocket.
+    // The browser WebSocket API does not support custom headers, so the
+    // token is appended as a query parameter on the WS URL.
+    const connectWs = () => {
+      // Update WebSocket URL with auth token query parameter
+      if (sidecarAuthToken) {
+        this.wsManager.setUrl(`${DEFAULT_WS_URL}?token=${sidecarAuthToken}`);
+      }
+      this.wsManager.setBackendAvailable(true);
+      this.wsManager.connect();
+    };
+
     try {
-      window.vyotiq?.rustBackend?.getAuthToken?.().then((token: string) => {
-        if (token) {
-          sidecarAuthToken = token;
-          log.debug('Sidecar auth token received');
-        }
-      }).catch(() => {
-        // Auth token not available, continuing without authentication
-      });
+      const tokenPromise = window.vyotiq?.rustBackend?.getAuthToken?.();
+      if (tokenPromise && typeof tokenPromise.then === 'function') {
+        tokenPromise.then((token: string) => {
+          if (token) {
+            sidecarAuthToken = token;
+            log.debug('Sidecar auth token received');
+          }
+          connectWs();
+        }).catch(() => {
+          // Auth token not available, connect without authentication
+          connectWs();
+        });
+      } else {
+        connectWs();
+      }
     } catch (err) {
       log.debug('Preload API not available for auth token', { error: err instanceof Error ? err.message : String(err) });
+      connectWs();
     }
-    this.wsManager.setBackendAvailable(true);
-    this.wsManager.connect();
   }
 
   /** Tear down the client and disconnect WebSocket */

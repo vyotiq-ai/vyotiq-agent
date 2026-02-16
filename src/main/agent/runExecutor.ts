@@ -351,6 +351,9 @@ export class RunExecutor {
 
         if (controller.signal.aborted) break;
 
+        // Process any pending follow-up messages injected by the user
+        this.acknowledgePendingFollowUps(session, runId, iteration);
+
         const loopDetector = getLoopDetector();
         if (loopDetector.shouldTriggerCircuitBreaker(runId)) {
           this.logger.error('Stopping run due to loop detection circuit breaker', {
@@ -596,6 +599,9 @@ export class RunExecutor {
         await this.pauseResumeManager.waitIfPaused(session.state.id);
 
         if (controller.signal.aborted) break;
+
+        // Process any pending follow-up messages injected by the user
+        this.acknowledgePendingFollowUps(session, runId, iteration);
 
         // Budget enforcement — check if cost budget allows proceeding
         if (this.checkBudget) {
@@ -880,6 +886,7 @@ export class RunExecutor {
     session.pendingTool = undefined;
     session.toolQueue = undefined;
     session.agenticContext = undefined;
+    session.pendingFollowUps = undefined;
     session.state.status = 'idle';
     session.state.activeRunId = undefined;
 
@@ -940,6 +947,54 @@ export class RunExecutor {
     return this.lifecycleManager.createAgenticContext(runId);
   }
 
+  /**
+   * Process and acknowledge any pending follow-up messages from the user.
+   * Called at the start of each iteration so the LLM sees follow-ups in its next context build.
+   * Follow-up messages are already in the messages array; this method marks them as acknowledged
+   * and emits events for UI tracking.
+   */
+  private acknowledgePendingFollowUps(session: InternalSession, runId: string, iteration: number): void {
+    if (!session.pendingFollowUps?.length) return;
+
+    const unacknowledged = session.pendingFollowUps.filter(f => !f.acknowledged);
+    if (unacknowledged.length === 0) return;
+
+    this.logger.info('Processing pending follow-up messages', {
+      sessionId: session.state.id,
+      runId,
+      iteration,
+      followUpCount: unacknowledged.length,
+    });
+
+    for (const followUp of unacknowledged) {
+      followUp.acknowledged = true;
+
+      // Emit follow-up-injected event so the UI can show confirmation
+      this.emitEvent({
+        type: 'follow-up-injected',
+        sessionId: session.state.id,
+        messageId: followUp.message.id,
+        runId,
+        iteration,
+        timestamp: Date.now(),
+      } as RendererEvent);
+
+      this.logger.debug('Follow-up acknowledged', {
+        sessionId: session.state.id,
+        messageId: followUp.message.id,
+        runId,
+        iteration,
+        contentPreview: followUp.message.content.slice(0, 100),
+      });
+    }
+
+    // Persist updated messages (follow-ups are already in messages array)
+    this.updateSessionState(session.state.id, {
+      messages: session.state.messages,
+      updatedAt: Date.now(),
+    });
+  }
+
   private completeRun(session: InternalSession, runId: string): void {
     this.progressTracker.completeAnalysisProgress(session, runId, 'success');
     const lastMessage: ChatMessage | undefined = session.state.messages[session.state.messages.length - 1];
@@ -980,7 +1035,7 @@ export class RunExecutor {
         provider: provider as LLMProviderName,
         success: true,
         responseTimeMs: metricsResult?.durationMs || 0,
-        tokensUsed: 0,
+        tokensUsed: agentMetrics.getRunTokensUsed(runId),
         loopDetected: loopState?.circuitBreakerTriggered || false,
         complianceViolation: complianceSummary.errors > 0,
       });
@@ -1002,6 +1057,7 @@ export class RunExecutor {
     session.state.status = 'idle';
     session.state.activeRunId = undefined;
     session.agenticContext = undefined;
+    session.pendingFollowUps = undefined;
 
     this.updateSessionState(session.state.id, {
       status: 'idle',
@@ -1040,7 +1096,7 @@ export class RunExecutor {
         provider: provider as LLMProviderName,
         success: false,
         responseTimeMs: 0,
-        tokensUsed: 0,
+        tokensUsed: agentMetrics.getRunTokensUsed(runId),
         loopDetected: false,
         complianceViolation: false,
       });
@@ -1071,6 +1127,7 @@ export class RunExecutor {
     session.state.status = 'error';
     session.state.activeRunId = undefined;
     session.agenticContext = undefined;
+    session.pendingFollowUps = undefined;
 
     this.updateSessionState(session.state.id, {
       status: 'error',

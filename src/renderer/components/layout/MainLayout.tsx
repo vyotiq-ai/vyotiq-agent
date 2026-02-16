@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
-import { GlobalStatusBar } from './GlobalStatusBar';
 import { MOBILE_BREAKPOINT, TABLET_BREAKPOINT } from '../../utils/constants';
 import { cn } from '../../utils/cn';
 import { useLocalStorage, useResizablePanel } from '../../hooks';
 import { EditorPanel, openFileInEditor } from '../../features/editor/components/EditorPanel';
 import { useEditorStore } from '../../features/editor/store/editorStore';
+import { useEditorKeyboard } from '../../features/editor/hooks/useEditorKeyboard';
 import { BottomPanel } from '../../features/terminal/components/BottomPanel';
 
 interface MainLayoutProps {
@@ -52,6 +52,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
 
   const { state: editorState } = useEditorStore();
   const editorVisible = editorState.isVisible && editorState.tabs.length > 0;
+
+  // Global editor keyboard shortcuts (save, font size, word wrap)
+  useEditorKeyboard({ enabled: editorVisible });
 
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
@@ -123,9 +126,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
   // Listen for global file-open events (dispatched from file tree, search results, etc.)
   useEffect(() => {
     const handleOpenFile = (e: Event) => {
-      const detail = (e as CustomEvent<{ filePath: string }>).detail;
+      const detail = (e as CustomEvent<{ filePath: string; preview?: boolean }>).detail;
       if (detail?.filePath) {
-        openFileInEditor(detail.filePath);
+        openFileInEditor(detail.filePath, { preview: detail.preview });
       }
     };
     const handleOpenFileDiff = (e: Event) => {
@@ -137,11 +140,24 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
         });
       }
     };
+    const handleRevealActiveFile = () => {
+      // Get active file path from the editor store and broadcast to file tree
+      import('../../features/editor/store/editorStore').then(({ getActiveFilePath }) => {
+        const filePath = getActiveFilePath();
+        if (filePath) {
+          document.dispatchEvent(new CustomEvent('vyotiq:reveal-in-tree', {
+            detail: { filePath },
+          }));
+        }
+      });
+    };
     document.addEventListener('vyotiq:open-file', handleOpenFile);
     document.addEventListener('vyotiq:open-file-diff', handleOpenFileDiff);
+    document.addEventListener('vyotiq:reveal-active-file', handleRevealActiveFile);
     return () => {
       document.removeEventListener('vyotiq:open-file', handleOpenFile);
       document.removeEventListener('vyotiq:open-file-diff', handleOpenFileDiff);
+      document.removeEventListener('vyotiq:reveal-active-file', handleRevealActiveFile);
     };
   }, []);
 
@@ -259,7 +275,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
           <BottomPanel isOpen={bottomPanelOpen} onToggle={toggleBottomPanel} />
         </div>
       </div>
-      <GlobalStatusBar />
     </div>
   );
 };

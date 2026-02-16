@@ -124,7 +124,7 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
         onClick={handleReindex}
         disabled={isIndexing}
         className={cn(
-          'text-[8px] px-1.5 py-0.5 rounded-sm transition-colors uppercase tracking-wider',
+          'text-[9px] px-1.5 py-0.5 rounded-sm transition-colors uppercase tracking-wider',
           isIndexing
             ? 'text-[var(--color-text-dim)]/40 cursor-not-allowed'
             : 'text-[var(--color-text-dim)] hover:text-[var(--color-accent-primary)] hover:bg-[var(--color-surface-2)]',

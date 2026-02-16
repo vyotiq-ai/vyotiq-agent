@@ -203,7 +203,7 @@ VerifyTasks → check completion
             },
             targetFiles: {
               type: 'array',
-              items: { type: 'string' },
+              items: { type: 'string', description: 'File path that will be modified for this task' },
               description: 'Optional list of files that will be modified for this task',
             },
           },

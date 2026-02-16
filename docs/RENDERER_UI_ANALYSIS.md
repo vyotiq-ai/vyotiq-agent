@@ -102,7 +102,7 @@ No stub functions or placeholder handlers were found. All handlers reference act
 
 ### 4c. No centralized error state
 
-While individual hooks and components manage their own error states (e.g., `useRustSearch` has `error: string | null`), there is no centralized error state aggregation visible in the UI. The `GlobalStatusBar` shows git and online status but not error counts.
+While individual hooks and components manage their own error states (e.g., `useRustSearch` has `error: string | null`), there is no centralized error state aggregation visible in the UI.
 
 ---
 

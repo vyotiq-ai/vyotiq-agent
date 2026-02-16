@@ -12,7 +12,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
         const variantStyles = {
             default: 'bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)]',
             elevated: 'bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)] shadow-lg shadow-black/10 dark:shadow-black/40',
-            terminal: 'bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)]',
+            terminal: 'bg-[var(--color-surface-1)] border border-[var(--color-border-default)] font-mono text-[var(--color-text-secondary)]',
         };
 
         return (

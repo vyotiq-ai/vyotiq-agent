@@ -5,7 +5,7 @@
  * provides keyboard shortcuts for toggling visibility.
  */
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
-import { Terminal, AlertCircle, FileOutput, Bug, X, Plus, ChevronDown, ChevronUp, Trash2, RefreshCw } from 'lucide-react';
+import { Terminal, AlertCircle, FileOutput, Bug, X, Plus, ChevronDown, ChevronUp, Trash2, RefreshCw, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { Tooltip } from '../../../components/ui/Tooltip';
 import { createLogger } from '../../../utils/logger';
@@ -542,14 +542,24 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
       className="shrink-0 flex flex-col bg-[var(--color-surface-1)] border-t border-[var(--color-border-subtle)]"
       style={{ height: panelHeight }}
     >
-      {/* Resize handle */}
+      {/* Resize handle with visual drag indicator */}
       <div
         className={cn(
-          'h-1 cursor-row-resize shrink-0 hover:bg-[var(--color-accent-primary)]/20 transition-colors',
+          'h-1.5 cursor-row-resize shrink-0 hover:bg-[var(--color-accent-primary)]/20 transition-colors group/resize flex items-center justify-center',
           isResizing && 'bg-[var(--color-accent-primary)]/30'
         )}
         {...resizeHandleProps}
-      />
+      >
+        {/* Three-dot drag affordance — matches sidebar resize handle pattern */}
+        <div className={cn(
+          'flex gap-[3px] opacity-0 group-hover/resize:opacity-100 transition-opacity',
+          isResizing && 'opacity-100'
+        )}>
+          <div className="w-[3px] h-[3px] rounded-full bg-[var(--color-text-dim)]" />
+          <div className="w-[3px] h-[3px] rounded-full bg-[var(--color-text-dim)]" />
+          <div className="w-[3px] h-[3px] rounded-full bg-[var(--color-text-dim)]" />
+        </div>
+      </div>
 
       {/* Tab bar */}
       <div className="shrink-0 flex items-center justify-between px-2 py-0 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-sidebar)]">
@@ -600,14 +610,14 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
             </button>
             </Tooltip>
           )}
-          {/* Maximize panel */}
+          {/* Maximize / restore panel */}
           <Tooltip content={panelHeight >= 500 ? 'Restore Panel Size' : 'Maximize Panel'}>
           <button
             onClick={() => setPanelHeight(panelHeight >= 500 ? 250 : 600)}
             className="p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
             aria-label={panelHeight >= 500 ? 'Restore Panel Size' : 'Maximize Panel'}
           >
-            {panelHeight >= 500 ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+            {panelHeight >= 500 ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
           </button>
           </Tooltip>
           {/* Minimize / close */}

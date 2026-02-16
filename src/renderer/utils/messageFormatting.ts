@@ -54,11 +54,10 @@ export function formatMessageContent(content: string, role: 'user' | 'assistant'
       return content;
       
     case 'assistant':
-      // Add subtle structure to assistant responses if they're plain text
-      if (content.length > 200 && content.includes('\n\n')) {
-        // Split into paragraphs and add subtle visual breaks
-        return content.replace(/\n\n/g, '\n\n---\n\n');
-      }
+      // Keep assistant responses unmodified.
+      // Inserting '---' (horizontal rules) corrupts output when content
+      // is later rendered as markdown by MarkdownRenderer, which already
+      // handles paragraph spacing visually.
       return content;
       
     case 'tool':

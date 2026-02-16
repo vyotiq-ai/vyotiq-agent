@@ -9,7 +9,6 @@ import React, { memo, useState, useCallback, useMemo } from 'react';
 import { cn } from '../../../../utils/cn';
 import type { ToolCall } from './types';
 import { ToolExecutionHeader } from './ToolExecutionHeader';
-import { DiffViewer } from './DiffViewer';
 import { TerminalOutputPreview } from './TerminalOutputPreview';
 import { AutoFetchPreview } from './AutoFetchPreview';
 import { LiveFetchPreview } from './LiveFetchPreview';
@@ -27,12 +26,14 @@ interface ToolItemProps {
   batchPosition?: number;
   /** Callback when a file diff action is taken */
   onDiffAction?: (callId: string, action: 'accept' | 'reject') => void;
+  /** Run ID for streaming diff lookup */
+  runId?: string;
   /** Additional CSS class */
   className?: string;
 }
 
 /** Tools that have specialized preview renderers */
-const FILE_WRITE_TOOLS = new Set(['write_file', 'create_file', 'edit_file', 'replace_in_file']);
+const FILE_WRITE_TOOLS = new Set(['write_file', 'create_file', 'edit_file', 'replace_in_file', 'edit', 'write']);
 const TERMINAL_TOOLS = new Set(['run_command', 'execute_command', 'run_terminal_command']);
 const FETCH_TOOLS = new Set(['auto_fetch', 'web_search']);
 const LIVE_FETCH_TOOLS = new Set(['fetch_url', 'fetch_webpage', 'live_fetch']);
@@ -43,11 +44,14 @@ const ToolItemInternal: React.FC<ToolItemProps> = ({
   batchSize,
   batchPosition,
   onDiffAction,
+  runId,
   className,
 }) => {
   const [isExpanded, setIsExpanded] = useState(() => {
-    // Auto-expand running or errored tools
-    return tool.status === 'running' || tool.status === 'error';
+    // Auto-expand running, errored, or file-modifying tools (to show diffs)
+    if (tool.status === 'running' || tool.status === 'error') return true;
+    if (FILE_WRITE_TOOLS.has(tool.name) && tool.status === 'completed') return true;
+    return false;
   });
   const { toast } = useToast();
 
@@ -72,9 +76,10 @@ const ToolItemInternal: React.FC<ToolItemProps> = ({
     const output = tool.fullOutput ?? tool.result?.content ?? '';
     const name = tool.name;
 
-    // File change diff
-    if (FILE_WRITE_TOOLS.has(name) && meta) {
-      return <FileChangeDiff tool={tool} />;
+    // File change diff (supports real-time streaming)
+    // Shows diff when metadata is available (completed) or when tool is running (streaming)
+    if (FILE_WRITE_TOOLS.has(name) && (meta || tool.status === 'running')) {
+      return <FileChangeDiff tool={tool} runId={runId} />;
     }
 
     // Terminal output

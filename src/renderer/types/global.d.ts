@@ -3,6 +3,7 @@ import type {
   AgentSettings,
   AttachmentPayload,
   ConfirmToolPayload,
+  FollowUpPayload,
   RendererEvent,
   SendMessagePayload,
   SessionSummary,
@@ -62,6 +63,7 @@ declare global {
       agent: {
         startSession: (payload: StartSessionPayload) => Promise<AgentSessionState | undefined>;
         sendMessage: (payload: SendMessagePayload) => Promise<void>;
+        sendFollowUp: (payload: FollowUpPayload) => Promise<{ success: boolean; error?: string }>;
         confirmTool: (payload: ConfirmToolPayload) => Promise<void>;
         updateConfig: (payload: UpdateConfigPayload) => Promise<void>;
         cancelRun: (sessionId: string) => Promise<void>;
@@ -85,6 +87,11 @@ declare global {
         switchBranch: (sessionId: string, branchId: string | null) => Promise<{ success: boolean; error?: string }>;
         deleteBranch: (sessionId: string, branchId: string) => Promise<{ success: boolean; error?: string }>;
         addReaction: (sessionId: string, messageId: string, reaction: 'up' | 'down' | null) => Promise<{ success: boolean; error?: string }>;
+        // Communication
+        answerQuestion: (questionId: string, answer: unknown) => Promise<void>;
+        skipQuestion: (questionId: string) => Promise<void>;
+        makeDecision: (decisionId: string, selectedOptionId: string) => Promise<void>;
+        skipDecision: (decisionId: string) => Promise<void>;
       };
       settings: {
         get: () => Promise<AgentSettings>;
@@ -191,6 +198,31 @@ declare global {
           useCodingEndpoint: boolean;
         }>;
         updateSettings: (settings: { useCodingEndpoint?: boolean }) => Promise<{ success: boolean; error?: string }>;
+      };
+      xai: {
+        fetchModels: () => Promise<{
+          success: boolean;
+          models: Array<{
+            id: string;
+            object: string;
+            owned_by?: string;
+          }>;
+          error?: string;
+        }>;
+      };
+      mistral: {
+        fetchModels: () => Promise<{
+          success: boolean;
+          models: Array<{
+            id: string;
+            object: string;
+            created?: number;
+            owned_by?: string;
+            name?: string;
+            description?: string;
+          }>;
+          error?: string;
+        }>;
       };
       debug: {
         // Get all traces for a session
@@ -489,24 +521,6 @@ declare global {
         onError: (handler: (data: { operation: string; error: string }) => void) => () => void;
         onEvent: (handler: (event: RendererEvent) => void) => () => void;
       };
-      completion: {
-        // Get code completions
-        get: (context: CompletionContext) => Promise<CompletionResult & { error?: string }>;
-        // Get inline completion (ghost text)
-        inline: (context: InlineCompletionContext) => Promise<InlineCompletionResult | null>;
-        // Cancel pending request
-        cancel: () => Promise<{ success: boolean }>;
-        // Clear cache
-        clearCache: () => Promise<{ success: boolean }>;
-        // Get trigger characters for a language
-        getTriggerCharacters: (language: string) => Promise<string[]>;
-        // Set config
-        setConfig: (config: Partial<CompletionServiceConfig>) => Promise<{ success: boolean }>;
-        // Get config
-        getConfig: () => Promise<CompletionServiceConfig>;
-        // Accept a completion item (for analytics tracking)
-        acceptCompletion: (item: CompletionItem) => Promise<{ success: boolean }>;
-      };
       cache: {
         // Get all cache statistics
         getStats: () => Promise<{
@@ -712,372 +726,6 @@ declare global {
       // ========================================================================
       // Autonomous Agent System APIs (Phase 1 Foundation)
       // ========================================================================
-
-      /**
-       * Dynamic Tool API - Manage dynamically created tools
-       */
-      dynamicTool: {
-        /**
-         * List all dynamically created tools
-         */
-        list: (filter?: {
-          status?: string;
-          category?: string;
-        }) => Promise<{
-          success: boolean;
-          tools: Array<{
-            id: string;
-            name: string;
-            description: string;
-            status: string;
-            usageCount: number;
-            successRate: number;
-          }>;
-          error?: string;
-        }>;
-
-        /**
-         * Get specification for a dynamic tool
-         */
-        getSpec: (toolName: string) => Promise<{
-          success: boolean;
-          specification?: {
-            name: string;
-            description: string;
-            inputSchema: Record<string, unknown>;
-            executionType: string;
-            requiredCapabilities: string[];
-            riskLevel: string;
-          };
-          state?: {
-            status: string;
-            usageCount: number;
-            lastUsedAt?: number;
-          };
-          error?: string;
-        }>;
-
-        /**
-         * Disable a dynamic tool
-         */
-        disable: (toolName: string, reason?: string) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-
-        /**
-         * Promote a dynamic tool to persistent
-         */
-        promote: (toolName: string) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-
-        /**
-         * List custom tools (user-defined composite tools)
-         */
-        listCustom: () => Promise<{
-          success: boolean;
-          customTools: Array<{
-            id: string;
-            name: string;
-            description: string;
-            steps: Array<{
-              id: string;
-              toolName: string;
-              input: Record<string, unknown>;
-              condition?: string;
-              onError: 'stop' | 'continue';
-            }>;
-            enabled: boolean;
-            requiresConfirmation: boolean;
-            createdAt: number;
-            updatedAt: number;
-            usageCount: number;
-          }>;
-          error?: string;
-        }>;
-
-        /**
-         * Create a custom tool
-         */
-        createCustom: (config: {
-          name: string;
-          description: string;
-          steps: Array<{
-            id: string;
-            toolName: string;
-            input: Record<string, unknown>;
-            condition?: string;
-            onError: 'stop' | 'continue';
-          }>;
-          enabled: boolean;
-          requiresConfirmation: boolean;
-        }) => Promise<{
-          success: boolean;
-          tool?: {
-            id: string;
-            name: string;
-            description: string;
-            steps: Array<{
-              id: string;
-              toolName: string;
-              input: Record<string, unknown>;
-              condition?: string;
-              onError: 'stop' | 'continue';
-            }>;
-            enabled: boolean;
-            requiresConfirmation: boolean;
-            createdAt: number;
-            updatedAt: number;
-            usageCount: number;
-          };
-          error?: string;
-        }>;
-
-        /**
-         * Update a custom tool
-         */
-        updateCustom: (id: string, updates: Partial<{
-          name: string;
-          description: string;
-          steps: Array<{
-            id: string;
-            toolName: string;
-            input: Record<string, unknown>;
-            condition?: string;
-            onError: 'stop' | 'continue';
-          }>;
-          enabled: boolean;
-          requiresConfirmation: boolean;
-        }>) => Promise<{
-          success: boolean;
-          tool?: {
-            id: string;
-            name: string;
-            description: string;
-            steps: Array<{
-              id: string;
-              toolName: string;
-              input: Record<string, unknown>;
-              condition?: string;
-              onError: 'stop' | 'continue';
-            }>;
-            enabled: boolean;
-            requiresConfirmation: boolean;
-            createdAt: number;
-            updatedAt: number;
-            usageCount: number;
-          };
-          error?: string;
-        }>;
-
-        /**
-         * Delete a custom tool
-         */
-        deleteCustom: (id: string) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-
-        /**
-         * List available tools for custom tool creation
-         */
-        listAvailable: () => Promise<{
-          success: boolean;
-          tools: Array<{
-            name: string;
-            description: string;
-            category: string;
-            riskLevel: string;
-          }>;
-          error?: string;
-        }>;
-      };
-
-      /**
-       * Metrics API - Metrics and observability (Phase 10)
-       */
-      metrics: {
-        /**
-         * Get metrics dashboard data
-         */
-        getDashboard: (period?: 'hour' | 'day' | 'week' | 'month') => Promise<{
-          success: boolean;
-          dashboard?: {
-            widgets: Array<{
-              id: string;
-              type: string;
-              title: string;
-              value: unknown;
-              unit?: string;
-              trend?: string;
-              status?: string;
-            }>;
-            lastUpdated: number;
-            period: string;
-          };
-          summary?: {
-            tools: {
-              totalExecutions: number;
-              successRate: number;
-              avgDurationMs: number;
-              topTools: Array<{ name: string; count: number; successRate: number }>;
-              failingTools: Array<{ name: string; failureRate: number; errorCount: number }>;
-            };
-            agents: {
-              totalSpawned: number;
-              completionRate: number;
-              avgDurationMs: number;
-              avgTokensPerAgent: number;
-              bySpecialization: Array<{ specialization: string; count: number; successRate: number }>;
-            };
-            costs: {
-              totalTokens: number;
-              totalCostUsd: number;
-              byProvider: Array<{ provider: string; tokens: number; costUsd: number }>;
-              avgCostPerTask: number;
-            };
-            quality: {
-              taskSuccessRate: number;
-              errorRate: number;
-              userSatisfaction: number;
-            };
-          };
-          alerts?: Array<{
-            severity: 'info' | 'warning' | 'error';
-            message: string;
-            timestamp: number;
-          }>;
-          error?: string;
-        }>;
-
-        /**
-         * Get metrics summary
-         */
-        getSummary: (period?: 'hour' | 'day' | 'week' | 'month') => Promise<{
-          success: boolean;
-          summary?: unknown;
-          error?: string;
-        }>;
-
-        /**
-         * Export metrics data
-         */
-        export: (format?: 'json' | 'csv' | 'prometheus', period?: 'hour' | 'day' | 'week' | 'month') => Promise<{
-          success: boolean;
-          data?: string;
-          format?: string;
-          error?: string;
-        }>;
-
-        /**
-         * Get performance report
-         */
-        getPerformanceReport: (periodMs?: number) => Promise<{
-          success: boolean;
-          report?: {
-            generatedAt: number;
-            periodMs: number;
-            summary: {
-              totalOperations: number;
-              avgDurationMs: number;
-              p95DurationMs: number;
-              p99DurationMs: number;
-              slowestOperation: string;
-              fastestOperation: string;
-            };
-            bottlenecks: Array<{
-              type: string;
-              severity: string;
-              operation: string;
-              description: string;
-              recommendation: string;
-            }>;
-            recommendations: string[];
-          };
-          error?: string;
-        }>;
-
-        /**
-         * Clear all metrics data
-         */
-        clear: () => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-      };
-
-      /**
-       * Safety API - Safety monitoring and control (Phase 10)
-       */
-      safety: {
-        /**
-         * Get safety state
-         */
-        getState: () => Promise<{
-          success: boolean;
-          state?: {
-            status: {
-              isActive: boolean;
-              emergencyStopTriggered: boolean;
-              lastCheck: number;
-              overallHealth: 'healthy' | 'warning' | 'critical';
-            };
-            limits: {
-              maxTokensPerRun: number;
-              maxApiCallsPerRun: number;
-              maxConcurrentAgents: number;
-              maxFilesPerRun: number;
-              maxBytesPerRun: number;
-            };
-            usage: {
-              tokensUsed: number;
-              apiCallsUsed: number;
-              activeAgents: number;
-              filesModified: number;
-              bytesWritten: number;
-            };
-            recentViolations: Array<{
-              id: string;
-              type: string;
-              severity: 'low' | 'medium' | 'high' | 'critical';
-              message: string;
-              agentId?: string;
-              action?: string;
-              timestamp: number;
-              wasBlocked: boolean;
-            }>;
-            blockedActions: number;
-            allowedActions: number;
-          };
-          error?: string;
-        }>;
-
-        /**
-         * Trigger emergency stop
-         */
-        emergencyStop: () => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-
-        /**
-         * Reset safety state
-         */
-        reset: () => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-
-        /**
-         * Update safety limits
-         */
-        updateLimits: (limits: Record<string, number>) => Promise<{
-          success: boolean;
-          error?: string;
-        }>;
-      };
 
       /**
        * LSP API - Language Server Protocol features for multi-language code intelligence
@@ -1797,6 +1445,48 @@ declare global {
         list: (filter?: { status?: string; category?: string }) => Promise<{ success: boolean; tools: Array<{ id: string; name: string; description: string; status: 'active' | 'disabled' | 'expired'; category?: string; usageCount: number; successRate: number; createdAt: number; createdBy?: string; lastUsedAt?: number }>; error?: string }>;
         getSpec: (toolName: string) => Promise<{ success: boolean; spec?: { name: string; description: string; inputSchema: Record<string, unknown>; executionType: string; requiredCapabilities: string[]; riskLevel: string }; error?: string }>;
         updateState: (toolName: string, updates: { status?: string }) => Promise<{ success: boolean; error?: string }>;
+      };
+
+      /** Throttle API - Background throttling control and monitoring */
+      throttle: {
+        getState: () => Promise<{
+          isThrottled: boolean;
+          agentRunning: boolean;
+          windowVisible: boolean;
+          windowFocused: boolean;
+          systemPowerState: 'active' | 'suspended' | 'resuming';
+          effectiveInterval: number;
+          throttleReasons: string[];
+          bypassReasons: string[];
+          runningSessions: string[];
+        } | null>;
+        getStats: () => Promise<{
+          totalStateChanges: number;
+          throttleActivations: number;
+          throttleBypasses: number;
+          timingAnomalies: number;
+          agentRunningActivations: number;
+          suspendEvents: number;
+          resumeEvents: number;
+          windowBlurEvents: number;
+          windowFocusEvents: number;
+          averageThrottleDurationMs: number;
+          longestThrottleDurationMs: number;
+        } | null>;
+        getLogs: (options?: { count?: number; category?: string }) => Promise<unknown>;
+        getAnomalies: () => Promise<unknown>;
+        startCriticalOperation: (operationId: string) => Promise<boolean>;
+        endCriticalOperation: (operationId: string) => Promise<boolean>;
+        getEffectiveInterval: () => Promise<number>;
+        shouldBypass: () => Promise<boolean>;
+        exportLogs: () => Promise<string>;
+        onStateChanged: (handler: (event: {
+          isThrottled: boolean;
+          agentRunning: boolean;
+          windowVisible: boolean;
+          windowFocused: boolean;
+          effectiveInterval: number;
+        }) => void) => () => void;
       };
 
       /** Logging bridge: forward renderer errors/warnings to main process log file */

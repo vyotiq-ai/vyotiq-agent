@@ -117,7 +117,7 @@ edit(file, old, new) → make changes
       },
       ignore: {
         type: 'array',
-        items: { type: 'string' },
+        items: { type: 'string', description: 'Glob pattern to exclude from results' },
         description: 'Glob patterns to exclude (e.g., ["node_modules/**", "dist/**"])',
       },
       dot: {

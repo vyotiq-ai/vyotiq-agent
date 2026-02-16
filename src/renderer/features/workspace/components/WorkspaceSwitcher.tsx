@@ -71,7 +71,7 @@ export const WorkspaceSwitcher: React.FC = () => {
       >
         <span className="text-[var(--color-accent-primary)] shrink-0">λ</span>
         <span className="truncate">{workspaceName}</span>
-        <span className={cn('text-[8px] text-[var(--color-text-dim)] shrink-0 transition-transform', isOpen && 'rotate-180')}>▾</span>
+        <span className={cn('text-[9px] text-[var(--color-text-dim)] shrink-0 transition-transform', isOpen && 'rotate-180')}>▾</span>
       </button>
 
       {/* Dropdown */}
@@ -81,7 +81,7 @@ export const WorkspaceSwitcher: React.FC = () => {
           {workspacePath && (
             <div className="px-3 py-2 border-b border-[var(--color-border-subtle)]">
               <div className="flex items-center justify-between mb-1">
-                <div className="text-[8px] text-[var(--color-text-dim)] uppercase tracking-widest">
+                <div className="text-[9px] text-[var(--color-text-dim)] uppercase tracking-widest">
                   active
                 </div>
                 <button
@@ -98,13 +98,13 @@ export const WorkspaceSwitcher: React.FC = () => {
                   <div className="text-[10px] font-medium text-[var(--color-text-primary)] truncate">
                     {workspaceName}
                   </div>
-                  <div className="text-[8px] text-[var(--color-text-dim)] truncate">
+                  <div className="text-[9px] text-[var(--color-text-dim)] truncate">
                     {workspacePath}
                   </div>
                 </div>
                 {/* Indexing status */}
                 {isIndexing && (
-                  <span className="flex items-center gap-1 text-[8px] text-[var(--color-text-dim)] shrink-0" title="Indexing...">
+                  <span className="flex items-center gap-1 text-[9px] text-[var(--color-text-dim)] shrink-0" title="Indexing...">
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0"></span>
                   </span>
                 )}
@@ -118,7 +118,7 @@ export const WorkspaceSwitcher: React.FC = () => {
           {/* Recent workspaces */}
           {recentPaths.length > 0 && (
             <div className="py-1">
-              <div className="px-3 py-1 text-[8px] text-[var(--color-text-dim)] uppercase tracking-widest">
+              <div className="px-3 py-1 text-[9px] text-[var(--color-text-dim)] uppercase tracking-widest">
                 recent
               </div>
               {recentPaths
@@ -130,12 +130,12 @@ export const WorkspaceSwitcher: React.FC = () => {
                     onClick={() => handleSelect(path)}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--color-surface-3)] transition-colors group"
                   >
-                    <span className="text-[8px] text-[var(--color-text-dim)] w-3 text-right shrink-0 tabular-nums">{idx + 1}</span>
+                    <span className="text-[9px] text-[var(--color-text-dim)] w-3 text-right shrink-0 tabular-nums">{idx + 1}</span>
                     <div className="min-w-0 flex-1">
                       <div className="text-[10px] text-[var(--color-text-primary)] truncate group-hover:text-[var(--color-accent-primary)] transition-colors">
                         {getShortName(path)}
                       </div>
-                      <div className="text-[8px] text-[var(--color-text-dim)] truncate">
+                      <div className="text-[9px] text-[var(--color-text-dim)] truncate">
                         {path}
                       </div>
                     </div>

@@ -1,6 +1,5 @@
 // Layout Components barrel export
 export { ErrorBoundary, FeatureErrorBoundary } from './ErrorBoundary';
-export { GlobalStatusBar } from './GlobalStatusBar';
 export { Header } from './Header';
 export { MainLayout } from './MainLayout';
 export { Sidebar } from './Sidebar';

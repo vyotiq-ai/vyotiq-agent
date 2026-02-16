@@ -161,6 +161,10 @@ class AgentMetrics {
     if (run) run.tokensUsed += tokens;
   }
 
+  getRunTokensUsed(runId: string): number {
+    return this.activeRuns.get(runId)?.tokensUsed ?? 0;
+  }
+
   recordRun(success: boolean, durationMs: number, tokensUsed: number = 0, toolCalls: number = 0): void {
     this.data.totalRuns++;
     if (success) {

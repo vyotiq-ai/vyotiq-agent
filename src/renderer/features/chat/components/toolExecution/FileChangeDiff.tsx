@@ -2,10 +2,12 @@
  * FileChangeDiff Component
  * 
  * Wrapper component that displays file changes from tool results
- * using the DiffViewer. Handles the integration with tool metadata.
+ * using the DiffViewer. Handles the integration with tool metadata
+ * and real-time streaming diffs during tool execution.
  */
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { DiffViewer } from './DiffViewer';
+import { useFileDiffStream } from '../../../../hooks/useFileDiffStream';
 import { createLogger } from '../../../../utils/logger';
 import type { ToolCall } from './types';
 
@@ -15,6 +17,8 @@ interface FileChangeDiffProps {
   tool: ToolCall;
   showActions?: boolean;
   defaultCollapsed?: boolean;
+  /** Run ID for looking up streaming diff data */
+  runId?: string;
 }
 
 function extractFileChangeData(tool: ToolCall): {
@@ -50,11 +54,30 @@ export const FileChangeDiff: React.FC<FileChangeDiffProps> = memo(({
   tool,
   showActions = false,
   defaultCollapsed = false,
+  runId,
 }) => {
   const [isAccepted, setIsAccepted] = useState(false);
   const [isRejected, setIsRejected] = useState(false);
   
-  const fileData = useMemo(() => extractFileChangeData(tool), [tool]);
+  // Get streaming diff state if available (for in-progress tools)
+  const streamingDiff = useFileDiffStream(runId, tool.callId);
+  
+  const fileData = useMemo(() => {
+    // Prefer streaming diff data when available (real-time updates)
+    if (streamingDiff) {
+      return {
+        filePath: streamingDiff.filePath,
+        originalContent: streamingDiff.originalContent,
+        modifiedContent: streamingDiff.modifiedContent,
+        isNewFile: streamingDiff.isNewFile,
+        diffId: `${tool.callId}-${streamingDiff.filePath}`,
+      };
+    }
+    // Fall back to tool result metadata
+    return extractFileChangeData(tool);
+  }, [tool, streamingDiff]);
+  
+  const isStreaming = streamingDiff ? !streamingDiff.isComplete : false;
   
   // Handle accept - mark the change as accepted (change is already applied)
   const handleAccept = useCallback(() => {
@@ -78,10 +101,10 @@ export const FileChangeDiff: React.FC<FileChangeDiffProps> = memo(({
   
   if (!fileData) return null;
   
-  // If change was accepted or rejected, don't show the diff anymore
-  if (isAccepted || isRejected) return null;
-  
   const { filePath, originalContent, modifiedContent, isNewFile, diffId } = fileData;
+  
+  // Completed diffs persist — show collapsed with resolved state badge
+  const resolvedCollapsed = isAccepted || isRejected || defaultCollapsed;
   
   return (
     <DiffViewer
@@ -90,12 +113,14 @@ export const FileChangeDiff: React.FC<FileChangeDiffProps> = memo(({
       modifiedContent={modifiedContent}
       isNewFile={isNewFile}
       diffId={diffId}
-      onAccept={showActions ? handleAccept : undefined}
-      onReject={showActions && !isNewFile ? handleReject : undefined}
+      onAccept={showActions && !isAccepted && !isRejected ? handleAccept : undefined}
+      onReject={showActions && !isNewFile && !isAccepted && !isRejected ? handleReject : undefined}
       onEdit={undefined}
-      defaultCollapsed={defaultCollapsed}
+      defaultCollapsed={resolvedCollapsed}
+      isStreaming={isStreaming}
     />
   );
+
 });
 
 FileChangeDiff.displayName = 'FileChangeDiff';

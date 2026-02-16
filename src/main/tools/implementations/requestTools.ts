@@ -261,7 +261,7 @@ action="reset_cache_stats"
       tools: {
         type: 'array',
         description: 'Tool names to request (for "request" action)',
-        items: { type: 'string' },
+        items: { type: 'string', description: 'Name of the tool to request' },
       },
       query: {
         type: 'string',

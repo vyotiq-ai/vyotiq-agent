@@ -29,6 +29,7 @@ export function confirmationReducer(
       };
       
     case 'PENDING_TOOL_REMOVE': {
+      if (!(action.payload in state.pendingConfirmations)) return state;
       const next = { ...state.pendingConfirmations };
       delete next[action.payload];
       return { ...state, pendingConfirmations: next };

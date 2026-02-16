@@ -16,6 +16,7 @@ import '../index.css';
 // KaTeX CSS for math rendering
 import 'katex/dist/katex.min.css';
 import { createLogger } from './utils/logger';
+import { captureComponentError } from './utils/telemetry';
 
 const logger = createLogger('Renderer');
 
@@ -23,6 +24,8 @@ const logger = createLogger('Renderer');
 // Forward critical errors to the main process logger for persistent storage.
 // These catch errors that escape React error boundaries (async errors, event
 // handler errors, third-party library errors, etc.)
+// NOTE: This is the single authoritative set of global handlers — the
+// telemetry module delegates here instead of installing its own listeners.
 window.addEventListener('error', (event) => {
   const message = event.error?.stack ?? event.message ?? 'Unknown error';
   try {
@@ -35,6 +38,10 @@ window.addEventListener('error', (event) => {
   } catch {
     // IPC bridge not ready yet — fall through to console
   }
+  // Route to telemetry service (best-effort)
+  try {
+    captureComponentError(event.error || new Error(event.message), { action: 'uncaught-error' }, 'window');
+  } catch { /* telemetry not ready */ }
   logger.error('Uncaught renderer error', { message, stack: event.error?.stack, filename: event.filename });
 });
 
@@ -49,6 +56,11 @@ window.addEventListener('unhandledrejection', (event) => {
   } catch {
     // IPC bridge not ready yet
   }
+  // Route to telemetry service (best-effort)
+  try {
+    const error = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+    captureComponentError(error, { action: 'unhandled-rejection' }, 'window');
+  } catch { /* telemetry not ready */ }
   logger.error('Unhandled rejection', { reason });
 });
 

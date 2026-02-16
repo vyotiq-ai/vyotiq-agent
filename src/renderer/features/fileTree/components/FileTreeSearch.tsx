@@ -14,6 +14,10 @@ interface FileTreeSearchProps {
   onChange: (value: string) => void;
   onClear: () => void;
   placeholder?: string;
+  /** Number of files matching the search query */
+  matchCount?: number;
+  /** Total number of files in the tree */
+  totalCount?: number;
 }
 
 export const FileTreeSearch: React.FC<FileTreeSearchProps> = ({
@@ -21,6 +25,8 @@ export const FileTreeSearch: React.FC<FileTreeSearchProps> = ({
   onChange,
   onClear,
   placeholder = 'Search files...',
+  matchCount,
+  totalCount,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +90,12 @@ export const FileTreeSearch: React.FC<FileTreeSearchProps> = ({
           'placeholder:text-[var(--color-text-placeholder)]'
         )}
       />
+      {/* Match count indicator */}
+      {value && matchCount !== undefined && totalCount !== undefined && (
+        <span className="text-[9px] font-mono text-[var(--color-text-dim)] shrink-0 whitespace-nowrap">
+          {matchCount}/{totalCount}
+        </span>
+      )}
       {value && (
         <button
           onClick={onClear}

@@ -6,7 +6,7 @@ use tracing_subscriber::prelude::*;
 mod config;
 mod error;
 mod indexer;
-pub mod lang;
+mod lang;
 mod routes;
 mod search;
 mod server;
@@ -82,6 +82,7 @@ async fn main() -> Result<()> {
         data_dir = %config.data_dir,
         max_index_size_mb = config.max_index_size_mb,
         max_file_size_bytes = config.max_file_size_bytes,
+        max_indexed_files = config.max_indexed_files,
         watcher_debounce_ms = config.watcher_debounce_ms,
         index_batch_size = config.index_batch_size,
         log_dir = %log_dir,
@@ -113,7 +114,7 @@ async fn main() -> Result<()> {
     // Initialize the shutdown notify channel for graceful HTTP-based shutdown
     routes::health::init_shutdown_notify();
 
-    let app_state_shutdown = app_state.clone();
+    let _app_state_shutdown = app_state.clone();
     let app = server::create_app(app_state);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

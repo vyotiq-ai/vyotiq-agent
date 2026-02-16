@@ -28,19 +28,34 @@ export async function initTerminal(
   outputAggregatorInstance.initialize();
 
   // Wire terminal output events into the aggregator
-  // ProcessTerminalManager emits 'terminal:output' events with structured payloads
-  terminalManager.on('terminal:output', (payload: {
-    processId: string;
-    data: string;
-    stream?: 'stdout' | 'stderr';
+  // ProcessTerminalManager emits 'stdout' events with { pid, chunk } payloads
+  terminalManager.on('stdout', (payload: {
+    pid: number;
+    chunk: string;
   }) => {
     if (outputAggregatorInstance) {
       outputAggregatorInstance.addOutput(
-        'agent',             // agentId
-        'default',           // sessionId — overridden by callers if needed
-        payload.processId,   // terminalId
-        payload.data,
-        payload.stream ?? 'stdout'
+        'agent',                    // agentId
+        'default',                  // sessionId — overridden by callers if needed
+        String(payload.pid),        // terminalId (convert number to string)
+        payload.chunk,
+        'stdout'
+      );
+    }
+  });
+
+  // Also capture stderr if ProcessTerminalManager ever emits it separately
+  terminalManager.on('stderr', (payload: {
+    pid: number;
+    chunk: string;
+  }) => {
+    if (outputAggregatorInstance) {
+      outputAggregatorInstance.addOutput(
+        'agent',
+        'default',
+        String(payload.pid),
+        payload.chunk,
+        'stderr'
       );
     }
   });

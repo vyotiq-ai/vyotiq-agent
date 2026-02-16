@@ -186,47 +186,27 @@ export const lightTheme: ThemeColors = {
 };
 
 // =============================================================================
-// CSS Variable Mapping
+// CSS Variable Mapping (deprecated — all components use --color-* from index.css)
 // =============================================================================
 
-const CSS_VAR_PREFIX = '--theme';
-
-type NestedObject = { [key: string]: string | NestedObject };
-
-function flattenTheme(theme: ThemeColors | NestedObject, prefix = ''): Record<string, string> {
-  const result: Record<string, string> = {};
-  
-  for (const [key, value] of Object.entries(theme)) {
-    const varName = prefix ? `${prefix}-${key}` : key;
-    
-    if (typeof value === 'object' && value !== null) {
-      Object.assign(result, flattenTheme(value as NestedObject, varName));
-    } else {
-      result[`${CSS_VAR_PREFIX}-${varName}`] = value as string;
-    }
-  }
-  
-  return result;
-}
+// The --theme-* CSS variables are no longer applied to the document.
+// Components reference --color-* variables defined in index.css via html.dark/html.light.
+// The ThemeColors objects above remain available for programmatic color access.
 
 /**
- * Apply theme colors as CSS variables to document root
+ * @deprecated No longer applies CSS variables — kept for backward compatibility.
  */
-export function applyThemeToDocument(theme: ThemeColors): void {
-  const vars = flattenTheme(theme);
-  const root = document.documentElement;
-  
-  for (const [key, value] of Object.entries(vars)) {
-    root.style.setProperty(key, value);
-  }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function applyThemeToDocument(_theme: ThemeColors): void {
+  // No-op: all theming is handled by html.dark/html.light classes in index.css
 }
 
 /**
- * Get CSS variable reference for theme color
+ * Get CSS variable reference for theme color path.
+ * @deprecated Prefer using `var(--color-*)` directly in Tailwind classes.
  */
 export function themeVar(path: string): string {
-  const varName = `${CSS_VAR_PREFIX}-${path.replace(/\./g, '-')}`;
-  return `var(${varName})`;
+  return `var(--color-${path.replace(/\./g, '-')})`;
 }
 
 // =============================================================================
@@ -422,4 +402,5 @@ export default {
   useResolvedTheme,
   themeVar,
   themeTransition,
+  applyThemeToDocument,
 };

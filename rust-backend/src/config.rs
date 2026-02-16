@@ -96,6 +96,9 @@ pub struct AppConfig {
     pub watcher_debounce_ms: u64,
     pub index_batch_size: usize,
     pub data_dir: String,
+    /// Maximum number of files to index per workspace.
+    /// Prevents unbounded memory growth for very large monorepos.
+    pub max_indexed_files: usize,
 }
 
 impl AppConfig {
@@ -115,19 +118,25 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(512),
+            // MEMORY FIX: Reduced default from 10MB to 2MB for indexing.
+            // Files larger than 2MB are typically generated/minified and not useful for code search.
             max_file_size_bytes: std::env::var("VYOTIQ_MAX_FILE_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(10 * 1024 * 1024), // 10MB
+                .unwrap_or(2 * 1024 * 1024), // 2MB
             watcher_debounce_ms: std::env::var("VYOTIQ_WATCHER_DEBOUNCE_MS")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(300),
+                .unwrap_or(500), // Increased from 300ms to 500ms for less CPU churn
             index_batch_size: std::env::var("VYOTIQ_INDEX_BATCH_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(50),
             data_dir,
+            max_indexed_files: std::env::var("VYOTIQ_MAX_INDEXED_FILES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(50_000), // 50k files max per workspace
         }
     }
 }

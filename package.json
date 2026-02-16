@@ -70,6 +70,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/dompurify": "^3.0.5",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/glob": "^8.1.0",
     "@types/node": "^22.19.1",
@@ -77,6 +78,7 @@
     "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.49.0",
     "@typescript-eslint/parser": "^8.49.0",
+    "@vitest/coverage-v8": "^4.0.14",
     "electron": "^39.2.7",
     "eslint": "^9.39.2",
     "eslint-plugin-import": "^2.32.0",
@@ -85,8 +87,7 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.4",
     "vite-plugin-native": "^2.2.2",
-    "vitest": "^4.0.14",
-    "@vitest/coverage-v8": "^4.0.14"
+    "vitest": "^4.0.14"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.17",
@@ -100,6 +101,7 @@
     "better-sqlite3": "^12.5.0",
     "chokidar": "^5.0.0",
     "clsx": "^2.1.1",
+    "dompurify": "^3.3.1",
     "electron-squirrel-startup": "^1.0.1",
     "glob": "^13.0.0",
     "highlight.js": "^11.11.1",

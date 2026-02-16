@@ -634,6 +634,8 @@ export class SettingsStore {
       apiKeys: encryptedKeys,
     };
 
-    await fs.writeFile(this.filePath, JSON.stringify(toSave, null, 2), 'utf-8');
+    const tmpPath = `${this.filePath}.tmp`;
+    await fs.writeFile(tmpPath, JSON.stringify(toSave, null, 2), 'utf-8');
+    await fs.rename(tmpPath, this.filePath);
   }
 }

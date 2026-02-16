@@ -12,7 +12,7 @@
  * 
  * Follows the terminal aesthetic with monospace fonts and CSS variable theming.
  */
-import React, { memo, useState, useCallback, useMemo } from 'react';
+import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Search, ChevronsUpDown, ArrowDown } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAgentSelector, useAgentActions } from '../../state/AgentProvider';
@@ -20,7 +20,10 @@ import type { AgentUIState, RoutingDecisionState } from '../../state/types';
 import type { ChatMessage, AgentRunStatus } from '../../../shared/types';
 import { useChatAreaState } from './hooks/useChatAreaState';
 import { useChatScrollManager } from './hooks/useChatScrollManager';
+import { useVirtualItemMeasure } from '../../hooks/useVirtualizedList';
 import { useConversationSearch } from '../../hooks/useConversationSearch';
+import { useCommunication } from '../../hooks/useCommunication';
+import { useLoopDetection } from '../../hooks/useLoopDetection';
 import { MessageLine } from './components/MessageLine';
 import { RunGroupHeader } from './components/RunGroupHeader';
 import { EmptyState } from './components/EmptyState';
@@ -28,14 +31,25 @@ import { SessionWelcome } from './components/SessionWelcome';
 import { ConversationSearchBar } from './components/ConversationSearchBar';
 import { ToolConfirmationPanel } from './components/ToolConfirmationPanel';
 import { BranchNavigation } from './components/BranchNavigation';
-import { TodoProgress } from './components/TodoProgress';
 import { RunErrorBanner } from './components/RunErrorBanner';
+import { QuestionPanel } from './components/QuestionPanel';
+import { DecisionPanel } from './components/DecisionPanel';
+import { CommunicationProgress } from './components/CommunicationProgress';
+import { LoopDetectionBanner } from './components/LoopDetectionBanner';
 
 // =============================================================================
 // Selectors
 // =============================================================================
 
 const VIRTUALIZATION_THRESHOLD = 100;
+
+// ---------------------------------------------------------------------------
+// Selectors with stable equality functions to prevent cascading re-renders
+// during agent execution.  The key insight: during streaming, almost every
+// state update touches `sessions` (new message content), so selectors that
+// read unrelated slices MUST use reference-equality on their own slice to
+// avoid forcing ChatArea — and every child — to re-render.
+// ---------------------------------------------------------------------------
 
 const selectActiveSession = (state: AgentUIState) => {
   if (!state.activeSessionId) return undefined;
@@ -46,22 +60,37 @@ const selectPendingConfirmations = (state: AgentUIState) => state.pendingConfirm
 const selectRoutingDecisions = (state: AgentUIState) => state.routingDecisions;
 const selectExecutingTools = (state: AgentUIState) => state.executingTools;
 const selectQueuedTools = (state: AgentUIState) => state.queuedTools;
-const selectTodos = (state: AgentUIState) => state.todos;
-const selectAgentStatus = (state: AgentUIState) => state.agentStatus;
+const selectPendingQuestions = (state: AgentUIState) => state.pendingQuestions;
+const selectPendingDecisions = (state: AgentUIState) => state.pendingDecisions;
+const selectCommunicationProgress = (state: AgentUIState) => state.communicationProgress;
+// Stable empty arrays to avoid new references on every render
+const EMPTY_CONFIRMATIONS: never[] = [];
+
+// Reference-equality shortcut: returns true when the two record/object
+// references haven't changed (the reducer returns the same object when
+// the slice is untouched).  This is intentionally *identity*-only.
+const refEqual = <T,>(a: T, b: T) => a === b;
 
 // =============================================================================
 // Chat Area Component
 // =============================================================================
 
 const ChatAreaInternal: React.FC = () => {
+  // PERF: Every selector below uses refEqual so that when a *different*
+  // slice of state changes (e.g. streaming delta updates sessions[]),
+  // these selectors short-circuit and ChatArea does NOT re-render.
   const activeSession = useAgentSelector(selectActiveSession);
-  const pendingConfirmations = useAgentSelector(selectPendingConfirmations);
-  const routingDecisions = useAgentSelector(selectRoutingDecisions);
-  const executingToolsMap = useAgentSelector(selectExecutingTools);
-  const queuedToolsMap = useAgentSelector(selectQueuedTools);
-  const todosMap = useAgentSelector(selectTodos);
-  const agentStatusMap = useAgentSelector(selectAgentStatus);
+  const pendingConfirmations = useAgentSelector(selectPendingConfirmations, refEqual);
+  const routingDecisions = useAgentSelector(selectRoutingDecisions, refEqual);
+  const executingToolsMap = useAgentSelector(selectExecutingTools, refEqual);
+  const queuedToolsMap = useAgentSelector(selectQueuedTools, refEqual);
+  const pendingQuestions = useAgentSelector(selectPendingQuestions, refEqual);
+  const pendingDecisions = useAgentSelector(selectPendingDecisions, refEqual);
+  const communicationProgress = useAgentSelector(selectCommunicationProgress, refEqual);
   const { addReaction } = useAgentActions();
+
+  // Communication actions
+  const communication = useCommunication();
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -99,16 +128,42 @@ const ChatAreaInternal: React.FC = () => {
     renderGroups: messageGroups,
   });
 
+  // ---------------------------------------------------------------------------
+  // Unread message count — tracks how many new messages arrived while the user
+  // is scrolled up.  Resets when the user scrolls back to bottom.
+  // ---------------------------------------------------------------------------
+  const unreadAnchorRef = useRef(branchFilteredMessages.length);
+  const unreadCount = useMemo(() => {
+    if (!showScrollToBottom) return 0;
+    return Math.max(0, branchFilteredMessages.length - unreadAnchorRef.current);
+  }, [showScrollToBottom, branchFilteredMessages.length]);
+
+  // When scroll-to-bottom becomes hidden (user scrolled back), reset anchor
+  useEffect(() => {
+    if (!showScrollToBottom) {
+      unreadAnchorRef.current = branchFilteredMessages.length;
+    }
+  }, [showScrollToBottom, branchFilteredMessages.length]);
+
   // Get session-specific state
   const sessionId = activeSession?.id;
   const sessionConfirmations = useMemo(() => {
-    if (!sessionId) return [];
-    return Object.values(pendingConfirmations).filter(c => c.sessionId === sessionId);
+    if (!sessionId) return EMPTY_CONFIRMATIONS;
+    const vals = Object.values(pendingConfirmations).filter(c => c.sessionId === sessionId);
+    return vals.length > 0 ? vals : EMPTY_CONFIRMATIONS;
   }, [pendingConfirmations, sessionId]);
 
   const sessionRoutingDecision = sessionId ? routingDecisions[sessionId] : undefined;
-  const sessionTodos = sessionId ? todosMap[sessionId] : undefined;
-  const sessionStatus = sessionId ? agentStatusMap[sessionId] : undefined;
+
+  // Session-specific communication state
+  // Questions and decisions are globally tracked but implicitly belong to the
+  // active session since they originate from session-scoped agent events.
+  const sessionQuestions = pendingQuestions;
+  const sessionDecisions = pendingDecisions;
+
+  // Loop detection for the active run
+  const activeRunId = activeSession?.activeRunId;
+  const loopDetection = useLoopDetection(activeRunId ?? undefined);
 
   // Toggle search
   const toggleSearch = useCallback(() => {
@@ -118,13 +173,17 @@ const ChatAreaInternal: React.FC = () => {
     });
   }, [searchResult]);
 
-  // Handle keyboard shortcut for search
+  // Handle keyboard shortcuts: search (Ctrl+F) and scroll to bottom (End)
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
       e.preventDefault();
       toggleSearch();
     }
-  }, [toggleSearch]);
+    if (e.key === 'End' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      handleScrollToBottom();
+    }
+  }, [toggleSearch, handleScrollToBottom]);
 
   // Reaction handler
   const handleReaction = useCallback((messageId: string, reaction: 'up' | 'down' | null) => {
@@ -133,10 +192,10 @@ const ChatAreaInternal: React.FC = () => {
   }, [addReaction, sessionId]);
 
   // Branch delete handler
-  const handleDeleteBranch = useCallback((_branchId: string) => {
-    // Branch deletion through the session manager
-    // This would need to be wired to the agent actions
-  }, []);
+  const handleDeleteBranch = useCallback((branchId: string) => {
+    if (!sessionId) return;
+    window.vyotiq?.agent?.deleteBranch?.(sessionId, branchId);
+  }, [sessionId]);
 
   // ==========================================================================
   // Render
@@ -159,6 +218,8 @@ const ChatAreaInternal: React.FC = () => {
       className="flex-1 flex flex-col min-h-0 font-mono"
       onKeyDown={handleKeyDown}
       tabIndex={-1}
+      role="log"
+      aria-label="Chat messages"
     >
       {/* Top bar: branches + search toggle + collapse toggle */}
       {hasMessages && (
@@ -224,7 +285,7 @@ const ChatAreaInternal: React.FC = () => {
         /* Virtualized rendering */
         <div
           ref={virtualContainerRef}
-          className="flex-1 overflow-y-auto px-3 py-2"
+          className={cn('flex-1 overflow-y-auto px-3 py-2', isStreaming && 'streaming-scroll-area')}
         >
           <div style={{ height: `${totalHeight}px`, position: 'relative' }}>
             {virtualItems.map(vItem => {
@@ -234,15 +295,11 @@ const ChatAreaInternal: React.FC = () => {
               const isCollapsed = collapseState.isRunCollapsed(vItem.index, messageGroups.length, runKey);
 
               return (
-                <div
+                <MeasuredVirtualItem
                   key={runKey}
-                  data-index={vItem.index}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    transform: `translateY(${vItem.offsetTop}px)`,
-                    width: '100%',
-                  }}
+                  index={vItem.index}
+                  offsetTop={vItem.offsetTop}
+                  measureItem={measureItem}
                 >
                   <RunGroup
                     group={group}
@@ -260,7 +317,7 @@ const ChatAreaInternal: React.FC = () => {
                     sessionId={sessionId!}
                     onReaction={handleReaction}
                   />
-                </div>
+                </MeasuredVirtualItem>
               );
             })}
           </div>
@@ -269,7 +326,7 @@ const ChatAreaInternal: React.FC = () => {
         /* Non-virtualized rendering */
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto px-3 py-2"
+          className={cn('flex-1 overflow-y-auto px-3 py-2', isStreaming && 'streaming-scroll-area')}
         >
           <div className="flex flex-col gap-3">
             {messageGroups.map((group, idx) => {
@@ -300,13 +357,51 @@ const ChatAreaInternal: React.FC = () => {
         </div>
       )}
 
-      {/* Todo progress (if active) */}
-      {sessionTodos && sessionTodos.todos.length > 0 && (
+      {/* Loop detection banner */}
+      {(loopDetection.isLooping || loopDetection.isCircuitBreakerTriggered) && (
         <div className="px-3 py-1 shrink-0 border-t border-[var(--color-border-subtle)]">
-          <TodoProgress
-            todos={sessionTodos.todos}
-
+          <LoopDetectionBanner
+            isCircuitBreakerTriggered={loopDetection.isCircuitBreakerTriggered}
+            isLooping={loopDetection.isLooping}
+            severity={loopDetection.severity}
+            loopCount={loopDetection.state?.loopCount ?? 0}
+            repeatPatterns={loopDetection.state?.repeatPatterns ?? []}
           />
+        </div>
+      )}
+
+      {/* Communication progress */}
+      {communicationProgress.length > 0 && (
+        <div className="px-3 py-1 shrink-0 border-t border-[var(--color-border-subtle)]">
+          <CommunicationProgress entries={communicationProgress} />
+        </div>
+      )}
+
+      {/* Pending questions */}
+      {sessionQuestions.length > 0 && (
+        <div className="px-3 py-1.5 shrink-0 border-t border-[var(--color-border-subtle)] flex flex-col gap-1.5">
+          {sessionQuestions.map(q => (
+            <QuestionPanel
+              key={q.id}
+              question={q}
+              onAnswer={communication.answerQuestion}
+              onSkip={communication.skipQuestion}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Pending decisions */}
+      {sessionDecisions.length > 0 && (
+        <div className="px-3 py-1.5 shrink-0 border-t border-[var(--color-border-subtle)] flex flex-col gap-1.5">
+          {sessionDecisions.map(d => (
+            <DecisionPanel
+              key={d.id}
+              decision={d}
+              onDecide={communication.makeDecision}
+              onSkip={communication.skipDecision}
+            />
+          ))}
         </div>
       )}
 
@@ -331,25 +426,7 @@ const ChatAreaInternal: React.FC = () => {
         </div>
       )}
 
-      {/* Status bar */}
-      {isStreaming && sessionStatus && (
-        <div className="px-3 py-0.5 shrink-0 border-t border-[var(--color-border-subtle)] flex items-center gap-1.5">
-          <span
-            className="h-1.5 w-1.5 rounded-full animate-pulse"
-            style={{ backgroundColor: 'var(--color-accent-primary)' }}
-          />
-          <span className="text-[9px] text-[var(--color-text-muted)] truncate">
-            {sessionStatus.message}
-          </span>
-          {sessionStatus.currentIteration != null && sessionStatus.maxIterations != null && (
-            <span className="ml-auto text-[8px] tabular-nums text-[var(--color-text-dim)]">
-              {sessionStatus.currentIteration}/{sessionStatus.maxIterations}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Scroll to bottom button */}
+      {/* Scroll to bottom button with unread message count badge */}
       {showScrollToBottom && (
         <div className="absolute bottom-20 right-6">
           <button
@@ -361,16 +438,60 @@ const ChatAreaInternal: React.FC = () => {
               'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
               'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
               'transition-all duration-150 hover:scale-105',
+              'focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)] focus-visible:outline-none',
             )}
-            title="Scroll to bottom"
+            aria-label={unreadCount > 0 ? `Scroll to bottom (${unreadCount} new)` : 'Scroll to bottom'}
+            title={unreadCount > 0 ? `Scroll to bottom (${unreadCount} new)` : 'Scroll to bottom (End)'}
           >
             <ArrowDown size={14} />
+            {/* Unread badge */}
+            {unreadCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-accent-primary)] text-[8px] font-mono font-semibold text-white tabular-nums">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
           </button>
         </div>
       )}
     </div>
   );
 };
+
+// =============================================================================
+// Measured Virtual Item Wrapper
+// =============================================================================
+
+/**
+ * Wraps each virtual item with a ResizeObserver that reports actual rendered
+ * height to the virtualizer.  Without this, collapsed RunGroups (~20px) are
+ * allocated the full estimatedItemHeight (150px), creating large blank gaps.
+ */
+interface MeasuredVirtualItemProps {
+  index: number;
+  offsetTop: number;
+  measureItem: (index: number, height: number) => void;
+  children: React.ReactNode;
+}
+
+const MeasuredVirtualItem: React.FC<MeasuredVirtualItemProps> = memo(({ index, offsetTop, measureItem, children }) => {
+  const measureRef = useVirtualItemMeasure(measureItem, index);
+
+  return (
+    <div
+      ref={measureRef}
+      data-index={index}
+      style={{
+        position: 'absolute',
+        top: 0,
+        transform: `translateY(${offsetTop}px)`,
+        width: '100%',
+      }}
+    >
+      {children}
+    </div>
+  );
+});
+MeasuredVirtualItem.displayName = 'MeasuredVirtualItem';
 
 // =============================================================================
 // RunGroup Sub-component

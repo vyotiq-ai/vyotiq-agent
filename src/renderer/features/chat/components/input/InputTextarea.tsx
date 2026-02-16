@@ -34,6 +34,8 @@ export interface InputTextareaProps {
   onSelectionChange?: (position: number) => void;
   placeholder?: string;
   noWorkspacePlaceholder?: string;
+  /** Whether the placeholder is contextual (follow-up mode) */
+  isContextualPlaceholder?: boolean;
   disabled?: boolean;
   hasWorkspace?: boolean;
   className?: string;
@@ -67,15 +69,17 @@ BlinkingCursor.displayName = 'BlinkingCursor';
 // Placeholder Text Component
 // =============================================================================
 
-const PlaceholderText: React.FC<{ text: string; show: boolean; disabled?: boolean }> = memo(({ text, show, disabled }) => (
+const PlaceholderText: React.FC<{ text: string; show: boolean; disabled?: boolean; isContextual?: boolean }> = memo(({ text, show, disabled, isContextual }) => (
   <span 
     className={cn(
       'absolute left-0 top-0 text-xs pointer-events-none select-none truncate max-w-full',
-      'transition-all duration-200 ease-out',
+      'transition-all duration-300 ease-out',
       show ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-0.5',
       disabled 
         ? 'text-[var(--color-text-dim)]' 
-        : 'text-[var(--color-text-muted)]'
+        : isContextual
+          ? 'text-[var(--color-accent-primary)]/50'
+          : 'text-[var(--color-text-muted)]'
     )}
     aria-hidden="true"
   >
@@ -132,8 +136,9 @@ export const InputTextarea = memo(forwardRef<HTMLTextAreaElement, InputTextareaP
   onFocus,
   onBlur,
   onSelectionChange,
-  placeholder = 'describe what to do…',
-  noWorkspacePlaceholder = 'select a workspace to start…',
+  placeholder = 'describe what to do...',
+  noWorkspacePlaceholder = 'select a workspace to start...',
+  isContextualPlaceholder = false,
   disabled = false,
   hasWorkspace = true,
   className,
@@ -274,7 +279,7 @@ export const InputTextarea = memo(forwardRef<HTMLTextAreaElement, InputTextareaP
           maxLength={maxLength}
         />
         {showCursor && <BlinkingCursor visible={cursorVisible} />}
-        <PlaceholderText text={displayPlaceholder} show={showPlaceholder || (value.length === 0)} disabled={disabled || !hasWorkspace} />
+        <PlaceholderText text={displayPlaceholder} show={showPlaceholder || (value.length === 0)} disabled={disabled || !hasWorkspace} isContextual={isContextualPlaceholder} />
         {maxLength && (
           <CharCount 
             current={value.length} 

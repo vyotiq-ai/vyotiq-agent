@@ -39,6 +39,9 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
   const userScrolledAwayRef = useRef(false);
   const lastUserScrollTimeRef = useRef(0);
   
+  // Flag to distinguish programmatic scroll (from RAF loop) from user scroll
+  const isProgrammaticScrollRef = useRef(false);
+  
   // Track if reduced motion is preferred
   const prefersReducedMotion = useRef(false);
   
@@ -96,6 +99,14 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
     let scrollTimeout: number | null = null;
     
     const handleScroll = () => {
+      // CRITICAL: Skip user-intent detection during programmatic scroll
+      // The RAF auto-scroll loop sets this flag before adjusting scrollTop
+      // to prevent falsely marking the user as "scrolled away" during fast
+      // streaming when content grows faster than scroll catches up.
+      if (isProgrammaticScrollRef.current) {
+        return;
+      }
+      
       const now = Date.now();
       const { scrollHeight, scrollTop, clientHeight } = element;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
@@ -159,19 +170,30 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
       const { scrollHeight, scrollTop, clientHeight } = element;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
       
-      // Only auto-scroll if very close to bottom (within threshold)
-      if (distanceFromBottom <= threshold) {
+      // Auto-scroll if within a generous threshold (2x user threshold)
+      // This prevents the "falling behind" issue where fast content growth
+      // pushes us past the user-intent threshold before we can catch up.
+      const scrollThreshold = threshold * 2;
+      if (distanceFromBottom <= scrollThreshold) {
         const diff = scrollHeight - clientHeight - scrollTop;
         if (diff > 2) {
-          // Use reduced motion setting or smooth scrolling
-          if (prefersReducedMotion.current) {
-            // Instant scroll for reduced motion preference
-            element.scrollTop = scrollHeight - clientHeight;
-          } else {
-            // Gentle scroll: adaptive percentage of remaining distance
-            const scrollAmount = Math.max(2, diff * smoothFactor);
-            element.scrollTop = scrollTop + scrollAmount;
-          }
+          // Set flag to prevent the scroll event handler from falsely
+          // detecting user scroll intent during our programmatic scroll
+          isProgrammaticScrollRef.current = true;
+          
+          // SNAP to bottom — asymptotic approaches (30%, 50%) cause the
+          // scroll to fall further and further behind during fast streaming
+          // because content grows faster than the catch-up fraction can
+          // cover per frame.  Once it falls past the threshold it never
+          // recovers.  Snapping is visually fine at 20fps and ensures the
+          // latest content is always visible.
+          element.scrollTop = scrollHeight - clientHeight;
+          
+          // Clear flag after a microtask so the scroll event handler runs
+          // with the flag still set for this programmatic scroll
+          queueMicrotask(() => {
+            isProgrammaticScrollRef.current = false;
+          });
         }
       }
       

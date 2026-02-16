@@ -52,6 +52,7 @@ interface AgentActions {
   startSession: (initialConfig?: Partial<AgentSettings['defaultConfig']>, workspacePath?: string | null) => Promise<string | undefined>;
   createSession: () => Promise<string | undefined>;
   sendMessage: (content: string, attachments?: AttachmentPayload[], initialConfig?: Partial<AgentSettings['defaultConfig']>) => Promise<void>;
+  sendFollowUp: (sessionId: string, content: string, attachments?: AttachmentPayload[]) => Promise<void>;
   confirmTool: (runId: string, approved: boolean, sessionId: string, feedback?: string) => Promise<void>;
   setActiveSession: (sessionId: string) => void;
   updateSessionConfig: (sessionId: string, config: Partial<AgentSessionState['config']>) => Promise<void>;
@@ -69,6 +70,7 @@ type AgentStore = {
   getState: () => AgentUIState;
   subscribe: (listener: () => void) => () => void;
   dispatch: (action: AgentAction) => void;
+  dispatchBatch: (actions: AgentAction[]) => void;
   actions: AgentActions;
 };
 
@@ -148,16 +150,35 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       notify();
     };
 
+    /**
+     * Batch-dispatch multiple actions but notify listeners only once.
+     * Avoids N separate notify() → useSyncExternalStore snapshot cycles
+     * when a single event (e.g. run-status) produces 2-5 actions.
+     */
+    const dispatchBatch = (actions: AgentAction[]) => {
+      let changed = false;
+      for (const action of actions) {
+        const nextState = combinedAgentReducer(currentState, action);
+        if (nextState !== currentState) {
+          currentState = nextState;
+          changed = true;
+        }
+      }
+      if (changed) notify();
+    };
+
     storeRef.current = {
       getState,
       subscribe,
       dispatch,
+      dispatchBatch,
       actions: {} as AgentActions,
     };
   }
 
   const store = storeRef.current;
   const dispatchRef = useRef(store.dispatch);
+  const dispatchBatchRef = useRef(store.dispatchBatch);
   dispatchRef.current = store.dispatch;
 
   // Event batching refs for low-priority updates
@@ -252,7 +273,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   // Buffer terminal output bursts to avoid dispatching (and string-appending) per chunk.
   const terminalBufferRef = useRef(new Map<number, Array<{ stream: 'stdout' | 'stderr'; data: string }>>());
   const terminalFlushTimerRef = useRef<number | null>(null);
-  const lastAgentStatusRef = useRef<Record<string, { status: string; message?: string; timestamp: number }>>({});
+  const lastAgentStatusRef = useRef<Record<string, { status: string; message?: string; timestamp: number; lastIteration?: number }>>({});
 
   const flushTerminalBuffers = useCallback(() => {
     const buffers = terminalBufferRef.current;
@@ -366,25 +387,29 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           }
           break;
         }
-        case 'run-status':
-          // Run status changes are urgent - user needs immediate feedback
+        case 'run-status': {
+          // Run status changes are urgent - user needs immediate feedback.
+          // Collect all actions and dispatch them in a single batch to avoid
+          // multiple notify() → useSyncExternalStore snapshot cycles.
+          const runActions: AgentAction[] = [];
+
           if (event.status === 'running') {
             // Clear task state from previous runs when a new run starts
-            dispatchRef.current({ type: 'CLEAR_SESSION_TASK_STATE', payload: event.sessionId });
+            runActions.push({ type: 'CLEAR_SESSION_TASK_STATE', payload: event.sessionId });
             // Clear any previous run error when a new run starts
-            dispatchRef.current({ type: 'RUN_ERROR_CLEAR', payload: event.sessionId });
+            runActions.push({ type: 'RUN_ERROR_CLEAR', payload: event.sessionId });
           }
           if (event.status === 'idle' || event.status === 'error') {
             clearBuffer(event.sessionId);
             clearThinkingBuffer(event.sessionId);
           }
-          dispatchRef.current({
+          runActions.push({
             type: 'RUN_STATUS',
             payload: { sessionId: event.sessionId, status: event.status, runId: event.runId },
           });
           // Dispatch structured error info when run fails
           if (event.status === 'error' && event.errorCode) {
-            dispatchRef.current({
+            runActions.push({
               type: 'RUN_ERROR',
               payload: {
                 sessionId: event.sessionId,
@@ -396,16 +421,18 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
             });
           }
           if (event.status === 'idle' || event.status === 'error') {
-            dispatchRef.current({ type: 'PENDING_TOOL_REMOVE', payload: event.runId });
+            runActions.push({ type: 'PENDING_TOOL_REMOVE', payload: event.runId });
             if (event.runId) {
-              dispatchRef.current({ type: 'RUN_TOOLSTATE_CLEAR', payload: event.runId });
+              runActions.push({ type: 'RUN_TOOLSTATE_CLEAR', payload: event.runId });
             }
           }
           if (event.status === 'awaiting-confirmation' && event.runId) {
             // Awaiting approval: ensure no tools show as running/queued
-            dispatchRef.current({ type: 'RUN_TOOLSTATE_CLEAR', payload: event.runId });
+            runActions.push({ type: 'RUN_TOOLSTATE_CLEAR', payload: event.runId });
           }
+          dispatchBatchRef.current(runActions);
           break;
+        }
         case 'tool-call': {
           // Track tool execution start for immediate UI feedback
           // This enables showing the tool as "running" instantly
@@ -430,7 +457,6 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           break;
         }
         case 'tool-result': {
-          dispatchRef.current({ type: 'PENDING_TOOL_REMOVE', payload: event.runId });
           // Dispatch tool result to state for inline display in ToolExecution
           const toolResultEvent = event as ToolResultEvent;
           // Use the actual toolCallId from the event, fallback to generated if not available
@@ -445,16 +471,20 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
             metadataKeys: toolResultEvent.result.metadata ? Object.keys(toolResultEvent.result.metadata) : [],
           });
 
-          dispatchRef.current({
-            type: 'TOOL_RESULT_RECEIVE',
-            payload: {
-              runId: toolResultEvent.runId,
-              sessionId: toolResultEvent.sessionId,
-              callId,
-              toolName: toolResultEvent.result.toolName,
-              result: toolResultEvent.result,
+          // Batch PENDING_TOOL_REMOVE + TOOL_RESULT_RECEIVE into a single notify
+          dispatchBatchRef.current([
+            { type: 'PENDING_TOOL_REMOVE', payload: event.runId },
+            {
+              type: 'TOOL_RESULT_RECEIVE',
+              payload: {
+                runId: toolResultEvent.runId,
+                sessionId: toolResultEvent.sessionId,
+                callId,
+                toolName: toolResultEvent.result.toolName,
+                result: toolResultEvent.result,
+              },
             },
-          });
+          ]);
           break;
         }
 
@@ -474,24 +504,26 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 
         case 'tool-started': {
           // Tool is now actively executing (distinct from tool-call which may require approval)
+          // Batch both dequeue + execution start into a single notify cycle
           const startedEvent = event as import('../../shared/types').ToolStartedEvent;
-          // Remove from queue and add to executing
-          dispatchRef.current({
-            type: 'TOOL_DEQUEUED',
-            payload: {
-              runId: startedEvent.runId,
-              callId: startedEvent.toolCall.callId,
+          dispatchBatchRef.current([
+            {
+              type: 'TOOL_DEQUEUED',
+              payload: {
+                runId: startedEvent.runId,
+                callId: startedEvent.toolCall.callId,
+              },
             },
-          });
-          dispatchRef.current({
-            type: 'TOOL_EXECUTION_START',
-            payload: {
-              runId: startedEvent.runId,
-              callId: startedEvent.toolCall.callId,
-              name: startedEvent.toolCall.name,
-              arguments: startedEvent.toolCall.arguments as Record<string, unknown> | undefined,
+            {
+              type: 'TOOL_EXECUTION_START',
+              payload: {
+                runId: startedEvent.runId,
+                callId: startedEvent.toolCall.callId,
+                name: startedEvent.toolCall.name,
+                arguments: startedEvent.toolCall.arguments as Record<string, unknown> | undefined,
+              },
             },
-          });
+          ]);
           break;
         }
 
@@ -516,6 +548,27 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           });
           break;
         }
+
+        case 'file-diff-stream': {
+          // Real-time file diff streaming — enables inline diff display as files are modified
+          const diffEvent = event as import('../../shared/types').FileDiffStreamEvent;
+          dispatchRef.current({
+            type: 'FILE_DIFF_STREAM',
+            payload: {
+              runId: diffEvent.runId,
+              toolCallId: diffEvent.toolCallId,
+              toolName: diffEvent.toolName,
+              filePath: diffEvent.filePath,
+              originalContent: diffEvent.originalContent,
+              modifiedContent: diffEvent.modifiedContent,
+              isNewFile: diffEvent.isNewFile,
+              isComplete: diffEvent.isComplete,
+              action: diffEvent.action,
+            },
+          });
+          break;
+        }
+
         case 'settings-update':
           // Settings updates are non-urgent - use batched dispatch
           batchedDispatch({ type: 'SETTINGS_UPDATE', payload: event.settings });
@@ -552,8 +605,16 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           const isSameMessage = last?.message === statusEvent.message;
           const recentlyUpdated = last ? (now - last.timestamp) < 1200 : false;
 
-          // Drop noisy, repetitive executing updates
+          // CRITICAL: Never drop events that carry iteration metadata changes.
+          // Iteration counter updates must reach the UI immediately so
+          // IterationControl and InputHeader display correct progress.
+          const hasIterationChange =
+            statusEvent.metadata?.currentIteration !== undefined &&
+            (last as Record<string, unknown> | undefined)?.lastIteration !== statusEvent.metadata.currentIteration;
+
+          // Drop noisy, repetitive executing updates — but NOT if iteration changed
           if (
+            !hasIterationChange &&
             statusEvent.status === 'executing' &&
             isSameStatus &&
             recentlyUpdated &&
@@ -562,7 +623,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
             break;
           }
 
-          if (isSameStatus && isSameMessage && recentlyUpdated) {
+          if (!hasIterationChange && isSameStatus && isSameMessage && recentlyUpdated) {
             break;
           }
 
@@ -570,6 +631,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
             status: statusEvent.status,
             message: statusEvent.message,
             timestamp: now,
+            lastIteration: statusEvent.metadata?.currentIteration,
           };
 
           dispatchRef.current({
@@ -780,8 +842,68 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           });
           break;
         }
+        case 'follow-up-received': {
+          // Follow-up was received by the main process and added to the session
+          // The session-state event will handle updating messages in the UI
+          const followUpEvent = event as RendererEvent & { sessionId: string; messageId: string; content: string };
+          logger.info('Follow-up received by agent', {
+            sessionId: followUpEvent.sessionId,
+            messageId: followUpEvent.messageId,
+          });
+          break;
+        }
+        case 'follow-up-injected': {
+          // Follow-up was acknowledged by the agent run loop and will be used in next iteration
+          const injectedEvent = event as RendererEvent & { sessionId: string; messageId: string; runId: string; iteration: number };
+          logger.info('Follow-up injected into agent context', {
+            sessionId: injectedEvent.sessionId,
+            messageId: injectedEvent.messageId,
+            runId: injectedEvent.runId,
+            iteration: injectedEvent.iteration,
+          });
+          break;
+        }
         default:
           break;
+      }
+
+      // ---- Output log dispatch ----
+      // Fire a vyotiq:output-log CustomEvent for key events so the BottomPanel
+      // Output tab captures real-time agent activity.
+      const outputLogTypes: Record<string, (e: unknown) => { level: string; message: string; source: string } | null> = {
+        'run-status': (e) => {
+          const ev = e as { status?: string; message?: string };
+          return {
+            level: ev.status === 'error' ? 'error' : 'info',
+            message: `Run ${ev.status ?? 'unknown'}${ev.message ? `: ${ev.message}` : ''}`,
+            source: 'agent',
+          };
+        },
+        'tool-call': (e) => {
+          const tc = (e as { toolCall?: { name?: string } }).toolCall;
+          return tc ? { level: 'info', message: `Tool call: ${tc.name}`, source: 'tool' } : null;
+        },
+        'tool-result': (e) => {
+          const tr = (e as { result?: { toolName?: string; error?: string } }).result;
+          return tr ? { level: tr.error ? 'error' : 'info', message: `Tool result: ${tr.toolName}${tr.error ? ' (error)' : ''}`, source: 'tool' } : null;
+        },
+        'agent-status': (e) => {
+          const se = e as { message?: string };
+          return se.message ? { level: 'info', message: se.message, source: 'agent' } : null;
+        },
+        'question-asked': () => ({ level: 'info', message: 'Agent is asking a question', source: 'communication' }),
+        'decision-requested': () => ({ level: 'info', message: 'Agent requests a decision', source: 'communication' }),
+        'terminal-error': (e) => ({ level: 'error', message: `Terminal error: ${(e as { error?: string }).error ?? 'unknown'}`, source: 'terminal' }),
+      };
+
+      const logFactory = outputLogTypes[event.type];
+      if (logFactory) {
+        const logEntry = logFactory(event);
+        if (logEntry) {
+          document.dispatchEvent(new CustomEvent('vyotiq:output-log', {
+            detail: { type: event.type, ...logEntry },
+          }));
+        }
       }
     },
     [appendDelta, appendThinkingDelta, clearBuffer, clearThinkingBuffer, flushSession, flushThinkingSession, batchedDispatch, getCurrentState, scheduleTerminalFlush, store],
@@ -990,6 +1112,39 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     [startSession, store],
   );
 
+  const sendFollowUp = useCallback(
+    async (sessionId: string, content: string, attachments?: AttachmentPayload[]) => {
+      if (!window.vyotiq?.agent?.sendFollowUp) {
+        logger.error('Agent IPC sendFollowUp not available');
+        return;
+      }
+
+      try {
+        logger.info('Sending follow-up to running session', {
+          sessionId,
+          contentLength: content.length,
+          attachmentCount: attachments?.length ?? 0,
+        });
+
+        const result = await window.vyotiq.agent.sendFollowUp({
+          sessionId,
+          content,
+          attachments,
+        });
+
+        if (result && !result.success) {
+          logger.warn('Follow-up delivery failed', { sessionId, error: result.error });
+        } else {
+          logger.info('Follow-up sent successfully', { sessionId });
+        }
+      } catch (error) {
+        logger.error('Failed to send follow-up', { error: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
+    },
+    [],
+  );
+
   const confirmTool = useCallback(async (runId: string, approved: boolean, sessionId: string, feedback?: string) => {
     if (!window.vyotiq?.agent) return;
     await window.vyotiq.agent.confirmTool({
@@ -1113,6 +1268,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     startSession,
     createSession,
     sendMessage,
+    sendFollowUp,
     confirmTool,
     setActiveSession,
     updateSessionConfig,
@@ -1124,7 +1280,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     regenerate,
     renameSession,
     addReaction,
-  }), [cancelRun, pauseRun, resumeRun, isRunPaused, confirmTool, createSession, renameSession, sendMessage, setActiveSession, startSession, updateSessionConfig, deleteSession, regenerate, addReaction]);
+  }), [cancelRun, pauseRun, resumeRun, isRunPaused, confirmTool, createSession, renameSession, sendMessage, sendFollowUp, setActiveSession, startSession, updateSessionConfig, deleteSession, regenerate, addReaction]);
 
   // Populate the store's stable actions object via useLayoutEffect so
   // actions are available before the browser paints (and before any user

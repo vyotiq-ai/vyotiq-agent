@@ -8,8 +8,6 @@ import React, { useCallback, useState, useEffect, memo } from 'react';
 import { ChatArea, ChatInput } from '../features/chat';
 import { FeatureErrorBoundary } from '../components/layout/ErrorBoundary';
 import { useWorkspaceState, useWorkspaceActions } from '../state/WorkspaceProvider';
-import { useAgentSelector } from '../state/AgentProvider';
-import { GlobalRunningSessionsPanel } from '../features/sessions/components/GlobalRunningSessionsPanel';
 import { cn } from '../utils/cn';
 import { APP_VERSION } from '../utils/version';
 
@@ -208,10 +206,6 @@ const WorkspacePrompt: React.FC = () => {
 
 export const Home: React.FC = () => {
   const { workspacePath, isLoading } = useWorkspaceState();
-  const hasRunningSessions = useAgentSelector(
-    (s) => (s.sessions ?? []).some(x => x.status === 'running' || x.status === 'awaiting-confirmation'),
-    (a, b) => a === b
-  );
 
   // Show loading placeholder briefly — terminal style
   if (isLoading) {
@@ -235,12 +229,6 @@ export const Home: React.FC = () => {
       id="home-split-container"
       className="flex flex-col h-full w-full min-h-0 min-w-0 overflow-hidden"
     >
-      {/* Running sessions banner */}
-      {hasRunningSessions && (
-        <FeatureErrorBoundary featureName="GlobalRunningSessions">
-          <GlobalRunningSessionsPanel defaultCollapsed={true} />
-        </FeatureErrorBoundary>
-      )}
       {/* Chat panel - full width */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden w-full">
         <FeatureErrorBoundary featureName="Chat">

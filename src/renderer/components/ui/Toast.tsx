@@ -109,22 +109,40 @@ const ToastEntry = memo<ToastEntryProps>(({ item, onDismiss }) => {
     setTimeout(() => onDismiss(item.id), 150);
   }, [item.id, onDismiss]);
 
-  // Auto-dismiss timer
-  useEffect(() => {
-    const duration = item.duration ?? DEFAULT_DURATION;
-    if (duration <= 0) return;
+  // Pause auto-dismiss on hover so users can read longer messages
+  const [isHovered, setIsHovered] = useState(false);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remainingRef = useRef(item.duration ?? DEFAULT_DURATION);
+  const lastTickRef = useRef(Date.now());
 
-    const timer = setTimeout(() => {
+  // Auto-dismiss timer with pause-on-hover support
+  useEffect(() => {
+    const duration = remainingRef.current;
+    if (duration <= 0) return;
+    if (isHovered) return; // paused
+
+    lastTickRef.current = Date.now();
+    dismissTimerRef.current = setTimeout(() => {
       handleDismiss();
     }, duration);
 
-    return () => clearTimeout(timer);
-  }, [item.duration, handleDismiss]);
+    return () => {
+      if (dismissTimerRef.current) {
+        // Track remaining time so we resume correctly
+        const elapsed = Date.now() - lastTickRef.current;
+        remainingRef.current = Math.max(0, remainingRef.current - elapsed);
+        clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = null;
+      }
+    };
+  }, [isHovered, handleDismiss]);
 
   return (
     <div
       role="alert"
       aria-live="polite"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       className={cn(
         'flex items-start gap-2 px-3 py-2 border rounded-sm font-mono',
         'shadow-lg shadow-black/20 backdrop-blur-sm',

@@ -105,6 +105,7 @@ const ToolExecutionInternal: React.FC<ToolExecutionProps> = ({
           tool={tool}
           batchSize={resolvedTools.length}
           batchPosition={idx + 1}
+          runId={message.runId}
         />
       ))}
     </div>

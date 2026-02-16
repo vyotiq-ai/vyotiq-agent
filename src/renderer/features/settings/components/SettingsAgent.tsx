@@ -406,6 +406,42 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
         </p>
       </SettingsGroup>
 
+      {/* Thinking Group (DeepSeek & Anthropic) */}
+      <SettingsGroup title="thinking / extended reasoning">
+        <SettingsToggleRow
+          label="deepseek thinking"
+          description="enable thinking mode for deepseek-chat"
+          checked={config.enableDeepSeekThinking ?? true}
+          onToggle={() => onChange('enableDeepSeekThinking', !(config.enableDeepSeekThinking ?? true))}
+        />
+        <SettingsToggleRow
+          label="anthropic extended thinking"
+          description="enable extended thinking for claude models"
+          checked={config.enableAnthropicThinking ?? true}
+          onToggle={() => onChange('enableAnthropicThinking', !(config.enableAnthropicThinking ?? true))}
+        />
+        {(config.enableAnthropicThinking ?? true) && (
+          <SettingsSlider
+            label="anthropic thinking budget"
+            value={config.anthropicThinkingBudget ?? SETTINGS_CONSTRAINTS.anthropicThinkingBudget.default}
+            onChange={(v) => onChange('anthropicThinkingBudget', v)}
+            min={SETTINGS_CONSTRAINTS.anthropicThinkingBudget.min}
+            max={SETTINGS_CONSTRAINTS.anthropicThinkingBudget.max}
+            step={1024}
+            format={(v) => `${(v / 1000).toFixed(1)}k`}
+          />
+        )}
+        <SettingsToggleRow
+          label="interleaved thinking"
+          description="reason between tool calls (claude 4+)"
+          checked={config.enableInterleavedThinking ?? false}
+          onToggle={() => onChange('enableInterleavedThinking', !(config.enableInterleavedThinking ?? false))}
+        />
+        <p className="text-[10px] text-[var(--color-text-dim)]">
+          <span className="text-[var(--color-text-placeholder)]">#</span> controls reasoning behavior for deepseek and anthropic models
+        </p>
+      </SettingsGroup>
+
       {/* Safety Group */}
       <SettingsGroup title="safety" icon={<Shield size={11} />}>
         <SettingsToggleRow

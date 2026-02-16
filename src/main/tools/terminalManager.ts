@@ -272,7 +272,10 @@ export class ProcessTerminalManager extends EventEmitter implements TerminalMana
 
         this.processes.set(pid, processInfo);
 
-        // Handle output (node-pty combines stdout/stderr)
+        // Handle output (node-pty combines stdout/stderr into a single stream)
+        // Note: 'stderr' event is never emitted since node-pty merges all output.
+        // The TerminalManager interface declares 'stderr' for future PTY implementations
+        // that may separate streams. TerminalEventHandler listens for both events.
         ptyProcess.onData((data: string) => {
           if (processInfo.stdout.length < MAX_OUTPUT_SIZE) {
             processInfo.stdout += data;

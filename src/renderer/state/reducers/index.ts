@@ -69,6 +69,9 @@ const TASK_ACTIONS = new Set([
   // Run error tracking
   'RUN_ERROR',
   'RUN_ERROR_CLEAR',
+  // File diff streaming
+  'FILE_DIFF_STREAM',
+  'FILE_DIFF_STREAM_CLEAR',
 ]);
 
 

@@ -147,7 +147,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                     key={level.value}
                     onClick={() => onChange('logLevel', level.value)}
                     className={cn(
-                      'px-1.5 sm:px-2 py-1.5 text-[8px] sm:text-[9px] border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+                      'px-1.5 sm:px-2 py-1.5 text-[9px] sm:text-[10px] border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
                       settings.logLevel === level.value
                         ? 'border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]'
                         : 'border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-medium)]'
@@ -158,7 +158,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                   </button>
                 ))}
               </div>
-              <p className="text-[8px] text-[var(--color-text-muted)] mt-1">{LOG_LEVELS.find(l => l.value === settings.logLevel)?.description}</p>
+              <p className="text-[9px] text-[var(--color-text-muted)] mt-1">{LOG_LEVELS.find(l => l.value === settings.logLevel)?.description}</p>
             </div>
             <SettingsToggleRow label="capture-full-payloads" description="Store complete request/response data for debugging" checked={settings.captureFullPayloads} onToggle={() => onChange('captureFullPayloads', !settings.captureFullPayloads)} />
           </div>
@@ -181,7 +181,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                 placeholder="e.g., write_file, run_command"
                 className="w-full px-2 py-1.5 text-[10px] bg-[var(--color-surface-input)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus-visible:outline-none focus-visible:border-[var(--color-accent-primary)]"
               />
-              <p className="text-[8px] text-[var(--color-text-muted)] mt-1">Pause execution when these tools are called</p>
+              <p className="text-[9px] text-[var(--color-text-muted)] mt-1">Pause execution when these tools are called</p>
             </div>
           </div>
         )}
@@ -239,7 +239,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
             <div className="flex items-center justify-between py-2">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-[var(--color-text-muted)]">{traces.length} trace{traces.length !== 1 ? 's' : ''}</span>
-                {lastRefresh && <span className="text-[8px] text-[var(--color-text-muted)]">• last updated {formatDate(lastRefresh.getTime())}</span>}
+                {lastRefresh && <span className="text-[9px] text-[var(--color-text-muted)]">• last updated {formatDate(lastRefresh.getTime())}</span>}
               </div>
               <Button variant="ghost" size="sm" onClick={fetchTraces} disabled={isLoadingTraces} leftIcon={<RefreshCw size={10} className={isLoadingTraces ? 'animate-spin' : ''} />}>Refresh</Button>
             </div>
@@ -280,11 +280,11 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                           </button>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[8px] text-[var(--color-text-muted)]">{formatDate(trace.startedAt)}</span>
-                          {trace.durationMs && <span className="text-[8px] text-[var(--color-text-muted)]">• {formatDuration(trace.durationMs)}</span>}
+                          <span className="text-[9px] text-[var(--color-text-muted)]">{formatDate(trace.startedAt)}</span>
+                          {trace.durationMs && <span className="text-[9px] text-[var(--color-text-muted)]">• {formatDuration(trace.durationMs)}</span>}
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 text-[8px] text-[var(--color-text-muted)]">
+                      <div className="flex items-center gap-3 text-[9px] text-[var(--color-text-muted)]">
                         <span title="Total steps">{trace.metrics.totalSteps} steps</span>
                         <span title="LLM calls">{trace.metrics.llmCalls} LLM</span>
                         <span title="Tool calls">{trace.metrics.successfulToolCalls}/{trace.metrics.toolCalls} tools</span>

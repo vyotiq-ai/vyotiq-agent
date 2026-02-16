@@ -84,7 +84,7 @@ Use lsp_diagnostics for quick type checking, read_lints for full linting.
       files: {
         type: 'array',
         description: 'File paths to check (relative to workspace)',
-        items: { type: 'string' },
+        items: { type: 'string', description: 'File path to check for diagnostics' },
       },
       all: {
         type: 'boolean',

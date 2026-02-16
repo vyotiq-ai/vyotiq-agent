@@ -605,6 +605,15 @@ export const IpcSchemas = {
     },
   },
   
+  'agent:send-followup': {
+    type: 'object',
+    required: ['sessionId', 'content'],
+    properties: {
+      sessionId: { type: 'string', minLength: 1 },
+      content: { type: 'string', minLength: 1 },
+    },
+  },
+  
   'agent:confirm-tool': {
     type: 'object',
     required: ['sessionId', 'runId', 'approved'],

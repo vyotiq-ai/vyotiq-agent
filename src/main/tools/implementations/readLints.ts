@@ -101,7 +101,7 @@ read_lints([file]) → VERIFY no errors
       files: {
         type: 'array',
         description: 'File paths to check for linting errors (relative to workspace)',
-        items: { type: 'string' },
+        items: { type: 'string', description: 'Absolute file path to check for lint errors' },
       },
       include_warnings: {
         type: 'boolean',

@@ -323,7 +323,7 @@ const SearchResultItem: React.FC<{
         <span className="text-[10px] font-medium text-[var(--color-text-primary)] truncate group-hover:text-[var(--color-accent-primary)] transition-colors">
           {result.filename}
         </span>
-        <span className="text-[8px] text-[var(--color-text-dim)] truncate">
+        <span className="text-[9px] text-[var(--color-text-dim)] truncate">
           {result.relative_path}
         </span>
       </div>
@@ -333,7 +333,7 @@ const SearchResultItem: React.FC<{
         </div>
       )}
     </div>
-    <span className="text-[8px] text-[var(--color-text-dim)] shrink-0 tabular-nums">
+    <span className="text-[9px] text-[var(--color-text-dim)] shrink-0 tabular-nums">
       {result.extension}
     </span>
   </button>
@@ -381,8 +381,8 @@ const GrepFileGroup: React.FC<{
         <span className="text-[10px] font-medium text-[var(--color-text-primary)] truncate">
           {fileName}
         </span>
-        <span className="text-[8px] text-[var(--color-text-dim)] truncate ml-1">{relativePath}</span>
-        <span className="ml-auto text-[8px] text-[var(--color-text-dim)] tabular-nums shrink-0">
+        <span className="text-[9px] text-[var(--color-text-dim)] truncate ml-1">{relativePath}</span>
+        <span className="ml-auto text-[9px] text-[var(--color-text-dim)] tabular-nums shrink-0">
           {matches.length}
         </span>
       </button>
@@ -394,7 +394,7 @@ const GrepFileGroup: React.FC<{
               onClick={() => onClick(match.path, match.line_number)}
               className="w-full flex items-center gap-2 px-3 py-0.5 text-left hover:bg-[var(--color-surface-2)] transition-colors font-mono"
             >
-              <span className="text-[8px] text-[var(--color-text-dim)] min-w-[28px] text-right shrink-0 tabular-nums">
+              <span className="text-[9px] text-[var(--color-text-dim)] min-w-[28px] text-right shrink-0 tabular-nums">
                 {match.line_number}
               </span>
               <span className="text-[9px] text-[var(--color-text-secondary)] truncate">

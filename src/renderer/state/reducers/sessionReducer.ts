@@ -255,9 +255,10 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
   let remainingToolResults = state.toolResults;
   let remainingInlineArtifacts = state.inlineArtifacts;
   
-  // Clean up run-keyed state (toolResults, inlineArtifacts, executingTools, queuedTools)
+  // Clean up run-keyed state (toolResults, inlineArtifacts, executingTools, queuedTools, fileDiffStreams)
   let remainingExecutingTools = state.executingTools;
   let remainingQueuedTools = state.queuedTools;
+  let remainingFileDiffStreams = state.fileDiffStreams;
 
   if (runIdsToClean.size > 0) {
     remainingToolResults = Object.fromEntries(
@@ -271,6 +272,9 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
     );
     remainingQueuedTools = Object.fromEntries(
       Object.entries(state.queuedTools).filter(([runId]) => !runIdsToClean.has(runId))
+    );
+    remainingFileDiffStreams = Object.fromEntries(
+      Object.entries(state.fileDiffStreams).filter(([runId]) => !runIdsToClean.has(runId))
     );
   }
   
@@ -304,6 +308,7 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
     runErrors: remainingErrors,
     executingTools: remainingExecutingTools,
     queuedTools: remainingQueuedTools,
+    fileDiffStreams: remainingFileDiffStreams,
     streamingSessions,
   };
 }

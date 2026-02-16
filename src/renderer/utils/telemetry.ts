@@ -79,26 +79,14 @@ class ErrorTelemetryService {
    * Setup global error handlers
    */
   private setupGlobalErrorHandlers(): void {
-    // Handle uncaught errors
-    if (typeof window !== 'undefined') {
-      window.addEventListener('error', (event) => {
-        this.captureError(event.error || new Error(event.message), {
-          component: 'window',
-          action: 'uncaught-error',
-        });
-      });
-
-      // Handle unhandled promise rejections
-      window.addEventListener('unhandledrejection', (event) => {
-        const error = event.reason instanceof Error 
-          ? event.reason 
-          : new Error(String(event.reason));
-        this.captureError(error, {
-          component: 'window',
-          action: 'unhandled-rejection',
-        });
-      });
-    }
+    // Global error/rejection handlers are already installed in main.tsx
+    // (which forwards to the main process logger for persistent storage).
+    // Installing a second set here causes duplicate processing and potential
+    // race conditions.  Instead, expose a public `captureError` method that
+    // main.tsx calls so telemetry still records the errors without duplicate
+    // listeners.
+    //
+    // NOTE: Keeping the method for backward compatibility; it's now a no-op.
   }
 
   /**

@@ -11,6 +11,7 @@ import fs from 'fs';
 import { randomBytes } from 'crypto';
 import { app } from 'electron';
 import { createLogger } from './logger';
+import type { WorkspaceIndexingSettings } from '../shared/types';
 
 const logger = createLogger('RustSidecar');
 
@@ -26,6 +27,12 @@ class RustSidecarManager {
   private isShuttingDown = false;
   /** Per-session auth token to secure sidecar communication */
   private authToken: string = '';
+  /** Cached workspace settings for restart */
+  private lastWorkspaceSettings: Partial<WorkspaceIndexingSettings> | undefined;
+  /** Consecutive health check failures */
+  private consecutiveHealthFailures = 0;
+  /** Max consecutive health check failures before triggering restart */
+  private static readonly MAX_HEALTH_FAILURES = 3;
 
   /**
    * Get the path to the compiled Rust binary.
@@ -44,10 +51,15 @@ class RustSidecarManager {
   }
 
   /** Start the Rust backend sidecar */
-  async start(): Promise<boolean> {
+  async start(workspaceSettings?: Partial<WorkspaceIndexingSettings>): Promise<boolean> {
     if (this.process) {
       logger.info('Rust sidecar already running');
       return true;
+    }
+
+    // Cache settings for auto-restart
+    if (workspaceSettings) {
+      this.lastWorkspaceSettings = workspaceSettings;
     }
 
     // Reset shutdown/restart state so auto-restart works after a stop()+start() cycle
@@ -62,6 +74,22 @@ class RustSidecarManager {
     // Generate a per-session auth token for sidecar communication security
     this.authToken = randomBytes(32).toString('hex');
 
+    // Build environment variables from workspace settings
+    const ws = this.lastWorkspaceSettings;
+    const settingsEnv: Record<string, string> = {};
+    if (ws?.maxFileSizeBytes != null) {
+      settingsEnv.VYOTIQ_MAX_FILE_SIZE = String(ws.maxFileSizeBytes);
+    }
+    if (ws?.watcherDebounceMs != null) {
+      settingsEnv.VYOTIQ_WATCHER_DEBOUNCE_MS = String(ws.watcherDebounceMs);
+    }
+    if (ws?.indexBatchSize != null) {
+      settingsEnv.VYOTIQ_INDEX_BATCH_SIZE = String(ws.indexBatchSize);
+    }
+    if (ws?.maxIndexSizeMb != null) {
+      settingsEnv.VYOTIQ_MAX_INDEX_MB = String(ws.maxIndexSizeMb);
+    }
+
     try {
       this.process = spawn(binaryPath, [], {
         env: {
@@ -70,6 +98,7 @@ class RustSidecarManager {
           VYOTIQ_DATA_DIR: dataDir,
           VYOTIQ_AUTH_TOKEN: this.authToken,
           RUST_LOG: 'info',
+          ...settingsEnv,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -220,17 +249,31 @@ class RustSidecarManager {
   }
 
   private startHealthChecks(): void {
+    this.consecutiveHealthFailures = 0;
     this.healthCheckTimer = setInterval(async () => {
       try {
         const response = await fetch(`http://127.0.0.1:${SIDECAR_PORT}/health`, {
           signal: AbortSignal.timeout(3000),
           headers: this.getAuthHeaders(),
         });
-        if (!response.ok) {
-          logger.warn('Rust sidecar health check failed', { status: response.status });
+        if (response.ok) {
+          this.consecutiveHealthFailures = 0;
+        } else {
+          this.consecutiveHealthFailures++;
+          logger.warn('Rust sidecar health check failed', { status: response.status, consecutiveFailures: this.consecutiveHealthFailures });
         }
       } catch {
-        logger.warn('Rust sidecar health check failed (unreachable)');
+        this.consecutiveHealthFailures++;
+        logger.warn('Rust sidecar health check failed (unreachable)', { consecutiveFailures: this.consecutiveHealthFailures });
+      }
+
+      // Trigger restart after consecutive failures
+      if (this.consecutiveHealthFailures >= RustSidecarManager.MAX_HEALTH_FAILURES && !this.isShuttingDown) {
+        logger.error(`Rust sidecar unresponsive after ${this.consecutiveHealthFailures} consecutive health check failures, restarting`);
+        this.stopHealthChecks();
+        this.process?.kill('SIGKILL');
+        this.process = null;
+        // The exit handler will trigger auto-restart if restartCount < MAX_RESTART_ATTEMPTS
       }
     }, HEALTH_CHECK_INTERVAL);
     if (this.healthCheckTimer && typeof this.healthCheckTimer === 'object' && 'unref' in this.healthCheckTimer) {

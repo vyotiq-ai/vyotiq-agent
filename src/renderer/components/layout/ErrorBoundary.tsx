@@ -148,6 +148,12 @@ export const FeatureErrorBoundary: React.FC<{ children: ReactNode; featureName?:
   helpUrl,
 }) => {
   const [resetKey, setResetKey] = React.useState(0);
+  // Use a ref for error count so it persists across ErrorBoundary remounts.
+  // When the user clicks retry, resetKey increments which remounts the
+  // ErrorBoundary (resetting its internal state). If errorCount were
+  // regular state, it would reset too — meaning the "persistent error"
+  // message (shown after 3+ errors) would never appear.
+  const errorCountRef = React.useRef(0);
   const [errorCount, setErrorCount] = React.useState(0);
   
   const handleRetry = React.useCallback(() => {
@@ -155,7 +161,8 @@ export const FeatureErrorBoundary: React.FC<{ children: ReactNode; featureName?:
   }, []);
 
   const handleError = React.useCallback((_error: Error) => {
-    setErrorCount((c) => c + 1);
+    errorCountRef.current += 1;
+    setErrorCount(errorCountRef.current);
   }, []);
 
   return (

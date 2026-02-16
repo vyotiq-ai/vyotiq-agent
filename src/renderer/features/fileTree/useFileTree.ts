@@ -232,6 +232,10 @@ export interface UseFileTreeReturn {
   navigateDown: () => void;
   navigateInto: () => void;
   navigateOut: () => void;
+  navigateToFirst: () => void;
+  navigateToLast: () => void;
+  navigatePageUp: () => void;
+  navigatePageDown: () => void;
 }
 
 // =============================================================================
@@ -949,6 +953,40 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
     }
   }, [focusedPath, flatNodes, expandedPaths, collapsePath, selectPath]);
 
+  const navigateToFirst = useCallback(() => {
+    if (flatNodes.length === 0) return;
+    const firstPath = flatNodes[0].path;
+    setFocusedPath(firstPath);
+    selectPath(firstPath);
+  }, [flatNodes, selectPath]);
+
+  const navigateToLast = useCallback(() => {
+    if (flatNodes.length === 0) return;
+    const lastPath = flatNodes[flatNodes.length - 1].path;
+    setFocusedPath(lastPath);
+    selectPath(lastPath);
+  }, [flatNodes, selectPath]);
+
+  const PAGE_SIZE = 10;
+
+  const navigatePageUp = useCallback(() => {
+    if (flatNodes.length === 0) return;
+    const currentIdx = focusedPath ? (pathIndexMap.get(focusedPath) ?? 0) : 0;
+    const newIdx = Math.max(0, currentIdx - PAGE_SIZE);
+    const newPath = flatNodes[newIdx].path;
+    setFocusedPath(newPath);
+    selectPath(newPath);
+  }, [flatNodes, focusedPath, selectPath, pathIndexMap]);
+
+  const navigatePageDown = useCallback(() => {
+    if (flatNodes.length === 0) return;
+    const currentIdx = focusedPath ? (pathIndexMap.get(focusedPath) ?? 0) : 0;
+    const newIdx = Math.min(flatNodes.length - 1, currentIdx + PAGE_SIZE);
+    const newPath = flatNodes[newIdx].path;
+    setFocusedPath(newPath);
+    selectPath(newPath);
+  }, [flatNodes, focusedPath, selectPath, pathIndexMap]);
+
   // ==========================================================================
   // Effects
   // ==========================================================================
@@ -1087,5 +1125,9 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
     navigateDown,
     navigateInto,
     navigateOut,
+    navigateToFirst,
+    navigateToLast,
+    navigatePageUp,
+    navigatePageDown,
   };
 }

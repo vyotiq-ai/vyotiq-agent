@@ -72,6 +72,7 @@ export function useChatScrollManager({
     containerRef: virtualContainerRef,
     scrollToBottom: virtualScrollToBottom,
     isNearBottom: isNearBottomVirtualized,
+    resetUserScroll: resetVirtualUserScroll,
     measureItem,
   } = useVirtualizedList({
     items: renderGroups,
@@ -85,7 +86,7 @@ export function useChatScrollManager({
   });
 
   // Scroll hook for non-virtualized mode only
-  const { scrollRef, forceScrollToBottom, isNearBottom: isNearBottomNonVirt } = useChatScroll(
+  const { scrollRef, forceScrollToBottom, isNearBottom: isNearBottomNonVirt, resetUserScroll: resetNonVirtUserScroll } = useChatScroll(
     `${messages?.length ?? 0}-${lastAssistantContentLength}`,
     {
       enabled: !shouldVirtualize,
@@ -136,7 +137,16 @@ export function useChatScrollManager({
   // Force scroll to bottom when streaming starts
   useEffect(() => {
     if (isStreaming && !wasStreamingRef.current) {
-      // Streaming just started - force scroll to bottom
+      // Streaming just started (new iteration or new run) — CRITICAL:
+      // Reset user scroll intent so auto-scroll re-engages even if
+      // the user scrolled up during a previous iteration.
+      if (shouldVirtualize) {
+        resetVirtualUserScroll();
+      } else {
+        resetNonVirtUserScroll();
+      }
+      
+      // Force scroll to bottom
       requestAnimationFrame(() => {
         if (shouldVirtualize) {
           virtualScrollToBottom('instant');
@@ -146,9 +156,13 @@ export function useChatScrollManager({
       });
     }
     wasStreamingRef.current = isStreaming;
-  }, [isStreaming, shouldVirtualize, virtualScrollToBottom, forceScrollToBottom]);
+  }, [isStreaming, shouldVirtualize, virtualScrollToBottom, forceScrollToBottom, resetVirtualUserScroll, resetNonVirtUserScroll]);
 
-  // Force scroll when new message is added
+  // Force scroll when new message is added (NON-STREAMING only)
+  // During streaming the RAF loop in useChatScroll / useVirtualizedList is
+  // the sole authority for scroll position.  Firing forceScrollToBottom
+  // concurrently creates a race condition where two scroll sources fight,
+  // causing visible jumps.
   useEffect(() => {
     if (!messages) return;
     const msgCount = messages.length;
@@ -159,13 +173,16 @@ export function useChatScrollManager({
       lastMsgRef.current = lastMsg.id ?? null;
       lastMsgCountRef.current = msgCount;
       
+      // During streaming, skip — the RAF auto-scroll loop handles it
+      if (isStreaming) return;
+      
       if (shouldVirtualize) {
         virtualScrollToBottom();
       } else {
         forceScrollToBottom();
       }
     }
-  }, [messages, forceScrollToBottom, virtualScrollToBottom, shouldVirtualize]);
+  }, [messages, forceScrollToBottom, virtualScrollToBottom, shouldVirtualize, isStreaming]);
 
   return {
     scrollRef,

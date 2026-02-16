@@ -139,7 +139,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
         <div className="py-2 md:py-3">
           {TAB_GROUPS.map((group, groupIndex) => (
             <div key={group.title} className={cn(groupIndex > 0 && "mt-3 md:mt-4")}>
-              <div className="px-3 md:px-4 py-1 md:py-1.5 text-[8px] md:text-[9px] uppercase tracking-wider text-[var(--color-text-muted)]">
+              <div className="px-3 md:px-4 py-1 md:py-1.5 text-[9px] md:text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">
                 {group.title}
               </div>
               <div className="flex flex-col" role="tablist" aria-orientation="vertical">

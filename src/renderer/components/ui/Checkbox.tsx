@@ -20,7 +20,7 @@ interface CheckboxProps {
 }
 
 const checkboxSizes = {
-    sm: 'w-3.5 h-3.5 text-[8px]',
+    sm: 'w-3.5 h-3.5 text-[9px]',
     md: 'w-4 h-4 text-[10px]',
     lg: 'w-5 h-5 text-[11px]',
 };

@@ -29,6 +29,7 @@ let mainWindow: BrowserWindow | null = null;
 let orchestrator: AgentOrchestrator | null = null;
 let settingsStore: SettingsStore;
 let infraInitialized = false;
+let infraFailed = false;
 let ipcRegistered = false;
 let eventBatcher: IpcEventBatcher | null = null;
 const logger = new ConsoleLogger('Vyotiq');
@@ -109,7 +110,9 @@ const initializeDeferredServices = async () => {
   const workspacePath = process.cwd();
 
   // Start Rust backend sidecar (non-blocking)
-  rustSidecar.start().then((ok) => {
+  // Forward workspace indexing settings as environment variables
+  const wsSettings = settingsStore?.get()?.workspaceSettings;
+  rustSidecar.start(wsSettings).then((ok) => {
     if (ok) {
       logger.info('Rust backend sidecar started on port ' + rustSidecar.getPort());
     } else {
@@ -319,6 +322,7 @@ const bootstrapInfrastructure = async () => {
     logger.info('Session health monitor connected to IPC');
 
     infraInitialized = true;
+    infraFailed = false;
     logger.info('Infrastructure initialized (deferred services pending)', {
       hasProviders: orchestrator?.hasAvailableProviders() ?? false,
     });
@@ -330,7 +334,8 @@ const bootstrapInfrastructure = async () => {
 
     // Don't throw - allow the app to start even if some services fail
     // The UI will show appropriate error messages
-    infraInitialized = true; // Mark as initialized to prevent retry loops
+    infraInitialized = true; // Mark as attempted to prevent retry loops
+    infraFailed = true;      // Track that initialization actually failed
   }
 };
 

@@ -86,7 +86,7 @@ read(files) → understand code
       },
       ignore: {
         type: 'array',
-        items: { type: 'string' },
+        items: { type: 'string', description: 'Pattern to exclude from directory listing' },
         description: 'List of glob patterns to ignore',
       },
       showHidden: {

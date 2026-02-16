@@ -154,6 +154,17 @@ export {
 } from './useQueuedTools';
 
 // =============================================================================
+// File Diff Stream Hooks
+// =============================================================================
+
+export {
+  useFileDiffStream,
+  useActiveFileDiffStreams,
+  useAllFileDiffStreams,
+  useHasFileDiffStream,
+} from './useFileDiffStream';
+
+// =============================================================================
 // Onboarding Hooks
 // =============================================================================
 
@@ -250,3 +261,17 @@ export {
   useRustIndexStatus,
   useUnifiedWorkspace,
 } from './useRustBackend';
+
+// =============================================================================
+// Communication Hooks
+// =============================================================================
+
+export { useCommunication } from './useCommunication';
+
+// =============================================================================
+// Monitoring Hooks
+// =============================================================================
+
+export { useSessionHealth } from './useSessionHealth';
+export { useModelQuality, type ModelQualityMetrics, type ModelQualityStats } from './useModelQuality';
+export { useLoopDetection, type LoopDetectionState } from './useLoopDetection';

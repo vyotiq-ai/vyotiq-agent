@@ -131,7 +131,7 @@ export const SettingsInput: React.FC<InputProps> = ({
       {maxLength && (
         <div className="flex justify-end mt-0.5 sm:mt-1">
           <span className={cn(
-            'text-[8px] sm:text-[9px]',
+            'text-[9px] sm:text-[10px]',
             value.length >= maxLength 
               ? 'text-[var(--color-status-warning)]' 
               : 'text-[var(--color-text-dim)]'

@@ -101,12 +101,11 @@ const AttachmentItem: React.FC<{
 }> = ({ attachment, index, onRemove, variant }) => {
   const isImage = isImageMimeType(attachment.mimeType);
   
-  // Generate image thumbnail URL for preview (default variant only)
+  // Generate image thumbnail URL for preview (both default and strip variants)
   const thumbnailUrl = useMemo(() => {
-    if (variant !== 'default') return null;
     if (!isImage || !attachment.content) return null;
     return `data:${attachment.mimeType};base64,${attachment.content}`;
-  }, [variant, isImage, attachment.mimeType, attachment.content]);
+  }, [isImage, attachment.mimeType, attachment.content]);
 
   const sizeLabel = attachment.size > 0 ? formatFileSize(attachment.size) : undefined;
   const title = sizeLabel ? `${attachment.name} (${sizeLabel})` : attachment.name;
@@ -128,7 +127,10 @@ const AttachmentItem: React.FC<{
     >
       {/* Image thumbnail or file icon */}
       {thumbnailUrl ? (
-        <div className="flex-shrink-0 w-6 h-6 rounded overflow-hidden bg-[var(--color-surface-3)]">
+        <div className={cn(
+          'flex-shrink-0 rounded overflow-hidden bg-[var(--color-surface-3)]',
+          variant === 'strip' ? 'w-5 h-5' : 'w-6 h-6'
+        )}>
           <img
             src={thumbnailUrl}
             alt={attachment.name}

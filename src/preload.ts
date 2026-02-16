@@ -4,6 +4,7 @@ import type {
 	AgentSettings,
 	AttachmentPayload,
 	ConfirmToolPayload,
+	FollowUpPayload,
 	RendererEvent,
 	SendMessagePayload,
 	StartSessionPayload,
@@ -22,6 +23,7 @@ import type {
 const agentAPI = {
 	startSession: (payload: StartSessionPayload) => ipcRenderer.invoke('agent:start-session', payload),
 	sendMessage: (payload: SendMessagePayload) => ipcRenderer.invoke('agent:send-message', payload),
+	sendFollowUp: (payload: FollowUpPayload) => ipcRenderer.invoke('agent:send-followup', payload),
 	confirmTool: (payload: ConfirmToolPayload) => ipcRenderer.invoke('agent:confirm-tool', payload),
 	updateConfig: (payload: UpdateConfigPayload) => ipcRenderer.invoke('agent:update-config', payload),
 	cancelRun: (sessionId: string) => ipcRenderer.invoke('agent:cancel-run', sessionId),
@@ -47,6 +49,15 @@ const agentAPI = {
 		ipcRenderer.invoke('agent:delete-branch', sessionId, branchId),
 	addReaction: (sessionId: string, messageId: string, reaction: 'up' | 'down' | null) =>
 		ipcRenderer.invoke('agent:add-reaction', sessionId, messageId, reaction),
+	// Communication: Questions & Decisions
+	answerQuestion: (questionId: string, answer: unknown) =>
+		ipcRenderer.invoke('agent:answer-question', questionId, answer),
+	skipQuestion: (questionId: string) =>
+		ipcRenderer.invoke('agent:skip-question', questionId),
+	makeDecision: (decisionId: string, selectedOptionId: string) =>
+		ipcRenderer.invoke('agent:make-decision', decisionId, selectedOptionId),
+	skipDecision: (decisionId: string) =>
+		ipcRenderer.invoke('agent:skip-decision', decisionId),
 	onEvent: (handler: (event: RendererEvent) => void) => {
 		const listener = (_event: IpcRendererEvent, data: RendererEvent) => handler(data);
 		ipcRenderer.on('agent:event', listener);

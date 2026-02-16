@@ -22,6 +22,7 @@ export type {
   RoutingDecisionState,
   TerminalStreamState,
   QueuedTool,
+  FileDiffStreamState,
   AgentState,
 } from './types';
 
@@ -53,6 +54,7 @@ export const initialState: AgentUIState = {
   executingTools: {},
   queuedTools: {},
   runErrors: {},
+  fileDiffStreams: {},
 };
 
 // =============================================================================

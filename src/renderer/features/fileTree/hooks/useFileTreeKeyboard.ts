@@ -24,6 +24,14 @@ interface UseFileTreeKeyboardOptions {
   onSearch: () => void;
   onEscape: () => void;
   onSelectAll: () => void;
+  /** Navigate to first item */
+  onHome?: () => void;
+  /** Navigate to last item */
+  onEnd?: () => void;
+  /** Navigate up by a page (10 items) */
+  onPageUp?: () => void;
+  /** Navigate down by a page (10 items) */
+  onPageDown?: () => void;
 }
 
 export function useFileTreeKeyboard(options: UseFileTreeKeyboardOptions) {
@@ -44,6 +52,10 @@ export function useFileTreeKeyboard(options: UseFileTreeKeyboardOptions) {
     onSearch,
     onEscape,
     onSelectAll,
+    onHome,
+    onEnd,
+    onPageUp,
+    onPageDown,
   } = options;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -137,6 +149,26 @@ export function useFileTreeKeyboard(options: UseFileTreeKeyboardOptions) {
       case 'Escape':
         onEscape();
         break;
+
+      case 'Home':
+        e.preventDefault();
+        onHome?.();
+        break;
+
+      case 'End':
+        e.preventDefault();
+        onEnd?.();
+        break;
+
+      case 'PageUp':
+        e.preventDefault();
+        onPageUp?.();
+        break;
+
+      case 'PageDown':
+        e.preventDefault();
+        onPageDown?.();
+        break;
     }
   }, [
     isEnabled,
@@ -155,6 +187,10 @@ export function useFileTreeKeyboard(options: UseFileTreeKeyboardOptions) {
     onSearch,
     onSelectAll,
     onEscape,
+    onHome,
+    onEnd,
+    onPageUp,
+    onPageDown,
   ]);
 
   useEffect(() => {

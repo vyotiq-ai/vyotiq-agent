@@ -53,6 +53,25 @@ export function registerAgentHandlers(context: IpcContext): void {
     }, { additionalContext: { sessionId: payload?.sessionId } });
   });
 
+  ipcMain.handle('agent:send-followup', async (_event, payload) => {
+    // Validate payload structure
+    const validationError = validateIpcPayload('agent:send-followup', payload);
+    if (validationError) {
+      logger.warn('agent:send-followup validation failed', { error: validationError.error });
+      return validationError;
+    }
+    
+    return withSafeHandler(context, 'agent:send-followup', async (orchestrator) => {
+      logger.info('Sending follow-up for running session', {
+        sessionId: payload.sessionId,
+        contentLength: payload.content?.length ?? 0,
+        attachmentCount: payload.attachments?.length ?? 0,
+      });
+      await orchestrator.sendFollowUp(payload);
+      return { success: true };
+    }, { additionalContext: { sessionId: payload?.sessionId } });
+  });
+
   ipcMain.handle('agent:confirm-tool', async (_event, payload) => {
     // Validate payload structure
     const validationError = validateIpcPayload('agent:confirm-tool', payload);
@@ -276,6 +295,65 @@ export function registerAgentHandlers(context: IpcContext): void {
       const detector = await getLoopDetectorCached();
       return detector.shouldTriggerCircuitBreaker(runId);
     }, { returnOnError: false, additionalContext: { runId } });
+  });
+
+  // ==========================================================================
+  // Communication: Questions & Decisions
+  // ==========================================================================
+
+  ipcMain.handle('agent:answer-question', async (_event, questionId: string, answer: unknown) => {
+    return withSafeHandler(context, 'agent:answer-question', async (orchestrator) => {
+      logger.info('Answering question', { questionId });
+      // Emit the answer event back through the orchestrator event system
+      orchestrator.emit('event', {
+        type: 'question-answered',
+        sessionId: '',
+        questionId,
+        answer,
+        timestamp: Date.now(),
+      });
+      return { success: true };
+    }, { returnOnError: { success: false }, additionalContext: { questionId } });
+  });
+
+  ipcMain.handle('agent:skip-question', async (_event, questionId: string) => {
+    return withSafeHandler(context, 'agent:skip-question', async (orchestrator) => {
+      logger.info('Skipping question', { questionId });
+      orchestrator.emit('event', {
+        type: 'question-skipped',
+        sessionId: '',
+        questionId,
+        timestamp: Date.now(),
+      });
+      return { success: true };
+    }, { returnOnError: { success: false }, additionalContext: { questionId } });
+  });
+
+  ipcMain.handle('agent:make-decision', async (_event, decisionId: string, selectedOptionId: string) => {
+    return withSafeHandler(context, 'agent:make-decision', async (orchestrator) => {
+      logger.info('Making decision', { decisionId, selectedOptionId });
+      orchestrator.emit('event', {
+        type: 'decision-made',
+        sessionId: '',
+        decisionId,
+        selectedOption: selectedOptionId,
+        timestamp: Date.now(),
+      });
+      return { success: true };
+    }, { returnOnError: { success: false }, additionalContext: { decisionId } });
+  });
+
+  ipcMain.handle('agent:skip-decision', async (_event, decisionId: string) => {
+    return withSafeHandler(context, 'agent:skip-decision', async (orchestrator) => {
+      logger.info('Skipping decision', { decisionId });
+      orchestrator.emit('event', {
+        type: 'decision-skipped',
+        sessionId: '',
+        decisionId,
+        timestamp: Date.now(),
+      });
+      return { success: true };
+    }, { returnOnError: { success: false }, additionalContext: { decisionId } });
   });
 
   // ==========================================================================

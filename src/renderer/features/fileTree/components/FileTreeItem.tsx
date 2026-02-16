@@ -26,7 +26,7 @@ interface FileTreeItemProps {
   dragDrop: DragDropState;
   onToggleExpand: (path: string) => void;
   onSelect: (path: string, mode?: 'single' | 'toggle' | 'range') => void;
-  onDoubleClick: (path: string, type: 'file' | 'directory') => void;
+  onOpen: (path: string, type: 'file' | 'directory', preview?: boolean) => void;
   onContextMenu: (e: React.MouseEvent, path: string, type: 'file' | 'directory') => void;
   onRename: (oldPath: string, newName: string) => Promise<boolean>;
   onCancelRename: () => void;
@@ -45,7 +45,7 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = memo(({
   dragDrop,
   onToggleExpand,
   onSelect,
-  onDoubleClick,
+  onOpen,
   onContextMenu,
   onRename,
   onCancelRename,
@@ -98,22 +98,22 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = memo(({
     
     onSelect(node.path, mode);
     
-    // VS Code behavior: single click expands folders and opens files
-    // (unless using modifier keys for multi-select)
+    // VS Code behavior: single click expands folders, opens file as preview
+    // Double-click pins the tab (handled in handleDoubleClick)
     if (mode === 'single') {
       if (node.type === 'directory') {
         onToggleExpand(node.path);
       } else {
-        onDoubleClick(node.path, node.type); // Opens the file
+        onOpen(node.path, node.type, true); // preview = true
       }
     }
-  }, [node.path, node.type, onSelect, onToggleExpand, onDoubleClick]);
+  }, [node.path, node.type, onSelect, onToggleExpand, onOpen]);
   
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    // Double-click still works for opening files (redundant but expected)
-    onDoubleClick(node.path, node.type);
-  }, [node.path, node.type, onDoubleClick]);
+    // Double-click pins the file tab (preview = false)
+    onOpen(node.path, node.type, false);
+  }, [node.path, node.type, onOpen]);
   
   const handleChevronClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -287,16 +287,22 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = memo(({
         </span>
       )}
       
-      {/* Git status indicator */}
+      {/* Git status badge (VS Code-style letter indicators) */}
       {node.gitStatus && !isRenaming && (
         <span className={cn(
-          'w-2 h-2 rounded-full mr-1 shrink-0',
-          node.gitStatus === 'modified' && 'bg-[var(--color-warning)]',
-          node.gitStatus === 'added' && 'bg-[var(--color-success)]',
-          node.gitStatus === 'deleted' && 'bg-[var(--color-error)]',
-          node.gitStatus === 'untracked' && 'bg-[var(--color-text-muted)]',
-          node.gitStatus === 'staged' && 'bg-[var(--color-info)]',
-        )} />
+          'text-[9px] font-bold mr-1.5 shrink-0 leading-none',
+          node.gitStatus === 'modified' && 'text-[var(--color-warning)]',
+          node.gitStatus === 'added' && 'text-[var(--color-success)]',
+          node.gitStatus === 'deleted' && 'text-[var(--color-error)]',
+          node.gitStatus === 'untracked' && 'text-[var(--color-text-muted)]',
+          node.gitStatus === 'staged' && 'text-[var(--color-info)]',
+        )}>
+          {node.gitStatus === 'modified' && 'M'}
+          {node.gitStatus === 'added' && 'A'}
+          {node.gitStatus === 'deleted' && 'D'}
+          {node.gitStatus === 'untracked' && 'U'}
+          {node.gitStatus === 'staged' && 'S'}
+        </span>
       )}
     </div>
   );

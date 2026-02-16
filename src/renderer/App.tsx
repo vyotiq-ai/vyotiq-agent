@@ -19,6 +19,7 @@ import { DebugPanel } from './features/debugging/DebugPanel';
 import { FirstRunWizard } from './features/onboarding/FirstRunWizard';
 import { ConnectedLoadingIndicator } from './components/ui/LoadingState';
 import { createLogger } from './utils/logger';
+import { useToast } from './components/ui/Toast';
 
 // Browser panel resize constraints
 const BROWSER_PANEL_MIN_WIDTH = 320;
@@ -89,6 +90,41 @@ const App: React.FC = () => {
 
   // Register dev-only profiler keyboard shortcut (Ctrl+Shift+P)
   useProfilerKeyboard();
+
+  // ---- Agent notification handler ----
+  // Listen for important agent events and surface them as toasts so the user
+  // is aware of recovery escalations, compliance violations, and other
+  // notifications without having to monitor the chat area.
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (!window.vyotiq?.agent) return;
+
+    const unsubscribe = window.vyotiq.agent.onEvent((event) => {
+      const evt = event as Record<string, unknown>;
+      switch (evt.type) {
+        case 'recovery-escalation': {
+          const msg = (evt as { message?: string }).message ?? 'Recovery escalation triggered';
+          toast({ type: 'warning', message: msg });
+          break;
+        }
+        case 'user-notification': {
+          const notif = evt as { level?: string; message?: string };
+          const toastType = notif.level === 'error' ? 'error' : notif.level === 'warning' ? 'warning' : 'info';
+          toast({ type: toastType as 'error' | 'warning' | 'info', message: notif.message ?? 'Notification from agent' });
+          break;
+        }
+        case 'compliance-violation': {
+          toast({ type: 'error', message: `Compliance violation: ${(evt as { reason?: string }).reason ?? 'unknown'}` });
+          break;
+        }
+        default:
+          break;
+      }
+    });
+
+    return () => { unsubscribe?.(); };
+  }, [toast]);
 
   // Show wizard on first run after settings are loaded
   useEffect(() => {

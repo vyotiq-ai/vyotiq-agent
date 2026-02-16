@@ -53,6 +53,7 @@ function createInitialState(overrides: Partial<AgentUIState> = {}): AgentUIState
     pendingDecisions: [],
     communicationProgress: [],
     runErrors: {},
+    fileDiffStreams: {},
     settings: {
       apiKeys: {},
       rateLimits: {},

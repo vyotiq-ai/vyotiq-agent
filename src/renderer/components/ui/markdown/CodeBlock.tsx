@@ -139,9 +139,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = memo(({
               onClick={handleRun}
               aria-label="Run in terminal"
               className={cn(
-                'p-1 rounded opacity-0 group-hover:opacity-100',
-                'text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)]',
-                'transition-all'
+                'p-1 rounded',
+                'text-[var(--color-text-dim)] group-hover:text-[var(--color-text-muted)] hover:!text-[var(--color-accent-primary)]',
+                'transition-all',
+                'focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)] focus-visible:outline-none',
               )}
               title="Run in terminal"
             >
@@ -154,9 +155,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = memo(({
               onClick={handleInsert}
               aria-label="Insert into file"
               className={cn(
-                'p-1 rounded opacity-0 group-hover:opacity-100',
-                'text-[var(--color-text-muted)] hover:text-[var(--color-info)]',
-                'transition-all'
+                'p-1 rounded',
+                'text-[var(--color-text-dim)] group-hover:text-[var(--color-text-muted)] hover:!text-[var(--color-info)]',
+                'transition-all',
+                'focus-visible:ring-1 focus-visible:ring-[var(--color-info)] focus-visible:outline-none',
               )}
               title="Insert into file"
             >

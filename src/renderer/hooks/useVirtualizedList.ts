@@ -70,6 +70,8 @@ export interface VirtualizedListResult<T> {
   scrollToIndex: (index: number, behavior?: ScrollBehavior) => void;
   /** Scroll to bottom */
   scrollToBottom: (behavior?: ScrollBehavior) => void;
+  /** Reset user scroll intent — call when streaming starts to re-engage auto-scroll */
+  resetUserScroll: () => void;
   /** Update the measured height for an item */
   measureItem: (index: number, height: number) => void;
   /** Whether user is near bottom (for auto-scroll decision) */
@@ -116,6 +118,9 @@ export function useVirtualizedList<T>({
   // Track if user manually scrolled away from bottom
   const userScrolledAwayRef = useRef(false);
   const lastUserScrollTimeRef = useRef(0);
+  
+  // Flag to distinguish programmatic scroll from user scroll
+  const isProgrammaticScrollRef = useRef(false);
 
   // Calculate item offsets and total height (including gaps between items)
   const { itemOffsets, totalHeight } = useMemo(() => {
@@ -201,38 +206,55 @@ export function useVirtualizedList<T>({
     if (!container) return;
 
     let scrollTimeout: number | null = null;
+    let rafId: number | null = null;
 
     const handleScroll = () => {
-      const newScrollTop = container.scrollTop;
-      setScrollTop(newScrollTop);
-      
-      // Check if near bottom
-      const distanceFromBottom = totalHeight - (newScrollTop + containerHeight);
-      const nearBottom = distanceFromBottom < autoScrollThreshold;
-      setIsNearBottom(nearBottom);
-      
-      // Track user scroll intent
-      const now = Date.now();
-      if (distanceFromBottom > autoScrollThreshold) {
-        userScrolledAwayRef.current = true;
-        lastUserScrollTimeRef.current = now;
-      } else {
-        userScrolledAwayRef.current = false;
-      }
-      
-      // Reset flag after 2 seconds of being near bottom
-      if (scrollTimeout) clearTimeout(scrollTimeout);
-      scrollTimeout = window.setTimeout(() => {
-        if (!userScrolledAwayRef.current) {
-          lastUserScrollTimeRef.current = 0;
+      // PERF: Batch scroll-derived state updates into a single RAF frame.
+      // Previously, every scroll event (including those triggered by the
+      // streaming RAF auto-scroller) caused two setState calls, each
+      // triggering full virtualItems recalculation.  Now we coalesce them
+      // into one update per frame.
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const newScrollTop = container.scrollTop;
+        setScrollTop(newScrollTop);
+        
+        // Check if near bottom
+        const distanceFromBottom = totalHeight - (newScrollTop + containerHeight);
+        const nearBottom = distanceFromBottom < autoScrollThreshold;
+        setIsNearBottom(nearBottom);
+        
+        // CRITICAL: Skip user-intent detection during programmatic scroll
+        // The RAF auto-scroll loop sets this flag before adjusting scrollTop
+        if (isProgrammaticScrollRef.current) {
+          return;
         }
-      }, 2000);
+        
+        // Track user scroll intent
+        const now = Date.now();
+        if (distanceFromBottom > autoScrollThreshold) {
+          userScrolledAwayRef.current = true;
+          lastUserScrollTimeRef.current = now;
+        } else {
+          userScrolledAwayRef.current = false;
+        }
+        
+        // Reset flag after 2 seconds of being near bottom
+        if (scrollTimeout) clearTimeout(scrollTimeout);
+        scrollTimeout = window.setTimeout(() => {
+          if (!userScrolledAwayRef.current) {
+            lastUserScrollTimeRef.current = 0;
+          }
+        }, 2000);
+      });
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       container.removeEventListener('scroll', handleScroll);
       if (scrollTimeout) clearTimeout(scrollTimeout);
+      if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [totalHeight, containerHeight, autoScrollThreshold]);
 
@@ -305,12 +327,21 @@ export function useVirtualizedList<T>({
       const { scrollHeight, scrollTop: currentScrollTop, clientHeight } = container;
       const distanceFromBottom = scrollHeight - currentScrollTop - clientHeight;
       
-      // Only auto-scroll if close to bottom (within threshold)
-      if (distanceFromBottom <= autoScrollThreshold) {
+      // Use 2x threshold to prevent falling behind during fast streaming
+      const scrollThreshold = autoScrollThreshold * 2;
+      if (distanceFromBottom <= scrollThreshold) {
         const diff = scrollHeight - clientHeight - currentScrollTop;
         if (diff > 2) {
-          // Gentle scroll: 30% of remaining distance
-          container.scrollTop = currentScrollTop + Math.max(2, diff * 0.3);
+          // Set flag to prevent false user-intent detection
+          isProgrammaticScrollRef.current = true;
+          // SNAP to bottom — asymptotic catch-up (50%, 30%) can never keep
+          // pace with fast content growth; the scroll falls behind, exceeds
+          // the threshold, and auto-scroll permanently disengages.  Snapping
+          // to scrollHeight guarantees the latest content stays in view.
+          container.scrollTop = scrollHeight - clientHeight;
+          queueMicrotask(() => {
+            isProgrammaticScrollRef.current = false;
+          });
         }
       }
       
@@ -334,6 +365,33 @@ export function useVirtualizedList<T>({
       }
     };
   }, [streamingMode, autoScrollToBottom, autoScrollThreshold]);
+
+  // Re-anchor to bottom when totalHeight changes due to item measurement.
+  // When items are measured as shorter than estimated, totalHeight shrinks,
+  // the inner div height decreases, and the browser clamps scrollTop — which
+  // manifests as an upward scroll jump.  Compensate by snapping to the new
+  // bottom whenever we were already near-bottom.
+  const prevTotalHeightRef = useRef(totalHeight);
+  useEffect(() => {
+    const container = containerRef.current;
+    const prevHeight = prevTotalHeightRef.current;
+    prevTotalHeightRef.current = totalHeight;
+
+    if (!container || prevHeight === 0) return;
+    if (totalHeight === prevHeight) return;
+    if (userScrolledAwayRef.current) return;
+
+    // If near bottom OR streaming, snap to the new bottom
+    const { scrollTop: st, clientHeight: ch } = container;
+    const distFromOldBottom = prevHeight - st - ch;
+    if (distFromOldBottom < autoScrollThreshold * 2 || streamingMode) {
+      isProgrammaticScrollRef.current = true;
+      container.scrollTop = container.scrollHeight;
+      queueMicrotask(() => {
+        isProgrammaticScrollRef.current = false;
+      });
+    }
+  }, [totalHeight, autoScrollThreshold, streamingMode]);
 
   // Auto-scroll to bottom when new items are added (non-streaming mode)
   useEffect(() => {
@@ -369,9 +427,13 @@ export function useVirtualizedList<T>({
       const { scrollHeight, scrollTop: currentScrollTop, clientHeight } = container;
       const distanceFromBottom = scrollHeight - currentScrollTop - clientHeight;
       
-      // Only scroll if very close to bottom (within threshold)
-      if (distanceFromBottom <= autoScrollThreshold) {
+      // Use 2x threshold for the backup — more generous to prevent falling behind
+      if (distanceFromBottom <= autoScrollThreshold * 2) {
+        isProgrammaticScrollRef.current = true;
         container.scrollTop = scrollHeight - clientHeight;
+        queueMicrotask(() => {
+          isProgrammaticScrollRef.current = false;
+        });
       }
     });
   }, [streamingDep, streamingMode, autoScrollToBottom, autoScrollThreshold]);
@@ -392,6 +454,13 @@ export function useVirtualizedList<T>({
 
     container.scrollTo({ top: totalHeight, behavior });
   }, [totalHeight]);
+
+  // Reset user scroll intent — call when new iteration/streaming starts
+  // so auto-scroll re-engages even if user scrolled away previously
+  const resetUserScroll = useCallback(() => {
+    userScrolledAwayRef.current = false;
+    lastUserScrollTimeRef.current = 0;
+  }, []);
 
   // Update measured height for an item — batched via requestAnimationFrame
   // to avoid cascading state updates during rapid measurement callbacks
@@ -415,6 +484,7 @@ export function useVirtualizedList<T>({
     contentRef: contentRef as React.RefObject<HTMLDivElement>,
     scrollToIndex,
     scrollToBottom,
+    resetUserScroll,
     measureItem,
     isNearBottom,
     scrollTop,
@@ -422,13 +492,25 @@ export function useVirtualizedList<T>({
 }
 
 /**
- * Hook to measure an element's height and report it to the virtualizer
+ * Hook to measure an element's height and report it to the virtualizer.
+ * Uses ResizeObserver to track dynamic size changes (e.g. collapse/expand).
  */
 export function useVirtualItemMeasure(
   measureItem: (index: number, height: number) => void,
   index: number
 ): React.RefCallback<HTMLElement> {
+  // Keep the observer in a ref so we can disconnect it when the node
+  // changes or unmounts — the previous implementation stored it on the
+  // DOM node which was never cleaned up.
+  const observerRef = useRef<ResizeObserver | null>(null);
+
   const measureRef = useCallback((node: HTMLElement | null) => {
+    // Disconnect previous observer (handles ref changes & unmount)
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+
     if (node) {
       const observer = new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -438,9 +520,7 @@ export function useVirtualItemMeasure(
       observer.observe(node);
       // Initial measurement
       measureItem(index, node.getBoundingClientRect().height);
-      
-      // Store cleanup function
-      (node as HTMLElement & { _resizeObserver?: ResizeObserver })._resizeObserver = observer;
+      observerRef.current = observer;
     }
   }, [measureItem, index]);
 

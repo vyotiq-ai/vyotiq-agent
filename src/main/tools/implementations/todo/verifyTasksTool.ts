@@ -191,7 +191,7 @@ VerifyTasks → CHECK if all requirements met
       },
       taskIds: {
         type: 'array',
-        items: { type: 'string' },
+        items: { type: 'string', description: 'File path to verify task completion' },
         description: 'Optional: Specific task IDs to verify. If not provided, all tasks are verified.',
       },
     },

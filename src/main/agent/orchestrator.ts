@@ -4,6 +4,7 @@ import type {
   AgentEvent,
   AgentSessionState,
   ConfirmToolPayload,
+  FollowUpPayload,
   RendererEvent,
   SendMessagePayload,
   StartSessionPayload,
@@ -161,6 +162,17 @@ export class AgentOrchestrator extends EventEmitter {
     this.refreshProviders();
     // Load persisted sessions from disk into memory
     await this.sessionManager.load();
+
+    // Wire persistence warning callback to surface save failures to UI
+    this.sessionManager.setOnPersistenceWarning((sessionId, failureCount, error) => {
+      this.logger.warn('Session persistence warning', { sessionId, failureCount, error });
+      this.emitEvent({
+        type: 'session-health-update',
+        sessionId,
+        data: { persistenceWarning: true, failureCount, error },
+      } as unknown as RendererEvent);
+    });
+
     this.providerManager.validateConfiguration();
 
     // Initialize DynamicToolFactory with registry (Phase 2)
@@ -175,6 +187,15 @@ export class AgentOrchestrator extends EventEmitter {
 
     // Initialize recovery/self-healing system
     await this.initializeRecoverySystem();
+
+    // Wire session health monitor's event emitter so health updates reach the renderer
+    try {
+      const healthMonitor = getSessionHealthMonitor();
+      healthMonitor.setEventEmitter((event) => this.emitEvent(event as unknown as RendererEvent));
+      this.logger.debug('Session health monitor event emitter wired');
+    } catch (err) {
+      this.logger.warn('Failed to wire session health monitor emitter', { error: err });
+    }
 
     // Periodic cleanup of orphaned session throttle tracking entries (every 5 minutes)
     // Prevents memory leaks from sessions that expired without explicit deletion
@@ -402,6 +423,90 @@ export class AgentOrchestrator extends EventEmitter {
         error: err instanceof Error ? err.message : String(err),
       });
     });
+  }
+
+  /**
+   * Send a follow-up message while the agent is actively running.
+   * The follow-up is injected into the conversation context and will be
+   * picked up by the agent at the start of its next iteration.
+   */
+  async sendFollowUp(payload: FollowUpPayload): Promise<void> {
+    const session = this.sessionManager.getSession(payload.sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    if (session.state.status !== 'running' && session.state.status !== 'paused') {
+      throw new Error(`Cannot send follow-up: session is ${session.state.status}, not running`);
+    }
+
+    const runId = session.state.activeRunId;
+    if (!runId) {
+      throw new Error('Cannot send follow-up: no active run');
+    }
+
+    const messageId = randomUUID();
+    const now = Date.now();
+
+    // Create the follow-up user message
+    const followUpMessage = {
+      id: messageId,
+      role: 'user' as const,
+      content: payload.content,
+      createdAt: now,
+      runId,
+      isFollowUp: true,
+      attachments: payload.attachments?.map((attachment) => ({
+        id: attachment.id,
+        name: attachment.name,
+        path: attachment.path,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        encoding: attachment.encoding,
+        content: attachment.content,
+      })),
+    };
+
+    // Add to conversation messages
+    session.state.messages.push(followUpMessage);
+    session.state.updatedAt = now;
+
+    // Queue as pending follow-up for the run loop to acknowledge
+    if (!session.pendingFollowUps) {
+      session.pendingFollowUps = [];
+    }
+    session.pendingFollowUps.push({
+      message: followUpMessage,
+      receivedAt: now,
+      acknowledged: false,
+    });
+
+    this.logger.info('Follow-up message injected into running session', {
+      sessionId: payload.sessionId,
+      runId,
+      messageId,
+      contentLength: payload.content.length,
+      pendingCount: session.pendingFollowUps.length,
+      iteration: session.agenticContext?.iteration,
+    });
+
+    // Persist session state
+    this.sessionManager.updateSessionState(session.state.id, {
+      messages: session.state.messages,
+      updatedAt: session.state.updatedAt,
+    });
+
+    // Notify renderer that follow-up was received
+    this.emitEvent({
+      type: 'follow-up-received',
+      sessionId: payload.sessionId,
+      messageId,
+      content: payload.content,
+      timestamp: now,
+    } as RendererEvent);
+
+    // Also emit session state so UI updates the message list
+    this.emitEvent({ type: 'session-state', session: session.state });
   }
 
   async confirmTool(payload: ConfirmToolPayload): Promise<void> {

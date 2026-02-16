@@ -59,7 +59,10 @@ export type TaskAction =
   | { type: 'TODO_CLEAR'; payload: string }
   // Run error tracking for structured error recovery
   | { type: 'RUN_ERROR'; payload: { sessionId: string; errorCode: string; message: string; recoverable: boolean; recoveryHint?: string } }
-  | { type: 'RUN_ERROR_CLEAR'; payload: string };
+  | { type: 'RUN_ERROR_CLEAR'; payload: string }
+  // File diff streaming for real-time inline diff display
+  | { type: 'FILE_DIFF_STREAM'; payload: { runId: string; toolCallId: string; toolName: string; filePath: string; originalContent: string; modifiedContent: string; isNewFile: boolean; isComplete: boolean } }
+  | { type: 'FILE_DIFF_STREAM_CLEAR'; payload: { runId: string; toolCallId?: string } };
 
 /**
  * Handle progress group update (accumulates items per group)
@@ -193,6 +196,7 @@ export function taskReducer(
         inlineArtifacts,
         executingTools,
         queuedTools,
+        // Note: fileDiffStreams intentionally NOT cleared — completed diffs persist across runs
       };
     }
 
@@ -603,13 +607,14 @@ export function taskReducer(
 
       if (!data) return state;
 
-      // Keep memory bounded: store only the trailing portion of output.
-      const existingTail = (existing?.output ?? '').slice(-MAX_TERMINAL_OUTPUT_CHARS);
-      const incomingTail = data.length > MAX_TERMINAL_OUTPUT_CHARS
-        ? data.slice(-MAX_TERMINAL_OUTPUT_CHARS)
-        : data;
-
-      const nextOutput = (existingTail + incomingTail).slice(-MAX_TERMINAL_OUTPUT_CHARS);
+      // PERF: Minimize string allocations when appending terminal output.
+      // Previously we did 3 slice operations per dispatch; now we only
+      // truncate when the combined length actually exceeds the cap.
+      const existingOutput = existing?.output ?? '';
+      const combined = existingOutput + data;
+      const nextOutput = combined.length > MAX_TERMINAL_OUTPUT_CHARS
+        ? combined.slice(-MAX_TERMINAL_OUTPUT_CHARS)
+        : combined;
       
       return {
         ...state,
@@ -700,6 +705,58 @@ export function taskReducer(
         ...state,
         runErrors: remainingErrors,
       };
+    }
+
+    // File diff streaming — real-time inline diff as files are modified
+    case 'FILE_DIFF_STREAM': {
+      const { runId, toolCallId, toolName, filePath, originalContent, modifiedContent, isNewFile, isComplete, action } = action.payload;
+      const existingRun = state.fileDiffStreams[runId] || {};
+      const existing = existingRun[toolCallId];
+      const now = Date.now();
+
+      return {
+        ...state,
+        fileDiffStreams: {
+          ...state.fileDiffStreams,
+          [runId]: {
+            ...existingRun,
+            [toolCallId]: {
+              toolCallId,
+              toolName,
+              filePath,
+              originalContent,
+              modifiedContent,
+              isNewFile,
+              isComplete,
+              action: action ?? (isNewFile ? 'created' : 'modified'),
+              startedAt: existing?.startedAt ?? now,
+              updatedAt: now,
+            },
+          },
+        },
+      };
+    }
+
+    case 'FILE_DIFF_STREAM_CLEAR': {
+      const { runId, toolCallId } = action.payload;
+      if (!state.fileDiffStreams[runId]) return state;
+
+      if (toolCallId) {
+        // Clear specific tool call diff
+        const { [toolCallId]: _removed, ...remaining } = state.fileDiffStreams[runId];
+        if (Object.keys(remaining).length === 0) {
+          const { [runId]: _removedRun, ...remainingRuns } = state.fileDiffStreams;
+          return { ...state, fileDiffStreams: remainingRuns };
+        }
+        return {
+          ...state,
+          fileDiffStreams: { ...state.fileDiffStreams, [runId]: remaining },
+        };
+      }
+
+      // Clear all diffs for a run
+      const { [runId]: _removedRun, ...remainingRuns } = state.fileDiffStreams;
+      return { ...state, fileDiffStreams: remainingRuns };
     }
 
     default:

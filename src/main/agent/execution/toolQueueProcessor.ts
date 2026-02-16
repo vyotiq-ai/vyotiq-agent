@@ -782,6 +782,36 @@ export class ToolQueueProcessor {
         }
       }
 
+      // Emit file-diff-stream event for file-modifying tools
+      // This enables real-time inline diff display in the renderer
+      if (result.success && result.metadata) {
+        const FILE_TOOLS = new Set(['write_file', 'create_file', 'edit_file', 'replace_in_file', 'edit', 'write']);
+        if (FILE_TOOLS.has(tool.name)) {
+          const meta = result.metadata as Record<string, unknown>;
+          const diffFilePath = (meta.filePath as string) || (meta.path as string) || '';
+          const originalContent = (meta.originalContent as string) || '';
+          const modifiedContent = (meta.newContent as string) || (meta.content as string) || '';
+          const action = (meta.action as string) || (originalContent ? 'modified' : 'created');
+
+          if (diffFilePath && modifiedContent) {
+            this.emitEvent({
+              type: 'file-diff-stream',
+              sessionId: session.state.id,
+              runId,
+              toolCallId: tool.callId || `${tool.name}-${Date.now()}`,
+              toolName: tool.name,
+              filePath: diffFilePath,
+              originalContent,
+              modifiedContent,
+              isNewFile: action === 'created' || !originalContent,
+              isComplete: true,
+              action: action === 'created' ? 'created' : 'modified',
+              timestamp: Date.now(),
+            });
+          }
+        }
+      }
+
       this.emitEvent({
         type: 'tool-result',
         sessionId: session.state.id,

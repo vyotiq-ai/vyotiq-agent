@@ -18,8 +18,9 @@ import {
   Eye, 
   EyeOff, 
   Search,
-  ChevronRight,
+  ChevronsDownUp,
   FolderTree,
+  Crosshair,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { createLogger } from '../../../utils/logger';
@@ -43,6 +44,7 @@ interface FileTreeProps {
 
 export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = false, onFileOpen }) => {
   const {
+    nodes,
     flatNodes,
     isLoading,
     error,
@@ -85,10 +87,27 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
     navigateDown,
     navigateInto,
     navigateOut,
+    navigateToFirst,
+    navigateToLast,
+    navigatePageUp,
+    navigatePageDown,
     setFocusedPath,
   } = useFileTree({ workspacePath, onFileOpen });
   
   const { confirm, ConfirmDialog } = useConfirm();
+
+  // Count total files for search match indicator
+  const totalFileCount = useMemo(() => {
+    function countNodes(items: FileTreeNode[]): number {
+      let count = 0;
+      for (const n of items) {
+        count++;
+        if (n.children) count += countNodes(n.children);
+      }
+      return count;
+    }
+    return countNodes(nodes);
+  }, [nodes]);
   
   const [newItemState, setNewItemState] = useState<{
     type: 'file' | 'folder';
@@ -98,14 +117,17 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
   
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Handle double click - expand folder or open file
-  const handleDoubleClick = useCallback((path: string, type: 'file' | 'directory') => {
+  // Handle open — supports preview mode for single-click, full open for double-click
+  const handleOpen = useCallback((path: string, type: 'file' | 'directory', preview = false) => {
     if (type === 'directory') {
       toggleExpand(path);
     } else {
-      openFile(path);
+      // Dispatch open event with preview flag
+      document.dispatchEvent(new CustomEvent('vyotiq:open-file', {
+        detail: { filePath: path, preview },
+      }));
     }
-  }, [toggleExpand, openFile]);
+  }, [toggleExpand]);
   
   // Handle context menu open
   const handleContextMenu = useCallback((e: React.MouseEvent, path: string, type: 'file' | 'directory') => {
@@ -276,11 +298,11 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
         if (node.type === 'directory') {
           toggleExpand(node.path);
         } else {
-          openFile(node.path);
+          handleOpen(node.path, 'file', false);
         }
       }
     }
-  }, [focusedPath, flatNodes, toggleExpand, openFile]);
+  }, [focusedPath, flatNodes, toggleExpand, handleOpen]);
 
   const handleToggleSelect = useCallback(() => {
     if (focusedPath) {
@@ -363,6 +385,10 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
     onSearch: handleSearch,
     onEscape: handleEscape,
     onSelectAll: handleSelectAll,
+    onHome: navigateToFirst,
+    onEnd: navigateToLast,
+    onPageUp: navigatePageUp,
+    onPageDown: navigatePageDown,
   });
   
   // Focus container when clicking empty area
@@ -370,14 +396,40 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
     containerRef.current?.focus();
   }, []);
   
+  // Reveal active file in tree (scroll + expand + focus)
+  const revealActiveFile = useCallback(() => {
+    document.dispatchEvent(new CustomEvent('vyotiq:reveal-active-file'));
+  }, []);
+
+  // Listen for reveal-in-tree events (dispatched by MainLayout after resolving active file)
+  useEffect(() => {
+    const handleRevealInTree = (e: Event) => {
+      const detail = (e as CustomEvent<{ filePath: string }>).detail;
+      if (!detail?.filePath) return;
+
+      // Expand all ancestor directories
+      const pathParts = detail.filePath.replace(/\\/g, '/').split('/');
+      for (let i = 1; i < pathParts.length; i++) {
+        const ancestorPath = pathParts.slice(0, i).join('/');
+        expandPath(ancestorPath);
+      }
+
+      // Focus and select the target file
+      setTimeout(() => {
+        setFocusedPath(detail.filePath);
+        selectPath(detail.filePath);
+      }, 50);
+    };
+    document.addEventListener('vyotiq:reveal-in-tree', handleRevealInTree);
+    return () => document.removeEventListener('vyotiq:reveal-in-tree', handleRevealInTree);
+  }, [expandPath, setFocusedPath, selectPath]);
+
   // Initialize focus on first item
   useEffect(() => {
     if (flatNodes.length > 0 && !focusedPath) {
       setFocusedPath(flatNodes[0].path);
     }
   }, [flatNodes, focusedPath, setFocusedPath]);
-  
-  if (collapsed) return null;
   
   if (!workspacePath) {
     return (
@@ -419,7 +471,14 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
             className="p-1 text-[var(--color-text-dim)] hover:text-[var(--color-accent-primary)] transition-colors rounded-sm"
             title="Collapse All"
           >
-            <ChevronRight size={12} />
+            <ChevronsDownUp size={12} />
+          </button>
+          <button
+            onClick={revealActiveFile}
+            className="p-1 text-[var(--color-text-dim)] hover:text-[var(--color-accent-primary)] transition-colors rounded-sm"
+            title="Reveal Active File in Explorer"
+          >
+            <Crosshair size={12} />
           </button>
         </div>
         <div className="flex items-center gap-1">
@@ -471,6 +530,8 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
             clearSearch();
             setShowSearch(false);
           }}
+          matchCount={searchQuery ? flatNodes.length : undefined}
+          totalCount={searchQuery ? totalFileCount : undefined}
         />
       )}
       
@@ -508,7 +569,7 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
             containerRef={containerRef}
             toggleExpand={toggleExpand}
             selectPath={selectPath}
-            handleDoubleClick={handleDoubleClick}
+            handleOpen={handleOpen}
             handleContextMenu={handleContextMenu}
             rename={rename}
             cancelRenaming={cancelRenaming}
@@ -551,7 +612,7 @@ interface FileTreeVirtualizedProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   toggleExpand: (path: string) => void;
   selectPath: (path: string, mode?: 'single' | 'toggle' | 'range') => void;
-  handleDoubleClick: (path: string, type: 'file' | 'directory') => void;
+  handleOpen: (path: string, type: 'file' | 'directory', preview?: boolean) => void;
   handleContextMenu: (e: React.MouseEvent, path: string, type: 'file' | 'directory') => void;
   rename: (oldPath: string, newName: string) => Promise<boolean>;
   cancelRenaming: () => void;
@@ -571,7 +632,7 @@ const FileTreeVirtualized: React.FC<FileTreeVirtualizedProps> = React.memo(({
   containerRef,
   toggleExpand,
   selectPath,
-  handleDoubleClick,
+  handleOpen,
   handleContextMenu,
   rename,
   cancelRenaming,
@@ -660,7 +721,7 @@ const FileTreeVirtualized: React.FC<FileTreeVirtualizedProps> = React.memo(({
           dragDrop={dragDrop}
           onToggleExpand={toggleExpand}
           onSelect={selectPath}
-          onDoubleClick={handleDoubleClick}
+          onOpen={handleOpen}
           onContextMenu={handleContextMenu}
           onRename={rename}
           onCancelRename={cancelRenaming}
@@ -671,7 +732,7 @@ const FileTreeVirtualized: React.FC<FileTreeVirtualizedProps> = React.memo(({
         />
       );
     },
-    [dragDrop, toggleExpand, selectPath, handleDoubleClick, handleContextMenu, rename, cancelRenaming, startDrag, handleDragOver, endDrag, handleDrop, handleNewItemSubmit, handleNewItemCancel]
+    [dragDrop, toggleExpand, selectPath, handleOpen, handleContextMenu, rename, cancelRenaming, startDrag, handleDragOver, endDrag, handleDrop, handleNewItemSubmit, handleNewItemCancel]
   );
 
   return (

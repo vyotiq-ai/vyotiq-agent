@@ -15,6 +15,7 @@ import type {
   LLMProviderName,
   ContextMetricsSnapshot,
   StreamDeltaEvent,
+  FileDiffStreamEvent,
 } from '../../shared/types';
 import type { TodoItem } from '../../shared/types/todo';
 import type { SessionDelta } from './sessionDelta';
@@ -125,6 +126,30 @@ export interface QueuedTool {
   queuedAt: number;
 }
 
+/** Real-time file diff streaming state for inline diff display */
+export interface FileDiffStreamState {
+  /** Tool call ID */
+  toolCallId: string;
+  /** Tool name (write_file, edit_file, etc.) */
+  toolName: string;
+  /** Absolute file path */
+  filePath: string;
+  /** Original file content (empty for new files) */
+  originalContent: string;
+  /** Most recent modified content */
+  modifiedContent: string;
+  /** Whether this is a new file */
+  isNewFile: boolean;
+  /** Whether streaming is complete */
+  isComplete: boolean;
+  /** File action (created or modified) */
+  action: 'created' | 'modified';
+  /** Timestamp of first event */
+  startedAt: number;
+  /** Timestamp of last update */
+  updatedAt: number;
+}
+
 // =============================================================================
 // Main state shape
 // =============================================================================
@@ -219,6 +244,8 @@ export interface AgentUIState {
   queuedTools: Record<string, QueuedTool[]>;
   /** Structured run error info per session for error recovery UI */
   runErrors: Record<string, RunErrorInfo>;
+  /** Real-time file diff streams keyed by runId then toolCallId */
+  fileDiffStreams: Record<string, Record<string, FileDiffStreamState>>;
 }
 
 /** Type alias for AgentUIState for simpler imports */
@@ -288,5 +315,7 @@ export type AgentAction =
   | { type: 'RUN_TOOLSTATE_CLEAR'; payload: string }
   | { type: 'RUN_ERROR'; payload: { sessionId: string; errorCode: string; message: string; recoverable: boolean; recoveryHint?: string } }
   | { type: 'RUN_ERROR_CLEAR'; payload: string }
+  | { type: 'FILE_DIFF_STREAM'; payload: { runId: string; toolCallId: string; toolName: string; filePath: string; originalContent: string; modifiedContent: string; isNewFile: boolean; isComplete: boolean; action?: 'created' | 'modified' } }
+  | { type: 'FILE_DIFF_STREAM_CLEAR'; payload: { runId: string; toolCallId?: string } }
   | { type: 'SESSION_PATCH'; payload: { sessionId: string; patch: Partial<import('../../shared/types').AgentSessionState>; messagePatch?: { messageId: string; changes: Record<string, unknown> } } }
   | { type: 'SESSION_APPLY_DELTA'; payload: SessionDelta };

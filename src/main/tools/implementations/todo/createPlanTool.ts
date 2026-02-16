@@ -189,7 +189,7 @@ DeletePlan → clean up when done
       },
       requirements: {
         type: 'array',
-        items: { type: 'string' },
+        items: { type: 'string', description: 'A specific requirement or task to complete' },
         description: 'Optional: Pre-parsed requirements if you\'ve already broken them down. If not provided, they will be auto-parsed from userRequest.',
       },
     },

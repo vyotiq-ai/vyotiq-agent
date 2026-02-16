@@ -1,715 +1,544 @@
 /**
  * DiffViewer Component
- * 
- * Modern, semantic diff viewer with enhanced visual design.
- * Features:
- * - Always shows diffs by default (no collapse on initial render)
- * - Semantic word-level inline diffs with character-level highlighting  
- * - Unified view mode with smooth transitions
- * - GitHub-style line highlighting with refined One Dark colors
- * - Expandable context regions with smart collapse
- * - Inline syntax highlighting for changed words
- * - Accept/Reject/Edit actions with persistence and undo
- * - Keyboard navigation (j/k or arrows) for accessibility
- * - Clean terminal-friendly styling without +/- prefix symbols
- * - Responsive design with adaptive width and height
- * - Loading states with skeleton placeholders
- * - Copy to clipboard with visual feedback
+ *
+ * Real-time inline diff viewer that streams line-by-line changes as
+ * files are created or edited by the agent. Supports:
+ * - Semantic line-level diff with LCS alignment
+ * - Word-level inline highlighting for modified lines
+ * - Context lines with expand/collapse
+ * - Streaming mode for real-time updates during tool execution
+ * - Accept/reject actions for file changes
+ * - Hunk-based navigation
  */
-import React, { memo, useRef, useEffect, useState, useCallback, useMemo, useTransition } from 'react';
-import { 
-  Check, X, Pencil,
-  ChevronDown, ChevronUp, ChevronRight, Copy,
-  RotateCcw, FileCode2
+import React, { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import {
+  FileText,
+  FilePlus,
+  ChevronRight,
+  Check,
+  Undo2,
+  Copy,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
-import { Spinner } from '../../../../components/ui/LoadingState';
 import { cn } from '../../../../utils/cn';
-import { getFileName } from '../../../../utils/pathHelpers';
-import { createLogger } from '../../../../utils/logger';
-import { detectLanguage } from '../../../../../shared/utils/pathUtils';
-import { 
-  computeDiffStats, 
-  buildSemanticDiffLines, 
-  type SemanticDiffLine,
-  type InlineDiffPart
+import {
+  buildSemanticDiffLines,
+  computeDiffStats,
+  type DiffLine,
+  type DiffStats,
+  type InlineDiffResult,
 } from './diffUtils';
 
-// ============================================================================
-// Persistence
-// ============================================================================
-
-const DIFF_ACTIONS_KEY = 'vyotiq-diff-actions';
-
-const logger = createLogger('DiffViewer');
-
-export type DiffActionState = 'pending' | 'accepted' | 'rejected';
-
-interface DiffActionRecord {
-  filePath: string;
-  state: DiffActionState;
-  timestamp: number;
-}
-
-function getStoredDiffAction(diffId: string): DiffActionRecord | null {
-  try {
-    const stored = localStorage.getItem(DIFF_ACTIONS_KEY);
-    if (!stored) return null;
-    const actions: Record<string, DiffActionRecord> = JSON.parse(stored);
-    return actions[diffId] || null;
-  } catch { /* ignore */ }
-  return null;
-}
-
-function setStoredDiffAction(diffId: string, record: DiffActionRecord): void {
-  try {
-    const stored = localStorage.getItem(DIFF_ACTIONS_KEY);
-    const actions: Record<string, DiffActionRecord> = stored ? JSON.parse(stored) : {};
-    actions[diffId] = record;
-    
-    // Limit storage to 100 entries
-    const entries = Object.entries(actions);
-    if (entries.length > 100) {
-      entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
-      localStorage.setItem(DIFF_ACTIONS_KEY, JSON.stringify(Object.fromEntries(entries.slice(0, 100))));
-    } else {
-      localStorage.setItem(DIFF_ACTIONS_KEY, JSON.stringify(actions));
-    }
-  } catch { /* ignore */ }
-}
-
-function generateDiffId(filePath: string, original: string, modified: string): string {
-  const hash = `${filePath}-${original.length}-${modified.length}`;
-  return btoa(hash).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-// getFileName imported from utils/pathHelpers
-
-// ============================================================================
-// Props
-// ============================================================================
+// =============================================================================
+// Exported Types
+// =============================================================================
 
 export interface DiffViewerProps {
+  /** File path for display */
   filePath: string;
+  /** Original file content (empty string for new files) */
   originalContent: string;
+  /** Modified file content */
   modifiedContent: string;
+  /** Whether this is a newly created file */
   isNewFile?: boolean;
-  onAccept?: () => void;
-  onReject?: () => void;
-  onEdit?: () => void;
-  actionsDisabled?: boolean;
-  defaultCollapsed?: boolean;
-  maxHeight?: number;
+  /** Unique ID for persisting expand/collapse state */
   diffId?: string;
+  /** Accept callback */
+  onAccept?: () => void;
+  /** Reject callback */
+  onReject?: () => void;
+  /** Open file in editor callback */
+  onEdit?: () => void;
+  /** Default collapsed state */
+  defaultCollapsed?: boolean;
+  /** Enable streaming mode — content is still arriving */
+  isStreaming?: boolean;
+  /** Additional CSS class */
+  className?: string;
 }
 
-// ============================================================================
-// Inline Diff Part Renderer
-// ============================================================================
-
-interface DiffPartRendererProps {
-  parts: InlineDiffPart[];
-  lineType: 'added' | 'removed';
+export interface DiffActionState {
+  accepted: boolean;
+  rejected: boolean;
 }
 
-/**
- * Renders inline word-level diffs with character-level highlighting.
- * Changed parts are highlighted with background colors matching
- * the line type (red for removed, green for added).
- * Uses CSS variables for theme consistency.
- */
-const DiffPartRenderer: React.FC<DiffPartRendererProps> = memo(({ parts, lineType }) => {
-  if (!parts || parts.length === 0) return null;
-  
+// =============================================================================
+// Constants
+// =============================================================================
+
+const DEFAULT_CONTEXT_LINES = 3;
+const MAX_COLLAPSED_LINES = 12;
+const MAX_EXPANDED_LINES = 500;
+const NEW_FILE_MAX_LINES = 20;
+
+// =============================================================================
+// Sub-Components
+// =============================================================================
+
+/** Renders inline diff highlights within a single line */
+const InlineDiffSpan = memo<{
+  parts: InlineDiffResult['oldParts'] | InlineDiffResult['newParts'];
+  side: 'old' | 'new';
+}>(({ parts, side }) => (
+  <>
+    {parts.map((part, i) => {
+      const isHighlight =
+        (side === 'old' && part.type === 'removed') ||
+        (side === 'new' && part.type === 'added');
+      return (
+        <span
+          key={i}
+          className={cn(
+            isHighlight && side === 'old' && 'bg-[var(--color-diff-removed-word-bg)] text-[var(--color-diff-removed-word-text)] rounded-[2px] ring-1 ring-[var(--color-diff-removed-word-ring)]',
+            isHighlight && side === 'new' && 'bg-[var(--color-diff-added-word-bg)] text-[var(--color-diff-added-word-text)] rounded-[2px] ring-1 ring-[var(--color-diff-added-word-ring)]',
+          )}
+        >
+          {part.text}
+        </span>
+      );
+    })}
+  </>
+));
+InlineDiffSpan.displayName = 'InlineDiffSpan';
+
+/** Single diff line row */
+const DiffLineRow = memo<{
+  line: DiffLine;
+  isLast?: boolean;
+  onExpandClick?: () => void;
+}>(({ line, isLast, onExpandClick }) => {
+  if (line.type === 'expand') {
+    return (
+      <button
+        type="button"
+        onClick={onExpandClick}
+        className={cn(
+          'flex items-center w-full gap-2 px-2 py-0.5 text-[9px] font-mono',
+          'text-[var(--color-diff-expand-text)] bg-[var(--color-diff-expand-bg)]',
+          'hover:bg-[var(--color-diff-expand-bg-hover)] transition-colors duration-100',
+          'border-y border-[var(--color-diff-expand-border)]',
+        )}
+      >
+        <span className="opacity-60">···</span>
+        <span>{line.hiddenLines} lines hidden</span>
+        <span className="opacity-60">···</span>
+      </button>
+    );
+  }
+
+  const isAdded = line.type === 'added';
+  const isRemoved = line.type === 'removed';
+  const isContext = line.type === 'context';
+
+  // Determine indicator character
+  const indicator = isAdded ? '+' : isRemoved ? '−' : ' ';
+
   return (
-    <>
-      {parts.map((part, idx) => {
-        const isHighlighted = part.type !== 'unchanged';
-        return (
-          <span
-            key={idx}
-            className={cn(
-              // Word-level highlight for changed parts
-              isHighlighted && lineType === 'removed' && [
-                'bg-[var(--color-diff-removed-word-bg)]',
-                'text-[var(--color-diff-removed-word-text)]',
-                'rounded-sm px-[2px] -mx-[1px]'
-              ],
-              isHighlighted && lineType === 'added' && [
-                'bg-[var(--color-diff-added-word-bg)]',
-                'text-[var(--color-diff-added-word-text)]',
-                'rounded-sm px-[2px] -mx-[1px]'
-              ]
-            )}
-          >
-            {part.text}
-          </span>
-        );
-      })}
-    </>
+    <div
+      className={cn(
+        'flex font-mono text-[10px] leading-[1.65] group/line',
+        'transition-colors duration-75',
+        isAdded && 'bg-[var(--color-diff-added-bg)] hover:bg-[var(--color-diff-added-bg-hover)]',
+        isRemoved && 'bg-[var(--color-diff-removed-bg)] hover:bg-[var(--color-diff-removed-bg-hover)]',
+        isContext && 'hover:bg-[var(--color-surface-1)]/30',
+        isLast && 'rounded-b',
+      )}
+    >
+      {/* Old line number gutter */}
+      <span
+        className={cn(
+          'w-[36px] text-right pr-1 select-none flex-shrink-0 tabular-nums',
+          'text-[9px] leading-[1.65]',
+          isAdded && 'bg-[var(--color-diff-added-gutter-bg)] text-transparent',
+          isRemoved && 'bg-[var(--color-diff-removed-gutter-bg)] text-[var(--color-diff-removed-gutter)]',
+          isContext && 'text-[var(--color-text-dim)]/40',
+        )}
+      >
+        {line.oldLineNum ?? ''}
+      </span>
+
+      {/* New line number gutter */}
+      <span
+        className={cn(
+          'w-[36px] text-right pr-1 select-none flex-shrink-0 tabular-nums',
+          'text-[9px] leading-[1.65]',
+          isAdded && 'bg-[var(--color-diff-added-gutter-bg)] text-[var(--color-diff-added-gutter)]',
+          isRemoved && 'bg-[var(--color-diff-removed-gutter-bg)] text-transparent',
+          isContext && 'text-[var(--color-text-dim)]/40',
+        )}
+      >
+        {line.newLineNum ?? ''}
+      </span>
+
+      {/* Indicator column */}
+      <span
+        className={cn(
+          'w-[16px] text-center select-none flex-shrink-0',
+          'text-[10px] leading-[1.65] font-medium',
+          isAdded && 'text-[var(--color-diff-added-indicator)]',
+          isRemoved && 'text-[var(--color-diff-removed-indicator)]',
+          isContext && 'text-transparent',
+        )}
+      >
+        {indicator}
+      </span>
+
+      {/* Content */}
+      <span
+        className={cn(
+          'flex-1 whitespace-pre px-1.5 overflow-x-auto',
+          isAdded && 'text-[var(--color-diff-added-text-content)]',
+          isRemoved && 'text-[var(--color-diff-removed-text-content)]',
+          isContext && 'text-[var(--color-text-secondary)]',
+        )}
+      >
+        {line.inlineDiff ? (
+          <InlineDiffSpan
+            parts={isRemoved ? line.inlineDiff.oldParts : line.inlineDiff.newParts}
+            side={isRemoved ? 'old' : 'new'}
+          />
+        ) : (
+          line.content
+        )}
+      </span>
+    </div>
   );
 });
+DiffLineRow.displayName = 'DiffLineRow';
 
-DiffPartRenderer.displayName = 'DiffPartRenderer';
+/** Stats badge */
+const DiffStatsBadge = memo<{ stats: DiffStats; isNewFile?: boolean }>(({ stats, isNewFile }) => {
+  if (isNewFile) {
+    return (
+      <span className="text-[8px] font-mono text-[var(--color-diff-added-text)] opacity-70 tabular-nums">
+        +{stats.added}
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1.5 text-[8px] font-mono tabular-nums">
+      {stats.added > 0 && (
+        <span className="text-[var(--color-diff-added-text)] opacity-70">+{stats.added}</span>
+      )}
+      {stats.removed > 0 && (
+        <span className="text-[var(--color-diff-removed-text)] opacity-70">−{stats.removed}</span>
+      )}
+      {stats.added === 0 && stats.removed === 0 && (
+        <span className="text-[var(--color-text-dim)] opacity-50">no changes</span>
+      )}
+    </span>
+  );
+});
+DiffStatsBadge.displayName = 'DiffStatsBadge';
 
-// ============================================================================
+/** Streaming progress indicator */
+const StreamingIndicator = memo(() => (
+  <span className="flex items-center gap-1 text-[8px] text-[var(--color-accent-primary)] opacity-80">
+    <span className="inline-block w-1 h-1 rounded-full bg-current animate-pulse" />
+    streaming
+  </span>
+));
+StreamingIndicator.displayName = 'StreamingIndicator';
+
+// =============================================================================
 // Main Component
-// ============================================================================
+// =============================================================================
 
 export const DiffViewer: React.FC<DiffViewerProps> = memo(({
   filePath,
   originalContent,
   modifiedContent,
   isNewFile = false,
+  diffId,
   onAccept,
   onReject,
   onEdit,
-  actionsDisabled = false,
   defaultCollapsed = false,
-  maxHeight = 450,
-  diffId: providedDiffId,
+  isStreaming = false,
+  className,
 }) => {
-  const diffContainerRef = useRef<HTMLDivElement>(null);
-  
-  // State
-  // Initialize collapsed state from prop - respects caller's preference
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+  const [isFullyExpanded, setIsFullyExpanded] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
   const [copied, setCopied] = useState(false);
-  const [expandedRegions, setExpandedRegions] = useState<Set<number>>(new Set());
-  const [focusedLineIdx, setFocusedLineIdx] = useState<number | null>(null);
-  const [isPending, startTransition] = useTransition();
-  
-  // Computed values
-  const diffId = useMemo(
-    () => providedDiffId || generateDiffId(filePath, originalContent, modifiedContent),
-    [providedDiffId, filePath, originalContent, modifiedContent]
-  );
-  
-  const [actionState, setActionState] = useState<DiffActionState>(() => {
-    const stored = getStoredDiffAction(diffId);
-    return stored?.state || 'pending';
-  });
-  
-  const language = useMemo(() => detectLanguage(filePath), [filePath]);
-  const stats = useMemo(() => computeDiffStats(originalContent, modifiedContent), [originalContent, modifiedContent]);
-  const fileName = useMemo(() => getFileName(filePath), [filePath]);
-  
-  // Build semantic diff lines for unified view
-  // Use deferred value pattern for large files to prevent UI blocking
-  const diffLines: SemanticDiffLine[] = useMemo(() => {
-    // For very large files, computation is expensive - but useMemo handles caching
-    return buildSemanticDiffLines(originalContent, modifiedContent, 3);
-  }, [originalContent, modifiedContent]);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const prevLineCountRef = useRef(0);
 
-  // Auto-scroll to first change when diff is expanded
+  // Extract filename from path
+  const fileName = useMemo(() => {
+    const parts = filePath.replace(/\\/g, '/').split('/');
+    return parts[parts.length - 1] || filePath;
+  }, [filePath]);
+
+  // Compute diff lines
+  const diffLines = useMemo(() => {
+    if (isNewFile && !originalContent) {
+      // New file — show all lines as added
+      const lines = modifiedContent.split('\n');
+      return lines.map((line, i): DiffLine => ({
+        type: 'added',
+        content: line,
+        newLineNum: i + 1,
+      }));
+    }
+    return buildSemanticDiffLines(originalContent, modifiedContent, DEFAULT_CONTEXT_LINES);
+  }, [originalContent, modifiedContent, isNewFile]);
+
+  // Compute stats
+  const stats = useMemo(
+    () => computeDiffStats(originalContent, modifiedContent),
+    [originalContent, modifiedContent],
+  );
+
+  // Auto-scroll to bottom when streaming
   useEffect(() => {
-    if (!isCollapsed && diffContainerRef.current && diffLines.length > 0) {
-      const firstChange = diffContainerRef.current.querySelector('[role="row"]');
-      if (firstChange) {
-        firstChange.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (isStreaming && scrollContainerRef.current && diffLines.length > prevLineCountRef.current) {
+      const el = scrollContainerRef.current;
+      // Only auto-scroll if user is near the bottom
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+      if (isNearBottom) {
+        requestAnimationFrame(() => {
+          el.scrollTop = el.scrollHeight;
+        });
       }
     }
-  }, [isCollapsed, diffLines.length]);
-  
-  // Track if file is large for performance warnings
-  const isLargeFile = originalContent.length > 50000 || modifiedContent.length > 50000;
-  
-  // Handlers - use startTransition for non-urgent updates to prevent UI blocking
-  const toggleRegionExpanded = useCallback((regionIdx: number) => {
-    startTransition(() => {
-      setExpandedRegions(prev => {
-        const next = new Set(prev);
-        if (next.has(regionIdx)) {
-          next.delete(regionIdx);
+    prevLineCountRef.current = diffLines.length;
+  }, [isStreaming, diffLines.length]);
+
+  // Determine visible lines
+  const visibleLines = useMemo(() => {
+    if (isCollapsed) return [];
+
+    // Expand any sections the user has clicked
+    let lines: DiffLine[];
+    if (expandedSections.size === 0) {
+      lines = diffLines;
+    } else {
+      lines = [];
+      for (const line of diffLines) {
+        if (line.type === 'expand' && line.expandIndex != null && expandedSections.has(line.expandIndex)) {
+          // Replace expand marker with its hidden context lines
+          if (line.hiddenLineData && line.hiddenLineData.length > 0) {
+            lines.push(...line.hiddenLineData);
+          }
         } else {
-          next.add(regionIdx);
+          lines.push(line);
         }
-        return next;
-      });
+      }
+    }
+
+    // For new files, cap initial display
+    if (isNewFile && !isFullyExpanded && lines.length > NEW_FILE_MAX_LINES) {
+      return lines.slice(0, NEW_FILE_MAX_LINES);
+    }
+
+    // Cap total lines for performance
+    if (!isFullyExpanded && lines.length > MAX_EXPANDED_LINES) {
+      return lines.slice(0, MAX_EXPANDED_LINES);
+    }
+
+    return lines;
+  }, [diffLines, isCollapsed, isFullyExpanded, isNewFile, expandedSections]);
+
+  const hasMore = diffLines.length > visibleLines.length;
+  const remainingCount = diffLines.length - visibleLines.length;
+
+  // Handlers
+  const toggleCollapse = useCallback(() => setIsCollapsed(prev => !prev), []);
+  const toggleFullExpand = useCallback(() => setIsFullyExpanded(prev => !prev), []);
+
+  const handleExpandSection = useCallback((index: number) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
     });
-  }, [startTransition]);
-  
-  // Toggle collapsed state with smooth transition
-  const toggleCollapsed = useCallback(() => {
-    startTransition(() => {
-      setIsCollapsed(prev => !prev);
-    });
-  }, [startTransition]);
-  
+  }, []);
+
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(modifiedContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }, [modifiedContent]);
-  
-  const handleAccept = useCallback(async () => {
-    setActionState('accepted');
-    setStoredDiffAction(diffId, { filePath, state: 'accepted', timestamp: Date.now() });
-    
-    try {
-      const result = await window.vyotiq.files.write(filePath, modifiedContent);
-      if (!result.success) {
-        logger.error('Failed to write file', { filePath, error: result.error });
-      }
-    } catch (err) {
-      logger.error('Failed to accept changes', { filePath, error: err instanceof Error ? err.message : String(err) });
-    }
-    
-    onAccept?.();
-  }, [diffId, filePath, modifiedContent, onAccept]);
-  
-  const handleReject = useCallback(async () => {
-    setActionState('rejected');
-    setStoredDiffAction(diffId, { filePath, state: 'rejected', timestamp: Date.now() });
-    
-    try {
-      if (!isNewFile && originalContent) {
-        await window.vyotiq.files.write(filePath, originalContent);
-      } else if (isNewFile) {
-        await window.vyotiq.files.delete(filePath);
-      }
-    } catch (err) {
-      logger.error('Failed to reject changes', { filePath, error: err instanceof Error ? err.message : String(err) });
-    }
-    
-    onReject?.();
-  }, [diffId, filePath, originalContent, isNewFile, onReject]);
-  
-  const handleUndo = useCallback(() => {
-    setActionState('pending');
-    setStoredDiffAction(diffId, { filePath, state: 'pending', timestamp: Date.now() });
-  }, [diffId, filePath]);
-  
-  // Keyboard navigation for diff lines (accessibility)
-  const handleKeyNavigation = useCallback((e: React.KeyboardEvent) => {
-    if (isCollapsed) return;
-    
-    const changeLines = diffLines.filter(l => l.type === 'added' || l.type === 'removed');
-    if (changeLines.length === 0) return;
-    
-    if (e.key === 'j' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      const currentIdx = focusedLineIdx ?? -1;
-      const nextIdx = Math.min(currentIdx + 1, changeLines.length - 1);
-      setFocusedLineIdx(nextIdx);
-    } else if (e.key === 'k' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const currentIdx = focusedLineIdx ?? changeLines.length;
-      const prevIdx = Math.max(currentIdx - 1, 0);
-      setFocusedLineIdx(prevIdx);
-    }
-  }, [isCollapsed, diffLines, focusedLineIdx]);
 
-  // Render unified diff view
-  const renderUnifiedDiff = useCallback(() => {
-    const originalLines = originalContent.split('\n');
-    let expandRegionCounter = 0;
-    
-    return (
-      <div 
-        className="font-mono text-[11px] leading-[1.65] overflow-auto scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent min-w-0"
-        style={{ maxHeight }}
-      >
-        {diffLines.map((line, idx) => {
-          // Expand button for collapsed regions
-          if (line.type === 'expand') {
-            const regionIdx = expandRegionCounter++;
-            const isExpanded = expandedRegions.has(regionIdx);
-            
-            if (isExpanded && line.expandInfo) {
-              // Show expanded lines
-              const expandedLines: React.ReactNode[] = [];
-              for (let i = line.expandInfo.startLine; i < line.expandInfo.endLine; i++) {
-                const contextLine = originalLines[i] || '';
-                expandedLines.push(
-                  <div
-                    key={`expanded-${i}`}
-                    className="flex items-stretch hover:bg-[var(--color-surface-2)]/20"
-                  >
-                    {/* Line numbers for expanded context */}
-                    <div className="flex-shrink-0 w-[68px] flex select-none">
-                      <span className="w-[34px] text-right pr-2 py-px text-[9px] text-[var(--color-text-dim)]/35 tabular-nums font-medium border-r border-[var(--color-border-subtle)]/10">
-                        {i + 1}
-                      </span>
-                      <span className="w-[34px] text-right pr-2 py-px text-[9px] text-[var(--color-text-dim)]/35 tabular-nums font-medium border-r border-[var(--color-border-subtle)]/10">
-                        {i + 1}
-                      </span>
-                    </div>
-                    {/* Empty change indicator */}
-                    <div className="flex-shrink-0 w-[3px]" />
-                    {/* Content */}
-                    <div className="flex-1 px-3 py-px whitespace-pre overflow-x-auto text-[var(--color-text-secondary)]/55 leading-[1.65] min-w-0">
-                      {contextLine || '\u00A0'}
-                    </div>
-                  </div>
-                );
-              }
-              
-              return (
-                <div key={`expand-region-${idx}`}>
-                  <button
-                    type="button"
-                    onClick={() => toggleRegionExpanded(regionIdx)}
-                    className={cn(
-                      'w-full flex items-center justify-center gap-2 py-1.5',
-                      'text-[9px] font-mono text-[var(--color-diff-expand-text)]/70',
-                      'bg-[var(--color-diff-expand-bg)]',
-                      'hover:bg-[var(--color-diff-expand-bg-hover)] hover:text-[var(--color-diff-expand-text)]',
-                      'border-y border-[var(--color-diff-expand-border)] transition-colors duration-100',
-                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-diff-expand-text)]/30'
-                    )}
-                    aria-expanded={true}
-                    aria-label="Collapse expanded lines"
-                  >
-                    <ChevronUp size={10} className="opacity-70" />
-                    <span className="tracking-wide">collapse</span>
-                    <ChevronUp size={10} className="opacity-70" />
-                  </button>
-                  {expandedLines}
-                </div>
-              );
-            }
-            
-            return (
-              <button
-                key={`expand-${idx}`}
-                type="button"
-                onClick={() => toggleRegionExpanded(regionIdx)}
-                className={cn(
-                  'w-full flex items-center justify-center gap-2 py-1.5',
-                  'text-[9px] font-mono text-[var(--color-diff-expand-text)]/70',
-                  'bg-[var(--color-diff-expand-bg)]',
-                  'hover:bg-[var(--color-diff-expand-bg-hover)] hover:text-[var(--color-diff-expand-text)]',
-                  'border-y border-[var(--color-diff-expand-border)]',
-                  'transition-all duration-100 cursor-pointer',
-                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--color-diff-expand-text)]/30'
-                )}
-                aria-label={`Expand ${line.expandInfo?.count || 0} unchanged lines`}
-              >
-                <ChevronDown size={10} className="opacity-70" />
-                <span className="tracking-wide">{line.content}</span>
-                <ChevronDown size={10} className="opacity-70" />
-              </button>
-            );
-          }
-          
-          const isRemoved = line.type === 'removed';
-          const isAdded = line.type === 'added';
-          const isContext = line.type === 'context';
-          
-          // Check if this line is focused (for keyboard navigation)
-          const changeLineIndex = diffLines
-            .slice(0, idx)
-            .filter(l => l.type === 'added' || l.type === 'removed').length;
-          const isFocused = (isAdded || isRemoved) && focusedLineIdx === changeLineIndex;
-          
-          return (
-            <div
-              key={`${line.type}-${line.oldLineNum ?? ''}-${line.newLineNum ?? ''}`}
-              className={cn(
-                'flex items-stretch group/line border-b border-[var(--color-border-subtle)]/10',
-                // Line background colors using CSS variables
-                isRemoved && 'bg-[var(--color-diff-removed-bg)] hover:bg-[var(--color-diff-removed-bg-hover)]',
-                isAdded && 'bg-[var(--color-diff-added-bg)] hover:bg-[var(--color-diff-added-bg-hover)]',
-                isContext && 'hover:bg-[var(--color-surface-2)]/20',
-                // Focus ring for keyboard navigation
-                isFocused && 'ring-1 ring-inset ring-[var(--color-accent-primary)]/50 bg-[var(--color-accent-primary)]/[0.05]'
-              )}
-              role={isAdded || isRemoved ? 'row' : undefined}
-              aria-label={isAdded ? `Added: ${line.content}` : isRemoved ? `Removed: ${line.content}` : undefined}
-            >
-              {/* Line numbers - dual column gutter with semantic coloring */}
-              <div className="flex-shrink-0 w-[68px] flex select-none" aria-hidden="true">
-                <span className={cn(
-                  'w-[34px] text-right pr-2 py-px text-[9px] tabular-nums font-medium',
-                  'border-r border-[var(--color-border-subtle)]/10',
-                  isRemoved ? 'text-[var(--color-diff-removed-text)] bg-[var(--color-diff-removed-gutter-bg)]' : 'text-[var(--color-text-dim)]/40'
-                )}>
-                  {line.oldLineNum || ''}
-                </span>
-                <span className={cn(
-                  'w-[34px] text-right pr-2 py-px text-[9px] tabular-nums font-medium',
-                  'border-r border-[var(--color-border-subtle)]/10',
-                  isAdded ? 'text-[var(--color-diff-added-text)] bg-[var(--color-diff-added-gutter-bg)]' : 'text-[var(--color-text-dim)]/40'
-                )}>
-                  {line.newLineNum || ''}
-                </span>
-              </div>
-              
-              {/* Change indicator bar - colored vertical stripe for visual scanning */}
-              <div className={cn(
-                'flex-shrink-0 w-[4px]',
-                isRemoved && 'bg-[var(--color-diff-removed-indicator)]',
-                isAdded && 'bg-[var(--color-diff-added-indicator)]'
-              )} />
-              
-              {/* Line content with inline diff highlighting */}
-              <div className={cn(
-                'flex-1 px-3 py-px whitespace-pre overflow-x-auto leading-[1.65] min-w-0',
-                isRemoved && 'text-[var(--color-diff-removed-text-content)]',
-                isAdded && 'text-[var(--color-diff-added-text-content)]',
-                isContext && 'text-[var(--color-text-secondary)]/60'
-              )}>
-                {line.inlineDiff && (isAdded || isRemoved) ? (
-                  <DiffPartRenderer 
-                    parts={isRemoved ? line.inlineDiff.oldParts : line.inlineDiff.newParts}
-                    lineType={isRemoved ? 'removed' : 'added'}
-                  />
-                ) : (
-                  line.content || '\u00A0'
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }, [originalContent, diffLines, expandedRegions, maxHeight, toggleRegionExpanded, focusedLineIdx]);
-
-  // Computed flags
-  const showActions = (onAccept || onReject || onEdit) && actionState === 'pending';
-  const showActionFeedback = actionState !== 'pending';
-  const hasChanges = stats.totalChanges > 0;
+  // Don't render if there's nothing to show
+  if (!modifiedContent && !originalContent) return null;
 
   return (
-    <div className="mt-2 rounded-xl overflow-hidden border border-[var(--color-border-subtle)]/40 bg-[var(--color-surface-editor)] shadow-[0_6px_20px_rgba(0,0,0,0.18)] min-w-0 max-w-full">
-      {/* Header bar - clean, modern design */}
-      <div 
+    <div
+      className={cn(
+        'ml-4 mt-1.5 mb-2 rounded-md overflow-hidden',
+        'border border-[var(--color-border-subtle)]/30',
+        'bg-[var(--color-surface-editor)]',
+        className,
+      )}
+    >
+      {/* Header */}
+      <div
         className={cn(
-          'flex items-center gap-2.5 px-3.5 py-2.5',
-          'bg-gradient-to-r from-[var(--color-surface-1)]/70 via-[var(--color-surface-1)]/60 to-[var(--color-surface-1)]/50',
-          'border-b border-[var(--color-border-subtle)]/30',
-          'font-mono cursor-pointer transition-colors duration-150',
-          'hover:from-[var(--color-surface-1)]/90 hover:via-[var(--color-surface-1)]/80 hover:to-[var(--color-surface-1)]/70',
-          'min-w-0 overflow-hidden' // Prevent header overflow
+          'flex items-center gap-2 px-3 py-1.5',
+          'bg-[var(--color-surface-1)]/40',
+          'border-b border-[var(--color-border-subtle)]/20',
+          'cursor-pointer select-none',
         )}
-        onClick={() => toggleCollapsed()}
+        onClick={toggleCollapse}
         role="button"
         tabIndex={0}
         aria-expanded={!isCollapsed}
-        aria-label={`${isNewFile ? 'New file' : 'Modified file'}: ${fileName}. ${stats.added} additions, ${stats.removed} deletions. Press Enter to ${isCollapsed ? 'expand' : 'collapse'}.`}
+        aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} diff for ${fileName}`}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            toggleCollapsed();
+            toggleCollapse();
           }
         }}
       >
-        {/* Expand/collapse indicator - ChevronRight when collapsed, ChevronDown when expanded */}
-        <span 
+        {/* Collapse indicator */}
+        <ChevronRight
+          size={10}
           className={cn(
-            'text-[var(--color-text-dim)] flex-shrink-0 transition-transform duration-150',
-            isPending && 'opacity-50'
-          )} 
-          aria-hidden="true"
-        >
-          {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-        </span>
-        
-        {/* File icon with status color */}
-        <FileCode2 
-          size={13} 
-          className={cn(
-            'flex-shrink-0',
-            isNewFile ? 'text-[var(--color-diff-added-text)]' : 'text-[var(--color-diff-expand-text)]'
-          )} 
-          aria-hidden="true" 
+            'text-[var(--color-text-dim)]/60 flex-shrink-0 transition-transform duration-150',
+            !isCollapsed && 'rotate-90',
+          )}
         />
-        
-        {/* File name (prominent) */}
-        <span className="text-[11px] font-medium text-[var(--color-text-primary)] flex-shrink-0">
+
+        {/* File icon */}
+        {isNewFile ? (
+          <FilePlus size={11} className="text-[var(--color-diff-added-text)]/70 flex-shrink-0" />
+        ) : (
+          <FileText size={11} className="text-[var(--color-diff-modified-text)]/70 flex-shrink-0" />
+        )}
+
+        {/* Filename */}
+        <code className="text-[10px] font-mono text-[var(--color-text-secondary)]/80 truncate flex-1">
           {fileName}
-        </span>
-        
-        {/* File path (subdued) - only show parent directories */}
-        {filePath !== fileName && (
-          <span 
-            className="text-[10px] text-[var(--color-text-dim)]/70 truncate flex-1 min-w-0" 
-            title={filePath}
-          >
-            {filePath.replace(new RegExp(`${fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), '').replace(/[/\\]$/, '')}
-          </span>
-        )}
-        
-        {/* Spacer when no path */}
-        {filePath === fileName && <span className="flex-1" />}
-        
-        {/* Status badge - minimal pill design */}
-        <span className={cn(
-          'text-[8px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ring-1 ring-inset',
-          isNewFile 
-            ? 'bg-[var(--color-diff-added-text)]/12 text-[var(--color-diff-added-text)] ring-[var(--color-diff-added-text)]/25' 
-            : 'bg-[var(--color-diff-expand-text)]/12 text-[var(--color-diff-expand-text)] ring-[var(--color-diff-expand-text)]/25'
-        )}>
-          {isNewFile ? 'new' : 'modified'}
-        </span>
-        
-        {/* Language badge */}
-        {language && language !== 'text' && (
-          <span className="text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 text-[var(--color-text-dim)] bg-[var(--color-surface-2)]/60 ring-1 ring-inset ring-[var(--color-border-subtle)]/30">
-            {language}
-          </span>
-        )}
-        
-        {/* Diff stats - clean monospace display */}
-        {hasChanges && (
-          <span className="text-[10px] flex-shrink-0 flex items-center gap-2 font-mono tabular-nums">
-            {stats.added > 0 && (
-              <span className="text-[var(--color-diff-added-text)] font-semibold">
-                add {stats.added}
-              </span>
+        </code>
+
+        {/* Stats + streaming indicator */}
+        <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+          {isStreaming && <StreamingIndicator />}
+          <DiffStatsBadge stats={stats} isNewFile={isNewFile} />
+
+          {/* Actions */}
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            {/* Copy */}
+            <button
+              type="button"
+              onClick={handleCopy}
+              className={cn(
+                'px-1.5 py-0.5 rounded-md text-[9px] font-mono',
+                'transition-all duration-150',
+                'text-[var(--color-text-dim)]/60 hover:text-[var(--color-text-secondary)]',
+                'hover:bg-[var(--color-surface-2)]/40',
+              )}
+              title="Copy modified content"
+            >
+              {copied ? 'copied' : 'copy'}
+            </button>
+
+            {/* Accept */}
+            {onAccept && (
+              <button
+                type="button"
+                onClick={onAccept}
+                className={cn(
+                  'p-0.5 rounded-md transition-all duration-150',
+                  'text-[var(--color-diff-added-text)]/60',
+                  'hover:text-[var(--color-diff-added-text)] hover:bg-[var(--color-diff-added-text)]/10',
+                )}
+                title="Accept changes"
+                aria-label="Accept file changes"
+              >
+                <Check size={11} />
+              </button>
             )}
-            {stats.removed > 0 && (
-              <span className="text-[var(--color-diff-removed-text)] font-semibold">
-                remove {stats.removed}
-              </span>
+
+            {/* Reject */}
+            {onReject && (
+              <button
+                type="button"
+                onClick={onReject}
+                className={cn(
+                  'p-0.5 rounded-md transition-all duration-150',
+                  'text-[var(--color-diff-removed-text)]/60',
+                  'hover:text-[var(--color-diff-removed-text)] hover:bg-[var(--color-diff-removed-text)]/10',
+                )}
+                title="Reject changes"
+                aria-label="Reject file changes"
+              >
+                <Undo2 size={11} />
+              </button>
             )}
-          </span>
-        )}
-        
-        {/* Action buttons - refined with separator */}
-        <div 
-          className="flex items-center gap-0.5 flex-shrink-0 ml-2 pl-2 border-l border-[var(--color-border-subtle)]/20" 
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={handleCopy}
-            className={cn(
-              'p-1.5 rounded transition-colors duration-100',
-              'text-[var(--color-text-dim)] hover:text-[var(--color-text-primary)]',
-              'hover:bg-[var(--color-surface-2)]/60',
-              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
-            )}
-            title="Copy new content"
-            aria-label="Copy new content to clipboard"
-          >
-            {copied ? <Check size={12} className="text-[var(--color-diff-added-text)]" /> : <Copy size={12} />}
-          </button>
+          </div>
         </div>
       </div>
-      
+
       {/* Diff content */}
       {!isCollapsed && (
         <div
-          ref={diffContainerRef}
-          onKeyDown={handleKeyNavigation}
-          tabIndex={0}
-          role="region"
-          aria-label="File diff content"
-          className="outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30 focus-visible:ring-inset"
+          ref={scrollContainerRef}
+          className={cn(
+            'overflow-auto',
+            'scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent',
+            isFullyExpanded ? 'max-h-[600px]' : 'max-h-[350px]',
+          )}
         >
-          {isPending && isLargeFile && (
-            <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-[var(--color-text-muted)]">
-              <Spinner size="sm" className="w-3 h-3" />
-              <span>Computing diff...</span>
+          {visibleLines.length === 0 && !isStreaming ? (
+            <div className="flex items-center justify-center py-4 text-[var(--color-text-dim)] text-[10px] font-mono">
+              no changes
+            </div>
+          ) : (
+            <div className="min-w-0">
+              {visibleLines.map((line, idx) => (
+                <DiffLineRow
+                  key={`${line.type}-${line.oldLineNum ?? ''}-${line.newLineNum ?? ''}-${line.expandIndex ?? idx}`}
+                  line={line}
+                  isLast={idx === visibleLines.length - 1 && !hasMore}
+                  onExpandClick={line.type === 'expand' && line.expandIndex != null ? () => handleExpandSection(line.expandIndex!) : undefined}
+                />
+              ))}
+
+              {/* Streaming cursor */}
+              {isStreaming && (
+                <div className="flex items-center px-[88px] py-0.5 text-[10px] font-mono">
+                  <span className="inline-block w-[5px] h-[13px] bg-[var(--color-accent-primary)] opacity-70 animate-pulse rounded-[1px]" />
+                </div>
+              )}
             </div>
           )}
-          {renderUnifiedDiff()}
         </div>
       )}
-      
-      {/* Action buttons footer - clean, minimal design */}
-      {!isCollapsed && (showActions || showActionFeedback) && (
-        <div className="flex items-center gap-3 px-3 py-2 border-t border-[var(--color-border-subtle)]/20 bg-[var(--color-surface-1)]/30">
-          <div className="flex-1" />
-          
-          {/* Action feedback with undo */}
-          {showActionFeedback && (
-            <div className="flex items-center gap-2">
-              <span className={cn(
-                'text-[9px] font-medium px-2 py-1 rounded flex items-center gap-1.5',
-                actionState === 'accepted' 
-                  ? 'text-[var(--color-diff-added-text)] bg-[var(--color-diff-added-text)]/10'
-                  : 'text-[var(--color-diff-removed-text)] bg-[var(--color-diff-removed-text)]/10'
-              )}>
-                {actionState === 'accepted' ? <Check size={10} /> : <X size={10} />}
-                {actionState === 'accepted' ? 'Accepted' : 'Rejected'}
-              </span>
-              <button
-                type="button"
-                onClick={handleUndo}
-                className={cn(
-                  'flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-colors duration-100',
-                  'text-[var(--color-text-muted)] bg-[var(--color-surface-2)]/60',
-                  'hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-secondary)]',
-                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/30'
-                )}
-                title="Undo action"
-                aria-label="Undo last action"
-              >
-                <RotateCcw size={10} />
-                Undo
-              </button>
-            </div>
+
+      {/* Footer — expand/collapse for long diffs */}
+      {!isCollapsed && hasMore && (
+        <button
+          type="button"
+          onClick={toggleFullExpand}
+          className={cn(
+            'w-full flex items-center justify-center gap-1.5 px-3 py-1',
+            'text-[9px] font-mono text-[var(--color-text-dim)]/60',
+            'hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-1)]/30',
+            'border-t border-[var(--color-border-subtle)]/15 transition-all duration-150',
           )}
-          
-          {/* Action buttons - clean pill style */}
-          {showActions && (
-            <div className="flex items-center gap-1.5">
-              {onReject && (
-                <button
-                  type="button"
-                  onClick={handleReject}
-                  disabled={actionsDisabled}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-medium transition-colors duration-100',
-                    'text-[var(--color-diff-removed-text)] bg-[var(--color-diff-removed-text)]/10 border border-[var(--color-diff-removed-text)]/20',
-                    'hover:bg-[var(--color-diff-removed-text)]/15 hover:border-[var(--color-diff-removed-text)]/30',
-                    'active:bg-[var(--color-diff-removed-text)]/20',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-diff-removed-text)]/30',
-                    'disabled:opacity-40 disabled:cursor-not-allowed'
-                  )}
-                  aria-label="Reject changes"
-                >
-                  <X size={11} />
-                  Reject
-                </button>
-              )}
-              {onEdit && (
-                <button
-                  type="button"
-                  onClick={onEdit}
-                  disabled={actionsDisabled}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-medium transition-colors duration-100',
-                    'text-[var(--color-text-secondary)] bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]/30',
-                    'hover:bg-[var(--color-surface-3)] hover:border-[var(--color-border-subtle)]/50',
-                    'active:bg-[var(--color-surface-3)]',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/30',
-                    'disabled:opacity-40 disabled:cursor-not-allowed'
-                  )}
-                  aria-label="Edit changes"
-                >
-                  <Pencil size={11} />
-                  Edit
-                </button>
-              )}
-              {onAccept && (
-                <button
-                  type="button"
-                  onClick={handleAccept}
-                  disabled={actionsDisabled}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded text-[10px] font-medium transition-colors duration-100',
-                    'text-[var(--color-diff-added-text)] bg-[var(--color-diff-added-text)]/10 border border-[var(--color-diff-added-text)]/20',
-                    'hover:bg-[var(--color-diff-added-text)]/15 hover:border-[var(--color-diff-added-text)]/30',
-                    'active:bg-[var(--color-diff-added-text)]/20',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-diff-added-text)]/30',
-                    'disabled:opacity-40 disabled:cursor-not-allowed'
-                  )}
-                  aria-label="Accept changes"
-                >
-                  <Check size={11} />
-                  Accept
-                </button>
-              )}
-            </div>
+        >
+          {isFullyExpanded ? (
+            <>
+              <ChevronUp size={9} />
+              <span>collapse</span>
+            </>
+          ) : (
+            <>
+              <ChevronDown size={9} />
+              <span>{remainingCount} more line{remainingCount !== 1 ? 's' : ''}</span>
+            </>
           )}
-        </div>
+        </button>
       )}
     </div>
   );

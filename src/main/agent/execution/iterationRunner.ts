@@ -309,6 +309,8 @@ export class IterationRunner {
 
     if (result.usage && (result.usage.input > 0 || result.usage.output > 0)) {
       assistantMessage.usage = result.usage;
+      // Record token usage in agent metrics for aggregate tracking
+      agentMetrics.recordTokenUsage(runId, result.usage.input + result.usage.output);
     }
 
     const hasContent = assistantMessage.content && assistantMessage.content.trim().length > 0;

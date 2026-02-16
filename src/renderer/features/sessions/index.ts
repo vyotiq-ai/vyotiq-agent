@@ -5,9 +5,6 @@
  * Note: Session UI is handled by SessionSelector in the chat feature.
  */
 
-// Components
-export { GlobalRunningSessionsPanel, GlobalRunningIndicator } from './components';
-
 // Hooks
 export { useSessionList } from './hooks/useSessionList';
 export { useSessionCost, type SessionCostState } from './hooks/useSessionCost';

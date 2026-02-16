@@ -45,10 +45,11 @@ export async function rustRequest<T>(
   }
 
   try {
+    const authHeaders = rustSidecar.getAuthHeaders();
     const response = await fetch(`http://127.0.0.1:${port}${path}`, {
       ...options,
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...options.headers },
+      headers: { 'Content-Type': 'application/json', ...authHeaders, ...options.headers },
     });
 
     if (!response.ok) {

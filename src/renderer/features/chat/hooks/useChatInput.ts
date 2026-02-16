@@ -257,6 +257,7 @@ export const useChatInput = () => {
     selectedModelId: providerSelection.selectedModelId,
     manualModel: providerSelection.manualModel,
     sendMessage: actions.sendMessage,
+    sendFollowUp: actions.sendFollowUp,
     updateSessionConfig: actions.updateSessionConfig,
   });
 
@@ -342,6 +343,8 @@ export const useChatInput = () => {
     // Submit state
     isSending: chatSubmit.isSending,
     canSend: chatSubmit.canSend,
+    canSendFollowUp: chatSubmit.canSendFollowUp,
+    isFollowUpMode: chatSubmit.isFollowUpMode,
     
     // Context state
     agentBusy,

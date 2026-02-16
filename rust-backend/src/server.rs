@@ -139,32 +139,38 @@ async fn auth_middleware(req: Request, next: Next) -> Result<Response, (StatusCo
         None => return Ok(next.run(req).await), // No token configured — skip auth
     };
 
+    // 1. Check Authorization: Bearer <token> header
     let auth_header = req
         .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok());
 
-    match auth_header {
-        Some(header) if header.len() > 7 && header[..7].eq_ignore_ascii_case("bearer ") => {
+    if let Some(header) = auth_header {
+        if header.len() > 7 && header[..7].eq_ignore_ascii_case("bearer ") {
             let token = &header[7..];
             if token == expected_token {
-                Ok(next.run(req).await)
-            } else {
-                tracing::warn!("Auth token mismatch — rejecting request");
-                Err((
-                    StatusCode::UNAUTHORIZED,
-                    axum::Json(serde_json::json!({"error": "Unauthorized", "status": 401})),
-                ))
+                return Ok(next.run(req).await);
             }
         }
-        _ => {
-            tracing::warn!("Missing or malformed Authorization header — rejecting request");
-            Err((
-                StatusCode::UNAUTHORIZED,
-                axum::Json(serde_json::json!({"error": "Unauthorized", "status": 401})),
-            ))
+    }
+
+    // 2. Check ?token=<token> query parameter (for WebSocket connections,
+    //    since the browser WebSocket API does not support custom headers).
+    if let Some(query) = req.uri().query() {
+        for pair in query.split('&') {
+            if let Some(val) = pair.strip_prefix("token=") {
+                if val == expected_token {
+                    return Ok(next.run(req).await);
+                }
+            }
         }
     }
+
+    tracing::warn!("Missing or invalid auth credentials — rejecting request");
+    Err((
+        StatusCode::UNAUTHORIZED,
+        axum::Json(serde_json::json!({"error": "Unauthorized", "status": 401})),
+    ))
 }
 
 async fn ws_handler(

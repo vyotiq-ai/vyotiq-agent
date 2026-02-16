@@ -25,6 +25,7 @@
 import React, { useState, useCallback, useEffect, memo, useRef, useMemo } from 'react';
 import { X, History } from 'lucide-react';
 import { useChatInput, useAgentStatus, useSessionCost, useAvailableProviders } from '../../../../hooks';
+import { useSmartPlaceholder } from '../../hooks/useSmartPlaceholder';
 import { useAgentActions } from '../../../../state/AgentProvider';
 import { useUIActions } from '../../../../state/UIProvider';
 import { useRenderProfiler } from '../../../../utils/profiler';
@@ -152,77 +153,7 @@ const ClearButton: React.FC<ClearButtonProps> = memo(({ onClick, visible, disabl
 });
 ClearButton.displayName = 'ClearButton';
 
-// =============================================================================
-// Smart Placeholder Helper
-// =============================================================================
-
-/** Contextual placeholder suggestions based on conversation state */
-const PLACEHOLDER_HINTS = [
-  'describe what to do...',
-  'what would you like to build?',
-  'ask me to fix, refactor, or add features...',
-  'paste code or drop files to analyze...',
-  'explain the problem you are facing...',
-  'give me instructions to follow...',
-  'tell me what you need help with...',
-] as const;
-
-const FOLLOW_UP_HINTS = [
-  'continue, or ask for changes...',
-  'provide feedback or ask questions...',
-  'tell me what to do next...',
-  'request modifications...',
-  'ask for clarification...',
-  'give additional instructions...',
-  'let me know if you need anything else...',
-  'what should we do next...',
-] as const;
-
-const ATTACHMENT_HINTS = [
-  'describe what to do with the attached files...',
-  'explain what you need help with...',
-  'ask me to analyze or modify these files...',
-] as const;
-
-/** Hints when YOLO mode is enabled (auto-confirm all actions) */
-const YOLO_HINTS = [
-  'auto-confirm is ON - actions will execute immediately...',
-  'YOLO mode active - no confirmation prompts...',
-  'running in auto-confirm mode...',
-  'caution: all actions will execute without prompts...',
-] as const;
-
-/**
- * Get a contextual placeholder based on conversation state
- * Uses deterministic selection based on message count to avoid flicker
- */
-function getSmartPlaceholder(
-  messageCount: number,
-  attachmentCount: number,
-  yoloEnabled: boolean,
-  _isAgentBusy: boolean
-): string {
-  // Show YOLO warning when enabled (deterministic based on message count)
-  if (yoloEnabled && messageCount % 4 === 0) {
-    const idx = (messageCount >> 2) % YOLO_HINTS.length;
-    return YOLO_HINTS[idx];
-  }
-
-  // If there are attachments, suggest what to do with them
-  if (attachmentCount > 0) {
-    const idx = attachmentCount % ATTACHMENT_HINTS.length;
-    return ATTACHMENT_HINTS[idx];
-  }
-  
-  // If it's a follow-up message, use follow-up hints
-  if (messageCount > 0) {
-    const idx = messageCount % FOLLOW_UP_HINTS.length;
-    return FOLLOW_UP_HINTS[idx];
-  }
-  
-  // Initial message hints - deterministic
-  return PLACEHOLDER_HINTS[0];
-}
+// Placeholder is now dynamic via useSmartPlaceholder hook
 
 // =============================================================================
 // Main ChatInput Component
@@ -244,6 +175,8 @@ export const ChatInput: React.FC = memo(() => {
     agentBusy,
     activeSession,
     canSend,
+    canSendFollowUp,
+    isFollowUpMode,
     sessionWorkspaceValid,
     handleAddAttachments,
     handleRemoveAttachment,
@@ -287,6 +220,17 @@ export const ChatInput: React.FC = memo(() => {
   // Todo progress for inline display in header
   const { todos, stats: todoStats } = useTodos({ sessionId: activeSession?.id ?? null });
   
+  // === Smart Placeholder ===
+  const smartPlaceholder = useSmartPlaceholder({
+    agentBusy: agentBusy ?? false,
+    statusPhase: statusPhase ?? undefined,
+    isFollowUpMode: isFollowUpMode,
+    isPaused: isPaused,
+    hasSession: !!activeSession,
+    messageCount: messageCount,
+    isAwaitingConfirmation: activeSession?.status === 'awaiting-confirmation',
+  });
+
   // === Local State ===
   const [isDragging, setIsDragging] = useState(false);
   
@@ -330,13 +274,33 @@ export const ChatInput: React.FC = memo(() => {
   const activeSessionRef = useRef(activeSession);
   const actionsRef = useRef(actions);
   const isPausedRef = useRef(isPaused);
+  const messageRef = useRef(message);
+  const clearMessageRef = useRef(clearMessage);
   
   useEffect(() => {
     agentBusyRef.current = agentBusy;
     activeSessionRef.current = activeSession;
     actionsRef.current = actions;
     isPausedRef.current = isPaused;
-  }, [agentBusy, activeSession, actions, isPaused]);
+    messageRef.current = message;
+    clearMessageRef.current = clearMessage;
+  }, [agentBusy, activeSession, actions, isPaused, message, clearMessage]);
+
+  // Listen for quick-start events from SessionWelcome to pre-fill input
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const prompt = (e as CustomEvent<string>).detail;
+      if (prompt && typeof prompt === 'string') {
+        setMessage(prompt);
+        // Focus the textarea after a tick so the DOM is updated
+        requestAnimationFrame(() => {
+          textareaRef.current?.focus();
+        });
+      }
+    };
+    window.addEventListener('vyotiq:quick-start', handler);
+    return () => window.removeEventListener('vyotiq:quick-start', handler);
+  }, [setMessage, textareaRef]);
   
   const handleStop = useCallback(() => {
     if (activeSessionRef.current) {
@@ -362,12 +326,18 @@ export const ChatInput: React.FC = memo(() => {
   }, []);
   
   // Global ESC key to stop running agent
+  // In follow-up mode: first ESC clears input, second ESC kills agent
   useEffect(() => {
     const handleEscKey = (e: KeyboardEvent) => {
       const currentBusy = agentBusyRef.current;
       const currentSession = activeSessionRef.current;
       if (e.key === 'Escape' && currentBusy && currentSession) {
         e.preventDefault();
+        // If there's content in the input, clear it first instead of killing
+        if (messageRef.current.trim().length > 0) {
+          clearMessageRef.current();
+          return;
+        }
         actionsRef.current.cancelRun(currentSession.id);
       }
     };
@@ -465,9 +435,10 @@ export const ChatInput: React.FC = memo(() => {
                 onBlur={() => {
                   // Keep cursor position on blur for mention detection
                 }}
-                disabled={agentBusy}
+                disabled={false}
                 hasWorkspace={hasWorkspace}
-                placeholder={getSmartPlaceholder(messageCount, attachments.length, yoloEnabled, agentBusy ?? false)}
+                placeholder={smartPlaceholder.text}
+                isContextualPlaceholder={smartPlaceholder.isContextual}
                 className="w-full"
                 maxHeight={220}
                 ariaDescribedBy="chat-input-hints"
@@ -489,7 +460,7 @@ export const ChatInput: React.FC = memo(() => {
 
             <InputActions
               isRunning={agentBusy ?? false}
-              canSend={canSend}
+              canSend={canSend || canSendFollowUp}
               isSending={isSending}
               onSend={handleSendMessage}
               onStop={handleStop}
@@ -550,7 +521,7 @@ export const ChatInput: React.FC = memo(() => {
               <ClearButton
                 onClick={clearMessage}
                 visible={hasContent || attachments.length > 0}
-                disabled={agentBusy ?? false}
+                disabled={false}
               />
             </>
           }
