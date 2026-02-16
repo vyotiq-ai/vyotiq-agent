@@ -222,7 +222,7 @@ l status
 
 ### MCP Integration (Model Context Protocol)
 
-*Last updated: v1.4.0 - January 2026*
+*Last updated: v1.7.0 - February 2026*
 
 The MCP system enables dynamic integration with external tool servers using the Model Context Protocol standard.
 

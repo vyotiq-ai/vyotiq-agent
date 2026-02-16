@@ -73,7 +73,7 @@ vyotiq-ai/
 ├── tsconfig.json             # TypeScript configuration
 ├── vite.*.config.ts          # Vite build configuration
 ├── vitest.config.ts          # Test configuration
-└── .eslintrc.json            # Linting rules
+└── eslint.config.js          # Linting rules
 ```
 
 ### Main Process (`src/main/`)

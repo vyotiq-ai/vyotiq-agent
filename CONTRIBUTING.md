@@ -128,6 +128,14 @@ Before submitting, ensure:
 - [ ] New code has appropriate tests
 - [ ] Documentation is updated if needed
 
+### Release Hygiene
+
+For release-related PRs, keep versioning artifacts in sync:
+
+- Update `CHANGELOG.md` using Keep a Changelog format
+- Bump version references in `package.json` and related docs
+- Verify compare links and release notes content before tagging
+
 ## Pull Request Process
 
 1. **Update your fork**:

@@ -16,6 +16,8 @@
 
 The IPC API provides communication between the main process and renderer process.
 
+> **v1.7.0 note:** This release adds UI and orchestration capabilities without introducing breaking IPC API changes.
+
 ### Agent Operations
 
 #### `agent:startSession`

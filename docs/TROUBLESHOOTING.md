@@ -196,7 +196,7 @@ npm start
    - Go to "AI Providers"
    - Add API key for at least one provider:
      - [Anthropic](https://console.anthropic.com/) (Claude)
-     - [OpenAI](https://platform.openai.com/) (GPT-4)
+   - [OpenAI](https://platform.openai.com/) (GPT-5)
      - [Google AI](https://makersuite.google.com/app/apikey) (Gemini)
      - [DeepSeek](https://platform.deepseek.com/) (DeepSeek)
      - [OpenRouter](https://openrouter.ai/) (200+ models)

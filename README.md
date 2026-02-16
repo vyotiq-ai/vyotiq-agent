@@ -59,6 +59,18 @@
 
 ## 📢 Recent Updates
 
+### Editor Theming, Workspace UX & Indexing Improvements (v1.7.0 - February 2026)
+
+Feature-focused release with editor theming, workspace UX improvements, and indexing/search refinements.
+
+**Highlights:**
+
+- 🎨 **Monaco Custom Themes**: New dark/light Monaco editor themes tuned for Vyotiq UI
+- 🗂️ **Workspace Tabs**: Dedicated provider for multi-workspace tab state management
+- ⏳ **Global Loading State**: Centralized loading provider for better cross-panel feedback
+- 🔍 **Indexing & Search**: Refined workspace indexing and embedding settings across backend/frontend integration
+- 💰 **Cost Insights**: Token cost estimation utilities for clearer usage visibility
+
 ### Multi-Agent Instruction Files Support (v1.6.0 - February 2026)
 
 New instruction files system following 2025-2026 multi-agent specification standards.

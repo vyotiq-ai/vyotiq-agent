@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-02-16
+
+### Added
+
+- Monaco editor dark/light custom theme support
+- Workspace tabs provider for multi-workspace tab state management
+- Centralized loading provider for global loading state
+- Cost estimation utilities for token usage insights
+
+### Changed
+
+- Workspace indexing and embedding settings refactor
+- Chat and editor UI enhancements, including no-drag behavior and button type updates
+- Rust backend workspace indexing/search configuration refinements
+- Internal token counter and hook cleanup for maintainability
+
+### Fixed
+
+- Improved workspace indexing stability across backend and UI integration
+
 ## [1.6.0] - 2026-02-02
 
 ### Added
@@ -230,7 +250,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session persistence with SQLite
 - Conversation branching and history
 
-[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.3.0...v1.4.0

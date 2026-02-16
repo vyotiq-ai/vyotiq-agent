@@ -11,8 +11,8 @@ I need you to help me prepare a complete release for Vyotiq AI. Perform the foll
 
 ## 1. ANALYZE CHANGES
 First, analyze all changes since the last release:
-- Run `git diff v1.6.0..HEAD --stat` to see changed files
-- Run `git log v1.6.0..HEAD --oneline` to see commits
+- Run `git diff v1.7.0..HEAD --stat` to see changed files
+- Run `git log v1.7.0..HEAD --oneline` to see commits
 - Identify all modified, added, and deleted files
 - Categorize changes by type (features, fixes, docs, refactors, etc.)
 
@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vulnerability fixes
 
 [Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/vX.X.X...HEAD
-[X.X.X]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.6.0...vX.X.X
+[X.X.X]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.7.0...vX.X.X
 ```
 
 ## 4. UPDATE VERSION IN FILES
@@ -220,7 +220,7 @@ gh release create vX.X.X --title "vX.X.X - <short description>"
 
 ---
 
-**Full Changelog:** https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.6.0...vX.X.X
+**Full Changelog:** https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.7.0...vX.X.X
 
 ## Installation
 
@@ -283,9 +283,9 @@ gh release list
 
 ## CONTEXT ABOUT CURRENT STATE
 
-**Current Version:** 1.6.0
+**Current Version:** 1.7.0
 **Repository:** https://github.com/vyotiq-ai/vyotiq-agent
-**Last Release Tag:** v1.6.0
+**Last Release Tag:** v1.7.0
 
 **Project Stack:**
 - Electron 39.2 + React 19.2 + TypeScript 5.9

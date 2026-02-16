@@ -24,5 +24,5 @@ export const APP_VERSION: string = (() => {
   } catch {
     // Not available
   }
-  return '1.6.0';
+  return '1.7.0';
 })();
