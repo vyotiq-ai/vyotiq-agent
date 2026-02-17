@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-02-17
+
+### Added
+
+- **LSP Client Integration**:
+  - `lspBridge.ts` renderer-side bridge for LSP communication via IPC
+  - `useLSP` hook for managing LSP lifecycle, document sync, and diagnostics
+  - Auto-initialization of LSP when workspace opens in `MainLayout`
+  - Debounced document change synchronization in `MonacoWrapper`
+  - LSP provider registration for Monaco (completions, hover, definitions, references, code actions)
+  - `lsp/index.ts` barrel for clean public API
+- **Editor Context Menu**: VS Code-like right-click menu with Go to Definition, Find References, Peek, Rename, Format, Quick Fix, clipboard, and navigation actions
+- **Go to Line Dialog**: `Ctrl+G` dialog supporting `line:column` format navigation
+- **Editor Settings Panel**: `Ctrl+,` panel with categorized settings (appearance, behavior, formatting, IntelliSense) persisted via localStorage
+- **Symbol Outline Panel**: New sidebar tab (`Ctrl+Shift+O`) displaying document symbols from LSP with filtering and hierarchical display
+- **`useEditorActions` Hook**: Imperative editor actions (Go to Definition, Rename, Format, clipboard, etc.) via Monaco commands
+- **`useEditorSettings` Hook**: Manages extended editor settings with live application to all Monaco instances
+- **File Tree Duplicate Action**: "Duplicate" option in file tree context menu with auto-naming conflict resolution
+
+### Changed
+
+- **Problems Panel**: Overhauled with severity filtering (errors/warnings/info), grouping by file, collapsible file sections, click-to-navigate to source location, and refreshed layout
+- **MonacoWrapper**: Extended with `onEditorMount` and `onContextMenu` callbacks, LSP document open/change/close notifications, and persisted editor settings application
+- **EditorPanel**: Integrated context menu, Go to Line, and settings panel; added `Ctrl+G` and `Ctrl+,` keyboard shortcuts; wired `useEditorActions` for editor commands
+- **Sidebar**: Added "Outline" tab with lazy-loaded `SymbolOutlinePanel` and `Ctrl+Shift+O` shortcut
+- **Editor barrel exports**: Updated `features/editor/index.ts` and `hooks/index.ts` with all new components, hooks, and LSP bridge functions
+- **FileTreeContextMenu**: Added "Duplicate" menu item with `Files` icon
+
 ## [1.7.0] - 2026-02-16
 
 ### Added
@@ -250,7 +278,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session persistence with SQLite
 - Conversation branching and history
 
-[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.4.0...v1.5.0

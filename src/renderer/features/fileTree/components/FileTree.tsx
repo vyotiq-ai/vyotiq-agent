@@ -173,6 +173,50 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
           })();
         }
         break;
+
+      case 'duplicate': {
+        // Duplicate file: copy in-place with " copy" suffix
+        void (async () => {
+          try {
+            const fileName = targetPath.split('/').pop() ?? '';
+            const parentDir = targetPath.substring(0, targetPath.lastIndexOf('/'));
+            const dotIdx = fileName.lastIndexOf('.');
+            const baseName = dotIdx > 0 ? fileName.substring(0, dotIdx) : fileName;
+            const ext = dotIdx > 0 ? fileName.substring(dotIdx) : '';
+
+            // Find a non-conflicting name
+            let suffix = 1;
+            let newName = `${baseName} copy${ext}`;
+            let newPath = `${parentDir}/${newName}`;
+            while (true) {
+              try {
+                const exists = await window.vyotiq?.files?.stat?.(newPath);
+                if (!exists?.success) break;
+                suffix++;
+                newName = `${baseName} copy ${suffix}${ext}`;
+                newPath = `${parentDir}/${newName}`;
+              } catch {
+                break;
+              }
+            }
+
+            // Read and write for files
+            if (targetType === 'file') {
+              const readRes = await window.vyotiq?.files?.read?.(targetPath);
+              if (readRes?.success && readRes.content !== undefined) {
+                await window.vyotiq?.files?.write?.(newPath, readRes.content);
+              }
+            } else {
+              // For directories, just create a new empty folder
+              await window.vyotiq?.files?.mkdir?.(newPath);
+            }
+            void refresh();
+          } catch (err) {
+            logger.warn('Failed to duplicate item', { targetPath, error: err instanceof Error ? err.message : String(err) });
+          }
+        })();
+        break;
+      }
         
       case 'cut':
         cut([targetPath]);

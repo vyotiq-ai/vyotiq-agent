@@ -1,5 +1,5 @@
-import React, { memo, useCallback, useState, useEffect } from 'react';
-import { Terminal, AlertCircle, FileOutput, Bug } from 'lucide-react';
+import React, { memo, useCallback, useState, useEffect, lazy, Suspense } from 'react';
+import { Terminal, AlertCircle, FileOutput, Bug, Loader2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { Tooltip } from '../ui/Tooltip';
 import { SidebarItem } from './sidebar/SidebarItem';
@@ -8,6 +8,11 @@ import { SidebarFileTree } from '../../features/fileTree/components/SidebarFileT
 import { SearchPanel, IndexStatusPanel } from '../../features/workspace';
 import { openFileInEditor } from '../../features/editor/components/EditorPanel';
 import { useWorkspaceState } from '../../state/WorkspaceProvider';
+
+// Lazy-load the symbol outline panel
+const SymbolOutlinePanel = lazy(() =>
+  import('../../features/editor/components/SymbolOutlinePanel').then(m => ({ default: m.SymbolOutlinePanel }))
+);
 
 interface SidebarProps {
   collapsed: boolean;
@@ -66,7 +71,7 @@ interface ProblemCounts {
 }
 
 const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) => {
-  const [activeTab, setActiveTab] = useState<'files' | 'search'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'search' | 'outline'>('files');
   const [problemCounts, setProblemCounts] = useState<ProblemCounts>({ errors: 0, warnings: 0 });
 
   // Access workspace context for Rust backend integration
@@ -96,6 +101,11 @@ const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) =>
       key: 'ctrl+shift+e',
       handler: () => setActiveTab('files'),
       description: 'Switch to files tab',
+    },
+    {
+      key: 'ctrl+shift+o',
+      handler: () => setActiveTab('outline'),
+      description: 'Switch to outline tab',
     },
   ]);
 
@@ -133,10 +143,10 @@ const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) =>
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Tab switcher — replaces activity bar icons */}
         <div className="shrink-0 flex items-center border-b border-[var(--color-border-subtle)] px-1 h-[28px] gap-px">
-          {(['files', 'search'] as const).map((tab) => (
-            <Tooltip key={tab} content={tab === 'files' ? 'Explorer' : 'Search'} shortcut={tab === 'files' ? 'Ctrl+Shift+E' : 'Ctrl+Shift+F'}>
+          {(['files', 'search', 'outline'] as const).map((tab) => (
+            <Tooltip key={tab} content={tab === 'files' ? 'Explorer' : tab === 'search' ? 'Search' : 'Outline'} shortcut={tab === 'files' ? 'Ctrl+Shift+E' : tab === 'search' ? 'Ctrl+Shift+F' : 'Ctrl+Shift+O'}>
               <SidebarItem
-                label={tab === 'files' ? 'explorer' : 'search'}
+                label={tab === 'files' ? 'explorer' : tab}
                 active={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
@@ -158,6 +168,15 @@ const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) =>
               workspaceId={rustWorkspaceId}
               onFileOpen={(path, _line) => openFileInEditor(path)}
             />
+          )}
+          {activeTab === 'outline' && (
+            <Suspense fallback={
+              <div className="flex items-center justify-center h-full text-[var(--color-text-dim)]">
+                <Loader2 size={14} className="animate-spin" />
+              </div>
+            }>
+              <SymbolOutlinePanel />
+            </Suspense>
           )}
         </div>
 

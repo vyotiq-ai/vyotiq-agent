@@ -82,6 +82,7 @@ export type ContextMenuAction =
   | 'newFolder'
   | 'rename'
   | 'delete'
+  | 'duplicate'
   | 'cut'
   | 'copy'
   | 'paste'

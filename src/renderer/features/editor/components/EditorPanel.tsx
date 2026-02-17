@@ -14,8 +14,9 @@
  * - Breadcrumb navigation
  */
 
-import React, { memo, useCallback, useMemo, useState, lazy, Suspense } from 'react';
+import React, { memo, useCallback, useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { X, FileText, Eye, Code2, GitCompare, Loader2 } from 'lucide-react';
+import * as monaco from 'monaco-editor';
 import { cn } from '../../../utils/cn';
 import { sanitizeHtml } from '../../../utils/sanitizeHtml';
 import {
@@ -27,6 +28,13 @@ import { MarkdownRenderer } from '../../../components/ui/MarkdownRenderer';
 import { EditorBreadcrumb } from './EditorBreadcrumb';
 import { EditorStatusBar } from './EditorStatusBar';
 import { TabContextMenu, type TabContextAction } from './TabContextMenu';
+import { EditorContextMenu, type EditorContextAction } from './EditorContextMenu';
+import { GoToLineDialog } from './GoToLineDialog';
+import { EditorSettingsPanel } from './EditorSettingsPanel';
+import { useEditorActions } from '../hooks/useEditorActions';
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('EditorPanel');
 
 // Lazy-load Monaco components for better initial load performance
 const MonacoEditor = lazy(() =>
@@ -251,6 +259,97 @@ export const EditorPanel: React.FC = memo(() => {
     setTabContextMenu(prev => ({ ...prev, isOpen: false }));
   }, []);
 
+  // --- New feature state ---
+  const editorActions = useEditorActions();
+
+  // Editor context menu (right-click in editor)
+  const [editorContextMenu, setEditorContextMenu] = useState<{
+    isOpen: boolean;
+    position: { x: number; y: number };
+  }>({ isOpen: false, position: { x: 0, y: 0 } });
+
+  // Go to Line dialog (Ctrl+G)
+  const [goToLineOpen, setGoToLineOpen] = useState(false);
+
+  // Editor Settings panel
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Track selection presence for context menu hints
+  const [hasSelection, setHasSelection] = useState(false);
+
+  // Wire editor mount to our actions hook so commands operate on the right editor
+  const handleEditorMount = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
+    editorActions.setEditorRef(editor);
+  }, [editorActions]);
+
+  // Custom context menu handler from MonacoWrapper
+  const handleEditorContextMenu = useCallback((e: { x: number; y: number }) => {
+    setEditorContextMenu({ isOpen: true, position: e });
+  }, []);
+
+  const closeEditorContextMenu = useCallback(() => {
+    setEditorContextMenu(prev => ({ ...prev, isOpen: false }));
+  }, []);
+
+  // Dispatch context menu actions to editorActions
+  const handleEditorContextAction = useCallback((action: EditorContextAction) => {
+    closeEditorContextMenu();
+    switch (action) {
+      case 'goToDefinition': editorActions.goToDefinition(); break;
+      case 'goToTypeDefinition': editorActions.goToTypeDefinition(); break;
+      case 'goToImplementation': editorActions.goToImplementation(); break;
+      case 'findReferences': editorActions.findReferences(); break;
+      case 'peekDefinition': editorActions.peekDefinition(); break;
+      case 'peekReferences': editorActions.peekReferences(); break;
+      case 'renameSymbol': editorActions.renameSymbol(); break;
+      case 'formatDocument': editorActions.formatDocument(); break;
+      case 'formatSelection': editorActions.formatSelection(); break;
+      case 'codeAction': editorActions.triggerCodeAction(); break;
+      case 'quickFix': editorActions.triggerQuickFix(); break;
+      case 'cut': editorActions.cut(); break;
+      case 'copy': editorActions.copy(); break;
+      case 'paste': editorActions.paste(); break;
+      case 'selectAll': editorActions.selectAll(); break;
+      case 'goToLine': setGoToLineOpen(true); break;
+      case 'goToSymbol': editorActions.goToSymbol(); break;
+      case 'toggleWordWrap': editorActions.toggleWordWrap(); break;
+      case 'revealInExplorer':
+        if (activeTab) void window.vyotiq?.files?.reveal?.(activeTab.filePath);
+        break;
+      case 'commandPalette':
+      case 'changeLanguage':
+      case 'refactor':
+        logger.debug('Action not yet wired:', action);
+        break;
+      default:
+        break;
+    }
+  }, [editorActions, activeTab, closeEditorContextMenu]);
+
+  // Go to Line handler
+  const handleGoToLine = useCallback((line: number, column?: number) => {
+    editorActions.goToLine(line, column);
+    setGoToLineOpen(false);
+  }, [editorActions]);
+
+  // Get total line count for Go to Line dialog
+  const totalLines = useMemo(() => {
+    if (!activeTab?.content) return 0;
+    return activeTab.content.split('\n').length;
+  }, [activeTab?.content]);
+
+  // Listen for external go-to-line events (e.g. from Problems panel)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ filePath: string; line: number; column: number }>).detail;
+      if (detail) {
+        editorActions.goToLine(detail.line, detail.column);
+      }
+    };
+    document.addEventListener('vyotiq:editor-go-to-line', handler);
+    return () => document.removeEventListener('vyotiq:editor-go-to-line', handler);
+  }, [editorActions]);
+
   // Monaco event handlers
   const handleContentChange = useCallback((value: string) => {
     if (activeTab) {
@@ -276,6 +375,7 @@ export const EditorPanel: React.FC = memo(() => {
       if (activeTab) {
         updateSelection(activeTab.id, selection);
       }
+      setHasSelection(selection !== null);
     },
     [activeTab, updateSelection]
   );
@@ -309,6 +409,20 @@ export const EditorPanel: React.FC = memo(() => {
     if (modKey && e.key === 'w') {
       e.preventDefault();
       if (activeTab) closeTab(activeTab.id);
+      return;
+    }
+
+    // Ctrl+G: Go to Line
+    if (modKey && e.key === 'g') {
+      e.preventDefault();
+      setGoToLineOpen(true);
+      return;
+    }
+
+    // Ctrl+,: Editor Settings
+    if (modKey && e.key === ',') {
+      e.preventDefault();
+      setSettingsOpen(prev => !prev);
       return;
     }
 
@@ -415,6 +529,8 @@ export const EditorPanel: React.FC = memo(() => {
                     showMinimap={state.showMinimap}
                     wordWrap={state.wordWrap}
                     fontSize={state.fontSize}
+                    onEditorMount={handleEditorMount}
+                    onContextMenu={handleEditorContextMenu}
                   />
                 </Suspense>
               )}
@@ -454,6 +570,31 @@ export const EditorPanel: React.FC = memo(() => {
         isDirty={contextMenuTab?.isDirty ?? false}
         onAction={handleTabContextAction}
         onClose={closeTabContextMenu}
+      />
+
+      {/* Editor context menu (right-click in editor) */}
+      <EditorContextMenu
+        isOpen={editorContextMenu.isOpen}
+        position={editorContextMenu.position}
+        filePath={activeTab?.filePath ?? null}
+        hasSelection={hasSelection}
+        onAction={handleEditorContextAction}
+        onClose={closeEditorContextMenu}
+      />
+
+      {/* Go to Line dialog (Ctrl+G) */}
+      <GoToLineDialog
+        isOpen={goToLineOpen}
+        currentLine={activeTab?.cursorPosition?.line ?? 1}
+        totalLines={totalLines}
+        onGoTo={handleGoToLine}
+        onClose={() => setGoToLineOpen(false)}
+      />
+
+      {/* Editor Settings panel (Ctrl+,) */}
+      <EditorSettingsPanel
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
     </div>
   );

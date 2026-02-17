@@ -59,6 +59,20 @@
 
 ## 📢 Recent Updates
 
+### LSP Client Integration & Editor Enhancements (v1.8.0 - February 2026)
+
+Major editor productivity release with full LSP client-side integration and IDE-grade editing tools.
+
+**Highlights:**
+
+- 🔗 **LSP Client Bridge**: Full renderer-side LSP integration with auto-initialization, document sync, and Monaco provider registration
+- 📋 **Editor Context Menu**: VS Code-like right-click menu with Go to Definition, Peek, Rename, Format, Quick Fix
+- 🔢 **Go to Line**: `Ctrl+G` dialog with `line:column` support
+- ⚙️ **Editor Settings**: `Ctrl+,` settings panel with appearance, behavior, formatting, and IntelliSense options
+- 🗺️ **Symbol Outline**: New sidebar tab (`Ctrl+Shift+O`) with filterable document symbol tree
+- 🐛 **Problems Panel**: Overhauled with severity filtering, file grouping, and click-to-navigate
+- 📂 **File Duplicate**: New "Duplicate" action in file tree context menu
+
 ### Editor Theming, Workspace UX & Indexing Improvements (v1.7.0 - February 2026)
 
 Feature-focused release with editor theming, workspace UX improvements, and indexing/search refinements.
@@ -374,6 +388,8 @@ Type your request in the chat input:
 | Open Settings | `Ctrl + ,` | `Cmd + ,` |
 | Toggle Terminal | `` Ctrl + ` `` | `` Cmd + ` `` |
 | New Chat Session | `Ctrl + N` | `Cmd + N` |
+| Go to Line | `Ctrl + G` | `Cmd + G` |
+| Editor Settings | `Ctrl + ,` | `Cmd + ,` |
 | Save File | `Ctrl + S` | `Cmd + S` |
 | Undo | `Ctrl + Z` | `Cmd + Z` |
 | Redo | `Ctrl + Y` | `Cmd + Shift + Z` |

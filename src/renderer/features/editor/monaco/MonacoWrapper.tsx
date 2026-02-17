@@ -15,6 +15,14 @@ import React, { useRef, useEffect, useCallback, memo } from 'react';
 import * as monaco from 'monaco-editor';
 import { initializeMonaco, getMonacoLanguage } from './monacoSetup';
 import { registerMonacoThemes, getMonacoTheme } from './monacoTheme';
+import {
+  registerLSPProviders,
+  notifyDocumentOpen,
+  notifyDocumentChange,
+  notifyDocumentClose,
+  refreshDiagnostics,
+} from '../lsp/lspBridge';
+import { loadEditorSettings, settingsToMonacoOptions } from '../hooks/useEditorSettings';
 import { createLogger } from '../../../utils/logger';
 
 const logger = createLogger('MonacoWrapper');
@@ -41,6 +49,15 @@ function ensureMonacoReady(): void {
   });
 
   monacoReady = true;
+}
+
+// Debounce helper for LSP document sync
+let lspSyncTimer: ReturnType<typeof setTimeout> | null = null;
+function debouncedLSPSync(filePath: string, content: string, delay = 300): void {
+  if (lspSyncTimer) clearTimeout(lspSyncTimer);
+  lspSyncTimer = setTimeout(() => {
+    void notifyDocumentChange(filePath, content);
+  }, delay);
 }
 
 // =============================================================================
@@ -76,6 +93,10 @@ export interface MonacoEditorProps {
   wordWrap?: 'on' | 'off' | 'wordWrapColumn' | 'bounded';
   /** Font size override */
   fontSize?: number;
+  /** Callback when the editor instance is mounted (for external actions) */
+  onEditorMount?: (editor: monaco.editor.IStandaloneCodeEditor) => void;
+  /** Callback for context menu event */
+  onContextMenu?: (e: { x: number; y: number }) => void;
 }
 
 export interface MonacoDiffEditorProps {
@@ -110,6 +131,8 @@ export const MonacoEditor = memo<MonacoEditorProps>(({
   showMinimap = true,
   wordWrap = 'off',
   fontSize = 12,
+  onEditorMount,
+  onContextMenu,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -253,6 +276,32 @@ export const MonacoEditor = memo<MonacoEditorProps>(({
 
     editorRef.current = editor;
 
+    // --- LSP Integration ---
+    // Register LSP providers for this language
+    try {
+      registerLSPProviders(resolvedLanguage);
+    } catch (err) {
+      logger.warn('Failed to register LSP providers:', err);
+    }
+
+    // Notify LSP server that this document is open
+    void notifyDocumentOpen(filePath, contentRef.current).catch((err) =>
+      logger.warn('LSP document open failed:', err)
+    );
+
+    // Apply persisted editor settings
+    try {
+      const savedSettings = loadEditorSettings();
+      if (savedSettings) {
+        editor.updateOptions(settingsToMonacoOptions(savedSettings));
+      }
+    } catch (err) {
+      logger.warn('Failed to apply saved editor settings:', err);
+    }
+
+    // Callback for external consumers that need the editor instance
+    onEditorMount?.(editor);
+
     // Restore cursor position
     if (cursorPosition) {
       editor.setPosition({
@@ -269,11 +318,13 @@ export const MonacoEditor = memo<MonacoEditorProps>(({
       });
     }
 
-    // Listen for content changes
-    if (onChange) {
+    // Listen for content changes (+ LSP sync)
+    {
       const changeDisposable = model.onDidChangeContent(() => {
         const value = model!.getValue();
-        onChange(value);
+        onChange?.(value);
+        // Debounced LSP document sync
+        debouncedLSPSync(filePath, value);
       });
       disposeListenersRef.current.push(changeDisposable);
     }
@@ -309,15 +360,33 @@ export const MonacoEditor = memo<MonacoEditorProps>(({
 
     // Register Ctrl+S save command
     if (onSave) {
-      const saveDisposable = editor.addCommand(
+      editor.addCommand(
         monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
         () => {
           const value = model!.getValue();
           onSave(value);
         }
       );
-      // addCommand returns a disposable number, no need to track
     }
+
+    // Custom context menu handler — suppress built-in, emit position for our custom menu
+    if (onContextMenu) {
+      const ctxDisposable = editor.onContextMenu((e) => {
+        e.event.preventDefault();
+        e.event.stopPropagation();
+        onContextMenu({ x: e.event.posx, y: e.event.posy });
+      });
+      disposeListenersRef.current.push(ctxDisposable);
+    }
+
+    // Listen for editor settings changes broadcast
+    const onSettingsChanged = () => {
+      try {
+        const updated = loadEditorSettings();
+        if (updated) editor.updateOptions(settingsToMonacoOptions(updated));
+      } catch { /* ignore */ }
+    };
+    document.addEventListener('vyotiq:editor-settings-changed', onSettingsChanged);
 
     // Handle window resize
     const resizeObserver = new ResizeObserver(() => {
@@ -338,6 +407,12 @@ export const MonacoEditor = memo<MonacoEditorProps>(({
     editor.focus();
 
     return () => {
+      // Notify LSP that this document is closing
+      void notifyDocumentClose(filePath).catch(() => { /* ignore */ });
+      // Cancel any pending debounced LSP sync
+      if (lspSyncTimer) { clearTimeout(lspSyncTimer); lspSyncTimer = null; }
+
+      document.removeEventListener('vyotiq:editor-settings-changed', onSettingsChanged);
       themeObserver.disconnect();
       resizeObserver.disconnect();
       disposeListenersRef.current.forEach(d => {

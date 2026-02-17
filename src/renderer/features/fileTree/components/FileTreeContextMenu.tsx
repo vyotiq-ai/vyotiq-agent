@@ -22,6 +22,7 @@ import {
   Search,
   FileCode2,
   GitCompareArrows,
+  Files,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import type { ContextMenuAction, ContextMenuPosition } from '../types';
@@ -58,6 +59,7 @@ const createMenuItems = (canPaste: boolean): ContextMenuItem[] => [
   { action: 'copy', label: 'copy', icon: <Copy size={12} />, shortcut: 'Ctrl+C', show: 'both' },
   { action: 'paste', label: 'paste', icon: <Clipboard size={12} />, shortcut: 'Ctrl+V', show: 'both', disabled: !canPaste, divider: true },
   { action: 'rename', label: 'rename', icon: <Pencil size={12} />, shortcut: 'F2', show: 'both' },
+  { action: 'duplicate', label: 'duplicate', icon: <Files size={12} />, show: 'both' },
   { action: 'delete', label: 'delete', icon: <Trash2 size={12} />, shortcut: 'Del', show: 'both', divider: true, danger: true },
   { action: 'copyPath', label: 'copy path', icon: <Copy size={12} />, shortcut: 'Shift+C', show: 'both' },
   { action: 'copyRelativePath', label: 'copy relative path', icon: <ClipboardCopy size={12} />, show: 'both', divider: true },

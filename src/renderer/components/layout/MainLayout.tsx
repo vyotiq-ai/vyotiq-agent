@@ -8,6 +8,11 @@ import { EditorPanel, openFileInEditor } from '../../features/editor/components/
 import { useEditorStore } from '../../features/editor/store/editorStore';
 import { useEditorKeyboard } from '../../features/editor/hooks/useEditorKeyboard';
 import { BottomPanel } from '../../features/terminal/components/BottomPanel';
+import { useLSP } from '../../features/editor/hooks/useLSP';
+import { getCurrentWorkspacePath } from '../../state/WorkspaceProvider';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('MainLayout');
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -55,6 +60,29 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
 
   // Global editor keyboard shortcuts (save, font size, word wrap)
   useEditorKeyboard({ enabled: editorVisible });
+
+  // --- LSP initialization ---
+  const lsp = useLSP();
+
+  useEffect(() => {
+    const wsPath = getCurrentWorkspacePath();
+    if (wsPath && !lsp.status.initialized && !lsp.status.initializing) {
+      lsp.initialize(wsPath).catch((err) =>
+        logger.warn('LSP auto-init failed', { error: err instanceof Error ? err.message : String(err) })
+      );
+    }
+    // Re-run when workspace changes (listen for workspace change events)
+    const handleWorkspaceChanged = () => {
+      const newPath = getCurrentWorkspacePath();
+      if (newPath) {
+        lsp.initialize(newPath).catch((err) =>
+          logger.warn('LSP reinit failed', { error: err instanceof Error ? err.message : String(err) })
+        );
+      }
+    };
+    document.addEventListener('vyotiq:workspace-changed', handleWorkspaceChanged);
+    return () => document.removeEventListener('vyotiq:workspace-changed', handleWorkspaceChanged);
+  }, [lsp]);
 
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
