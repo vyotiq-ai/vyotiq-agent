@@ -16,7 +16,8 @@
     "rust:build": "cd rust-backend && cargo build --release",
     "rust:dev": "cd rust-backend && cargo build",
     "rust:check": "cd rust-backend && cargo check",
-    "build:all": "npm run rust:build && electron-forge make"
+    "build:all": "npm run rust:build && electron-forge make",
+    "release": "node scripts/publish-release.mjs"
   },
   "keywords": [
     "vyotiq ai",
