@@ -377,7 +377,7 @@ export class ToolRegistry {
     }
     
     // Check path for file tools
-    const path = (args.path || args.filePath) as string | undefined;
+    const path = (args.path || args.filePath || args.file_path) as string | undefined;
     if (path) {
       for (const pattern of tool.alwaysConfirmPatterns) {
         if (pattern.test(path)) {
@@ -581,7 +581,7 @@ export class ToolRegistry {
     if (!writeTools.includes(toolName)) return;
 
     const cache = getToolResultCache();
-    const filePath = (args.path || args.filePath) as string | undefined;
+    const filePath = (args.path || args.filePath || args.file_path) as string | undefined;
 
     if (filePath) {
       const invalidated = cache.invalidatePath(filePath);

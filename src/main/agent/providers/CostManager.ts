@@ -13,7 +13,7 @@ import type {
   CostThresholdEvent,
 } from '../../../shared/types';
 import type { Logger } from '../../logger';
-import { MODEL_PRICING, lookupModelPricing, type ModelPricing as _ModelPricing } from '../../../shared/providers/pricing';
+import { MODEL_PRICING, lookupModelPricing } from '../../../shared/providers/pricing';
 
 // =============================================================================
 // Types

@@ -120,6 +120,7 @@ Uses Tantivy (Rust search engine) with BM25 scoring to rank documents by keyword
   requiresApproval: false,
   category: 'file-search',
   riskLevel: 'safe',
+  deferLoading: true,
 
   schema: {
     type: 'object',

@@ -191,10 +191,15 @@ class UndoHistoryManager {
   }
 
   /**
-   * Generate a unique change ID
+   * Generate a unique change ID using crypto.randomUUID for collision safety
    */
   private generateChangeId(): string {
-    return `change_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    try {
+      return `change_${crypto.randomUUID()}`;
+    } catch {
+      // Fallback for environments where crypto.randomUUID is unavailable
+      return `change_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    }
   }
 
   /**

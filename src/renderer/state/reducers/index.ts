@@ -25,6 +25,7 @@ import { communicationReducer } from './communicationReducer';
 const SESSION_ACTIONS = new Set([
   'SESSION_UPSERT',
   'SESSIONS_BULK_UPSERT',
+  'SESSIONS_REPLACE',
   'SESSION_SET_ACTIVE',
   'SESSION_RENAME',
   'SESSION_PATCH',

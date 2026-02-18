@@ -1,5 +1,6 @@
 import type { AttachmentPayload, LLMProviderName, ToolCallPayload, ProviderResponse, ProviderResponseChunk } from '../../../shared/types';
 import { createLogger } from '../../logger';
+import { isTransientError as isTransientErrorUtil, isNetworkError as isNetworkErrorUtil } from '../utils/errorUtils';
 
 const logger = createLogger('BaseProvider');
 
@@ -281,48 +282,20 @@ export async function withRetry<T>(
 }
 
 /**
- * Check if an error is a transient network/server error
+ * Check if an error is a transient network/server error.
+ * Delegates to the centralized errorUtils implementation.
  */
 function isTransientError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes('network') ||
-      message.includes('timeout') ||
-      message.includes('econnreset') ||
-      message.includes('econnrefused') ||
-      message.includes('econnaborted') ||
-      message.includes('socket') ||
-      message.includes('fetch failed') ||
-      message.includes('failed to fetch') ||
-      message.includes('enotfound') ||
-      message.includes('dns') ||
-      message.includes('getaddrinfo') ||
-      message.includes('etimedout')
-    );
-  }
-  return false;
+  return isTransientErrorUtil(error);
 }
 
 /**
  * Check if an error is specifically a network connectivity issue
- * (as opposed to a server error like 502/503)
+ * (as opposed to a server error like 502/503).
+ * Delegates to the centralized errorUtils implementation.
  */
 export function isNetworkConnectivityError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes('fetch failed') ||
-      message.includes('failed to fetch') ||
-      message.includes('enotfound') ||
-      message.includes('econnrefused') ||
-      message.includes('getaddrinfo') ||
-      message.includes('network request failed') ||
-      message.includes('etimedout') ||
-      message.includes('dns')
-    );
-  }
-  return false;
+  return isNetworkErrorUtil(error);
 }
 
 /**
@@ -754,7 +727,6 @@ export function validateMessages(messages: ProviderMessage[]): MessageValidation
 
   // Check message ordering: should typically alternate user/assistant
   // (with tool messages allowed after assistant tool calls)
-  let _lastRole: string | undefined;
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     
@@ -775,8 +747,6 @@ export function validateMessages(messages: ProviderMessage[]): MessageValidation
         warnings.push(`Message ${i}: Tool message without preceding assistant tool call`);
       }
     }
-    
-    _lastRole = msg.role;
   }
 
   // Check that last message is not system (unusual pattern)

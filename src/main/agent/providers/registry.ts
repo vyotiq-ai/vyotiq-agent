@@ -89,7 +89,8 @@ function toModelDefinition(model: ModelInfo): ModelDefinition {
       // Prompt caching:
       // - Anthropic + OpenAI: Manual prompt caching controls
       // - DeepSeek: Automatic context caching on disk (always enabled)
-      caching: model.provider === 'anthropic' || model.provider === 'openai' || model.provider === 'deepseek',
+      // - Gemini: CachedContent API via GeminiCacheService
+      caching: model.provider === 'anthropic' || model.provider === 'openai' || model.provider === 'deepseek' || model.provider === 'gemini',
       vision: model.supportsVision,
       toolUse: model.supportsTools,
       streaming: model.supportsStreaming,
@@ -251,7 +252,7 @@ export const GEMINI_CONFIG: ProviderDefinition = {
   models: GEMINI_MODELS.map(toModelDefinition),
   defaultModel: DEFAULT_MODELS.gemini,
   capabilities: {
-    caching: false,
+    caching: true,  // Gemini supports CachedContent API via GeminiCacheService
     streaming: true,
   },
   /**

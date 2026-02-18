@@ -21,11 +21,12 @@ export const PROVIDER_CAPABILITIES: Record<LLMProviderName, ProviderCapabilities
     supportsStreaming: true,
     supportsToolUse: true,
     supportsVision: true,
+    supportsThinking: true,  // Extended thinking support for Claude models
   },
   deepseek: {
     supportsStreaming: true,
     supportsToolUse: true,
-    supportsVision: false,
+    supportsVision: true,  // DeepSeek V3/reasoner support vision
   },
   openai: {
     supportsStreaming: true,

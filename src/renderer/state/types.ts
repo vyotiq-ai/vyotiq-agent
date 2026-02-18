@@ -269,6 +269,7 @@ export type AgentAction =
   | { type: 'PENDING_TOOL_REMOVE'; payload: string }
   | { type: 'SESSION_DELETE'; payload: string }
   | { type: 'SESSIONS_CLEAR' }
+  | { type: 'SESSIONS_REPLACE'; payload: { sessions: AgentSessionState[]; activeSessionId?: string } }
   | { type: 'PROGRESS_UPDATE'; payload: { sessionId: string; groupId: string; groupTitle: string; startedAt: number; item: ProgressItem } }
   | { type: 'ARTIFACT_ADD'; payload: { sessionId: string; artifact: ArtifactCard } }
   | { type: 'CLEAR_SESSION_TASK_STATE'; payload: string }

@@ -155,15 +155,25 @@ const ChatAreaInternal: React.FC = () => {
 
   const sessionRoutingDecision = sessionId ? routingDecisions[sessionId] : undefined;
 
-  // Session-specific communication state
-  // Questions and decisions are globally tracked but implicitly belong to the
-  // active session since they originate from session-scoped agent events.
-  const sessionQuestions = pendingQuestions;
-  const sessionDecisions = pendingDecisions;
-
   // Loop detection for the active run
   const activeRunId = activeSession?.activeRunId;
   const loopDetection = useLoopDetection(activeRunId ?? undefined);
+
+  // Session-specific communication state
+  // Filter questions and decisions to only show those belonging to the active session's run,
+  // preventing cross-session leakage when multiple sessions are running concurrently.
+  const sessionQuestions = useMemo(
+    () => activeRunId
+      ? pendingQuestions.filter(q => q.runId === activeRunId || !q.runId)
+      : pendingQuestions,
+    [pendingQuestions, activeRunId],
+  );
+  const sessionDecisions = useMemo(
+    () => activeRunId
+      ? pendingDecisions.filter(d => d.runId === activeRunId || !d.runId)
+      : pendingDecisions,
+    [pendingDecisions, activeRunId],
+  );
 
   // Toggle search
   const toggleSearch = useCallback(() => {

@@ -10,6 +10,7 @@ import { checkCancellation, formatCancelled } from '../types/formatUtils';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
 import { createLogger } from '../../logger';
+import { notifyFileChanged } from '../../utils/fileChangeNotifier';
 
 const logger = createLogger('bulkOperations');
 
@@ -270,18 +271,31 @@ grep("OldName") → verify no remaining references
             await fs.rename(sourcePath, destPath);
             results.push({ operation: op, success: true });
             successCount++;
+            // Notify Rust backend for re-indexing
+            if (context.workspacePath) {
+              notifyFileChanged(context.workspacePath, sourcePath, 'deleted');
+              notifyFileChanged(context.workspacePath, destPath, 'created');
+            }
             break;
 
           case 'copy':
             await copyRecursive(sourcePath, destPath);
             results.push({ operation: op, success: true });
             successCount++;
+            // Notify Rust backend for re-indexing
+            if (context.workspacePath) {
+              notifyFileChanged(context.workspacePath, destPath, 'created');
+            }
             break;
 
           case 'delete':
             await deleteRecursive(sourcePath);
             results.push({ operation: op, success: true });
             successCount++;
+            // Notify Rust backend for re-indexing
+            if (context.workspacePath) {
+              notifyFileChanged(context.workspacePath, sourcePath, 'deleted');
+            }
             break;
 
           default:

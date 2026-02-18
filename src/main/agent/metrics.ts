@@ -3,6 +3,10 @@
  * Provides metrics tracking for agent runs
  */
 
+import { createLogger } from '../logger';
+
+const logger = createLogger('AgentMetrics');
+
 interface MetricsData {
   totalRuns: number;
   successfulRuns: number;
@@ -92,9 +96,7 @@ class AgentMetrics {
     const run = this.activeRuns.get(runId);
     if (!run) {
       // Log when a run is missing to aid debugging stale/evicted metrics
-      if (typeof console !== 'undefined') {
-        console.warn(`[AgentMetrics] completeRun called for unknown runId: ${runId} (may have been evicted as stale)`);
-      }
+      logger.warn('completeRun called for unknown runId (may have been evicted as stale)', { runId });
       return null;
     }
 

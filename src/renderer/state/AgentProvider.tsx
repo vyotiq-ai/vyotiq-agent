@@ -689,22 +689,23 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           break;
         }
         case 'sessions-update': {
-          // Bulk sessions update from backend - replace all sessions
+          // Bulk sessions update from backend - atomically replace all sessions
           const sessionsEvent = event as RendererEvent & { sessions?: AgentSessionState[] };
           const sessions = (sessionsEvent.sessions || []) as AgentSessionState[];
 
           const currentState = getCurrentState();
 
-          // Clear existing sessions and reload from backend list
-          dispatchRef.current({ type: 'SESSIONS_CLEAR' });
-
+          // Use atomic SESSIONS_REPLACE to avoid empty-state flash between clear and upsert
           if (sessions.length > 0) {
             const sortedSessions = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
             const activeId = !currentState.activeSessionId ? sortedSessions[0].id : undefined;
             dispatchRef.current({
-              type: 'SESSIONS_BULK_UPSERT',
+              type: 'SESSIONS_REPLACE',
               payload: { sessions, activeSessionId: activeId },
             });
+          } else {
+            // No sessions from backend — clear all
+            dispatchRef.current({ type: 'SESSIONS_CLEAR' });
           }
           break;
         }

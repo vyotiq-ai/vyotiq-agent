@@ -216,8 +216,8 @@ Files over ${MAX_FILE_LINES} lines are automatically chunked:
     { path: '/home/user/myproject/notebooks/analysis.ipynb' },
     // Example 10: Read file with specific encoding
     { path: '/home/user/myproject/src/data/data.csv', encoding: 'utf-16le' },
-    // Example 11: Read file with deprecated parameters
-    { path: '/home/user/myproject/src/utils/helpers.ts', startLine: 10, endLine: 50 },
+    // Example 11: Read a specific range using offset and limit
+    { path: '/home/user/myproject/src/utils/helpers.ts', offset: 10, limit: 40 },
     // Example 12: Read another chunk of large file
     { path: '/home/user/myproject/src/components/App.tsx', offset: 301, limit: 150 },
   ],

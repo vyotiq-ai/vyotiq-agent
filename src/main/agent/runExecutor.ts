@@ -354,6 +354,27 @@ export class RunExecutor {
         // Process any pending follow-up messages injected by the user
         this.acknowledgePendingFollowUps(session, runId, iteration);
 
+        // Budget enforcement — check if cost budget allows proceeding
+        if (this.checkBudget) {
+          const budgetCheck = this.checkBudget(session.state.id);
+          if (!budgetCheck.canProceed) {
+            this.logger.warn('Stopping run due to budget limit after tool confirmation', {
+              sessionId: session.state.id,
+              runId,
+              iteration,
+              reason: budgetCheck.reason,
+            });
+            this.emitEvent({
+              type: 'agent-status',
+              sessionId: session.state.id,
+              status: 'error',
+              message: `Run stopped: ${budgetCheck.reason ?? 'Budget exceeded'}`,
+              timestamp: Date.now(),
+            });
+            break;
+          }
+        }
+
         const loopDetector = getLoopDetector();
         if (loopDetector.shouldTriggerCircuitBreaker(runId)) {
           this.logger.error('Stopping run due to loop detection circuit breaker', {

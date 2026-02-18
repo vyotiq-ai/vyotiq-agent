@@ -49,6 +49,14 @@ async function rustRequest<T>(path: string, options: RequestInit = {}): Promise<
 // Handler Registration
 // ---------------------------------------------------------------------------
 
+/**
+ * Validate workspaceId to prevent path injection attacks.
+ * Workspace IDs should be alphanumeric, hyphens, underscores, or UUIDs.
+ */
+function validateWorkspaceId(workspaceId: string): boolean {
+  return /^[a-zA-Z0-9_-]+$/.test(workspaceId) && workspaceId.length <= 128;
+}
+
 export function registerRustBackendHandlers(_context: IpcContext): void {
   // ---- Health / Status ----
 
@@ -103,6 +111,9 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
 
   ipcMain.handle('rust-backend:activate-workspace', async (_event, workspaceId: string) => {
     try {
+      if (!validateWorkspaceId(workspaceId)) {
+        return { success: false, error: 'Invalid workspace ID format' };
+      }
       const workspace = await rustRequest(`/api/workspaces/${workspaceId}/activate`, {
         method: 'POST',
       });
@@ -114,6 +125,9 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
 
   ipcMain.handle('rust-backend:remove-workspace', async (_event, workspaceId: string) => {
     try {
+      if (!validateWorkspaceId(workspaceId)) {
+        return { success: false, error: 'Invalid workspace ID format' };
+      }
       await rustRequest(`/api/workspaces/${workspaceId}`, { method: 'DELETE' });
       return { success: true };
     } catch (error) {
@@ -125,6 +139,9 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
 
   ipcMain.handle('rust-backend:list-files', async (_event, workspaceId: string, subPath?: string, options?: { recursive?: boolean; show_hidden?: boolean; max_depth?: number }) => {
     try {
+      if (!validateWorkspaceId(workspaceId)) {
+        return { success: false, error: 'Invalid workspace ID format', files: [] };
+      }
       const params = new URLSearchParams();
       if (subPath) params.set('path', subPath);
       if (options?.recursive) params.set('recursive', 'true');

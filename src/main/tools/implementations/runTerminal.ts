@@ -14,7 +14,7 @@ interface RunTerminalArgs extends Record<string, unknown> {
   cwd?: string;
   /** Run the command in the background without waiting for completion */
   run_in_background?: boolean;
-  /** Timeout in milliseconds (default: 120000, max: 600000) */
+  /** Timeout in milliseconds (default: 240000, max: 1200000) */
   timeout?: number;
   /** Human-readable description of what the command does */
   description?: string;
@@ -85,7 +85,7 @@ These commands automatically run in background mode:
       },
       timeout: {
         type: 'number',
-        description: 'Timeout in milliseconds (default: 120000, max: 600000)',
+        description: 'Timeout in milliseconds (default: 240000, max: 1200000)',
       },
       description: {
         type: 'string',

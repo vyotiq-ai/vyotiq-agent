@@ -394,7 +394,18 @@ export class SettingsStore {
       complianceSettings: { ...this.settings.complianceSettings, ...(settings.complianceSettings ?? {}) },
       browserSettings: { ...this.settings.browserSettings, ...(settings.browserSettings ?? {}) },
       accessLevelSettings: { ...this.settings.accessLevelSettings, ...(settings.accessLevelSettings ?? {}) },
-      taskRoutingSettings: { ...this.settings.taskRoutingSettings, ...(settings.taskRoutingSettings ?? {}) },
+      taskRoutingSettings: {
+        ...this.settings.taskRoutingSettings,
+        ...(settings.taskRoutingSettings ?? {}),
+        // Deep merge nested objects to prevent data loss on partial updates
+        ...(settings.taskRoutingSettings ? {
+          taskMappings: settings.taskRoutingSettings.taskMappings ?? this.settings.taskRoutingSettings?.taskMappings,
+          defaultMapping: {
+            ...(this.settings.taskRoutingSettings?.defaultMapping ?? {}),
+            ...(settings.taskRoutingSettings.defaultMapping ?? {}),
+          },
+        } : {}),
+      },
       appearanceSettings: { ...this.settings.appearanceSettings, ...(settings.appearanceSettings ?? {}) },
       workspaceSettings: { ...this.settings.workspaceSettings, ...(settings.workspaceSettings ?? {}) },
       promptSettings: mergedPromptSettings,

@@ -175,10 +175,11 @@ export function analyzeToolDependencies(
 
 /**
  * Extract target file path from tool arguments
+ * Checks all known path parameter aliases used across tools (path, filePath, file_path, file, directory)
  */
 function extractTargetPath(tool: ToolCallPayload): string | undefined {
   const args = tool.arguments as Record<string, unknown>;
-  return (args.path || args.filePath || args.file || args.directory) as string | undefined;
+  return (args.path || args.filePath || args.file_path || args.file || args.directory) as string | undefined;
 }
 
 // =============================================================================

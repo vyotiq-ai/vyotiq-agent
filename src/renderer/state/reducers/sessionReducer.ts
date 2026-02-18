@@ -16,6 +16,7 @@ const logger = createLogger('SessionReducer');
 export type SessionAction =
   | { type: 'SESSION_UPSERT'; payload: AgentSessionState }
   | { type: 'SESSIONS_BULK_UPSERT'; payload: { sessions: AgentSessionState[]; activeSessionId?: string } }
+  | { type: 'SESSIONS_REPLACE'; payload: { sessions: AgentSessionState[]; activeSessionId?: string } }
   | { type: 'SESSION_SET_ACTIVE'; payload: string }
   | { type: 'SESSION_RENAME'; payload: { sessionId: string; title: string } }
   | { type: 'SESSION_PATCH'; payload: { sessionId: string; patch: Partial<AgentSessionState>; messagePatch?: { messageId: string; changes: Record<string, unknown> } } }
@@ -459,6 +460,47 @@ export function sessionReducer(
 
     case 'SESSION_DELETE':
       return handleSessionDelete(state, action.payload);
+
+    case 'SESSIONS_REPLACE': {
+      // Atomic replace: clears all sessions and replaces with new ones in a single dispatch.
+      // This prevents the brief empty-state flash that occurs with separate SESSIONS_CLEAR + SESSIONS_BULK_UPSERT.
+      const { sessions: replaceSessions, activeSessionId: replaceActiveId } = action.payload;
+      const sortedReplace = [...replaceSessions].sort((a, b) => b.updatedAt - a.updatedAt);
+      let nextCostReplace = {} as typeof state.sessionCost;
+      for (const s of sortedReplace) {
+        if (s.messages.some(m => m.usage)) {
+          try {
+            nextCostReplace = { ...nextCostReplace, [s.id]: computeSessionCostSnapshot(s.messages) };
+          } catch {
+            // Cost computation is non-critical
+          }
+        }
+      }
+      return {
+        ...state,
+        sessions: sortedReplace,
+        activeSessionId: replaceActiveId || (sortedReplace.length > 0 ? sortedReplace[0].id : undefined),
+        sessionCost: nextCostReplace,
+        // Reset session-scoped state for clean slate
+        progressGroups: {},
+        artifacts: {},
+        pendingConfirmations: {},
+        agentStatus: {},
+        streamingSessions: new Set(),
+        routingDecisions: {},
+        contextMetrics: {},
+        todos: {},
+        toolResults: {},
+        inlineArtifacts: {},
+        terminalStreams: {},
+        runErrors: {},
+        executingTools: {},
+        queuedTools: {},
+        pendingQuestions: [] as typeof state.pendingQuestions,
+        pendingDecisions: [] as typeof state.pendingDecisions,
+        communicationProgress: [] as typeof state.communicationProgress,
+      };
+    }
       
     case 'SESSIONS_CLEAR':
       return {

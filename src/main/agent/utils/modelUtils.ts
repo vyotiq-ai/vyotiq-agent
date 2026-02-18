@@ -21,6 +21,12 @@ export function modelBelongsToProvider(modelId: string, provider: LLMProviderNam
       return /^claude-/.test(modelId) || /^anthropic\./.test(modelId);
     case 'deepseek':
       return /^deepseek-/.test(modelId);
+    case 'xai':
+      return /^grok-/.test(modelId);
+    case 'mistral':
+      return /^mistral-/.test(modelId) || /^pixtral-/.test(modelId) || /^codestral-/.test(modelId) || /^open-mistral/.test(modelId);
+    case 'glm':
+      return /^glm-/.test(modelId) || /^chatglm/.test(modelId);
     case 'openrouter':
       // OpenRouter models use format: provider/model-name (e.g., "deepseek/deepseek-r1-0528:free")
       // Any model with a "/" is likely an OpenRouter model ID
