@@ -223,20 +223,27 @@ export function streamingReducer(
       
       let updatedSession = { ...session, status };
       
-      // Mark thinking as complete on all assistant messages if clearing streaming
+      // Mark thinking as complete on all assistant messages if clearing streaming.
+      // Also clean up empty/whitespace-only thinking content to prevent ghost
+      // reasoning panels for models that don't support internal reasoning.
       if (shouldClearStreaming) {
-        const hasStreamingThinking = session.messages.some(
-          m => m.role === 'assistant' && m.isThinkingStreaming
+        const needsThinkingCleanup = session.messages.some(
+          m => m.role === 'assistant' && (m.isThinkingStreaming || (m.thinking && !m.thinking.trim()))
         );
         
-        if (hasStreamingThinking) {
+        if (needsThinkingCleanup) {
           updatedSession = {
             ...updatedSession,
-            messages: session.messages.map(m =>
-              m.role === 'assistant' && m.isThinkingStreaming
-                ? { ...m, isThinkingStreaming: false }
-                : m
-            ),
+            messages: session.messages.map(m => {
+              if (m.role !== 'assistant') return m;
+              const updates: Record<string, unknown> = {};
+              if (m.isThinkingStreaming) updates.isThinkingStreaming = false;
+              // Clear whitespace-only thinking content (non-reasoning models may produce empty deltas)
+              if (m.thinking && !m.thinking.trim()) {
+                updates.thinking = undefined;
+              }
+              return Object.keys(updates).length > 0 ? { ...m, ...updates } : m;
+            }),
           };
         }
       }

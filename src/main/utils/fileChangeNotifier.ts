@@ -42,7 +42,9 @@ export function notifyFileChanged(
 
   const timer = setTimeout(() => {
     pendingNotifications.delete(key);
-    sendNotification(workspacePath, filePath, changeType).catch(() => {});
+    sendNotification(workspacePath, filePath, changeType).catch((err) => {
+      logger.debug('File change notification failed', { filePath, error: String(err) });
+    });
   }, DEBOUNCE_MS);
 
   pendingNotifications.set(key, timer);

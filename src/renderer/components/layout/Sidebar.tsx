@@ -8,6 +8,7 @@ import { SidebarFileTree } from '../../features/fileTree/components/SidebarFileT
 import { SearchPanel, IndexStatusPanel } from '../../features/workspace';
 import { openFileInEditor } from '../../features/editor/components/EditorPanel';
 import { useWorkspaceState } from '../../state/WorkspaceProvider';
+import { FeatureErrorBoundary } from './ErrorBoundary';
 
 // Lazy-load the symbol outline panel
 const SymbolOutlinePanel = lazy(() =>
@@ -161,28 +162,36 @@ const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) =>
         {/* Tab content - fills remaining space */}
         <div className="flex-1 min-h-0 px-2 sm:px-3 pt-3 pb-3 overflow-hidden">
           {activeTab === 'files' && (
-            <SidebarFileTree collapsed={collapsed} onFileOpen={openFileInEditor} />
+            <FeatureErrorBoundary featureName="FileTree">
+              <SidebarFileTree collapsed={collapsed} onFileOpen={openFileInEditor} />
+            </FeatureErrorBoundary>
           )}
           {activeTab === 'search' && (
-            <SearchPanel
-              workspaceId={rustWorkspaceId}
-              onFileOpen={(path, _line) => openFileInEditor(path)}
-            />
+            <FeatureErrorBoundary featureName="Search">
+              <SearchPanel
+                workspaceId={rustWorkspaceId}
+                onFileOpen={(path, _line) => openFileInEditor(path)}
+              />
+            </FeatureErrorBoundary>
           )}
           {activeTab === 'outline' && (
-            <Suspense fallback={
-              <div className="flex items-center justify-center h-full text-[var(--color-text-dim)]">
-                <Loader2 size={14} className="animate-spin" />
-              </div>
-            }>
-              <SymbolOutlinePanel />
-            </Suspense>
+            <FeatureErrorBoundary featureName="SymbolOutline">
+              <Suspense fallback={
+                <div className="flex items-center justify-center h-full text-[var(--color-text-dim)]">
+                  <Loader2 size={14} className="animate-spin" />
+                </div>
+              }>
+                <SymbolOutlinePanel />
+              </Suspense>
+            </FeatureErrorBoundary>
           )}
         </div>
 
         {/* Index status bar – shows progress/status when workspace is active */}
         {rustWorkspaceId && (
-          <IndexStatusPanel workspaceId={rustWorkspaceId} />
+          <FeatureErrorBoundary featureName="IndexStatus">
+            <IndexStatusPanel workspaceId={rustWorkspaceId} />
+          </FeatureErrorBoundary>
         )}
       </div>
 

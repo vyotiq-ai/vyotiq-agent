@@ -31,7 +31,6 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   if (!isBackendAvailable && !isBackendConnecting) {
     return compact ? null : (
       <div className="flex items-center gap-2 px-3 py-2 text-[9px] text-[var(--color-text-dim)] font-mono">
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-error)]/70 shrink-0"></span>
         <span>backend offline</span>
       </div>
     );
@@ -40,7 +39,6 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   if (isBackendConnecting) {
     return compact ? null : (
       <div className="flex items-center gap-2 px-3 py-2 text-[9px] text-[var(--color-text-dim)] font-mono">
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-dim)]/60 shrink-0"></span>
         <span>connecting</span>
       </div>
     );
@@ -49,7 +47,6 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   if (!workspaceId) {
     return compact ? null : (
       <div className="flex items-center gap-2 px-3 py-2 text-[9px] text-[var(--color-text-dim)] font-mono">
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-dim)]/40 shrink-0"></span>
         <span>no workspace</span>
       </div>
     );
@@ -58,24 +55,19 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 text-[9px] text-[var(--color-text-dim)] font-mono">
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-dim)]/60 shrink-0"></span>
         <span>checking index</span>
       </div>
     );
   }
 
-  // Compact mode: just show a small status indicator
+  // Compact mode: just show text status
   if (compact) {
     return (
       <Tooltip content={isIndexing ? 'Indexing...' : indexed ? 'Workspace indexed' : 'Not indexed'}>
-      <div className="flex items-center gap-1.5">
-        {isIndexing ? (
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0"></span>
-        ) : indexed ? (
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]"></span>
-        ) : (
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-dim)]/40"></span>
-        )}
+      <div className="flex items-center">
+        <span className="text-[9px] text-[var(--color-text-dim)] font-mono">
+          {isIndexing ? 'indexing' : indexed ? 'indexed' : 'not indexed'}
+        </span>
       </div>
       </Tooltip>
     );
@@ -84,15 +76,6 @@ export const IndexStatusPanel: React.FC<IndexStatusPanelProps> = ({
   // Full mode: show status bar with progress
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]/30 font-mono">
-      {/* Status dot */}
-      {isIndexing ? (
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0"></span>
-      ) : indexed ? (
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0"></span>
-      ) : (
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-dim)]/40 shrink-0"></span>
-      )}
-
       {/* Status text */}
       <div className="flex-1 min-w-0">
         {isIndexing ? (

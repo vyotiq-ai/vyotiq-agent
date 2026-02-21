@@ -224,8 +224,8 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
         </span>
       </div>
 
-      {/* Thinking panel (before content) */}
-      {isAssistant && message.thinking && (
+      {/* Thinking panel (before content) — only show if there's actual reasoning content */}
+      {isAssistant && message.thinking && message.thinking.trim() && (
         <ThinkingPanel
           content={message.thinking}
           isStreaming={message.isThinkingStreaming}

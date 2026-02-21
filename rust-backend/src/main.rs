@@ -91,34 +91,47 @@ async fn main() -> Result<()> {
 
     let app_state = state::AppState::new(config).await?;
 
-    // Restore file watchers for all persisted workspaces on startup.
-    // This ensures real-time indexing continues across restarts.
-    {
-        let workspaces = app_state.workspace_manager.list_workspaces();
-        for ws in &workspaces {
-            if let Err(e) = app_state.watcher_manager.start_watching(
-                &ws.id,
-                &ws.path,
-                Some(app_state.index_manager.clone()),
-            ) {
-                tracing::warn!("Failed to restore watcher for workspace {} ({}): {}", ws.name, ws.id, e);
-            } else {
-                tracing::info!("Restored file watcher for workspace {} ({})", ws.name, ws.id);
-            }
-        }
-        if !workspaces.is_empty() {
-            info!("Restored {} workspace watcher(s)", workspaces.len());
-        }
-    }
-
     // Initialize the shutdown notify channel for graceful HTTP-based shutdown
     routes::health::init_shutdown_notify();
 
     let _app_state_shutdown = app_state.clone();
-    let app = server::create_app(app_state);
+    let app = server::create_app(app_state.clone());
 
+    // IMPORTANT: Bind the TCP listener and start serving BEFORE restoring
+    // workspace watchers. This ensures the /health endpoint is available
+    // immediately, preventing timeout errors from the Electron main process
+    // and renderer while workspace watchers (potentially slow I/O) initialize.
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!("Vyotiq backend listening on {}", addr);
+
+    // Restore file watchers in a background task AFTER the server is listening,
+    // but only if file watching is enabled in settings.
+    let enable_file_watcher = app_state.config.enable_file_watcher;
+    let watcher_state = app_state.clone();
+    tokio::spawn(async move {
+        if !enable_file_watcher {
+            info!("File watching is disabled via settings, skipping watcher restoration");
+            return;
+        }
+        let workspaces = watcher_state.workspace_manager.list_workspaces();
+        let total = workspaces.len();
+        let mut restored = 0;
+        for ws in &workspaces {
+            if let Err(e) = watcher_state.watcher_manager.start_watching(
+                &ws.id,
+                &ws.path,
+                Some(watcher_state.index_manager.clone()),
+            ) {
+                tracing::warn!("Failed to restore watcher for workspace {} ({}): {}", ws.name, ws.id, e);
+            } else {
+                restored += 1;
+                tracing::info!("Restored file watcher for workspace {} ({})", ws.name, ws.id);
+            }
+        }
+        if total > 0 {
+            info!("Restored {}/{} workspace watcher(s) in background", restored, total);
+        }
+    });
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

@@ -21,6 +21,16 @@ function getBaseUrl(): string {
   return `http://127.0.0.1:${port}`;
 }
 
+/**
+ * Get headers including auth token for sidecar requests.
+ */
+function getHeaders(extra?: Record<string, string>): Record<string, string> {
+  return {
+    ...rustSidecar.getAuthHeaders(),
+    ...extra,
+  };
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -119,7 +129,7 @@ class MainRustBackendClient {
 
     const res = await fetch(`${getBaseUrl()}/api/workspaces/${workspaceId}/search`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(10_000),
     });
@@ -157,7 +167,7 @@ class MainRustBackendClient {
 
     const res = await fetch(`${getBaseUrl()}/api/workspaces/${workspaceId}/search/grep`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
     });
@@ -173,6 +183,7 @@ class MainRustBackendClient {
    */
   async listWorkspaces(): Promise<MainWorkspace[]> {
     const res = await fetch(`${getBaseUrl()}/api/workspaces`, {
+      headers: getHeaders(),
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) throw new Error(`List workspaces failed: ${res.status}`);
@@ -185,7 +196,7 @@ class MainRustBackendClient {
   async createWorkspace(name: string, rootPath: string): Promise<MainWorkspace> {
     const res = await fetch(`${getBaseUrl()}/api/workspaces`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ name, root_path: rootPath }),
       signal: AbortSignal.timeout(5_000),
     });
@@ -214,6 +225,7 @@ class MainRustBackendClient {
   async triggerIndex(workspaceId: string): Promise<void> {
     const res = await fetch(`${getBaseUrl()}/api/workspaces/${workspaceId}/index`, {
       method: 'POST',
+      headers: getHeaders(),
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) throw new Error(`Trigger index failed: ${res.status}`);
@@ -224,6 +236,7 @@ class MainRustBackendClient {
    */
   async getIndexStatus(workspaceId: string): Promise<MainIndexStatus> {
     const res = await fetch(`${getBaseUrl()}/api/workspaces/${workspaceId}/index/status`, {
+      headers: getHeaders(),
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) throw new Error(`Get index status failed: ${res.status}`);
@@ -236,7 +249,7 @@ class MainRustBackendClient {
   async readFile(workspaceId: string, filePath: string): Promise<string> {
     const res = await fetch(
       `${getBaseUrl()}/api/workspaces/${workspaceId}/files/read?path=${encodeURIComponent(filePath)}`,
-      { signal: AbortSignal.timeout(10_000) },
+      { headers: getHeaders(), signal: AbortSignal.timeout(10_000) },
     );
     if (!res.ok) throw new Error(`Read file failed: ${res.status}`);
     const data = await res.json();
@@ -252,6 +265,7 @@ class MainRustBackendClient {
   ): Promise<Array<{ name: string; path: string; is_dir: boolean; size: number }>> {
     const params = dirPath ? `?path=${encodeURIComponent(dirPath)}` : '';
     const res = await fetch(`${getBaseUrl()}/api/workspaces/${workspaceId}/files${params}`, {
+      headers: getHeaders(),
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`List files failed: ${res.status}`);

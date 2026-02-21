@@ -183,11 +183,13 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
             <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border-subtle)]">
               <div className="flex items-center gap-2">
                 <span className={cn(
-                  'w-2 h-2 rounded-full',
-                  sessionData.isRunning ? 'bg-[var(--color-success)]' 
-                    : sessionData.isPaused ? 'bg-[var(--color-warning)]'
-                    : 'bg-[var(--color-text-dim)]'
-                )} />
+                  'text-[9px] font-mono',
+                  sessionData.isRunning ? 'text-[var(--color-success)]' 
+                    : sessionData.isPaused ? 'text-[var(--color-warning)]'
+                    : 'text-[var(--color-text-dim)]'
+                )}>
+                  {sessionData.isRunning ? '[RUN]' : sessionData.isPaused ? '[PAUSE]' : '[IDLE]'}
+                </span>
                 <span className="text-[var(--color-text-secondary)] truncate max-w-[300px]">
                   {sessionData.title}
                 </span>
@@ -399,11 +401,13 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <span className={cn(
-                            'w-1.5 h-1.5 rounded-full',
-                            sess.status === 'running' ? 'bg-[var(--color-success)]'
-                              : sess.status === 'paused' ? 'bg-[var(--color-warning)]'
-                              : 'bg-[var(--color-text-dim)]'
-                          )} />
+                            'text-[9px] font-mono',
+                            sess.status === 'running' ? 'text-[var(--color-success)]'
+                              : sess.status === 'paused' ? 'text-[var(--color-warning)]'
+                              : 'text-[var(--color-text-dim)]'
+                          )}>
+                            {sess.status === 'running' ? '[RUN]' : sess.status === 'paused' ? '[PAUSE]' : '[IDLE]'}
+                          </span>
                           <span className={cn(
                             'text-[11px] truncate max-w-[200px]',
                             isActive ? 'text-[var(--color-accent-primary)] font-medium' : 'text-[var(--color-text-secondary)]'

@@ -81,13 +81,16 @@ pub struct FileStats {
 pub struct WorkspaceManager {
     workspaces: DashMap<String, Workspace>,
     data_dir: PathBuf,
+    /// User-provided exclude patterns forwarded from app settings.
+    user_exclude_patterns: Vec<String>,
 }
 
 impl WorkspaceManager {
-    pub fn new(data_dir: PathBuf) -> Self {
+    pub fn new(data_dir: PathBuf, user_exclude_patterns: Vec<String>) -> Self {
         let manager = Self {
             workspaces: DashMap::new(),
             data_dir,
+            user_exclude_patterns,
         };
         // Load persisted workspaces on startup
         if let Ok(content) = std::fs::read_to_string(manager.workspaces_file()) {
@@ -315,7 +318,7 @@ impl WorkspaceManager {
             }
 
             // Skip common exclude patterns
-            if Self::should_exclude(&name) {
+            if self.should_exclude(&name) {
                 continue;
             }
 
@@ -365,9 +368,10 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    fn should_exclude(name: &str) -> bool {
+    fn should_exclude(&self, name: &str) -> bool {
         // Delegates to shared config to stay in sync with IndexManager::is_build_or_output_dir()
         crate::config::is_excluded_directory(name)
+            || crate::config::matches_user_exclude_patterns(name, &self.user_exclude_patterns)
     }
 
     pub fn get_file_stats(&self, workspace_id: &str, relative_path: &str) -> AppResult<FileStats> {

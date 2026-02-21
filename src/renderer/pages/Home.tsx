@@ -101,8 +101,7 @@ const WorkspacePrompt: React.FC = () => {
           {/* Status line */}
           <div className="flex items-center gap-3 pl-6 mt-1">
             <div className="flex items-center gap-1.5">
-              <div className="w-[5px] h-[5px] rounded-full bg-[var(--color-success)] shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
-              <span className="text-[9px] text-[var(--color-success)]">ready</span>
+              <span className="text-[9px] text-[var(--color-success)] font-mono">[ready]</span>
             </div>
             <span className="text-[9px] text-[var(--color-text-dim)]">workspace: none</span>
             <span className="text-[9px] text-[var(--color-text-dim)]">session: idle</span>

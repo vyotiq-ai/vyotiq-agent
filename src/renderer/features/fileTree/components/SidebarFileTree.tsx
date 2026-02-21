@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { SectionHeader } from '../../../components/layout/sidebar/SectionHeader';
 import { FileTree } from './FileTree';
 import { useWorkspaceState } from '../../../state/WorkspaceProvider';
@@ -27,8 +27,6 @@ export const SidebarFileTree: React.FC<SidebarFileTreeProps> = ({ collapsed, onF
   // Use workspace state from the context provider (no duplicate IPC loading)
   const wsState = useWorkspaceState();
   const workspacePath = wsState?.workspacePath ?? null;
-  const isIndexing = wsState?.isIndexing ?? false;
-  const isIndexed = wsState?.isIndexed ?? false;
   // Show loading only briefly while WorkspaceProvider initializes
   const isLoading = wsState === undefined;
 
@@ -79,17 +77,7 @@ export const SidebarFileTree: React.FC<SidebarFileTreeProps> = ({ collapsed, onF
               <span className="text-[var(--color-text-secondary)] font-medium truncate uppercase tracking-wider flex-1">
                 {workspaceName}
               </span>
-              {/* Indexing status indicator */}
-              {isIndexing && (
-                <span className="flex items-center gap-1 text-[var(--color-text-dim)]" title="Indexing workspace...">
-                  <Loader2 size={9} className="animate-spin" />
-                </span>
-              )}
-              {isIndexed && !isIndexing && (
-                <span className="flex items-center" title="Workspace indexed">
-                  <span className="w-[5px] h-[5px] rounded-full bg-[var(--color-accent-primary)] shadow-[0_0_4px_rgba(52,211,153,0.4)]" />
-                </span>
-              )}
+
               {/* Close folder button */}
               <button
                 onClick={handleCloseFolder}

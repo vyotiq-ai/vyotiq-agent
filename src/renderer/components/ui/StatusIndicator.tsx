@@ -79,9 +79,9 @@ const phaseLabels: Record<AgentPhase, string> = {
 };
 
 const sizeConfig = {
-  sm: { text: 'text-[9px]', padding: 'px-1.5 py-0.5', dot: 'w-1.5 h-1.5', gap: 'gap-1' },
-  md: { text: 'text-[10px]', padding: 'px-2 py-1', dot: 'w-2 h-2', gap: 'gap-1.5' },
-  lg: { text: 'text-[11px]', padding: 'px-2.5 py-1', dot: 'w-2.5 h-2.5', gap: 'gap-1.5' },
+  sm: { text: 'text-[9px]', padding: 'px-1.5 py-0.5', gap: 'gap-1' },
+  md: { text: 'text-[10px]', padding: 'px-2 py-1', gap: 'gap-1.5' },
+  lg: { text: 'text-[11px]', padding: 'px-2.5 py-1', gap: 'gap-1.5' },
 };
 
 export const StatusIndicator: React.FC<StatusIndicatorProps> = memo((
@@ -109,14 +109,6 @@ export const StatusIndicator: React.FC<StatusIndicatorProps> = memo((
         className
       )}
     >
-      {/* Simple dot */}
-      <span
-        className={cn(
-          'rounded-full',
-          sizes.dot,
-          config.dotColor
-        )}
-      />
       {showLabel && (
         <span className="font-medium">
           [{displayLabel}]
@@ -128,40 +120,7 @@ export const StatusIndicator: React.FC<StatusIndicatorProps> = memo((
 
 StatusIndicator.displayName = 'StatusIndicator';
 
-// Simple dot-only status indicator
-interface StatusDotProps {
-  status: AgentRunStatus;
-  size?: 'sm' | 'md' | 'lg';
-  className?: string;
-}
 
-export const StatusDot: React.FC<StatusDotProps> = memo((
-  {
-    status,
-    size = 'md',
-    className,
-  }
-) => {
-  const statusCfg = statusConfig[status];
-  const dotSizes = {
-    sm: 'w-1.5 h-1.5',
-    md: 'w-2 h-2',
-    lg: 'w-2.5 h-2.5',
-  };
-
-  return (
-    <span
-      className={cn(
-        'rounded-full',
-        dotSizes[size],
-        statusCfg.dotColor,
-        className
-      )}
-    />
-  );
-});
-
-StatusDot.displayName = 'StatusDot';
 
 // =============================================================================
 // Phase Progress Indicator - Visual progress for agent phases

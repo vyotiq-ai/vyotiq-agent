@@ -521,7 +521,9 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
   useEffect(() => {
     return () => {
       for (const t of terminalsRef.current) {
-        window.vyotiq?.terminal?.kill(t.id).catch(() => {});
+        window.vyotiq?.terminal?.kill(t.id).catch((err) => {
+          logger.debug('Failed to kill terminal on unmount', { id: t.id, error: String(err) });
+        });
       }
     };
   }, []);
@@ -719,15 +721,11 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
         )}
         {...resizeHandleProps}
       >
-        {/* Three-dot drag affordance — matches sidebar resize handle pattern */}
+        {/* Drag affordance line — matches sidebar resize handle pattern */}
         <div className={cn(
-          'flex gap-[3px] opacity-0 group-hover/resize:opacity-100 transition-opacity',
+          'w-8 h-[2px] rounded-sm bg-[var(--color-text-dim)]/30 opacity-0 group-hover/resize:opacity-100 transition-opacity',
           isResizing && 'opacity-100'
-        )}>
-          <div className="w-[3px] h-[3px] rounded-full bg-[var(--color-text-dim)]" />
-          <div className="w-[3px] h-[3px] rounded-full bg-[var(--color-text-dim)]" />
-          <div className="w-[3px] h-[3px] rounded-full bg-[var(--color-text-dim)]" />
-        </div>
+        )} />
       </div>
 
       {/* Tab bar */}

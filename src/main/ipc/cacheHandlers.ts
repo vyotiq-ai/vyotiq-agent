@@ -31,6 +31,13 @@ interface CacheStatsResponse {
     evictions: number;
     expirations: number;
   };
+  contextCache: {
+    entries: number;
+    sizeBytes: number;
+    hits: number;
+    misses: number;
+    hitRate: number;
+  };
 }
 
 export function registerCacheHandlers(context: IpcContext): void {
@@ -68,6 +75,23 @@ export function registerCacheHandlers(context: IpcContext): void {
       } catch { /* Tool cache may not be initialized */ }
 
       const total = promptStats.hits + promptStats.misses;
+
+      let contextStats = { entries: 0, sizeBytes: 0, hits: 0, misses: 0, hitRate: 0 };
+      try {
+        const contextCache = getContextCache();
+        const cs = contextCache.getStats?.();
+        if (cs) {
+          const ctxTotal = (cs.hits ?? 0) + (cs.misses ?? 0);
+          contextStats = {
+            entries: cs.entries ?? cs.size ?? 0,
+            sizeBytes: cs.sizeBytes ?? 0,
+            hits: cs.hits ?? 0,
+            misses: cs.misses ?? 0,
+            hitRate: ctxTotal > 0 ? (cs.hits ?? 0) / ctxTotal : 0,
+          };
+        }
+      } catch { /* Context cache may not be initialized */ }
+
       return {
         promptCache: {
           hits: promptStats.hits,
@@ -77,11 +101,13 @@ export function registerCacheHandlers(context: IpcContext): void {
           costSaved: promptStats.costSaved ?? 0,
         },
         toolCache: toolStats,
+        contextCache: contextStats,
       };
     }, {
       returnOnError: {
         promptCache: { hits: 0, misses: 0, hitRate: 0, tokensSaved: 0, costSaved: 0 },
         toolCache: { size: 0, maxSize: 100, hits: 0, misses: 0, hitRate: 0, evictions: 0, expirations: 0 },
+        contextCache: { entries: 0, sizeBytes: 0, hits: 0, misses: 0, hitRate: 0 },
       },
     }) as Promise<CacheStatsResponse>;
   });

@@ -310,6 +310,28 @@ declare global {
           timestamp: number;
           trigger: 'manual' | 'breakpoint' | 'periodic' | 'error';
         }>>;
+        // Get all traces across all sessions
+        getAllTraces: () => Promise<TraceData[]>;
+        // Get current throttle control status
+        getThrottleStatus: () => Promise<{
+          agentRunning: boolean;
+          activeSessionCount: number;
+          activeSessions: string[];
+          effectiveBackgroundInterval: number;
+          normalBackgroundInterval: number;
+          throttlingBypassed: boolean;
+        } | null>;
+        // Get IPC event batcher statistics
+        getBatcherStats: () => Promise<{
+          eventsReceived: number;
+          eventsSent: number;
+          batchesSent: number;
+          eventsOptimized: number;
+          eventsDropped: number;
+          agentRunningModeActivations: number;
+          eventsWhileAgentRunning: number;
+          backgroundQueueBypassed: number;
+        } | null>;
       };
       files: {
         select: () => Promise<AttachmentPayload[]>;
@@ -1031,6 +1053,53 @@ declare global {
         }>;
 
         /**
+         * Get type definition location(s)
+         */
+        typeDefinition: (filePath: string, line: number, column: number) => Promise<{
+          success: boolean;
+          locations?: Array<{
+            filePath: string;
+            line: number;
+            column: number;
+            endLine: number;
+            endColumn: number;
+          }>;
+          error?: string;
+        }>;
+
+        /**
+         * Get implementation location(s) for interfaces/abstract methods
+         */
+        implementations: (filePath: string, line: number, column: number) => Promise<{
+          success: boolean;
+          locations?: Array<{
+            filePath: string;
+            line: number;
+            column: number;
+            endLine: number;
+            endColumn: number;
+          }>;
+          error?: string;
+        }>;
+
+        /**
+         * Prepare rename - check if symbol can be renamed and get placeholder text
+         */
+        prepareRename: (filePath: string, line: number, column: number) => Promise<{
+          success: boolean;
+          result?: {
+            range: {
+              startLine: number;
+              startColumn: number;
+              endLine: number;
+              endColumn: number;
+            };
+            placeholder?: string;
+          } | null;
+          error?: string;
+        }>;
+
+        /**
          * Subscribe to real-time LSP diagnostics updates.
          * Called whenever a language server pushes diagnostics via textDocument/publishDiagnostics.
          */
@@ -1052,6 +1121,31 @@ declare global {
           language?: string;
           timestamp: number;
         }) => void) => () => void;
+
+        /**
+         * Subscribe to aggregated diagnostics updates (all files snapshot).
+         * Emitted when TypeScript diagnostics change across the project.
+         */
+        onDiagnosticsSnapshot: (handler: (event: {
+          diagnostics: unknown[];
+          errorCount: number;
+          warningCount: number;
+          filesWithErrors: number;
+          timestamp: number;
+        }) => void) => () => void;
+
+        /**
+         * Subscribe to per-file diagnostics updates from TypeScript service
+         */
+        onFileDiagnosticsUpdated: (handler: (event: {
+          filePath: string;
+          diagnostics: unknown[];
+        }) => void) => () => void;
+
+        /**
+         * Subscribe to diagnostics cleared event (e.g., workspace closed)
+         */
+        onDiagnosticsCleared: (handler: () => void) => () => void;
       };
 
       // Session Health Monitoring API
@@ -1305,7 +1399,7 @@ declare global {
          */
         list: () => Promise<{
           success: boolean;
-          sessions?: Array<{ id: string; pid: number }>;
+          terminals?: Array<{ id: string; cwd: string }>;
           error?: string;
         }>;
 
@@ -1409,6 +1503,7 @@ declare global {
         health: () => Promise<{ success: boolean; status?: string; version?: string; uptime?: number; error?: string }>;
         isAvailable: () => Promise<boolean>;
         getAuthToken: () => Promise<string>;
+        onAuthTokenChanged: (callback: (token: string) => void) => (() => void);
 
         // Workspace management
         listWorkspaces: () => Promise<{ success: boolean; workspaces: Array<{ id: string; name: string; root_path: string; path: string; is_active: boolean; created_at: string; file_count: number; total_size_bytes: number }>; error?: string }>;

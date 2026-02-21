@@ -73,7 +73,9 @@ export function useSessionHealth(sessionId: string | undefined): UseSessionHealt
     try {
       const status = await window.vyotiq.sessionHealth.getStatus(sessionId);
       if (mountedRef.current) {
-        setHealth(status as SessionHealthStatus | null);
+        // Treat 'unknown' status as no active monitoring (null health)
+        const resolved = status as SessionHealthStatus | null;
+        setHealth(resolved?.status === 'unknown' ? null : resolved);
       }
     } catch (error) {
       logger.debug('Failed to fetch session health', { sessionId, error: error instanceof Error ? error.message : String(error) });

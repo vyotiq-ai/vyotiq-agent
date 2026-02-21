@@ -242,6 +242,11 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
   const { [sessionId]: _deletedCost, ...remainingCost } = state.sessionCost ?? {};
   const { [sessionId]: _deletedErrors, ...remainingErrors } = state.runErrors ?? {};
   
+  // Clean up pendingConfirmations belonging to the deleted session
+  const remainingConfirmations = Object.fromEntries(
+    Object.entries(state.pendingConfirmations).filter(([, c]) => c.sessionId !== sessionId),
+  );
+  
   // Extract unique runIds from deleted session's messages to clean up run-keyed state
   const runIdsToClean = new Set<string>();
   if (deletedSession?.messages) {
@@ -310,6 +315,7 @@ function handleSessionDelete(state: AgentUIState, sessionId: string): AgentUISta
     executingTools: remainingExecutingTools,
     queuedTools: remainingQueuedTools,
     fileDiffStreams: remainingFileDiffStreams,
+    pendingConfirmations: remainingConfirmations,
     streamingSessions,
   };
 }
@@ -496,6 +502,7 @@ export function sessionReducer(
         runErrors: {},
         executingTools: {},
         queuedTools: {},
+        fileDiffStreams: {},
         pendingQuestions: [] as typeof state.pendingQuestions,
         pendingDecisions: [] as typeof state.pendingDecisions,
         communicationProgress: [] as typeof state.communicationProgress,
@@ -524,6 +531,7 @@ export function sessionReducer(
         runErrors: {},
         executingTools: {},
         queuedTools: {},
+        fileDiffStreams: {},
         pendingQuestions: [] as typeof state.pendingQuestions,
         pendingDecisions: [] as typeof state.pendingDecisions,
         communicationProgress: [] as typeof state.communicationProgress,

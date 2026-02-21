@@ -88,6 +88,37 @@ pub fn is_excluded_directory(name: &str) -> bool {
     EXCLUDED_DIRECTORY_NAMES.contains(&name) || name.ends_with(".egg-info")
 }
 
+/// Check whether a directory/file name matches any user-provided exclusion pattern.
+/// Supports simple glob-like matching: `*` prefix/suffix wildcards and exact name matches.
+pub fn matches_user_exclude_patterns(name: &str, patterns: &[String]) -> bool {
+    let name_lower = name.to_lowercase();
+    for pattern in patterns {
+        let p = pattern.trim().to_lowercase();
+        if p.is_empty() {
+            continue;
+        }
+        // Strip trailing /** or /* for directory-level matching
+        let dir_pattern = p.trim_end_matches("/**").trim_end_matches("/*");
+        // Exact match
+        if name_lower == dir_pattern {
+            return true;
+        }
+        // Suffix wildcard: *.ext
+        if let Some(suffix) = p.strip_prefix('*') {
+            if name_lower.ends_with(&suffix) {
+                return true;
+            }
+        }
+        // Prefix wildcard: prefix*
+        if let Some(prefix) = p.strip_suffix('*') {
+            if name_lower.starts_with(&prefix) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub listen_addr: String,
@@ -99,6 +130,15 @@ pub struct AppConfig {
     /// Maximum number of files to index per workspace.
     /// Prevents unbounded memory growth for very large monorepos.
     pub max_indexed_files: usize,
+    /// Additional glob patterns of files/directories to exclude from indexing.
+    /// Forwarded from App settings via VYOTIQ_EXCLUDE_PATTERNS env var (comma-separated).
+    pub exclude_patterns: Vec<String>,
+    /// Glob patterns of files to include (empty = all files).
+    /// Forwarded from App settings via VYOTIQ_INCLUDE_PATTERNS env var (comma-separated).
+    pub include_patterns: Vec<String>,
+    /// Whether file watching is enabled. When false, no file watchers are started.
+    /// Forwarded from App settings via VYOTIQ_ENABLE_FILE_WATCHER env var.
+    pub enable_file_watcher: bool,
 }
 
 impl AppConfig {
@@ -137,6 +177,18 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(50_000), // 50k files max per workspace
+            exclude_patterns: std::env::var("VYOTIQ_EXCLUDE_PATTERNS")
+                .ok()
+                .map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                .unwrap_or_default(),
+            include_patterns: std::env::var("VYOTIQ_INCLUDE_PATTERNS")
+                .ok()
+                .map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                .unwrap_or_default(),
+            enable_file_watcher: std::env::var("VYOTIQ_ENABLE_FILE_WATCHER")
+                .ok()
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
         }
     }
 }

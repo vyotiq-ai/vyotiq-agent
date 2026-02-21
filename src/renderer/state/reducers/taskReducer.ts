@@ -61,7 +61,7 @@ export type TaskAction =
   | { type: 'RUN_ERROR'; payload: { sessionId: string; errorCode: string; message: string; recoverable: boolean; recoveryHint?: string } }
   | { type: 'RUN_ERROR_CLEAR'; payload: string }
   // File diff streaming for real-time inline diff display
-  | { type: 'FILE_DIFF_STREAM'; payload: { runId: string; toolCallId: string; toolName: string; filePath: string; originalContent: string; modifiedContent: string; isNewFile: boolean; isComplete: boolean } }
+  | { type: 'FILE_DIFF_STREAM'; payload: { runId: string; toolCallId: string; toolName: string; filePath: string; originalContent: string; modifiedContent: string; isNewFile: boolean; isComplete: boolean; action?: 'created' | 'modified' } }
   | { type: 'FILE_DIFF_STREAM_CLEAR'; payload: { runId: string; toolCallId?: string } };
 
 /**
@@ -709,7 +709,7 @@ export function taskReducer(
 
     // File diff streaming — real-time inline diff as files are modified
     case 'FILE_DIFF_STREAM': {
-      const { runId, toolCallId, toolName, filePath, originalContent, modifiedContent, isNewFile, isComplete, action } = action.payload;
+      const { runId, toolCallId, toolName, filePath, originalContent, modifiedContent, isNewFile, isComplete, action: diffAction } = action.payload;
       const existingRun = state.fileDiffStreams[runId] || {};
       const existing = existingRun[toolCallId];
       const now = Date.now();
@@ -728,7 +728,7 @@ export function taskReducer(
               modifiedContent,
               isNewFile,
               isComplete,
-              action: action ?? (isNewFile ? 'created' : 'modified'),
+              action: diffAction ?? (isNewFile ? 'created' : 'modified'),
               startedAt: existing?.startedAt ?? now,
               updatedAt: now,
             },

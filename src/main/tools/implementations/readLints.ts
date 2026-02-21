@@ -195,7 +195,12 @@ read_lints([file]) → VERIFY no errors
       let lintResults: LintResult[] = [];
       
       // ESLint outputs JSON to stdout
-      const output = result.stdout || result.stderr;
+      let output = result.stdout || result.stderr;
+      
+      // Strip ANSI escape sequences and terminal control codes (e.g. bracketed
+      // paste mode [?9001h, cursor visibility, etc.) that corrupt JSON output
+      // eslint-disable-next-line no-control-regex
+      output = output.replace(/\x1b\[[0-9;?]*[a-zA-Z]|\x1b\].*?(?:\x07|\x1b\\)|\x1b[()][0-2AB]|\[\?[0-9;]*[hlsr]/g, '');
       
       // Try to find JSON in the output
       const jsonMatch = output.match(/\[[\s\S]*\]/);

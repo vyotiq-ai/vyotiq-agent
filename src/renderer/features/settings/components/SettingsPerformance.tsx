@@ -23,6 +23,7 @@ interface SettingsPerformanceProps {
 interface CacheStats {
   promptCache: { hits: number; misses: number; hitRate: number; tokensSaved: number; costSaved: number };
   toolCache: { size: number; maxSize: number; hits: number; misses: number; hitRate: number; evictions: number; expirations: number };
+  contextCache: { entries: number; sizeBytes: number; hits: number; misses: number; hitRate: number };
 }
 
 const PROVIDER_NAMES: Record<LLMProviderName, string> = {
@@ -128,7 +129,7 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
         </div>
 
         {stats ? (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-3 space-y-2">
               <div className="text-[10px] text-[var(--color-text-secondary)]"># Prompt Cache</div>
               <div className="space-y-1 text-[9px]">
@@ -147,6 +148,17 @@ export const SettingsPerformance: React.FC<SettingsPerformanceProps> = ({ settin
                 <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">est. memory</span><span className="text-[var(--color-text-secondary)]">{formatBytes(stats.toolCache.size * 2048)}</span></div>
               </div>
             </div>
+            {stats.contextCache && (
+              <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-3 space-y-2">
+                <div className="text-[10px] text-[var(--color-text-secondary)]"># Context Cache</div>
+                <div className="space-y-1 text-[9px]">
+                  <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">hit rate</span><span className="text-[var(--color-accent-primary)]">{(stats.contextCache.hitRate * 100).toFixed(1)}%</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">hits / misses</span><span className="text-[var(--color-text-secondary)]">{stats.contextCache.hits} / {stats.contextCache.misses}</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">entries</span><span className="text-[var(--color-text-secondary)]">{stats.contextCache.entries}</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">size</span><span className="text-[var(--color-text-secondary)]">{formatBytes(stats.contextCache.sizeBytes)}</span></div>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-[10px] text-[var(--color-text-muted)] py-4 text-center">{isLoadingStats ? '# loading statistics...' : '# no statistics available'}</div>

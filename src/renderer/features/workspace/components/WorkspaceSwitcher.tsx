@@ -13,7 +13,7 @@ import { useWorkspace } from '../../../state/WorkspaceProvider';
 import { cn } from '../../../utils/cn';
 
 export const WorkspaceSwitcher: React.FC = () => {
-  const { workspacePath, workspaceName, recentPaths, selectWorkspaceFolder, setWorkspacePath, isIndexed, isIndexing } =
+  const { workspacePath, workspaceName, recentPaths, selectWorkspaceFolder, setWorkspacePath } =
     useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -102,15 +102,7 @@ export const WorkspaceSwitcher: React.FC = () => {
                     {workspacePath}
                   </div>
                 </div>
-                {/* Indexing status */}
-                {isIndexing && (
-                  <span className="flex items-center gap-1 text-[9px] text-[var(--color-text-dim)] shrink-0" title="Indexing...">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0"></span>
-                  </span>
-                )}
-                {isIndexed && !isIndexing && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] shrink-0" title="Indexed"></span>
-                )}
+
               </div>
             </div>
           )}

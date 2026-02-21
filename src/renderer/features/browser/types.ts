@@ -1,18 +1,11 @@
 /**
  * Browser Feature Types
  * 
- * Type definitions for the embedded browser feature
+ * Type definitions for the embedded browser feature.
+ * BrowserState is imported from shared types to avoid triple-definition divergence.
  */
 
-export interface BrowserState {
-  id: string;
-  url: string;
-  title: string;
-  isLoading: boolean;
-  canGoBack: boolean;
-  canGoForward: boolean;
-  error?: string;
-}
+export type { BrowserState } from '../../../shared/types';
 
 export interface PageContent {
   url: string;

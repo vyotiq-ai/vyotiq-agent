@@ -23,6 +23,8 @@ pub struct FileWatcherManager {
     watchers: DashMap<String, WatcherHandle>,
     debounce_ms: u64,
     event_tx: broadcast::Sender<ServerEvent>,
+    /// User-provided exclude patterns forwarded from app settings.
+    user_exclude_patterns: Vec<String>,
 }
 
 struct WatcherHandle {
@@ -61,11 +63,12 @@ impl ReindexCooldownTracker {
 }
 
 impl FileWatcherManager {
-    pub fn new(debounce_ms: u64, event_tx: broadcast::Sender<ServerEvent>) -> Self {
+    pub fn new(debounce_ms: u64, event_tx: broadcast::Sender<ServerEvent>, user_exclude_patterns: Vec<String>) -> Self {
         Self {
             watchers: DashMap::new(),
             debounce_ms,
             event_tx,
+            user_exclude_patterns,
         }
     }
 
@@ -85,6 +88,7 @@ impl FileWatcherManager {
         let ws_path = PathBuf::from(path);
         let ws_path_str = path.to_string();
         let idx_mgr = index_manager;
+        let user_patterns = self.user_exclude_patterns.clone();
         let cooldown = Arc::new(Mutex::new(ReindexCooldownTracker::new()));
         let cleanup_counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
@@ -113,8 +117,8 @@ impl FileWatcherManager {
                             }
 
                             for path in &event.paths {
-                                // Skip build/output directories
-                                if IndexManager::is_build_or_output_dir(path) {
+                                // Skip build/output directories (including user patterns)
+                                if IndexManager::is_build_or_output_dir_with_patterns(path, &user_patterns) {
                                     continue;
                                 }
                                 // Last event type wins for each path

@@ -12,8 +12,8 @@
  * 
  * Follows the terminal aesthetic with monospace fonts and CSS variable theming.
  */
-import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Search, ChevronsUpDown, ArrowDown } from 'lucide-react';
+import React, { memo, useState, useCallback, useMemo } from 'react';
+import { Search, ChevronsUpDown } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAgentSelector, useAgentActions } from '../../state/AgentProvider';
 import type { AgentUIState, RoutingDecisionState } from '../../state/types';
@@ -114,8 +114,6 @@ const ChatAreaInternal: React.FC = () => {
   const {
     scrollRef,
     virtualContainerRef,
-    handleScrollToBottom,
-    showScrollToBottom,
     virtualItems,
     totalHeight,
     measureItem,
@@ -127,23 +125,6 @@ const ChatAreaInternal: React.FC = () => {
     lastAssistantContentLength,
     renderGroups: messageGroups,
   });
-
-  // ---------------------------------------------------------------------------
-  // Unread message count — tracks how many new messages arrived while the user
-  // is scrolled up.  Resets when the user scrolls back to bottom.
-  // ---------------------------------------------------------------------------
-  const unreadAnchorRef = useRef(branchFilteredMessages.length);
-  const unreadCount = useMemo(() => {
-    if (!showScrollToBottom) return 0;
-    return Math.max(0, branchFilteredMessages.length - unreadAnchorRef.current);
-  }, [showScrollToBottom, branchFilteredMessages.length]);
-
-  // When scroll-to-bottom becomes hidden (user scrolled back), reset anchor
-  useEffect(() => {
-    if (!showScrollToBottom) {
-      unreadAnchorRef.current = branchFilteredMessages.length;
-    }
-  }, [showScrollToBottom, branchFilteredMessages.length]);
 
   // Get session-specific state
   const sessionId = activeSession?.id;
@@ -183,17 +164,13 @@ const ChatAreaInternal: React.FC = () => {
     });
   }, [searchResult]);
 
-  // Handle keyboard shortcuts: search (Ctrl+F) and scroll to bottom (End)
+  // Handle keyboard shortcuts: search (Ctrl+F)
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
       e.preventDefault();
       toggleSearch();
     }
-    if (e.key === 'End' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      handleScrollToBottom();
-    }
-  }, [toggleSearch, handleScrollToBottom]);
+  }, [toggleSearch]);
 
   // Reaction handler
   const handleReaction = useCallback((messageId: string, reaction: 'up' | 'down' | null) => {
@@ -436,33 +413,6 @@ const ChatAreaInternal: React.FC = () => {
         </div>
       )}
 
-      {/* Scroll to bottom button with unread message count badge */}
-      {showScrollToBottom && (
-        <div className="absolute bottom-20 right-6">
-          <button
-            type="button"
-            onClick={handleScrollToBottom}
-            className={cn(
-              'flex items-center justify-center',
-              'h-7 w-7 rounded-full shadow-md',
-              'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
-              'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
-              'transition-all duration-150 hover:scale-105',
-              'focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)] focus-visible:outline-none',
-            )}
-            aria-label={unreadCount > 0 ? `Scroll to bottom (${unreadCount} new)` : 'Scroll to bottom'}
-            title={unreadCount > 0 ? `Scroll to bottom (${unreadCount} new)` : 'Scroll to bottom (End)'}
-          >
-            <ArrowDown size={14} />
-            {/* Unread badge */}
-            {unreadCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-accent-primary)] text-[8px] font-mono font-semibold text-white tabular-nums">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </button>
-        </div>
-      )}
     </div>
   );
 };

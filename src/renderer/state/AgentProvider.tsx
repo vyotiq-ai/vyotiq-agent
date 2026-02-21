@@ -864,6 +864,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           });
           break;
         }
+
         default:
           break;
       }
@@ -1236,8 +1237,12 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 
   const deleteSession = useCallback(async (sessionId: string) => {
     if (!window.vyotiq?.agent) return;
-    await window.vyotiq.agent.deleteSession(sessionId);
-    dispatchRef.current({ type: 'SESSION_DELETE', payload: sessionId });
+    try {
+      await window.vyotiq.agent.deleteSession(sessionId);
+      dispatchRef.current({ type: 'SESSION_DELETE', payload: sessionId });
+    } catch (err) {
+      logger.error('Failed to delete session', { sessionId, error: err instanceof Error ? err.message : String(err) });
+    }
   }, []);
 
   const regenerate = useCallback(async (sessionId: string) => {

@@ -5,7 +5,7 @@
  * Clean, minimal terminal aesthetic with subtle status indicators.
  */
 import React, { memo, useRef, useEffect } from 'react';
-import { Trash2, Circle } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
 import { cn } from '../../../../utils/cn';
 import type { SessionOptionProps } from './types';
@@ -60,12 +60,12 @@ export const SessionOption = memo<SessionOptionProps>(function SessionOption({
         }
       }}
     >
-      {/* Status indicator - dot style */}
+      {/* Status indicator - text style */}
       <div className="w-3 flex justify-center flex-shrink-0">
         {isSelected ? (
-          <Circle size={6} className="fill-[var(--color-accent-primary)] text-[var(--color-accent-primary)]" />
+          <span className="text-[8px] font-mono text-[var(--color-accent-primary)]">&#x25CF;</span>
         ) : (
-          <Circle size={4} className="text-[var(--color-text-dim)]/40" />
+          <span className="text-[8px] font-mono text-[var(--color-text-dim)]/40">&#x25CB;</span>
         )}
       </div>
       

@@ -18,6 +18,7 @@ import { getBrowserManager } from '../browser';
 import { withErrorGuard } from './guards';
 import { validateAllSettings } from '../agent/settingsValidation';
 import { syncMCPSettingsToManager } from './mcpSettingsSync';
+import { rustSidecar } from '../rustSidecar';
 
 const logger = createLogger('IPC:Settings');
 
@@ -137,8 +138,49 @@ function applyBrowserSettings(settings: AgentSettings): void {
   }
 }
 
+/**
+ * Apply workspace indexing settings to the Rust sidecar.
+ * Restarts the sidecar so it picks up the new env-based config values.
+ * After restart, notifies the renderer of the new auth token so it can
+ * refresh its cached token and reconnect WebSocket without 401 errors.
+ */
+async function applyWorkspaceSettings(
+  settings: AgentSettings,
+  notifyRenderer?: (newToken: string) => void,
+): Promise<void> {
+  try {
+    const ws = settings.workspaceSettings;
+    if (!ws) return;
+
+    if (rustSidecar.isRunning()) {
+      logger.info('Workspace indexing settings changed — restarting Rust sidecar');
+      await rustSidecar.stop();
+      await rustSidecar.start(ws);
+
+      // Push the new auth token to the renderer so it doesn't use the stale one
+      const newToken = rustSidecar.getAuthToken();
+      if (newToken && notifyRenderer) {
+        notifyRenderer(newToken);
+        logger.debug('Sent new auth token to renderer after sidecar restart');
+      }
+    }
+  } catch (error) {
+    logger.warn('Failed to apply workspace settings to Rust sidecar', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export function registerSettingsHandlers(context: IpcContext): void {
-  const { getSettingsStore, emitToRenderer } = context;
+  const { getSettingsStore, emitToRenderer, getMainWindow } = context;
+
+  /** Notify renderer of a new sidecar auth token after restart */
+  const notifyRendererToken = (newToken: string): void => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('rust-backend:auth-token-changed', newToken);
+    }
+  };
 
   // ==========================================================================
   // Settings Management
@@ -231,7 +273,12 @@ export function registerSettingsHandlers(context: IpcContext): void {
 
       // Propagate MCP settings/servers changes to live MCPServerManager
       if (payload.settings.mcpSettings || payload.settings.mcpServers) {
-        syncMCPSettingsToManager(updated, logger);
+        syncMCPSettingsToManager(updated, logger).catch(() => { /* handled internally */ });
+      }
+
+      // Restart Rust sidecar if workspace indexing settings changed
+      if (payload.settings.workspaceSettings) {
+        applyWorkspaceSettings(updated, notifyRendererToken).catch(() => { /* handled internally */ });
       }
       
       // Emit settings update to renderer for real-time application
@@ -264,7 +311,10 @@ export function registerSettingsHandlers(context: IpcContext): void {
       applyBrowserSettings(updated);
 
       // Sync MCP settings to live MCPServerManager after reset
-      syncMCPSettingsToManager(updated, logger);
+      syncMCPSettingsToManager(updated, logger).catch(() => { /* handled internally */ });
+
+      // Restart Rust sidecar with reset workspace settings
+      applyWorkspaceSettings(updated, notifyRendererToken).catch(() => { /* handled internally */ });
       
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });
@@ -343,7 +393,10 @@ export function registerSettingsHandlers(context: IpcContext): void {
       applyBrowserSettings(updated);
 
       // Sync MCP settings to live MCPServerManager after import
-      syncMCPSettingsToManager(updated, logger);
+      syncMCPSettingsToManager(updated, logger).catch(() => { /* handled internally */ });
+
+      // Restart Rust sidecar with imported workspace settings
+      applyWorkspaceSettings(updated, notifyRendererToken).catch(() => { /* handled internally */ });
       
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });

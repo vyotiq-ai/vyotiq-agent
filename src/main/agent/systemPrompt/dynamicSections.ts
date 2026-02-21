@@ -246,17 +246,6 @@ export function buildCustomPrompt(settings?: PromptSettings): string {
 // ADDITIONAL INSTRUCTIONS - DEPRECATED (use AGENTS.md instead)
 // =============================================================================
 
-/**
- * Build additional instructions section
- * @deprecated Use AGENTS.md, CLAUDE.md, or copilot-instructions.md instead.
- * This function is kept for backward compatibility only.
- */
-export function buildAdditionalInstructions(_instructions?: string): string {
-  // Deprecated - always returns empty string
-  // Users should use AGENTS.md files for project-specific instructions
-  return '';
-}
-
 // =============================================================================
 // AGENT INSTRUCTIONS - Dynamic agent behavior instructions
 // =============================================================================

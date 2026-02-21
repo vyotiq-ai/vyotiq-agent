@@ -428,6 +428,31 @@ export class SessionManager {
     return this.sessions.get(sessionId);
   }
 
+  /**
+   * Register a transient session in the in-memory map
+   * so that updateSessionState / getSession work for it.
+   * Transient sessions are NOT persisted to disk.
+   */
+  registerTransientSession(session: InternalSession): void {
+    this.sessions.set(session.state.id, session);
+  }
+
+  /**
+   * Unregister a transient session, removing it from the in-memory map.
+   * Any pending persistence timers are also cleared.
+   */
+  unregisterTransientSession(sessionId: string): void {
+    const pendingTimer = this.persistDebounceTimers.get(sessionId);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      this.persistDebounceTimers.delete(sessionId);
+    }
+    this.pendingPersist.delete(sessionId);
+    this.lastPersistTime.delete(sessionId);
+    this.persistFailures.delete(sessionId);
+    this.sessions.delete(sessionId);
+  }
+
   getAllSessions(): AgentSessionState[] {
     return Array.from(this.sessions.values())
       .map((session) => session.state)

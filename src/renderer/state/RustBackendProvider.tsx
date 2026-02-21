@@ -54,7 +54,8 @@ export const RustBackendProvider: React.FC<{ children: ReactNode }> = ({ childre
 
         if (available && !initialized) {
           initialized = true;
-          rustBackend.init();
+          await rustBackend.init();
+          if (cancelled) return;
         } else if (!available && initialized) {
           initialized = false;
         }
@@ -78,16 +79,17 @@ export const RustBackendProvider: React.FC<{ children: ReactNode }> = ({ childre
 
     // Also subscribe to availability changes from the client so
     // UI updates immediately when backend appears / disappears.
-    const unsubAvailability = rustBackend.onAvailabilityChange((available) => {
+    const unsubAvailability = rustBackend.onAvailabilityChange(async (available) => {
       if (cancelled) return;
-      setIsAvailable(available);
-      setIsConnecting(false);
       if (available && !initialized) {
         initialized = true;
-        rustBackend.init();
+        await rustBackend.init();
+        if (cancelled) return;
       } else if (!available && initialized) {
         initialized = false;
       }
+      setIsAvailable(available);
+      setIsConnecting(false);
     });
 
     // Initial check

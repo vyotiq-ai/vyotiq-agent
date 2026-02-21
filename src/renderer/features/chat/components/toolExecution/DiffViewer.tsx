@@ -236,7 +236,6 @@ DiffStatsBadge.displayName = 'DiffStatsBadge';
 /** Streaming progress indicator */
 const StreamingIndicator = memo(() => (
   <span className="flex items-center gap-1 text-[8px] text-[var(--color-accent-primary)] opacity-80">
-    <span className="inline-block w-1 h-1 rounded-full bg-current animate-pulse" />
     streaming
   </span>
 ));

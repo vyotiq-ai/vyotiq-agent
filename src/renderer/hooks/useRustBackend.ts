@@ -315,7 +315,10 @@ export function useRustFileWatcher(
     // Subscribe to this workspace's events via WebSocket
     rustBackend.subscribeWorkspace(workspaceId);
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      rustBackend.unsubscribeWorkspace(workspaceId);
+    };
   }, [workspaceId]);
 
   return { lastChange };
@@ -419,6 +422,55 @@ export function useRustIndexStatus(workspaceId: string | null) {
     });
 
     return unsubscribe;
+  }, [workspaceId]);
+
+  // Fallback: poll index status periodically to recover from missed WebSocket
+  // events (e.g., WS not connected when indexing completed, no-op runs, etc.)
+  const isIndexingRef = useRef(state.isIndexing);
+  isIndexingRef.current = state.isIndexing;
+
+  useEffect(() => {
+    if (!workspaceId) return;
+
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const status = await rustBackend.getIndexStatus(workspaceId);
+        if (cancelled) return;
+        setState((prev) => {
+          // Only update if there's an actual discrepancy
+          if (prev.isIndexing !== status.is_indexing || prev.indexed !== status.indexed) {
+            return {
+              ...prev,
+              indexed: status.indexed,
+              isIndexing: status.is_indexing,
+              indexedCount: status.indexed_count,
+              totalCount: status.total_count,
+              searchReady: status.indexed && !status.is_indexing,
+            };
+          }
+          return prev;
+        });
+      } catch {
+        // Ignore — backend may be temporarily unreachable
+      }
+      if (!cancelled) {
+        // Poll faster while indexing (5s), slower when idle (30s)
+        const interval = isIndexingRef.current ? 5_000 : 30_000;
+        pollTimer = setTimeout(poll, interval);
+      }
+    };
+
+    // Start first poll after a short delay
+    pollTimer = setTimeout(poll, 3_000);
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
   }, [workspaceId]);
 
   const triggerIndex = useCallback(async () => {

@@ -248,7 +248,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
               <div className="mb-3 p-2 border border-[var(--color-accent-primary)]/30 bg-[var(--color-accent-primary)]/5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-[var(--color-accent-primary)]" />
+                    <span className="text-[9px] font-mono text-[var(--color-accent-primary)]">[ACTIVE]</span>
                     <span className="text-[10px] text-[var(--color-accent-primary)]">Active Trace</span>
                   </div>
                   <span className="text-[9px] text-[var(--color-text-muted)]">{activeTrace.metrics.totalSteps} steps</span>
@@ -268,12 +268,14 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className={cn(
-                            'w-1.5 h-1.5 rounded-full flex-shrink-0',
-                            trace.status === 'completed' && 'bg-[var(--color-success)]',
-                            trace.status === 'failed' && 'bg-[var(--color-error)]',
-                            trace.status === 'running' && 'bg-[var(--color-accent-primary)]',
-                            trace.status === 'paused' && 'bg-[var(--color-warning)]'
-                          )} />
+                            'text-[9px] font-mono flex-shrink-0',
+                            trace.status === 'completed' && 'text-[var(--color-success)]',
+                            trace.status === 'failed' && 'text-[var(--color-error)]',
+                            trace.status === 'running' && 'text-[var(--color-accent-primary)]',
+                            trace.status === 'paused' && 'text-[var(--color-warning)]'
+                          )}>
+                            {trace.status === 'completed' ? '[OK]' : trace.status === 'failed' ? '[ERR]' : trace.status === 'running' ? '[RUN]' : '[WAIT]'}
+                          </span>
                           <span className="text-[10px] text-[var(--color-text-primary)] truncate">{trace.traceId.slice(0, 8)}</span>
                           <button onClick={() => handleCopyTraceId(trace.traceId)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40" title="Copy trace ID">
                             <Copy size={10} />

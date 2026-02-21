@@ -25,12 +25,15 @@ interface SyncLogger {
  *
  * This function is safe to call even if MCPServerManager hasn't been initialized yet —
  * `initializeMCPServerManager` will create the singleton if needed.
+ *
+ * Uses dynamic ESM import (not require()) to avoid Vite bundling issues where
+ * relative CommonJS require paths resolve incorrectly in the bundled output.
  */
-export function syncMCPSettingsToManager(settings: AgentSettings, logger: SyncLogger): void {
+export async function syncMCPSettingsToManager(settings: AgentSettings, logger: SyncLogger): Promise<void> {
   try {
-    // Dynamic import to avoid circular dependencies
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getMCPServerManager } = require('../mcp');
+    // Dynamic ESM import to avoid circular dependencies while staying
+    // compatible with Vite's bundler (require('../mcp') breaks in Vite builds)
+    const { getMCPServerManager } = await import('../mcp');
 
     const manager = getMCPServerManager();
     if (!manager) {

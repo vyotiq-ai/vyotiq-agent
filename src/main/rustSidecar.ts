@@ -89,6 +89,15 @@ class RustSidecarManager {
     if (ws?.maxIndexSizeMb != null) {
       settingsEnv.VYOTIQ_MAX_INDEX_MB = String(ws.maxIndexSizeMb);
     }
+    if (ws?.excludePatterns?.length) {
+      settingsEnv.VYOTIQ_EXCLUDE_PATTERNS = ws.excludePatterns.join(',');
+    }
+    if (ws?.includePatterns?.length) {
+      settingsEnv.VYOTIQ_INCLUDE_PATTERNS = ws.includePatterns.join(',');
+    }
+    if (ws?.enableFileWatcher != null) {
+      settingsEnv.VYOTIQ_ENABLE_FILE_WATCHER = ws.enableFileWatcher ? '1' : '0';
+    }
 
     try {
       this.process = spawn(binaryPath, [], {

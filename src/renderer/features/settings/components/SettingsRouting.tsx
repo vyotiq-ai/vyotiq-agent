@@ -5,7 +5,7 @@
  * to different task types (frontend, backend, debugging, etc.)
  */
 import React, { useMemo } from 'react';
-import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, RefreshCw, BarChart3 } from 'lucide-react';
 import { Toggle } from '../../../components/ui/Toggle';
 import type { 
   TaskRoutingSettings, RoutingTaskType, TaskModelMapping, LLMProviderName, ProviderSettings,
@@ -13,6 +13,7 @@ import type {
 import { ROUTING_TASK_INFO } from '../../../../shared/types';
 import { PROVIDERS, getModelsForProvider } from '../../../../shared/providers';
 import { cn } from '../../../utils/cn';
+import { useModelQuality } from '../../../hooks/useModelQuality';
 import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsInfoBox } from '../primitives';
 
 interface TaskMappingCardProps {
@@ -172,6 +173,8 @@ export const SettingsRouting: React.FC<SettingsRoutingProps> = ({ settings, prov
     useConversationContext = true, contextWindowSize = 10, logRoutingDecisions = false,
   } = settings ?? {};
 
+  const { stats: modelQualityStats, rankedModels, isLoading: isQualityLoading, refresh: refreshQuality } = useModelQuality();
+
   const availableProviders = useMemo(() => {
     const providers: Array<{ name: LLMProviderName; displayName: string; models: string[] }> = [];
     for (const [name, info] of Object.entries(PROVIDERS)) {
@@ -233,6 +236,62 @@ export const SettingsRouting: React.FC<SettingsRoutingProps> = ({ settings, prov
               {taskTypes.map(taskType => (
                 <TaskMappingCard key={taskType} taskType={taskType} mapping={getMapping(taskType)} availableProviders={availableProviders} onUpdate={(mapping) => onMappingChange?.(taskType, mapping)} showFallback={enableFallback} />
               ))}
+            </div>
+          )}
+        </SettingsGroup>
+
+        {/* Model Performance Stats */}
+        <SettingsGroup title="model performance" icon={<BarChart3 size={11} />}>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[9px] text-[var(--color-text-dim)]"># quality scores based on success rate, speed, and user feedback</p>
+            <button
+              onClick={refreshQuality}
+              disabled={isQualityLoading}
+              className="flex items-center gap-1 px-2 py-1 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)] transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+              title="Refresh quality data"
+            >
+              <RefreshCw size={10} className={isQualityLoading ? 'animate-spin' : ''} />
+              refresh
+            </button>
+          </div>
+          {modelQualityStats && modelQualityStats.totalRequests > 0 ? (
+            <div className="space-y-2">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-2 text-center">
+                  <div className="text-[14px] font-medium text-[var(--color-accent-primary)]">{modelQualityStats.totalModels}</div>
+                  <div className="text-[8px] text-[var(--color-text-dim)] uppercase tracking-wider">models used</div>
+                </div>
+                <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-2 text-center">
+                  <div className="text-[14px] font-medium text-[var(--color-text-primary)]">{modelQualityStats.totalRequests}</div>
+                  <div className="text-[8px] text-[var(--color-text-dim)] uppercase tracking-wider">total requests</div>
+                </div>
+                <div className="bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] p-2 text-center">
+                  <div className="text-[14px] font-medium text-[var(--color-success)]">{(modelQualityStats.avgQualityScore * 100).toFixed(0)}%</div>
+                  <div className="text-[8px] text-[var(--color-text-dim)] uppercase tracking-wider">avg quality</div>
+                </div>
+              </div>
+              {rankedModels.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[9px] text-[var(--color-text-muted)]"># top models by quality score</div>
+                  {rankedModels.slice(0, 5).map((model) => (
+                    <div key={`${model.provider}/${model.modelId}`} className="flex items-center gap-2 px-2 py-1.5 bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] text-[var(--color-text-primary)] truncate">{model.modelId}</div>
+                        <div className="text-[8px] text-[var(--color-text-dim)]">{model.provider}</div>
+                      </div>
+                      <div className="flex items-center gap-3 text-[9px] tabular-nums flex-shrink-0">
+                        <span className="text-[var(--color-accent-primary)]">{(model.qualityScore * 100).toFixed(0)}%</span>
+                        <span className="text-[var(--color-text-muted)]">{model.totalRequests} req</span>
+                        <span className="text-[var(--color-text-dim)]">{model.avgResponseTimeMs > 0 ? `${(model.avgResponseTimeMs / 1000).toFixed(1)}s` : '--'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-[10px] text-[var(--color-text-muted)] py-3 text-center">
+              {isQualityLoading ? '# loading quality data...' : '# no model performance data yet'}
             </div>
           )}
         </SettingsGroup>

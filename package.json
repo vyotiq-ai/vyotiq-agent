@@ -1,10 +1,11 @@
 {
   "name": "vyotiq-ai",
   "productName": "Vyotiq AI",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "An AI-powered coding assistant with autonomous agent capabilities, multi-provider LLM support, and integrated development tools",
   "main": ".vite/build/main.js",
   "scripts": {
+    "postinstall": "node scripts/patch-node-gyp-vs2025.mjs",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",

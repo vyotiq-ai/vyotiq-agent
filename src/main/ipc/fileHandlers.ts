@@ -142,7 +142,9 @@ export function registerFileHandlers(context: IpcContext): void {
       logger.info('Workspace path changed', { path: newPath });
 
       // Persist to recent workspaces
-      addRecentWorkspace(newPath).catch(() => {});
+      addRecentWorkspace(newPath).catch((err) => {
+        logger.debug('Failed to persist recent workspace', { path: newPath, error: String(err) });
+      });
       
       const mainWindow = getMainWindow();
       if (mainWindow) {
@@ -173,7 +175,9 @@ export function registerFileHandlers(context: IpcContext): void {
     logger.info('Workspace folder selected', { path: selectedPath });
 
     // Persist to recent workspaces
-    addRecentWorkspace(selectedPath).catch(() => {});
+    addRecentWorkspace(selectedPath).catch((err) => {
+      logger.debug('Failed to persist recent workspace', { path: selectedPath, error: String(err) });
+    });
     
     mainWindow.webContents.send('workspace:changed', { path: selectedPath });
     

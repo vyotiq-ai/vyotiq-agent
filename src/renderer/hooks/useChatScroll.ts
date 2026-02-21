@@ -7,71 +7,63 @@ interface UseChatScrollOptions {
   threshold?: number;
   /** Enable streaming mode for continuous content updates */
   streamingMode?: boolean;
-  /** Smooth scroll speed factor (0-1, lower = smoother but slower) */
-  smoothFactor?: number;
 }
 
 /**
- * Chat scroll hook with automatic smooth scrolling during streaming
+ * Smart chat scroll hook with intelligent auto-scrolling
  * 
- * Automatically keeps the view focused on the latest content as it streams in.
- * Uses RAF for smooth 60fps scrolling performance with adaptive smoothing.
+ * Keeps the view pinned to the latest content during streaming while
+ * respecting user intent when they scroll away to read history.
  * 
- * Features:
- * - User scroll intent detection (won't auto-scroll if user scrolled up)
- * - Smooth scrolling with configurable speed
- * - Respects reduced motion preferences
- * - Memory-efficient with cleanup
+ * Intelligence:
+ * - Adaptive threshold: scales with viewport height for consistent UX
+ * - Direction-aware intent: scrolling down near bottom re-engages instantly
+ * - No arbitrary timeouts: re-engagement is purely position + direction based
+ * - Generous catch-up zone prevents falling behind during fast content growth
+ * - Programmatic scroll isolation prevents false intent detection
  */
 export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) => {
   const { 
     enabled = true, 
     threshold = 150, 
     streamingMode = false,
-    smoothFactor = 0.3,
   } = options;
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastScrollHeightRef = useRef(0);
   const prevDepRef = useRef<T>(dep);
   
-  // Track if user manually scrolled away from bottom
+  // Smart user intent tracking
   const userScrolledAwayRef = useRef(false);
-  const lastUserScrollTimeRef = useRef(0);
-  
-  // Flag to distinguish programmatic scroll (from RAF loop) from user scroll
   const isProgrammaticScrollRef = useRef(false);
-  
-  // Track if reduced motion is preferred
-  const prefersReducedMotion = useRef(false);
-  
-  // Check reduced motion preference on mount
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    prefersReducedMotion.current = mediaQuery.matches;
-    
-    const handleChange = (e: MediaQueryListEvent) => {
-      prefersReducedMotion.current = e.matches;
-    };
-    
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
+  const lastScrollTopRef = useRef(0);
 
-  // Check if near bottom
+  // Adaptive threshold — scales with viewport height so the "near bottom"
+  // zone feels proportional on any screen size
+  const getAdaptiveThreshold = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return threshold;
+    return Math.max(threshold, el.clientHeight * 0.2);
+  }, [threshold]);
+
+  // Check if scroll position is near the bottom
   const isNearBottom = useCallback(() => {
     const element = scrollRef.current;
     if (!element) return true;
     const { scrollTop, scrollHeight, clientHeight } = element;
-    return scrollHeight - scrollTop - clientHeight <= threshold;
-  }, [threshold]);
+    return scrollHeight - scrollTop - clientHeight <= getAdaptiveThreshold();
+  }, [getAdaptiveThreshold]);
 
-  // Scroll to bottom instantly
+  // Instant snap to bottom with programmatic scroll isolation
   const scrollToBottomInstant = useCallback(() => {
     const element = scrollRef.current;
     if (!element) return;
+    isProgrammaticScrollRef.current = true;
     element.scrollTop = element.scrollHeight;
     lastScrollHeightRef.current = element.scrollHeight;
+    queueMicrotask(() => {
+      isProgrammaticScrollRef.current = false;
+    });
   }, []);
 
   // Scroll to bottom smoothly
@@ -91,60 +83,53 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
     lastScrollHeightRef.current = element.scrollHeight;
   }, [scrollToBottomInstant]);
 
-  // Track user scroll events to detect manual scrolling
+  // Direction-aware scroll intent detection
+  //
+  // Tracks scroll direction to make smart re-engagement decisions:
+  //  - Entering near-bottom zone → immediately re-engage auto-scroll
+  //  - Scrolling UP beyond threshold → disengage (user wants to read)
+  //  - Scrolling DOWN above threshold → preserve current state
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
     
-    let scrollTimeout: number | null = null;
+    lastScrollTopRef.current = element.scrollTop;
     
     const handleScroll = () => {
-      // CRITICAL: Skip user-intent detection during programmatic scroll
-      // The RAF auto-scroll loop sets this flag before adjusting scrollTop
-      // to prevent falsely marking the user as "scrolled away" during fast
-      // streaming when content grows faster than scroll catches up.
-      if (isProgrammaticScrollRef.current) {
-        return;
-      }
+      if (isProgrammaticScrollRef.current) return;
       
-      const now = Date.now();
       const { scrollHeight, scrollTop, clientHeight } = element;
+      const prevScrollTop = lastScrollTopRef.current;
+      lastScrollTopRef.current = scrollTop;
+      
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      const adaptiveThreshold = getAdaptiveThreshold();
+      const isScrollingDown = scrollTop > prevScrollTop;
       
-      // If user scrolled more than threshold away from bottom, they want to read
-      if (distanceFromBottom > threshold) {
-        userScrolledAwayRef.current = true;
-        lastUserScrollTimeRef.current = now;
-      } else {
-        // User is back near bottom
+      if (distanceFromBottom <= adaptiveThreshold) {
+        // Near bottom — always re-engage regardless of direction
         userScrolledAwayRef.current = false;
+      } else if (!isScrollingDown) {
+        // Scrolling up past threshold — user wants to read history
+        userScrolledAwayRef.current = true;
       }
-      
-      // Reset user scroll flag after 2 seconds of no scrolling when near bottom
-      if (scrollTimeout) clearTimeout(scrollTimeout);
-      scrollTimeout = window.setTimeout(() => {
-        if (!userScrolledAwayRef.current) {
-          lastUserScrollTimeRef.current = 0;
-        }
-      }, 2000);
+      // Scrolling down above threshold → keep current state (don't
+      // interfere while user is actively returning to bottom)
     };
     
     element.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      element.removeEventListener('scroll', handleScroll);
-      if (scrollTimeout) clearTimeout(scrollTimeout);
-    };
-  }, [threshold]);
+    return () => element.removeEventListener('scroll', handleScroll);
+  }, [getAdaptiveThreshold]);
 
-  // Streaming scroll - only scroll if user hasn't scrolled away
+  // Streaming auto-scroll RAF loop — pins scroll to bottom at ~30fps
+  // with a generous 3x adaptive threshold catch-up zone that prevents
+  // falling behind even during rapid content growth
   useEffect(() => {
-    if (!streamingMode || !enabled) {
-      return;
-    }
+    if (!streamingMode || !enabled) return;
 
     let animationId: number;
     let lastFrameTime = 0;
-    const MIN_FRAME_INTERVAL = 50; // ~20fps is enough for scroll following
+    const FRAME_INTERVAL = 32; // ~30fps — smooth following without excessive CPU
     
     const tick = (currentTime: number) => {
       const element = scrollRef.current;
@@ -153,14 +138,13 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
         return;
       }
 
-      // Throttle frames
-      if (currentTime - lastFrameTime < MIN_FRAME_INTERVAL) {
+      if (currentTime - lastFrameTime < FRAME_INTERVAL) {
         animationId = requestAnimationFrame(tick);
         return;
       }
       lastFrameTime = currentTime;
 
-      // CRITICAL: Don't auto-scroll if user manually scrolled away
+      // Respect user intent — never auto-scroll when user has scrolled away
       if (userScrolledAwayRef.current) {
         lastScrollHeightRef.current = element.scrollHeight;
         animationId = requestAnimationFrame(tick);
@@ -169,55 +153,36 @@ export const useChatScroll = <T,>(dep: T, options: UseChatScrollOptions = {}) =>
 
       const { scrollHeight, scrollTop, clientHeight } = element;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      
-      // Auto-scroll if within a generous threshold (2x user threshold)
-      // This prevents the "falling behind" issue where fast content growth
-      // pushes us past the user-intent threshold before we can catch up.
-      const scrollThreshold = threshold * 2;
-      if (distanceFromBottom <= scrollThreshold) {
-        const diff = scrollHeight - clientHeight - scrollTop;
-        if (diff > 2) {
-          // Set flag to prevent the scroll event handler from falsely
-          // detecting user scroll intent during our programmatic scroll
-          isProgrammaticScrollRef.current = true;
-          
-          // SNAP to bottom — asymptotic approaches (30%, 50%) cause the
-          // scroll to fall further and further behind during fast streaming
-          // because content grows faster than the catch-up fraction can
-          // cover per frame.  Once it falls past the threshold it never
-          // recovers.  Snapping is visually fine at 20fps and ensures the
-          // latest content is always visible.
-          element.scrollTop = scrollHeight - clientHeight;
-          
-          // Clear flag after a microtask so the scroll event handler runs
-          // with the flag still set for this programmatic scroll
-          queueMicrotask(() => {
-            isProgrammaticScrollRef.current = false;
-          });
-        }
+      // Generous catch-up zone: 3x adaptive threshold ensures fast content
+      // growth (code blocks, tool output) can never outrun the scroller
+      const catchUpZone = getAdaptiveThreshold() * 3;
+      if (distanceFromBottom > 2 && distanceFromBottom <= catchUpZone) {
+        isProgrammaticScrollRef.current = true;
+        element.scrollTop = scrollHeight - clientHeight;
+        queueMicrotask(() => {
+          isProgrammaticScrollRef.current = false;
+        });
       }
-      
+
       lastScrollHeightRef.current = scrollHeight;
       animationId = requestAnimationFrame(tick);
     };
 
-    // Initialize
+    // Initialize — snap to bottom if auto-scroll is engaged
     if (scrollRef.current) {
       lastScrollHeightRef.current = scrollRef.current.scrollHeight;
-      // Only scroll to bottom if user hasn't scrolled away
       if (!userScrolledAwayRef.current) {
+        isProgrammaticScrollRef.current = true;
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        queueMicrotask(() => {
+          isProgrammaticScrollRef.current = false;
+        });
       }
     }
 
     animationId = requestAnimationFrame(tick);
-    
-    return () => {
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-    };
-  }, [streamingMode, enabled, threshold, smoothFactor]);
+    return () => cancelAnimationFrame(animationId);
+  }, [streamingMode, enabled, getAdaptiveThreshold]);
 
   // Initialize scroll height tracking
   useEffect(() => {

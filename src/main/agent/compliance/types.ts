@@ -26,6 +26,7 @@ export type ComplianceViolationType =
   | 'path-format-error'              // Using incorrect path format
   | 'edit-string-mismatch'           // old_string doesn't match file content
   | 'missing-context-in-edit'        // Not enough context in old_string
+  | 'incomplete-implementation'      // Placeholder or stub implementation
   | 'tool-misuse'                    // Using tool incorrectly
   | 'rule-violation';                // Generic rule violation
 

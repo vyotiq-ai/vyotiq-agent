@@ -107,7 +107,7 @@ const Tab = memo<TabProps>(({ fileName, isActive, isPreview, isDirty, isSaving, 
     <FileText size={11} className="flex-shrink-0 opacity-60" />
     <span className="truncate max-w-[120px]">{fileName}</span>
     {isDirty && !isSaving && (
-      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-primary)] flex-shrink-0" />
+      <span className="text-[9px] text-[var(--color-accent-primary)] flex-shrink-0 font-mono">M</span>
     )}
     {isSaving && (
       <Loader2 size={10} className="animate-spin flex-shrink-0 text-[var(--color-accent-primary)]" />

@@ -3,6 +3,7 @@ import type { IpcRendererEvent } from 'electron';
 import type {
 	AgentSettings,
 	AttachmentPayload,
+	BrowserState,
 	ConfirmToolPayload,
 	FollowUpPayload,
 	RendererEvent,
@@ -395,6 +396,13 @@ interface CacheStatsResponse {
 		evictions: number;
 		expirations: number;
 	};
+	contextCache: {
+		entries: number;
+		sizeBytes: number;
+		hits: number;
+		misses: number;
+		hitRate: number;
+	};
 }
 
 const cacheAPI = {
@@ -707,15 +715,7 @@ interface NavigationResult {
 	loadTime?: number;
 }
 
-interface BrowserState {
-	id: string;
-	url: string;
-	title: string;
-	isLoading: boolean;
-	canGoBack: boolean;
-	canGoForward: boolean;
-	error?: string;
-}
+// BrowserState imported from shared/types above to avoid triple-definition divergence
 
 interface PageContent {
 	url: string;
@@ -1829,6 +1829,12 @@ const rustBackendAPI = {
 		ipcRenderer.invoke('rust-backend:is-available'),
 	getAuthToken: (): Promise<string> =>
 		ipcRenderer.invoke('rust-backend:get-auth-token'),
+	/** Subscribe to auth token changes (emitted after sidecar restart) */
+	onAuthTokenChanged: (callback: (token: string) => void): (() => void) => {
+		const handler = (_event: Electron.IpcRendererEvent, token: string) => callback(token);
+		ipcRenderer.on('rust-backend:auth-token-changed', handler);
+		return () => { ipcRenderer.removeListener('rust-backend:auth-token-changed', handler); };
+	},
 
 	// Workspace management
 	listWorkspaces: (): Promise<{ success: boolean; workspaces: unknown[]; error?: string }> =>

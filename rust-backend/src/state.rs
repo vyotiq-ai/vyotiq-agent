@@ -65,16 +65,21 @@ impl AppState {
             crate::error::AppError::Io(e)
         })?;
 
-        let workspace_manager = Arc::new(WorkspaceManager::new(data_dir.clone()));
+        let workspace_manager = Arc::new(WorkspaceManager::new(
+            data_dir.clone(),
+            config.exclude_patterns.clone(),
+        ));
         let index_manager = Arc::new(IndexManager::new(
             data_dir.join("indexes"),
             config.max_file_size_bytes,
             config.index_batch_size,
             config.max_indexed_files,
+            config.exclude_patterns.clone(),
         ));
         let watcher_manager = Arc::new(FileWatcherManager::new(
             config.watcher_debounce_ms,
             event_tx.clone(),
+            config.exclude_patterns.clone(),
         ));
 
         Ok(Self {

@@ -110,10 +110,18 @@ pub struct IndexManager {
     /// Prevents false `indexed: true` for workspaces that only loaded an index from disk
     /// but haven't verified its completeness.
     indexed_workspaces: DashMap<String, bool>,
+    /// User-provided exclude patterns forwarded from app settings.
+    user_exclude_patterns: Vec<String>,
 }
 
 impl IndexManager {
-    pub fn new(base_dir: PathBuf, max_file_size: usize, batch_size: usize, max_indexed_files: usize) -> Self {
+    pub fn new(
+        base_dir: PathBuf,
+        max_file_size: usize,
+        batch_size: usize,
+        max_indexed_files: usize,
+        user_exclude_patterns: Vec<String>,
+    ) -> Self {
         Self {
             indexes: DashMap::new(),
             base_dir,
@@ -123,6 +131,7 @@ impl IndexManager {
             writer_lock: tokio::sync::Mutex::new(()),
             content_hashes: DashMap::new(),
             indexed_workspaces: DashMap::new(),
+            user_exclude_patterns,
         }
     }
 
@@ -224,7 +233,7 @@ impl IndexManager {
             .build()
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.file_type().is_some_and(|ft| ft.is_file()))
-            .filter(|entry| !Self::is_build_or_output_dir(entry.path()))
+            .filter(|entry| !Self::is_build_or_output_dir_with_patterns(entry.path(), &self.user_exclude_patterns))
             .filter(|entry| {
                 entry
                     .metadata()
@@ -312,7 +321,8 @@ impl IndexManager {
             ws_id, unchanged_count, files_to_index.len(), paths_to_remove.len(), total, total_size as f64 / 1_048_576.0
         );
 
-        // If nothing changed, skip the expensive write
+        // If nothing changed, skip the expensive write but still emit events
+        // so the renderer can reset its isIndexing state.
         if files_to_index.is_empty() && paths_to_remove.is_empty() {
             state.indexed_count.store(total, Ordering::Relaxed);
             // is_indexing reset handled by _indexing_guard Drop
@@ -320,8 +330,18 @@ impl IndexManager {
             self.indexed_workspaces.insert(ws_id.clone(), true);
             let duration = start.elapsed();
 
-            // Do NOT broadcast IndexingStarted/IndexingCompleted for no-op runs.
-            // The frontend only needs to know when there's actual work.
+            // Always emit IndexingCompleted so the renderer resets isIndexing.
+            // Without this, the UI gets stuck showing "indexing" forever when
+            // the workspace was already fully indexed.
+            let _ = event_tx.send(ServerEvent::IndexingCompleted {
+                workspace_id: ws_id.clone(),
+                total_files: total,
+                duration_ms: duration.as_millis() as u64,
+            });
+            let _ = event_tx.send(ServerEvent::SearchReady {
+                workspace_id: ws_id.clone(),
+            });
+
             info!(
                 "Index up-to-date for {}: {} files, all unchanged ({}ms)",
                 ws_id, total, duration.as_millis()
@@ -334,6 +354,14 @@ impl IndexManager {
         let _ = event_tx.send(ServerEvent::IndexingStarted {
             workspace_id: ws_id.clone(),
         });
+
+        // Acquire writer lock to serialize with reindex_file() calls.
+        // Tantivy only allows one IndexWriter per index at a time; without this
+        // lock, concurrent file-watcher reindex_file calls can race on the lock
+        // file causing LockBusy errors.
+        // NOTE: reindex_file() already skips when is_indexing is true, so holding
+        // this lock during full indexing does not introduce new contention.
+        let _writer_guard = self.writer_lock.lock().await;
 
         // MEMORY FIX: Reduced writer buffer from 50MB to 15MB.
         // 15MB is sufficient for batched writes and reduces resident memory.
@@ -584,10 +612,20 @@ impl IndexManager {
     /// This catches common build artifacts even when .gitignore is absent.
     /// Public so that grep search can also reuse this filter.
     pub fn is_build_or_output_dir(path: &Path) -> bool {
+        Self::is_build_or_output_dir_with_patterns(path, &[])
+    }
+
+    /// Like `is_build_or_output_dir` but also checks against user-provided exclude patterns.
+    pub fn is_build_or_output_dir_with_patterns(path: &Path, user_patterns: &[String]) -> bool {
         for component in path.components() {
             if let std::path::Component::Normal(name) = component {
                 let name_str = name.to_string_lossy();
                 if crate::config::is_excluded_directory(&name_str) {
+                    return true;
+                }
+                if !user_patterns.is_empty()
+                    && crate::config::matches_user_exclude_patterns(&name_str, user_patterns)
+                {
                     return true;
                 }
             }

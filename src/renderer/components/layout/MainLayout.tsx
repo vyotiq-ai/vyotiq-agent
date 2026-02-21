@@ -11,6 +11,7 @@ import { BottomPanel } from '../../features/terminal/components/BottomPanel';
 import { useLSP } from '../../features/editor/hooks/useLSP';
 import { getCurrentWorkspacePath } from '../../state/WorkspaceProvider';
 import { createLogger } from '../../utils/logger';
+import { FeatureErrorBoundary } from './ErrorBoundary';
 
 const logger = createLogger('MainLayout');
 
@@ -247,14 +248,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
               {/* Visual drag handle indicator */}
               <div
                 className={cn(
-                  'absolute top-1/2 -translate-y-1/2 left-0 w-full h-12 flex flex-col justify-center items-center gap-0.5',
+                  'absolute top-1/2 -translate-y-1/2 left-0 w-full h-12 flex flex-col justify-center items-center',
                   'opacity-0 group-hover:opacity-100 transition-opacity',
                   isResizing && 'opacity-100'
                 )}
               >
-                <div className="w-0.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]/60" />
-                <div className="w-0.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]/60" />
-                <div className="w-0.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]/60" />
+                <div className="w-[2px] h-6 rounded-sm bg-[var(--color-accent-primary)]/40" />
               </div>
             </div>
           )}
@@ -280,27 +279,29 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
                 >
                   <div
                     className={cn(
-                      'relative top-1/2 -translate-y-1/2 w-full h-12 flex flex-col justify-center items-center gap-0.5',
+                      'relative top-1/2 -translate-y-1/2 w-full h-12 flex flex-col justify-center items-center',
                       'opacity-0 group-hover:opacity-100 transition-opacity',
                       isEditorResizing && 'opacity-100'
                     )}
                   >
-                    <div className="w-0.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]/60" />
-                    <div className="w-0.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]/60" />
-                    <div className="w-0.5 h-1.5 rounded-full bg-[var(--color-accent-primary)]/60" />
+                    <div className="w-[2px] h-6 rounded-sm bg-[var(--color-accent-primary)]/40" />
                   </div>
                 </div>
 
                 {/* Editor panel */}
                 <div className="shrink-0 min-h-0 overflow-hidden" style={{ width: editorWidth }}>
-                  <EditorPanel />
+                  <FeatureErrorBoundary featureName="Editor">
+                    <EditorPanel />
+                  </FeatureErrorBoundary>
                 </div>
               </>
             )}
           </div>
 
           {/* Bottom panel (Terminal / Problems / Output / Debug Console) */}
-          <BottomPanel isOpen={bottomPanelOpen} onToggle={toggleBottomPanel} />
+          <FeatureErrorBoundary featureName="BottomPanel">
+            <BottomPanel isOpen={bottomPanelOpen} onToggle={toggleBottomPanel} />
+          </FeatureErrorBoundary>
         </div>
       </div>
     </div>

@@ -238,6 +238,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
           }
         } else {
           // Create new workspace
+          // NOTE: The Rust create_workspace route automatically spawns background
+          // indexing, so there's no need to call triggerIndex() separately.
           const name = workspacePath.split(/[/\\]/).pop() || 'workspace';
           try {
             const created = await rustBackend.createWorkspace(name, workspacePath);
@@ -245,13 +247,6 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
               registeredPathRef.current = workspacePath;
               setRustWorkspaceId(created.id);
               setIsIndexed(false);
-              // Auto-trigger indexing for new workspaces
-              rustBackend.triggerIndex(created.id).catch((err) => {
-                logger.warn('Failed to trigger workspace indexing', {
-                  workspaceId: created.id,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-              });
               setIsIndexing(true);
             }
           } catch (createErr: unknown) {
@@ -308,13 +303,19 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, [workspacePath]);
 
   // ---- Track indexing progress from Rust backend ---------------------------
+  const isIndexingRef = useRef(isIndexing);
+  isIndexingRef.current = isIndexing;
+
   useEffect(() => {
     if (!rustWorkspaceId) return;
+
+    let cancelled = false;
 
     // Subscribe to workspace-specific events in the backend
     rustBackend.subscribeWorkspace(rustWorkspaceId);
 
     const unsubscribe = rustBackend.onEvent((event) => {
+      if (cancelled) return;
       if (!('workspace_id' in event.data) || event.data.workspace_id !== rustWorkspaceId) return;
 
       switch (event.type) {
@@ -338,8 +339,39 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
       }
     });
 
+    // Fallback: poll index status periodically to recover from missed WebSocket
+    // events (e.g., if the WS wasn't connected when indexing completed).
+    // Polls every 5s while indexing, every 30s otherwise. Stops when cancelled.
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const pollIndexStatus = async () => {
+      if (cancelled) return;
+      try {
+        const status = await rustBackend.getIndexStatus(rustWorkspaceId);
+        if (cancelled) return;
+        // Sync renderer state with actual backend state
+        setIsIndexing(status.is_indexing);
+        if (status.indexed) {
+          setIsIndexed(true);
+        }
+        if (status.indexed && !status.is_indexing) {
+          setIsSearchReady(true);
+        }
+      } catch {
+        // Ignore — backend may be temporarily unreachable
+      }
+      // Schedule next poll: faster while indexing, slower when idle
+      if (!cancelled) {
+        const interval = isIndexingRef.current ? 5_000 : 30_000;
+        pollTimer = setTimeout(pollIndexStatus, interval);
+      }
+    };
+    // Start first poll after a short delay to let events arrive first
+    pollTimer = setTimeout(pollIndexStatus, 3_000);
+
     return () => {
+      cancelled = true;
       unsubscribe();
+      if (pollTimer) clearTimeout(pollTimer);
       rustBackend.unsubscribeWorkspace(rustWorkspaceId);
     };
   }, [rustWorkspaceId]);

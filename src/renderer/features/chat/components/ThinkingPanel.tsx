@@ -70,7 +70,11 @@ const ThinkingPanelInternal: React.FC<ThinkingPanelProps> = ({
     return content.split(/\s+/).filter(Boolean).length;
   }, [content]);
 
-  if (!content && !isStreaming) return null;
+  // Don't render if there's no meaningful content and we're not streaming.
+  // Also don't render if the only content is whitespace (prevents empty panels
+  // for models/providers that don't support reasoning but emit whitespace deltas).
+  const hasContent = content && content.trim().length > 0;
+  if (!hasContent && !isStreaming) return null;
 
   return (
     <div
@@ -104,9 +108,10 @@ const ThinkingPanelInternal: React.FC<ThinkingPanelProps> = ({
         </span>
         {isStreaming && (
           <span
-            className="ml-1 h-1.5 w-1.5 rounded-full animate-pulse"
-            style={{ backgroundColor: 'var(--color-accent-primary)' }}
-          />
+            className="ml-1 text-[8px] font-mono text-[var(--color-accent-primary)] opacity-70"
+          >
+            ...
+          </span>
         )}
         {/* Word count badge */}
         {wordCount > 0 && (

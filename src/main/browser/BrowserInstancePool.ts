@@ -434,7 +434,7 @@ export function initBrowserInstancePool(
   config?: Partial<BrowserPoolConfig>
 ): BrowserInstancePool {
   if (globalPool) {
-    globalPool.shutdown().catch(console.error);
+    globalPool.shutdown().catch((err) => logger.warn('Failed to shutdown previous browser pool', { error: String(err) }));
   }
   globalPool = new BrowserInstancePool(config);
   globalPool.init(mainWindow);

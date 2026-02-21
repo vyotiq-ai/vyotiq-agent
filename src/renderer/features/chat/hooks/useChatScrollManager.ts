@@ -11,7 +11,7 @@
  * - Streaming start handling (force scroll when streaming begins)
  * - New message detection (scroll on new messages)
  */
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useChatScroll } from '../../../hooks/useChatScroll';
 import { useVirtualizedList } from '../../../hooks/useVirtualizedList';
 import type { groupMessagesByRun } from './useChatAreaState';
@@ -40,10 +40,6 @@ export interface ChatScrollManagerResult {
   scrollRef: React.RefObject<HTMLDivElement>;
   /** Ref for virtualized scroll container */
   virtualContainerRef: React.RefObject<HTMLDivElement>;
-  /** Handle scroll to bottom button click */
-  handleScrollToBottom: () => void;
-  /** Whether to show the scroll to bottom button */
-  showScrollToBottom: boolean;
   /** Virtual items for rendering (when virtualized) */
   virtualItems: ReturnType<typeof useVirtualizedList>['virtualItems'];
   /** Total height for virtual container */
@@ -71,7 +67,6 @@ export function useChatScrollManager({
     totalHeight,
     containerRef: virtualContainerRef,
     scrollToBottom: virtualScrollToBottom,
-    isNearBottom: isNearBottomVirtualized,
     resetUserScroll: resetVirtualUserScroll,
     measureItem,
   } = useVirtualizedList({
@@ -86,7 +81,7 @@ export function useChatScrollManager({
   });
 
   // Scroll hook for non-virtualized mode only
-  const { scrollRef, forceScrollToBottom, isNearBottom: isNearBottomNonVirt, resetUserScroll: resetNonVirtUserScroll } = useChatScroll(
+  const { scrollRef, forceScrollToBottom, resetUserScroll: resetNonVirtUserScroll } = useChatScroll(
     `${messages?.length ?? 0}-${lastAssistantContentLength}`,
     {
       enabled: !shouldVirtualize,
@@ -94,18 +89,6 @@ export function useChatScrollManager({
       streamingMode: isStreaming && !shouldVirtualize,
     }
   );
-
-  // Unified isNearBottom for both modes
-  const showScrollToBottom = shouldVirtualize ? !isNearBottomVirtualized : !isNearBottomNonVirt();
-
-  // Handle scroll to bottom button click
-  const handleScrollToBottom = useCallback(() => {
-    if (shouldVirtualize) {
-      virtualScrollToBottom('smooth');
-    } else {
-      forceScrollToBottom();
-    }
-  }, [shouldVirtualize, virtualScrollToBottom, forceScrollToBottom]);
 
   // Track session changes for scroll reset
   const prevSessionIdRef = useRef<string | null>(null);
@@ -187,8 +170,6 @@ export function useChatScrollManager({
   return {
     scrollRef,
     virtualContainerRef,
-    handleScrollToBottom,
-    showScrollToBottom,
     virtualItems,
     totalHeight,
     measureItem,

@@ -6,5 +6,11 @@
     "editor.fontFamily": "'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace",
     "editor.fontLigatures": true,
     "files.encoding": "utf8",
-    "files.autoGuessEncoding": true
+    "files.autoGuessEncoding": true,
+    "chat.tools.terminal.autoApprove": {
+        "/^Test-Path \"c:\\\\Users\\\\admin\\\\Documents\\\\vyotiq-agent\\\\src\\\\main\\\\agent\\\\subSessions\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
 }

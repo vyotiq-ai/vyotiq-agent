@@ -21,6 +21,58 @@ const HEALTH_TIMEOUT = 5_000;
 /** Auth token for sidecar requests, fetched from main process */
 let sidecarAuthToken = '';
 
+/** Whether the initial auth token fetch has completed */
+let authTokenResolved = false;
+
+/**
+ * Promise that resolves once the initial auth token has been fetched from the
+ * main process.  Started eagerly at module load so that the token is ready
+ * before any protected HTTP request fires.
+ */
+const authTokenReady: Promise<void> = (async () => {
+  try {
+    const token = await window.vyotiq?.rustBackend?.getAuthToken?.();
+    if (token) {
+      sidecarAuthToken = token;
+      log.debug('Sidecar auth token fetched eagerly at startup');
+    }
+  } catch {
+    // Preload API may not be available yet — will be retried on 401
+  } finally {
+    authTokenResolved = true;
+  }
+})();
+
+/** Whether a token refresh is already in-flight (deduplication) */
+let tokenRefreshPromise: Promise<boolean> | null = null;
+
+/**
+ * Refresh the auth token from the main process.
+ * Returns true if the token actually changed (i.e. sidecar was restarted).
+ * Deduplicates concurrent callers.
+ */
+async function refreshAuthToken(): Promise<boolean> {
+  if (tokenRefreshPromise) return tokenRefreshPromise;
+  tokenRefreshPromise = (async () => {
+    try {
+      const token = await window.vyotiq?.rustBackend?.getAuthToken?.();
+      if (token && token !== sidecarAuthToken) {
+        sidecarAuthToken = token;
+        log.info('Auth token refreshed after stale-token detection');
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  })();
+  try {
+    return await tokenRefreshPromise;
+  } finally {
+    tokenRefreshPromise = null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -117,12 +169,18 @@ async function request<T>(
   baseUrl = DEFAULT_BASE_URL,
   timeoutMs = REQUEST_TIMEOUT,
 ): Promise<T> {
+  // Wait for the eager auth-token fetch to complete before making any
+  // protected request.  Health checks (/health) are public and skip this.
+  if (!authTokenResolved && path !== '/health') {
+    await authTokenReady;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const start = performance.now();
 
-  try {
-    const response = await fetch(`${baseUrl}${path}`, {
+  const doFetch = () =>
+    fetch(`${baseUrl}${path}`, {
       ...options,
       signal: controller.signal,
       headers: {
@@ -131,6 +189,17 @@ async function request<T>(
         ...options.headers,
       },
     });
+
+  try {
+    let response = await doFetch();
+
+    // Auto-refresh stale auth token and retry once on 401
+    if (response.status === 401) {
+      const refreshed = await refreshAuthToken();
+      if (refreshed) {
+        response = await doFetch();
+      }
+    }
 
     const durationMs = Math.round(performance.now() - start);
 
@@ -144,8 +213,15 @@ async function request<T>(
 
     return (await response.json()) as T;
   } catch (err) {
+    // Distinguish between actual timeouts and connection refused (server not started yet)
     if (err instanceof DOMException && err.name === 'AbortError') {
       log.warn('Backend request timed out', { path, timeoutMs });
+    } else if (
+      err instanceof TypeError &&
+      (err.message.includes('fetch failed') || err.message.includes('ECONNREFUSED') || err.message.includes('Failed to fetch'))
+    ) {
+      // Server not reachable — normal during startup, log at debug level to reduce noise
+      log.debug('Backend not reachable', { path, error: err.message });
     }
     throw err;
   } finally {
@@ -173,6 +249,12 @@ class WebSocketManager {
   private activeSubscriptions = new Set<string>();
   /** Callback invoked on unexpected WebSocket disconnection */
   private onDisconnectCallback?: () => void;
+  /** Whether the current WS instance ever reached OPEN state */
+  private wasEverOpen = false;
+  /** Timestamp of last connect() attempt – used for rate limiting */
+  private lastConnectAttempt = 0;
+  /** Minimum interval between WebSocket connection attempts (ms) */
+  private static readonly MIN_CONNECT_INTERVAL = 2_000;
 
   constructor(url = DEFAULT_WS_URL) {
     this.url = url;
@@ -208,13 +290,24 @@ class WebSocketManager {
       return;
     }
 
+    // Rate-limit connection attempts to prevent tight retry loops
+    // (e.g. when auth fails and the health check immediately re-triggers connect)
+    const now = Date.now();
+    if (now - this.lastConnectAttempt < WebSocketManager.MIN_CONNECT_INTERVAL) {
+      this.scheduleReconnect();
+      return;
+    }
+    this.lastConnectAttempt = now;
+
     this.intentionalClose = false;
+    this.wasEverOpen = false;
 
     try {
       this.ws = new WebSocket(this.url);
 
       this.ws.onopen = () => {
         this.connected = true;
+        this.wasEverOpen = true;
         this.reconnectDelay = 2000;
         log.info('WebSocket connected');
 
@@ -240,12 +333,23 @@ class WebSocketManager {
       };
 
       this.ws.onclose = () => {
+        const hadEstablishedConnection = this.wasEverOpen;
         this.connected = false;
+        this.wasEverOpen = false;
+
         if (!this.intentionalClose) {
-          // Mark backend unavailable to prevent blind reconnection.
-          // The health-check polling will re-enable when the backend returns.
-          this.backendAvailable = false;
-          this.onDisconnectCallback?.();
+          if (hadEstablishedConnection) {
+            // An established connection dropped (e.g. sidecar crash / network blip).
+            // Mark backend unavailable; the health-check poll will re-enable it.
+            this.backendAvailable = false;
+            this.onDisconnectCallback?.();
+          } else {
+            // Handshake never completed — likely an auth failure (stale token
+            // after sidecar restart). Refresh the token and schedule a
+            // backoff-based reconnect instead of entering the health-check →
+            // reconnect tight loop.
+            this.scheduleReconnectWithTokenRefresh();
+          }
         }
       };
 
@@ -271,6 +375,7 @@ class WebSocketManager {
       this.ws = null;
     }
     this.connected = false;
+    this.wasEverOpen = false;
     this.backendAvailable = false;
   }
 
@@ -311,6 +416,34 @@ class WebSocketManager {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+      this.connect();
+    }, this.reconnectDelay);
+  }
+
+  /**
+   * Schedule a reconnect that first refreshes the auth token.
+   * Used when a WebSocket handshake fails (likely stale token after sidecar
+   * restart). This avoids the tight health-check → reconnect loop because
+   * /health doesn't require auth but /ws does.
+   */
+  private scheduleReconnectWithTokenRefresh(): void {
+    if (this.intentionalClose) return;
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+
+      // Attempt to get a fresh token from the main process
+      try {
+        const changed = await refreshAuthToken();
+        if (changed) {
+          this.setUrl(`${DEFAULT_WS_URL}?token=${sidecarAuthToken}`);
+          log.info('Auth token refreshed before WebSocket reconnect');
+        }
+      } catch {
+        // Token refresh failed — still try to reconnect with current token
+      }
+
       this.connect();
     }, this.reconnectDelay);
   }
@@ -357,40 +490,42 @@ class RustBackendClient {
 
   // ----- Lifecycle ---------------------------------------------------------
 
-  /** Initialize the client — fetches auth token, marks backend as available and connects WebSocket */
-  init(): void {
-    // Fetch auth token from main process BEFORE connecting WebSocket.
-    // The browser WebSocket API does not support custom headers, so the
-    // token is appended as a query parameter on the WS URL.
+  /** Initialize the client — fetches auth token, marks backend as available and connects WebSocket.
+   *  Returns a promise that resolves once the auth token has been fetched and WebSocket connected. */
+  async init(): Promise<void> {
+    const wsManager = this.wsManager;
+
     const connectWs = () => {
       // Update WebSocket URL with auth token query parameter
       if (sidecarAuthToken) {
-        this.wsManager.setUrl(`${DEFAULT_WS_URL}?token=${sidecarAuthToken}`);
+        wsManager.setUrl(`${DEFAULT_WS_URL}?token=${sidecarAuthToken}`);
       }
-      this.wsManager.setBackendAvailable(true);
-      this.wsManager.connect();
+      wsManager.setBackendAvailable(true);
+      wsManager.connect();
     };
 
+    // Listen for proactive token-changed events from main process
+    // (sent after sidecar restart) to update token + reconnect WebSocket
     try {
-      const tokenPromise = window.vyotiq?.rustBackend?.getAuthToken?.();
-      if (tokenPromise && typeof tokenPromise.then === 'function') {
-        tokenPromise.then((token: string) => {
-          if (token) {
-            sidecarAuthToken = token;
-            log.debug('Sidecar auth token received');
-          }
-          connectWs();
-        }).catch(() => {
-          // Auth token not available, connect without authentication
-          connectWs();
-        });
-      } else {
-        connectWs();
-      }
-    } catch (err) {
-      log.debug('Preload API not available for auth token', { error: err instanceof Error ? err.message : String(err) });
-      connectWs();
+      window.vyotiq?.rustBackend?.onAuthTokenChanged?.((token: string) => {
+        if (token && token !== sidecarAuthToken) {
+          sidecarAuthToken = token;
+          wsManager.disconnect();
+          wsManager.setUrl(`${DEFAULT_WS_URL}?token=${token}`);
+          wsManager.setBackendAvailable(true);
+          wsManager.connect();
+          log.info('Auth token updated via sidecar restart notification');
+        }
+      });
+    } catch {
+      // Preload API not available yet — auth refresh will still work via 401 retry
     }
+
+    // Wait for the eagerly-started auth token fetch to complete before
+    // connecting the WebSocket (which needs the token as a query param).
+    await authTokenReady;
+
+    connectWs();
   }
 
   /** Tear down the client and disconnect WebSocket */
@@ -464,16 +599,28 @@ class RustBackendClient {
       this._lastHealthResult = true;
       this._healthBackoff = RustBackendClient.HEALTH_BACKOFF_MIN;
       this.wsManager.setBackendAvailable(true);
-    } catch (err) {
-      log.debug('Health check failed', { error: err instanceof Error ? err.message : String(err) });
-      this._lastHealthCheckAt = Date.now();
-      this._lastHealthResult = false;
-      // Exponential backoff: double on each failure, cap at max
-      this._healthBackoff = Math.min(
-        this._healthBackoff * 2,
-        RustBackendClient.HEALTH_BACKOFF_MAX,
-      );
-      this.wsManager.setBackendAvailable(false);
+    } catch (firstErr) {
+      // Retry once after a short delay before declaring failure.
+      // This avoids false negatives caused by transient network blips
+      // or the Rust sidecar mid-restart.
+      try {
+        await new Promise((r) => setTimeout(r, 500));
+        await this.health();
+        this._lastHealthCheckAt = Date.now();
+        this._lastHealthResult = true;
+        this._healthBackoff = RustBackendClient.HEALTH_BACKOFF_MIN;
+        this.wsManager.setBackendAvailable(true);
+      } catch (retryErr) {
+        log.debug('Health check failed after retry', { error: retryErr instanceof Error ? retryErr.message : String(retryErr) });
+        this._lastHealthCheckAt = Date.now();
+        this._lastHealthResult = false;
+        // Exponential backoff: double on each failure, cap at max
+        this._healthBackoff = Math.min(
+          this._healthBackoff * 2,
+          RustBackendClient.HEALTH_BACKOFF_MAX,
+        );
+        this.wsManager.setBackendAvailable(false);
+      }
     }
     // Notify listeners on state change
     if (prev !== this._lastHealthResult) {

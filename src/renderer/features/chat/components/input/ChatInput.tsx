@@ -40,6 +40,7 @@ import { InputDropZone } from './InputDropZone';
 import { MentionAutocomplete } from './MentionAutocomplete';
 import { DraftIndicator } from './DraftIndicator';
 import { InputStatusBar } from './InputStatusBar';
+import { SessionHealthIndicator } from './SessionHealthIndicator';
 import { ChatAttachmentList } from '../ChatAttachmentList';
 import { useTodos } from '../../../../hooks/useTodos';
 
@@ -501,6 +502,8 @@ export const ChatInput: React.FC = memo(() => {
           }
           rightContent={
             <>
+              {/* Session health indicator */}
+              <SessionHealthIndicator sessionId={activeSession?.id} />
               {/* History indicator */}
               {isBrowsingHistory && (
                 <span 
