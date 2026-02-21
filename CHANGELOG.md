@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-02-21
+
+### Added
+
+- **Session Health Indicator**: New `SessionHealthIndicator` component showing real-time session health status (warning/critical) in the chat input bar
+- **Cache IPC Handlers**: Expose cache statistics (prompt, tool, context) and management operations to the renderer via new `cacheHandlers` IPC module
+- **Rust Backend IPC Bridge**: New `rustBackendHandlers` bridging Electron main process to Rust sidecar for workspace/indexing/search via IPC
+- **Transient Sessions**: `registerTransientSession()` / `unregisterTransientSession()` in `SessionManager` for in-memory-only sessions that bypass persistence
+- **Budget Enforcement Post-Confirmation**: `RunExecutor` now checks cost budget after tool confirmations, stopping runs that exceed limits mid-execution
+- **Workspace Exclude/Include Patterns**: Rust backend supports user-configurable exclude patterns (`VYOTIQ_EXCLUDE_PATTERNS`) and include patterns (`VYOTIQ_INCLUDE_PATTERNS`) for indexing
+- **File Watcher Toggle**: Rust backend supports disabling file watchers via `VYOTIQ_ENABLE_FILE_WATCHER` env var, forwarded from app settings
+- **Auth Token Change Events**: `onAuthTokenChanged` IPC channel so the renderer auto-refreshes its sidecar auth token after Rust sidecar restarts
+- **Workspace Settings Hot-Reload**: Changing workspace indexing settings now restarts the Rust sidecar with new config and pushes fresh auth token to the renderer
+- **LSP Extensions**: Add `typeDefinition`, `implementations`, and `prepareRename` APIs; add `onDiagnosticsSnapshot`, `onFileDiagnosticsUpdated`, and `onDiagnosticsCleared` subscriptions
+- **Debug APIs**: Add `getBatcherStats()`, `getThrottleStatus()`, and `getAllTraces()` APIs for IPC event batcher and throttle debugging
+- **Incomplete-Implementation Compliance**: New `incomplete-implementation` violation type for placeholder/stub code detection
+
+### Changed
+
+- **Status Indicators Redesign**: Replace colored dot indicators with monospace text labels (`[RUN]`, `[IDLE]`, `[PAUSE]`, `[OK]`, `[ERR]`, `[ACTIVE]`, `[WAIT]`, `[ready]`) throughout settings, debugging, session selector, editor tabs, and home page
+- **Chat Scroll Rewrite**: Complete rewrite of `useChatScroll` with adaptive threshold scaling, direction-aware intent detection, programmatic scroll isolation, and ~30fps RAF streaming loop
+- **Virtualized List Improvements**: Direction-aware auto-scroll re-engagement, explicit `resetUserScroll` API, streaming RAF loop, and measurement batching via ref + version counter
+- **Simplified Resize Handles**: Replace three-dot drag affordances with single-line handles in `MainLayout` and `BottomPanel`
+- **Simplified IndexStatusPanel**: Remove colored dot indicators, use text-only status display for compact and full modes
+- **Streaming Indicator**: Replace pulsing dot indicator with `...` text in `ThinkingPanel` streaming state
+- **Session Option Selector**: Replace `Circle` icons with Unicode bullet characters for session selection indicators
+- **Provider Capabilities**: Mark Anthropic as supporting thinking, DeepSeek as supporting vision, and Gemini as supporting caching
+- **Model Routing**: Add `xai` (grok-*), `mistral` (mistral-*/pixtral-*/codestral-*), and `glm` (glm-*/chatglm*) model ID patterns to `modelBelongsToProvider`
+- **Terminal Timeout**: Increase default terminal command timeout from 120s→240s and max from 600s→1200s
+- **Rust Backend Startup**: Bind TCP listener before restoring workspace watchers; watchers now initialize in a background task to prevent health endpoint timeout
+- **Health Check Deduplication**: `RustBackendClient.isAvailable()` deduplicates concurrent callers, caches results, and uses exponential backoff (5s–120s) when backend is unavailable
+- **Session Reducer**: Use `computeSessionDelta` / `applySessionDelta` for optimized session updates that minimize object creation
+- **Deep Merge Task Routing**: Deep-merge `taskMappings` and `defaultMapping` in settings updates to prevent data loss on partial updates
+- **Centralized Error Classification**: Extract `isTransientError` and `isNetworkConnectivityError` into shared utilities
+- **Feature Error Boundaries**: Wrap `EditorPanel`, `BottomPanel`, `SidebarFileTree`, `SearchPanel`, `SymbolOutlinePanel`, and `IndexStatusPanel` in `FeatureErrorBoundary` for crash isolation
+- **Structured Logging**: Replace `console.error`/`console.warn` with structured `logger` calls across browser pool, file change notifier, file handlers, bottom panel, and agent metrics
+
+### Removed
+
+- `DELIVERY_SUMMARY.md`, `RELEASE_PACKAGE_SUMMARY.md`, `RELEASE_PUBLISHING_CHECKLIST.md` — outdated release documents
+- Scroll-to-bottom floating button and unread count tracking from `ChatArea` (auto-scroll handling is sufficient)
+- Deprecated `buildAdditionalInstructions` no-op function and its export
+- Inline indexing/indexed dot indicators from `SidebarFileTree` and `WorkspaceSwitcher` (consolidated into `IndexStatusPanel`)
+
+### Fixed
+
+- **Sessions Flash on Reload**: Replace `SESSIONS_CLEAR` + `SESSIONS_BULK_UPSERT` with atomic `SESSIONS_REPLACE` action to prevent brief empty-state flash
+- **Cross-Session Question/Decision Leakage**: Filter `pendingQuestions` and `pendingDecisions` by active session's `runId`
+- **Agent IPC Session Resolution**: Resolve `sessionId` from active sessions for question/decision IPC handlers instead of passing empty string
+- **Ghost Thinking Panels**: Clean up empty/whitespace-only thinking content in streaming reducer to prevent ghost reasoning panels for non-reasoning models
+- **Indexing Stuck in Progress**: Rust indexer now always emits `IndexingCompleted` and `SearchReady` events even for no-op runs
+- **Tantivy Writer Lock Race**: Acquire `writer_lock` during full indexing to prevent `LockBusy` errors from concurrent `reindex_file()` calls
+- **Duplicate Indexing**: Remove redundant `triggerIndex()` call after `createWorkspace()` since the Rust route already spawns background indexing
+- **WebSocket Subscription Cleanup**: Fix `useRustFileWatcher` to call `unsubscribeWorkspace()` on cleanup, preventing leaked subscriptions
+- **Index Status Polling Fallback**: Add periodic polling fallback (5s while indexing, 30s idle) to recover from missed WebSocket events
+- **Session Delete Confirmation Leak**: Clean up `pendingConfirmations` belonging to a deleted session
+- **Auth-Stale WebSocket Reconnect**: Refresh auth token on WebSocket handshake failure instead of entering tight health-check loop
+- **ESLint JSON Corruption**: Strip ANSI escape sequences and terminal control codes from ESLint output before JSON parsing in `readLints` tool
+- **Preload TDZ Crash**: Disable minification and enable `keepNames` in `vite.preload.config.ts` to prevent `const` reordering causing TDZ errors in production builds
+- **Main-Process Auth Headers**: Add auth headers to all `MainRustBackendClient` HTTP requests that were previously unauthenticated
+- **RustBackendClient Init Race**: Await `rustBackend.init()` and check cancellation before updating state to prevent race conditions
+- **MCP ESM Import**: Change `syncMCPSettingsToManager` from `require()` to dynamic `import()` to avoid Vite bundling issues
+- **File Diff Action Shadow**: Rename destructured `action` from `FILE_DIFF_STREAM` payload to `diffAction` to avoid shadowing reducer parameter
+- **SESSIONS_CLEAR Missing State**: Add `fileDiffStreams: {}` reset to prevent stale diff state
+
 ## [1.8.0] - 2026-02-17
 
 ### Added
@@ -278,7 +343,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session persistence with SQLite
 - Conversation branching and history
 
-[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.5.0...v1.6.0

@@ -59,6 +59,20 @@
 
 ## 📢 Recent Updates
 
+### Indexing Config, Auth Lifecycle & UI Polish (v1.9.0 - February 2026)
+
+Stability and polish release with configurable indexing, auth lifecycle hardening, 20+ bug fixes, and a terminal-aesthetic UI refresh.
+
+**Highlights:**
+
+- 🏥 **Session Health Indicator**: Real-time session health status displayed in the chat input bar
+- ⚙️ **Configurable Indexing**: User-defined exclude/include patterns and file watcher toggle for workspace indexing
+- 🔄 **Auth Lifecycle**: Auto-refresh auth tokens on sidecar restart; hot-reload workspace settings with seamless reconnection
+- 🎨 **Text-Based Status Labels**: Replace colored dots with monospace text labels (`[RUN]`, `[IDLE]`, `[OK]`, `[ERR]`) throughout the UI
+- 🚀 **Scroll Performance**: Complete rewrite of chat scroll and virtualized list with ~30fps RAF streaming and direction-aware auto-scroll
+- 🐛 **20+ Bug Fixes**: Session flash on reload, cross-session leakage, ghost thinking panels, Tantivy writer lock race, preload TDZ crash, and more
+- 🔧 **VS 2025 Build Support**: Auto-patching script for Visual Studio 2025 compatibility with `node-gyp`
+
 ### LSP Client Integration & Editor Enhancements (v1.8.0 - February 2026)
 
 Major editor productivity release with full LSP client-side integration and IDE-grade editing tools.
