@@ -32,6 +32,7 @@ import { RoutingBadge } from './RoutingBadge';
 import { DynamicToolIndicator } from './DynamicToolIndicator';
 import { MessageEditDialog } from './MessageEditDialog';
 import { formatTokenUsageEnhanced, formatModelDisplayName } from '../../../utils/messageFormatting';
+import { MENTION_CAPTURE_REGEX } from '../utils/mentionPatterns';
 
 // =============================================================================
 // Types
@@ -94,6 +95,63 @@ const RoleIcon: React.FC<{ role: string }> = memo(({ role }) => {
   return <Bot size={10} className="shrink-0" />;
 });
 RoleIcon.displayName = 'RoleIcon';
+
+/**
+ * Renders user message content with @file mentions styled as inline highlights.
+ * Mention text is rendered with accent color + subtle background to visually
+ * distinguish file references from surrounding prose.
+ */
+const UserMessageContent: React.FC<{ content: string }> = memo(({ content }) => {
+  const segments = useMemo(() => {
+    const parts: Array<{ type: 'text' | 'mention'; content: string; path?: string; offset: number }> = [];
+    let lastIndex = 0;
+
+    MENTION_CAPTURE_REGEX.lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = MENTION_CAPTURE_REGEX.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', content: content.slice(lastIndex, match.index), offset: lastIndex });
+      }
+      parts.push({ type: 'mention', content: match[0], path: match[1], offset: match.index });
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < content.length) {
+      parts.push({ type: 'text', content: content.slice(lastIndex), offset: lastIndex });
+    }
+
+    return parts;
+  }, [content]);
+
+  // No mentions — fast path, plain text
+  if (segments.length === 1 && segments[0].type === 'text') {
+    return <span className="whitespace-pre-wrap break-words">{content}</span>;
+  }
+
+  return (
+    <span className="whitespace-pre-wrap break-words">
+      {segments.map((seg) => {
+        if (seg.type === 'mention') {
+          return (
+            <span
+              key={seg.offset}
+              className={cn(
+                'text-[var(--color-accent-primary)]',
+                'bg-[var(--color-accent-primary)]/8',
+                'rounded-[2px] px-[2px]',
+              )}
+            >
+              {seg.content}
+            </span>
+          );
+        }
+        return <React.Fragment key={seg.offset}>{seg.content}</React.Fragment>;
+      })}
+    </span>
+  );
+});
+UserMessageContent.displayName = 'UserMessageContent';
 
 // =============================================================================
 // Main Component
@@ -258,7 +316,7 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
               {isAssistant ? (
                 <MarkdownRenderer content={message.content} compact />
               ) : (
-                <span className="whitespace-pre-wrap break-words">{message.content}</span>
+                <UserMessageContent content={message.content} />
               )}
               {/* Streaming cursor */}
               {isStreaming && isAssistant && (

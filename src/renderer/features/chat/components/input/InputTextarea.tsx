@@ -13,6 +13,8 @@
  */
 import React, { memo, useState, useEffect, useCallback, forwardRef, useRef, useLayoutEffect } from 'react';
 import { cn } from '../../../../utils/cn';
+import { MentionHighlightOverlay } from './MentionHighlightOverlay';
+import { HAS_MENTION_REGEX } from '../../utils/mentionPatterns';
 
 // Debounce delay for selection changes (ms) - reduces re-renders during fast typing
 const SELECTION_DEBOUNCE_MS = 50;
@@ -59,7 +61,6 @@ const BlinkingCursor: React.FC<{ visible: boolean }> = memo(({ visible }) => (
       'transition-opacity duration-100 ease-in-out',
       visible ? 'opacity-100' : 'opacity-15'
     )}
-    style={{ willChange: 'opacity' }}
     aria-hidden="true"
   />
 ));
@@ -149,8 +150,13 @@ export const InputTextarea = memo(forwardRef<HTMLTextAreaElement, InputTextareaP
 }, ref) => {
   const [isFocused, setIsFocused] = useState(false);
   const [cursorVisible, setCursorVisible] = useState(true);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
   const internalRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = (ref as React.RefObject<HTMLTextAreaElement>) || internalRef;
+
+  // Detect if the value contains @file mentions for overlay
+  const hasMentions = HAS_MENTION_REGEX.test(value);
   
   // Blinking cursor effect - only when focused and empty
   useEffect(() => {
@@ -221,13 +227,30 @@ export const InputTextarea = memo(forwardRef<HTMLTextAreaElement, InputTextareaP
     }
     
     onChange(newValue);
-    // Debounce selection change during typing
-    debouncedSelectionChange(e.target.selectionStart ?? newValue.length);
-  }, [onChange, debouncedSelectionChange, maxLength]);
+    // Cursor position during typing must be synchronous (not debounced)
+    // so @ mention detection reacts instantly to character input.
+    const pos = e.target.selectionStart ?? newValue.length;
+    lastSyncCursorRef.current = pos;
+    onSelectionChange?.(pos);
+  }, [onChange, onSelectionChange, maxLength]);
+
+  // Scroll sync handler for mention overlay
+  const handleScroll = useCallback((e: React.UIEvent<HTMLTextAreaElement>) => {
+    const target = e.currentTarget;
+    setScrollTop(target.scrollTop);
+    setScrollLeft(target.scrollLeft);
+  }, []);
+
+  // Track last cursor position reported by handleChange to avoid
+  // double-firing from onSelect which fires on the same keystroke.
+  const lastSyncCursorRef = useRef<number>(-1);
 
   const handleSelect = useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
     const target = e.target as HTMLTextAreaElement;
-    debouncedSelectionChange(target.selectionStart ?? 0);
+    const pos = target.selectionStart ?? 0;
+    // Skip if handleChange already reported this exact position synchronously
+    if (pos === lastSyncCursorRef.current) return;
+    debouncedSelectionChange(pos);
   }, [debouncedSelectionChange]);
   
   const displayPlaceholder = hasWorkspace ? placeholder : noWorkspacePlaceholder;
@@ -248,17 +271,20 @@ export const InputTextarea = memo(forwardRef<HTMLTextAreaElement, InputTextareaP
           autoCorrect="off"
           autoCapitalize="off"
           className={cn(
-            'w-full bg-transparent text-[var(--color-text-primary)] text-xs leading-relaxed',
+            'w-full bg-transparent text-xs leading-relaxed',
             'min-h-[20px] resize-none',
             'outline-none caret-[var(--color-accent-primary)]',
             'scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent',
-            'font-mono',
+            'font-mono relative',
             'transition-[height] duration-100 ease-out',
-            !hasWorkspace && 'cursor-not-allowed opacity-50'
+            !hasWorkspace && 'cursor-not-allowed opacity-50',
+            // When mentions are present, make text transparent so overlay shows instead
+            hasMentions ? 'text-transparent z-[2]' : 'text-[var(--color-text-primary)] z-[1]'
           )}
           style={{ 
             maxHeight: `${maxHeight}px`,
             overflowY: 'hidden', // Controlled by useLayoutEffect
+            padding: '2px', // Explicit padding — must match MentionHighlightOverlay
           }}
           placeholder=""
           rows={MIN_ROWS}
@@ -268,6 +294,7 @@ export const InputTextarea = memo(forwardRef<HTMLTextAreaElement, InputTextareaP
           onKeyUp={handleSelect}
           onClick={handleSelect}
           onSelect={handleSelect}
+          onScroll={handleScroll}
           onPaste={onPaste}
           onFocus={handleFocus}
           onBlur={handleBlur}
@@ -278,6 +305,14 @@ export const InputTextarea = memo(forwardRef<HTMLTextAreaElement, InputTextareaP
           aria-multiline="true"
           maxLength={maxLength}
         />
+        {/* Mention highlight overlay — renders styled text over @file references */}
+        {hasMentions && (
+          <MentionHighlightOverlay
+            value={value}
+            scrollTop={scrollTop}
+            scrollLeft={scrollLeft}
+          />
+        )}
         {showCursor && <BlinkingCursor visible={cursorVisible} />}
         <PlaceholderText text={displayPlaceholder} show={showPlaceholder || (value.length === 0)} disabled={disabled || !hasWorkspace} isContextual={isContextualPlaceholder} />
         {maxLength && (
