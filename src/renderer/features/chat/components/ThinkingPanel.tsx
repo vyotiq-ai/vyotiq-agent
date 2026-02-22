@@ -79,10 +79,10 @@ const ThinkingPanelInternal: React.FC<ThinkingPanelProps> = ({
   return (
     <div
       className={cn(
-        'rounded border font-mono text-[10px]',
+        'rounded-sm border font-mono text-[10px]',
         'border-[var(--color-border-subtle)]',
         'bg-[var(--color-surface-1)]',
-        'transition-all duration-200 ease-out',
+        'transition-colors duration-200 ease-out',
         className,
       )}
     >

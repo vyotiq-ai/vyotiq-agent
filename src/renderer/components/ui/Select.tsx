@@ -195,7 +195,7 @@ export const Select: React.FC<SelectProps> = ({
           'w-full flex items-center justify-between gap-2',
           'bg-[var(--color-surface-1)] text-[var(--color-text-primary)]',
           'border border-[var(--color-border-subtle)] rounded-sm',
-          'transition-all duration-150',
+          'transition-[border-color,box-shadow,background-color] duration-150',
           'hover:border-[var(--color-border-default)]',
           'focus:outline-none focus-visible:border-[var(--color-accent-primary)]/50 focus-visible:shadow-[0_0_0_2px_rgba(52,211,153,0.1)]',
           disabled && 'opacity-50 cursor-not-allowed',

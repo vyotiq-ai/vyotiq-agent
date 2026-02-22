@@ -245,7 +245,7 @@ export const QuickOpen: React.FC<QuickOpenProps> = memo(({
     >
       <div
         className={cn(
-          'w-full max-w-[520px] rounded-lg overflow-hidden',
+          'w-full max-w-[520px] rounded-sm overflow-hidden',
           'bg-[var(--color-surface-raised)] border border-[var(--color-border-subtle)]/60',
           'shadow-2xl'
         )}

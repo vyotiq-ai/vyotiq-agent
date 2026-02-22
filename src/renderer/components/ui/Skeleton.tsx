@@ -234,7 +234,7 @@ export const SkeletonCard: React.FC<{
 }> = memo(({ className, showHeader = true, showFooter = false, contentLines = 3 }) => (
   <div
     className={cn(
-      'p-4 rounded-lg border border-[var(--color-border-subtle)]',
+      'p-4 rounded-sm border border-[var(--color-border-subtle)]',
       'bg-[var(--color-surface-1)]',
       className
     )}
@@ -279,7 +279,7 @@ export const SkeletonMessage: React.FC<{
       <Skeleton variant="text" width="30%" height={12} className="mb-2" />
       <div
         className={cn(
-          'p-3 rounded-lg',
+          'p-3 rounded-sm',
           type === 'user'
             ? 'bg-[var(--color-accent-primary)]/10 ml-auto'
             : 'bg-[var(--color-surface-2)]'
@@ -346,7 +346,7 @@ export const SkeletonSession: React.FC<{
 }> = memo(({ className }) => (
   <div
     className={cn(
-      'p-3 rounded-lg border border-[var(--color-border-subtle)]/50',
+      'p-3 rounded-sm border border-[var(--color-border-subtle)]/50',
       className
     )}
   >

@@ -370,7 +370,7 @@ export const ChatInput: React.FC = memo(() => {
         className={cn(
           'terminal-container relative w-full overflow-visible',
           'bg-[var(--color-surface-editor)]',
-          'border-t border-[var(--color-border-subtle)]/60',
+          'border-t border-[var(--color-border-default)]/60',
           'font-mono',
           'transition-all duration-200'
         )}
@@ -417,7 +417,7 @@ export const ChatInput: React.FC = memo(() => {
         )}
 
         {/* Composer */}
-        <div className="px-2 py-1">
+        <div className="px-2.5 py-1.5">
           <div className="flex items-start gap-2">
             <div className="flex-1 min-w-0 relative">
               <InputTextarea

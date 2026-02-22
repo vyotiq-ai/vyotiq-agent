@@ -13,7 +13,7 @@ import { useWorkspace } from '../../../state/WorkspaceProvider';
 import { cn } from '../../../utils/cn';
 
 export const WorkspaceSwitcher: React.FC = () => {
-  const { workspacePath, workspaceName, recentPaths, selectWorkspaceFolder, setWorkspacePath } =
+  const { workspacePath, workspaceName, recentPaths, selectWorkspaceFolder, setWorkspacePath, removeRecentPath } =
     useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -53,6 +53,14 @@ export const WorkspaceSwitcher: React.FC = () => {
     setIsOpen(false);
   }, [selectWorkspaceFolder]);
 
+  const handleRemove = useCallback(
+    (e: React.MouseEvent, path: string) => {
+      e.stopPropagation();
+      removeRecentPath(path);
+    },
+    [removeRecentPath],
+  );
+
   // Derive short name from path
   const getShortName = (p: string) => p.split(/[/\\]/).pop() || p;
 
@@ -62,21 +70,25 @@ export const WorkspaceSwitcher: React.FC = () => {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'flex items-center gap-1.5 px-2 py-1 rounded-sm text-[10px] font-mono transition-colors max-w-[200px] no-drag',
+          'flex items-center gap-1 px-1.5 py-0.5 rounded-[var(--radius-sm)] text-[10px] font-mono max-w-[200px] no-drag cursor-pointer',
+          'transition-all duration-100',
           'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
-          'hover:bg-[var(--color-surface-2)]',
-          isOpen && 'bg-[var(--color-surface-2)] text-[var(--color-text-primary)]',
+          'hover:bg-[var(--color-surface-3)]/50',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+          isOpen && 'bg-[var(--color-surface-3)]/60 text-[var(--color-text-primary)]',
         )}
         type="button"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
       >
         <span className="text-[var(--color-accent-primary)] shrink-0">λ</span>
         <span className="truncate">{workspaceName}</span>
-        <span className={cn('text-[9px] text-[var(--color-text-dim)] shrink-0 transition-transform', isOpen && 'rotate-180')}>▾</span>
+        <span className={cn('text-[9px] text-[var(--color-text-dim)] shrink-0 transition-transform duration-100', isOpen && 'rotate-180')}>▾</span>
       </button>
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 min-w-[260px] max-w-[360px] bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] rounded-sm shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150 font-mono">
+        <div className="absolute top-full left-0 mt-1 min-w-[260px] max-w-[360px] bg-[var(--color-surface-1)] border border-[var(--color-border-default)]/60 rounded-[var(--radius-md)] shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150 font-mono backdrop-blur-lg">
           {/* Current workspace */}
           {workspacePath && (
             <div className="px-3 py-2 border-b border-[var(--color-border-subtle)]">
@@ -117,30 +129,41 @@ export const WorkspaceSwitcher: React.FC = () => {
                 .filter((p: string) => p !== workspacePath)
                 .slice(0, 8)
                 .map((path: string, idx: number) => (
-                  <button
+                  <div
                     key={path}
-                    onClick={() => handleSelect(path)}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--color-surface-3)] transition-colors group"
+                    className="flex items-center group"
                   >
-                    <span className="text-[9px] text-[var(--color-text-dim)] w-3 text-right shrink-0 tabular-nums">{idx + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[10px] text-[var(--color-text-primary)] truncate group-hover:text-[var(--color-accent-primary)] transition-colors">
-                        {getShortName(path)}
+                    <button
+                      onClick={() => handleSelect(path)}
+                      className="flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 text-left rounded-[var(--radius-sm)] hover:bg-[var(--color-surface-3)]/70 transition-colors cursor-pointer"
+                    >
+                      <span className="text-[9px] text-[var(--color-text-dim)] w-3 text-right shrink-0 tabular-nums">{idx + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] text-[var(--color-text-primary)] truncate group-hover:text-[var(--color-accent-primary)] transition-colors">
+                          {getShortName(path)}
+                        </div>
+                        <div className="text-[9px] text-[var(--color-text-dim)] truncate">
+                          {path}
+                        </div>
                       </div>
-                      <div className="text-[9px] text-[var(--color-text-dim)] truncate">
-                        {path}
-                      </div>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      onClick={(e) => handleRemove(e, path)}
+                      className="shrink-0 p-1 mr-1.5 rounded-sm text-[var(--color-text-dim)] opacity-0 group-hover:opacity-100 hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]/70 transition-all cursor-pointer"
+                      title="Remove from recents"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
                 ))}
             </div>
           )}
 
           {/* Open folder action */}
-          <div className="border-t border-[var(--color-border-subtle)] p-1">
+          <div className="border-t border-[var(--color-border-subtle)]/60 p-1">
             <button
               onClick={handleOpenNew}
-              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-sm text-[10px] text-[var(--color-accent-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] text-[10px] text-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary)]/8 transition-colors cursor-pointer"
             >
               <span className="text-[var(--color-accent-primary)]">+</span>
               open folder

@@ -102,9 +102,9 @@ export const InputStatusBar: React.FC<InputStatusBarProps> = memo(({
       id={id}
       className={cn(
         'flex items-center justify-between',
-        'px-2 py-1',
-        'bg-[var(--color-surface-1)]/40',
-        'border-t border-[var(--color-border-subtle)]/20',
+        'px-2.5 py-1',
+        'bg-[var(--color-surface-1)]/30',
+        'border-t border-[var(--color-border-subtle)]/30',
         'text-[9px] font-mono text-[var(--color-text-secondary)]',
         'transition-colors duration-200',
         'overflow-hidden',
@@ -119,7 +119,7 @@ export const InputStatusBar: React.FC<InputStatusBarProps> = memo(({
       </div>
       
       {/* Right side - info and hints */}
-      <div className="flex items-center gap-3 flex-shrink-0 ml-3 whitespace-nowrap">
+      <div className="flex items-center gap-2.5 flex-shrink-0 ml-3 whitespace-nowrap">
         {rightContent}
         
         {/* Attachment count */}

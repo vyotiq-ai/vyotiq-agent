@@ -41,41 +41,81 @@ interface TooltipProps {
 // Position Calculator
 // =============================================================================
 
+/** Opposite placement for auto-flip */
+const flipMap: Record<TooltipPlacement, TooltipPlacement> = {
+    top: 'bottom',
+    bottom: 'top',
+    left: 'right',
+    right: 'left',
+};
+
+function computePosition(
+    triggerRect: DOMRect,
+    tooltipRect: DOMRect,
+    placement: TooltipPlacement,
+    offset: number,
+): { top: number; left: number } {
+    switch (placement) {
+        case 'top':
+            return {
+                top: triggerRect.top - tooltipRect.height - offset,
+                left: triggerRect.left + (triggerRect.width - tooltipRect.width) / 2,
+            };
+        case 'bottom':
+            return {
+                top: triggerRect.bottom + offset,
+                left: triggerRect.left + (triggerRect.width - tooltipRect.width) / 2,
+            };
+        case 'left':
+            return {
+                top: triggerRect.top + (triggerRect.height - tooltipRect.height) / 2,
+                left: triggerRect.left - tooltipRect.width - offset,
+            };
+        case 'right':
+            return {
+                top: triggerRect.top + (triggerRect.height - tooltipRect.height) / 2,
+                left: triggerRect.right + offset,
+            };
+    }
+}
+
 function getTooltipPosition(
     triggerRect: DOMRect,
     tooltipRect: DOMRect,
     placement: TooltipPlacement,
     offset = 8
 ): { top: number; left: number } {
-    const positions = {
-        top: {
-            top: triggerRect.top - tooltipRect.height - offset,
-            left: triggerRect.left + (triggerRect.width - tooltipRect.width) / 2,
-        },
-        bottom: {
-            top: triggerRect.bottom + offset,
-            left: triggerRect.left + (triggerRect.width - tooltipRect.width) / 2,
-        },
-        left: {
-            top: triggerRect.top + (triggerRect.height - tooltipRect.height) / 2,
-            left: triggerRect.left - tooltipRect.width - offset,
-        },
-        right: {
-            top: triggerRect.top + (triggerRect.height - tooltipRect.height) / 2,
-            left: triggerRect.right + offset,
-        },
-    };
-
-    const pos = positions[placement];
-
-    // Boundary checks
     const padding = 8;
-    const viewport = {
-        width: window.innerWidth,
-        height: window.innerHeight,
-    };
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
 
-    // Prevent overflow
+    let pos = computePosition(triggerRect, tooltipRect, placement, offset);
+
+    // Auto-flip when tooltip would overflow on the placement axis
+    const overflowsTop = pos.top < padding;
+    const overflowsBottom = pos.top + tooltipRect.height > viewport.height - padding;
+    const overflowsLeft = pos.left < padding;
+    const overflowsRight = pos.left + tooltipRect.width > viewport.width - padding;
+
+    const needsFlip =
+        (placement === 'top' && overflowsTop) ||
+        (placement === 'bottom' && overflowsBottom) ||
+        (placement === 'left' && overflowsLeft) ||
+        (placement === 'right' && overflowsRight);
+
+    if (needsFlip) {
+        const flipped = computePosition(triggerRect, tooltipRect, flipMap[placement], offset);
+        // Only flip if the opposite side has room
+        const flippedFits =
+            flipped.top >= padding &&
+            flipped.top + tooltipRect.height <= viewport.height - padding &&
+            flipped.left >= padding &&
+            flipped.left + tooltipRect.width <= viewport.width - padding;
+        if (flippedFits) {
+            pos = flipped;
+        }
+    }
+
+    // Final boundary clamp (for the cross-axis and any edge cases)
     if (pos.left < padding) pos.left = padding;
     if (pos.left + tooltipRect.width > viewport.width - padding) {
         pos.left = viewport.width - tooltipRect.width - padding;
@@ -175,7 +215,7 @@ export function Tooltip({
                         pointerEvents: 'none',
                     }}
                     className={cn(
-                        'px-2 py-1.5 bg-[var(--color-surface-header)] border border-[var(--color-border-subtle)] shadow-lg shadow-black/40',
+                        'px-2 py-1.5 rounded-sm bg-[var(--color-surface-header)] border border-[var(--color-border-subtle)] shadow-lg shadow-black/40',
                         'font-mono text-[10px] text-[var(--color-text-primary)]',
                         'animate-in fade-in-0 zoom-in-95 duration-150',
                         className
@@ -184,7 +224,7 @@ export function Tooltip({
                     <div className="flex items-center gap-2">
                         <span>{content}</span>
                         {shortcut && (
-                            <kbd className="text-[9px] text-[var(--color-text-muted)] bg-[var(--color-surface-2)]/50 px-1 py-0.5 border border-[var(--color-border-default)]/50">
+                            <kbd className="text-[9px] text-[var(--color-text-muted)] bg-[var(--color-surface-2)]/50 px-1 py-0.5 rounded-sm border border-[var(--color-border-default)]/50">
                                 {shortcut}
                             </kbd>
                         )}
@@ -212,7 +252,7 @@ export function Kbd({ children, className }: KbdProps) {
                 'inline-flex items-center justify-center',
                 'font-mono text-[9px] text-[var(--color-text-secondary)]',
                 'bg-[var(--color-surface-2)]/60 border border-[var(--color-border-subtle)]',
-                'px-1.5 py-0.5 min-w-[20px]',
+                'px-1.5 py-0.5 min-w-[20px] rounded-sm',
                 className
             )}
         >

@@ -18,6 +18,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { useCopyTimer } from '../../hooks/useCopyTimer';
 
 interface DataViewerProps {
   /** Data to display */
@@ -85,7 +86,7 @@ const TreeNode: React.FC<TreeNodeProps> = memo(({
   compact,
 }) => {
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
-  const [copied, setCopied] = useState(false);
+  const { copied, triggerCopy } = useCopyTimer();
 
   const type = getType(value);
   const isExpandable = type === 'object' || type === 'array';
@@ -93,9 +94,8 @@ const TreeNode: React.FC<TreeNodeProps> = memo(({
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(JSON.stringify(value, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [value]);
+    triggerCopy();
+  }, [value, triggerCopy]);
 
   const renderValue = () => {
     switch (type) {
@@ -281,13 +281,12 @@ export const DataViewer: React.FC<DataViewerProps> = memo(({
   compact = false,
   className,
 }) => {
-  const [copied, setCopied] = useState(false);
+  const { copied, triggerCopy } = useCopyTimer();
 
   const handleCopyAll = useCallback(async () => {
     await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [data]);
+    triggerCopy();
+  }, [data, triggerCopy]);
 
   const type = getType(data);
   const summary = useMemo(() => {
@@ -302,7 +301,7 @@ export const DataViewer: React.FC<DataViewerProps> = memo(({
 
   return (
     <div className={cn(
-      "rounded-lg border border-[var(--color-border-subtle)] overflow-hidden",
+      "rounded-sm border border-[var(--color-border-subtle)] overflow-hidden",
       "bg-[var(--color-surface-1)]",
       className
     )}>

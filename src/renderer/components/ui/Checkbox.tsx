@@ -56,7 +56,7 @@ export const Checkbox: React.FC<CheckboxProps> = ({
             onClick={handleChange}
             className={cn(
                 'flex items-center justify-center flex-shrink-0',
-                'border font-bold transition-all duration-150',
+                'border font-bold transition-colors duration-150',
                 checkboxSizes[size],
                 checked || indeterminate
                     ? 'bg-[var(--color-accent-primary)]/20 border-[var(--color-accent-primary)]/40 text-[var(--color-accent-primary)]'

@@ -77,13 +77,14 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
       if (e.key === 'Escape') onClose();
     };
     if (open) {
+      const prevOverflow = document.body.style.overflow;
       document.addEventListener('keydown', handleEscape);
       document.body.style.overflow = 'hidden';
+      return () => {
+        document.removeEventListener('keydown', handleEscape);
+        document.body.style.overflow = prevOverflow;
+      };
     }
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
-    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -97,6 +98,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ 
         )}
         role="dialog"
         aria-modal="true"
+        aria-label="Keyboard shortcuts"
       >
         {/* Terminal Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]">

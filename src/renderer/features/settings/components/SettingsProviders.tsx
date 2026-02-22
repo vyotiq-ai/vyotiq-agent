@@ -54,7 +54,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   return (
     <div
       className={cn(
-        "border transition-all duration-150 font-mono",
+        "border transition-colors duration-150 font-mono",
         isEnabled 
           ? "border-[var(--color-border-subtle)] bg-[var(--color-surface-header)]" 
           : "border-[var(--color-border-subtle)]/50 bg-[var(--color-surface-1)] opacity-60"

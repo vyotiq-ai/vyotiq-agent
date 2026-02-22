@@ -1,14 +1,13 @@
 /**
  * EmptyState Component
  * 
- * Displayed when a session has no messages yet.
- * Shows a minimal terminal-style prompt encouraging the user to start chatting.
+ * Displayed when no session is active or no workspace is selected.
+ * Ultra-minimal: centered lambda + a single contextual hint line.
  * Uses shared welcome hints for consistency with SessionWelcome.
  */
-import React, { memo, useState, useEffect } from 'react';
-import { Terminal } from 'lucide-react';
+import React, { memo, useState, useEffect, useRef } from 'react';
 import { cn } from '../../../utils/cn';
-import { EMPTY_STATE_HINTS, getContextualHint } from '../utils/welcomeHints';
+import { getContextualHint } from '../utils/welcomeHints';
 
 interface EmptyStateProps {
   /** Whether a workspace is currently active */
@@ -25,15 +24,29 @@ const EmptyStateInternal: React.FC<EmptyStateProps> = ({
   className,
 }) => {
   const [hintIndex, setHintIndex] = useState(0);
+  const [visible, setVisible] = useState(false);
+  const [fade, setFade] = useState(true);
+  const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cycle hints with a longer interval for a calm feel
   useEffect(() => {
-    if (!hasWorkspace || !hasSession) return;
+    const t = setTimeout(() => setVisible(true), 80);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Cycle hints with fade transition
+  useEffect(() => {
     const timer = setInterval(() => {
-      setHintIndex(prev => prev + 1);
-    }, 6000);
-    return () => clearInterval(timer);
-  }, [hasWorkspace, hasSession]);
+      setFade(false);
+      fadeTimeoutRef.current = setTimeout(() => {
+        setHintIndex(prev => prev + 1);
+        setFade(true);
+      }, 250);
+    }, 5000);
+    return () => {
+      clearInterval(timer);
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+    };
+  }, []);
 
   const hint = getContextualHint(hasWorkspace, hasSession, hintIndex);
 
@@ -41,19 +54,27 @@ const EmptyStateInternal: React.FC<EmptyStateProps> = ({
     <div
       className={cn(
         'flex flex-col items-center justify-center h-full select-none',
-        'text-[var(--color-text-muted)] font-mono',
+        'font-mono',
+        'transition-all duration-500 ease-out',
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
         className,
       )}
     >
-      <Terminal
-        size={20}
-        className="mb-3 opacity-30"
-        style={{ color: 'var(--color-accent-primary)' }}
-      />
-      <span className="text-[11px] tracking-wide opacity-50">
-        {hint}
-        <span className="animate-blink ml-0.5">_</span>
-      </span>
+      <div className="flex flex-col items-center gap-4">
+        <span 
+          className="text-2xl font-bold leading-none text-[var(--color-accent-primary)] opacity-15"
+          aria-hidden="true"
+        >
+          λ
+        </span>
+        <span className={cn(
+          'text-[10px] text-[var(--color-text-dim)] tracking-wide opacity-40',
+          'transition-opacity duration-250 ease-in-out',
+          fade ? 'opacity-40' : 'opacity-0',
+        )}>
+          {hint}
+        </span>
+      </div>
     </div>
   );
 };

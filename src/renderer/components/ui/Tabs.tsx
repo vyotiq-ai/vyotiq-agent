@@ -128,7 +128,7 @@ export function TabTrigger({
             onClick={() => setActiveTab(value)}
             className={cn(
                 'flex items-center gap-1.5 text-[10px] transition-all duration-150',
-                'disabled:opacity-40 disabled:cursor-not-allowed',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
                 // Default variant
                 variant === 'default' && [
                     'px-3 py-2 border-b-2 -mb-[1px]',
@@ -263,7 +263,7 @@ export function VerticalTabTrigger({
             onClick={() => setActiveTab(value)}
             className={cn(
                 'flex items-center gap-2 text-[10px] px-2.5 py-1.5 text-left transition-all duration-150',
-                'disabled:opacity-40 disabled:cursor-not-allowed',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
                 'border-l-2',
                 isActive 
                     ? 'border-[var(--color-accent-primary)] text-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/5' 

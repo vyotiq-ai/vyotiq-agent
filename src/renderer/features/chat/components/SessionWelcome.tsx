@@ -1,28 +1,72 @@
 /**
  * Session Welcome Component
  * 
- * Displays a welcome message when a session is active but has no messages yet.
- * Clean terminal aesthetic — no decorative symbols, just terminal flow.
- * Includes quick-start action cards for common tasks.
+ * Displayed when a session is active but has no messages yet.
+ * Clean, minimal terminal aesthetic — centered lambda symbol with a
+ * softly cycling contextual hint. Quick-start actions appear as
+ * understated inline text that animate in after a brief delay.
  * 
  * Performance optimizations:
  * - Memoized component to prevent unnecessary re-renders
  * - Cleanup of intervals on unmount
  * - Stable animation timing
+ * - useCallback for event dispatch
  */
-import React, { memo, useState, useEffect, useCallback } from 'react';
-import { Bug, Code, FileSearch, Keyboard } from 'lucide-react';
-import { SESSION_HINTS } from '../utils/welcomeHints';
+import React, { memo, useState, useEffect, useCallback, useRef } from 'react';
+import { SESSION_HINTS, getRandomHintIndex } from '../utils/welcomeHints';
 import { cn } from '../../../utils/cn';
 
-/**
- * Quick-start action definitions
- */
+// =============================================================================
+// Quick-start definitions — minimal, label-only
+// =============================================================================
+
 const QUICK_STARTS = [
-  { id: 'fix', label: 'fix a bug', icon: Bug, prompt: 'Help me debug and fix a bug in my codebase. I\'ll describe the issue.' },
-  { id: 'explain', label: 'explain code', icon: FileSearch, prompt: 'Explain this codebase architecture and how the major components work together.' },
-  { id: 'refactor', label: 'refactor code', icon: Code, prompt: 'Help me refactor and improve the code quality in my project.' },
+  { id: 'debug', label: 'debug an issue', prompt: 'Help me debug and fix a bug in my codebase. I\'ll describe the issue.' },
+  { id: 'explain', label: 'explain this codebase', prompt: 'Explain this codebase architecture and how the major components work together.' },
+  { id: 'refactor', label: 'refactor code', prompt: 'Help me refactor and improve the code quality in my project.' },
+  { id: 'build', label: 'build something new', prompt: 'Help me implement a new feature. I\'ll describe what I need.' },
+  { id: 'test', label: 'write tests', prompt: 'Help me write comprehensive tests for my codebase.' },
 ] as const;
+
+// =============================================================================
+// Animated hint that cycles through SESSION_HINTS with a fade transition
+// =============================================================================
+
+const CyclingHint: React.FC = memo(() => {
+  const [index, setIndex] = useState(() => getRandomHintIndex());
+  const [fade, setFade] = useState(true);
+  const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFade(false);
+      fadeTimeoutRef.current = setTimeout(() => {
+        setIndex(prev => (prev + 1) % SESSION_HINTS.length);
+        setFade(true);
+      }, 300);
+    }, 5000);
+    return () => {
+      clearInterval(interval);
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+    };
+  }, []);
+
+  return (
+    <span
+      className={cn(
+        'transition-opacity duration-300 ease-in-out',
+        fade ? 'opacity-100' : 'opacity-0',
+      )}
+    >
+      {SESSION_HINTS[index]}
+    </span>
+  );
+});
+CyclingHint.displayName = 'CyclingHint';
+
+// =============================================================================
+// Session Welcome
+// =============================================================================
 
 interface SessionWelcomeProps {
   /** Optional callback to pre-fill the chat input */
@@ -30,89 +74,89 @@ interface SessionWelcomeProps {
 }
 
 const SessionWelcomeComponent: React.FC<SessionWelcomeProps> = ({ onQuickStart }) => {
-  const displayedText = SESSION_HINTS[0] ?? 'type a message to begin';
   const [visible, setVisible] = useState(false);
+  const [actionsVisible, setActionsVisible] = useState(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 80);
-    return () => clearTimeout(t);
+    mountedRef.current = true;
+    const t1 = setTimeout(() => {
+      if (mountedRef.current) setVisible(true);
+    }, 60);
+    const t2 = setTimeout(() => {
+      if (mountedRef.current) setActionsVisible(true);
+    }, 400);
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, []);
 
   const handleQuickStart = useCallback((prompt: string) => {
     if (onQuickStart) {
       onQuickStart(prompt);
     } else {
-      // Dispatch a custom event so ChatInput can pick it up without prop drilling
       window.dispatchEvent(new CustomEvent('vyotiq:quick-start', { detail: prompt }));
     }
   }, [onQuickStart]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-[200px] font-mono px-6">
+    <div className="flex flex-col items-center justify-center h-full min-h-[200px] font-mono px-6 select-none">
       <div className={cn(
-        'text-left max-w-md w-full transition-all duration-300',
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1'
+        'flex flex-col items-center gap-6 max-w-sm w-full',
+        'transition-all duration-500 ease-out',
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3',
       )}>
-        {/* Brand symbol */}
-        <div className="flex items-center gap-3 mb-5">
-          <span className="text-[var(--color-accent-primary)] text-lg font-semibold leading-none opacity-50">λ</span>
-          <span className="text-[12px] text-[var(--color-text-secondary)]/50 tracking-widest uppercase">new session</span>
-        </div>
+        {/* Lambda symbol */}
+        <div className="flex flex-col items-center gap-4">
+          <span
+            className="text-3xl font-bold leading-none text-[var(--color-accent-primary)] opacity-25"
+            aria-hidden="true"
+          >
+            λ
+          </span>
 
-        {/* Hint text */}
-        <div className="pl-7 mb-2">
-          <div className="text-[10px] text-[var(--color-text-tertiary)]/60 leading-relaxed">
-            {displayedText}
+          {/* Cycling hint */}
+          <div className="text-[11px] text-[var(--color-text-tertiary)] tracking-wide text-center leading-relaxed h-4">
+            <CyclingHint />
           </div>
         </div>
 
-        {/* Quick-start action cards */}
-        {onQuickStart && (
-          <div className="pl-7 mb-3 flex flex-wrap gap-1.5">
-            {QUICK_STARTS.map((qs) => {
-              const Icon = qs.icon;
-              return (
-                <button
-                  key={qs.id}
-                  type="button"
-                  onClick={() => handleQuickStart(qs.prompt)}
-                  className={cn(
-                    'flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm',
-                    'text-[9px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]',
-                    'bg-[var(--color-surface-2)]/40 hover:bg-[var(--color-surface-2)]',
-                    'border border-[var(--color-border-subtle)]/30 hover:border-[var(--color-border-subtle)]',
-                    'transition-all duration-150',
-                    'focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)] focus-visible:outline-none',
-                  )}
-                >
-                  <Icon size={10} className="shrink-0 opacity-60" />
-                  {qs.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Input prompt hint */}
-        <div className="pl-7">
-          <span className="text-[10px] text-[var(--color-text-dim)]/40">
-            type a message below to get started
-          </span>
+        {/* Quick-start actions — subtle inline links */}
+        <div className={cn(
+          'flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 mt-2',
+          'transition-all duration-500 ease-out',
+          actionsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+        )}>
+          {QUICK_STARTS.map((qs, idx) => (
+            <React.Fragment key={qs.id}>
+              {idx > 0 && (
+                <span className="text-[9px] text-[var(--color-text-dim)] opacity-20 select-none" aria-hidden="true">
+                  ·
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => handleQuickStart(qs.prompt)}
+                className={cn(
+                  'text-[10px] text-[var(--color-text-muted)]',
+                  'hover:text-[var(--color-accent-primary)]',
+                  'transition-colors duration-150',
+                  'focus-visible:outline-none focus-visible:text-[var(--color-accent-primary)]',
+                  'active:opacity-70',
+                )}
+              >
+                {qs.label}
+              </button>
+            </React.Fragment>
+          ))}
         </div>
 
-        {/* Keyboard shortcut hint */}
-        <div className="pl-7 mt-1">
-          <span className="inline-flex items-center gap-1 text-[9px] text-[var(--color-text-dim)]/30">
-            <Keyboard size={9} className="opacity-50" />
-            Ctrl+K for commands
-          </span>
-        </div>
-
-        {/* Waiting cursor */}
-        <div className="flex items-center gap-2 mt-5 pl-2">
-          <span className="text-[var(--color-accent-primary)] text-xs opacity-30">λ</span>
-          <span className="inline-block w-[5px] h-[11px] bg-[var(--color-accent-primary)]/30 animate-blink rounded-[1px]" />
-        </div>
+        {/* Keyboard hint */}
+        <span className="text-[9px] text-[var(--color-text-dim)] opacity-30 mt-1 tracking-wide">
+          ctrl+k commands
+        </span>
       </div>
     </div>
   );

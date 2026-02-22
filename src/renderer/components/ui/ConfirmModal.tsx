@@ -154,7 +154,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
       <div className="flex items-start gap-4">
         {/* Icon */}
         <div className={cn(
-          'flex-shrink-0 p-2 rounded-lg bg-[var(--color-surface-2)]',
+          'flex-shrink-0 p-2 rounded-sm bg-[var(--color-surface-2)]',
           config.iconClass
         )}>
           {config.icon}

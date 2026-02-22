@@ -142,7 +142,7 @@ export const SplitPane: React.FC<SplitPaneProps> = memo(({
       className={cn(
         'flex',
         isHorizontal ? 'flex-row' : 'flex-col',
-        isDragging && 'select-none cursor-col-resize',
+        isDragging && `select-none ${isHorizontal ? 'cursor-col-resize' : 'cursor-row-resize'}`,
         className
       )}
       style={{ height: '100%', width: '100%' }}

@@ -56,6 +56,7 @@ export {
 
 export { useChatInput } from '../features/chat/hooks/useChatInput';
 export { useChatScroll } from './useChatScroll';
+export { useCopyTimer } from './useCopyTimer';
 
 // Chat-specific composable hooks
 export {

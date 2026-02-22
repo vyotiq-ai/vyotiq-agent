@@ -2,47 +2,13 @@
  * Home Page
  * 
  * Main workspace view with chat interface.
- * Shows workspace selection prompt when no workspace is active.
+ * Shows a clean workspace selection prompt when no workspace is active.
  */
-import React, { useCallback, useState, useEffect, memo } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { ChatArea, ChatInput } from '../features/chat';
 import { FeatureErrorBoundary } from '../components/layout/ErrorBoundary';
 import { useWorkspaceState, useWorkspaceActions } from '../state/WorkspaceProvider';
 import { cn } from '../utils/cn';
-import { APP_VERSION } from '../utils/version';
-
-// =============================================================================
-// Animated typing text for terminal feel
-// =============================================================================
-
-const TypingText: React.FC<{ text: string; delay?: number }> = memo(({ text, delay = 0 }) => {
-  const [displayed, setDisplayed] = useState('');
-  const [started, setStarted] = useState(false);
-
-  useEffect(() => {
-    const startTimer = setTimeout(() => setStarted(true), delay);
-    return () => clearTimeout(startTimer);
-  }, [delay]);
-
-  useEffect(() => {
-    if (!started) return;
-    if (displayed.length >= text.length) return;
-    const timer = setTimeout(() => {
-      setDisplayed(text.slice(0, displayed.length + 1));
-    }, 18 + Math.random() * 12);
-    return () => clearTimeout(timer);
-  }, [started, displayed, text]);
-
-  return (
-    <span>
-      {displayed}
-      {displayed.length < text.length && (
-        <span className="inline-block w-[5px] h-[11px] bg-[var(--color-accent-primary)] ml-px animate-blink align-middle" />
-      )}
-    </span>
-  );
-});
-TypingText.displayName = 'TypingText';
 
 // =============================================================================
 // WorkspacePrompt – shown when no workspace is selected
@@ -55,9 +21,21 @@ const WorkspacePrompt: React.FC = () => {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setReady(true), 100);
+    const t = setTimeout(() => setReady(true), 80);
     return () => clearTimeout(t);
   }, []);
+
+  // Keyboard shortcut: Ctrl+O to open folder
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+        e.preventDefault();
+        selectWorkspaceFolder();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectWorkspaceFolder]);
 
   const handleRecent = useCallback(async (path: string) => {
     await setWorkspacePath(path);
@@ -70,77 +48,52 @@ const WorkspacePrompt: React.FC = () => {
   return (
     <div className="flex items-center justify-center h-full w-full bg-[var(--color-surface-base)] font-mono select-none">
       <div className={cn(
-        'max-w-lg w-full mx-auto px-8 py-12 flex flex-col gap-0',
-        'transition-opacity duration-500',
-        ready ? 'opacity-100' : 'opacity-0'
+        'max-w-md w-full mx-auto px-8 flex flex-col gap-0',
+        'transition-all duration-500 ease-out',
+        ready ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
       )}>
-        {/* Terminal-style header block */}
-        <div className="flex flex-col gap-3 mb-8">
-          {/* Brand line */}
-          <div className="flex items-center gap-2.5">
-            <span className="text-[var(--color-accent-primary)] text-lg font-semibold leading-none opacity-90">λ</span>
-            <span className="text-[13px] font-medium text-[var(--color-text-primary)] tracking-tight">
-              Vyotiq AI
-            </span>
-            <span className="text-[9px] text-[var(--color-text-dim)] ml-1 tabular-nums">v{APP_VERSION}</span>
-          </div>
-
-          {/* Description as terminal output lines */}
-          <div className="flex flex-col gap-0.5 pl-6">
-            <span className="text-[10px] text-[var(--color-text-tertiary)] leading-relaxed">
-              <TypingText text="Open a workspace folder to get started." delay={200} />
-            </span>
-            <span className="text-[10px] text-[var(--color-text-dim)] leading-relaxed">
-              <TypingText text="The agent will index your codebase for intelligent code search," delay={1200} />
-            </span>
-            <span className="text-[10px] text-[var(--color-text-dim)] leading-relaxed">
-              <TypingText text="navigation, and context-aware assistance." delay={2400} />
-            </span>
-          </div>
-
-          {/* Status line */}
-          <div className="flex items-center gap-3 pl-6 mt-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9px] text-[var(--color-success)] font-mono">[ready]</span>
-            </div>
-            <span className="text-[9px] text-[var(--color-text-dim)]">workspace: none</span>
-            <span className="text-[9px] text-[var(--color-text-dim)]">session: idle</span>
-          </div>
+        {/* Centered brand mark */}
+        <div className="flex flex-col items-center gap-4 mb-10">
+          <span className="text-3xl font-bold leading-none text-[var(--color-accent-primary)] opacity-25" aria-hidden="true">
+            λ
+          </span>
+          <span className="text-[11px] text-[var(--color-text-tertiary)] tracking-wide">
+            open a workspace to get started
+          </span>
         </div>
 
-        {/* Open folder action — styled as terminal command */}
+        {/* Open folder action */}
         <button
           onClick={handleOpen}
           className={cn(
-            'group flex items-center gap-2 w-full px-3 py-2.5',
+            'group flex items-center justify-center gap-2 w-full px-4 py-3',
             'bg-[var(--color-accent-primary)]/8 border border-[var(--color-accent-primary)]/20',
-            'hover:bg-[var(--color-accent-primary)]/15 hover:border-[var(--color-accent-primary)]/40',
-            'transition-all duration-150 rounded-sm',
+            'hover:bg-[var(--color-accent-primary)]/14 hover:border-[var(--color-accent-primary)]/35',
+            'transition-all duration-200 rounded-sm',
             'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/50',
             'active:scale-[0.995]'
           )}
         >
-          <span className="text-[var(--color-accent-primary)] text-xs font-medium opacity-80">λ</span>
           <span className="text-[11px] text-[var(--color-text-primary)] font-medium tracking-tight">
-            Open Folder
+            open folder
           </span>
-          <span className="ml-auto text-[9px] text-[var(--color-text-dim)] opacity-0 group-hover:opacity-100 transition-opacity">
-            Ctrl+O
+          <span className="text-[9px] text-[var(--color-text-dim)] opacity-0 group-hover:opacity-60 transition-opacity duration-200 ml-2">
+            ctrl+o
           </span>
         </button>
 
-        {/* Recent workspaces — terminal list style */}
+        {/* Recent workspaces */}
         {recentPaths.length > 0 && (
-          <div className="flex flex-col mt-6">
-            <div className="flex items-center gap-2 mb-2 pl-0.5">
-              <span className="text-[9px] text-[var(--color-text-dim)] uppercase tracking-widest">
-                recent workspaces
+          <div className="flex flex-col mt-8">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[9px] text-[var(--color-text-dim)] uppercase tracking-widest font-medium opacity-50">
+                recent
               </span>
-              <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+              <div className="flex-1 h-px bg-[var(--color-border-subtle)]/40" />
             </div>
 
             <div className="flex flex-col gap-px">
-              {recentPaths.slice(0, 6).map((recentPath, index) => {
+              {recentPaths.slice(0, 5).map((recentPath) => {
                 const name = recentPath.split(/[/\\]/).pop() || recentPath;
                 const isHovered = hoveredPath === recentPath;
                 return (
@@ -150,50 +103,30 @@ const WorkspacePrompt: React.FC = () => {
                     onMouseEnter={() => setHoveredPath(recentPath)}
                     onMouseLeave={() => setHoveredPath(null)}
                     className={cn(
-                      'group flex items-center gap-2.5 px-3 py-1.5 text-left rounded-sm',
-                      'transition-all duration-100',
+                      'group flex items-center gap-3 px-3 py-2 text-left rounded-sm',
+                      'transition-all duration-150',
                       isHovered
-                        ? 'bg-[var(--color-surface-2)] border-l-2 border-[var(--color-accent-primary)]'
-                        : 'bg-transparent border-l-2 border-transparent',
-                      'hover:bg-[var(--color-surface-2)]'
+                        ? 'bg-[var(--color-surface-2)]'
+                        : 'bg-transparent',
                     )}
-                    style={{ animationDelay: `${index * 50}ms` }}
                   >
-                    <span className={cn(
-                      'text-[10px] tabular-nums w-3 text-right shrink-0 transition-colors',
-                      isHovered ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-dim)]'
-                    )}>
-                      {index + 1}
-                    </span>
                     <div className="min-w-0 flex-1 flex items-baseline gap-2">
                       <span className={cn(
-                        'text-[11px] font-medium truncate transition-colors',
-                        isHovered ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-primary)]'
+                        'text-[11px] font-medium truncate transition-colors duration-150',
+                        isHovered ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-secondary)]'
                       )}>
                         {name}
                       </span>
-                      <span className="text-[9px] text-[var(--color-text-dim)] truncate hidden sm:inline">
+                      <span className="text-[9px] text-[var(--color-text-dim)] truncate opacity-40 hidden sm:inline">
                         {recentPath}
                       </span>
                     </div>
-                    <span className={cn(
-                      'text-[9px] shrink-0 transition-all duration-150',
-                      isHovered ? 'text-[var(--color-accent-primary)] opacity-100' : 'text-[var(--color-text-dim)] opacity-0'
-                    )}>
-                      open
-                    </span>
                   </button>
                 );
               })}
             </div>
           </div>
         )}
-
-        {/* Bottom terminal cursor line */}
-        <div className="flex items-center gap-2 mt-8 pl-0.5">
-          <span className="text-[var(--color-accent-primary)] text-xs opacity-60">λ</span>
-          <span className="inline-block w-[6px] h-[12px] bg-[var(--color-accent-primary)]/70 animate-blink" />
-        </div>
       </div>
     </div>
   );
@@ -206,19 +139,18 @@ const WorkspacePrompt: React.FC = () => {
 export const Home: React.FC = () => {
   const { workspacePath, isLoading } = useWorkspaceState();
 
-  // Show loading placeholder briefly — terminal style
+  // Brief loading state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full w-full bg-[var(--color-surface-base)] font-mono">
-        <div className="flex items-center gap-2">
-          <span className="text-[var(--color-accent-primary)] text-sm opacity-60">λ</span>
-          <span className="text-[10px] text-[var(--color-text-dim)]">loading</span>
-        </div>
+        <span className="text-2xl font-bold leading-none text-[var(--color-accent-primary)] opacity-15 animate-pulse">
+          λ
+        </span>
       </div>
     );
   }
 
-  // Show workspace prompt when no workspace is selected
+  // Workspace selection prompt
   if (!workspacePath) {
     return <WorkspacePrompt />;
   }

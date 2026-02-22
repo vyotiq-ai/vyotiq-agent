@@ -88,10 +88,9 @@ const ToolConfirmationPanelInternal: React.FC<ToolConfirmationPanelProps> = ({
   return (
     <div
       className={cn(
-        'rounded border font-mono',
+        'rounded-sm border font-mono',
         'bg-[var(--color-surface-1)]',
-        'border-[var(--color-warning)]',
-        'border-opacity-50',
+        'border-[var(--color-warning)]/50',
         className,
       )}
     >
@@ -156,8 +155,8 @@ const ToolConfirmationPanelInternal: React.FC<ToolConfirmationPanelProps> = ({
           onClick={handleApprove}
           disabled={isSubmitting}
           className={cn(
-            'flex items-center gap-1 px-2 py-0.5 rounded text-[9px]',
-            'text-[var(--color-success)] hover:bg-[var(--color-success)] hover:bg-opacity-10',
+            'flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px]',
+            'text-[var(--color-success)] hover:bg-[var(--color-success)]/10',
             'transition-colors duration-100',
             isSubmitting && 'opacity-50 cursor-not-allowed',
           )}
@@ -170,8 +169,8 @@ const ToolConfirmationPanelInternal: React.FC<ToolConfirmationPanelProps> = ({
           onClick={handleDeny}
           disabled={isSubmitting}
           className={cn(
-            'flex items-center gap-1 px-2 py-0.5 rounded text-[9px]',
-            'text-[var(--color-error)] hover:bg-[var(--color-error)] hover:bg-opacity-10',
+            'flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px]',
+            'text-[var(--color-error)] hover:bg-[var(--color-error)]/10',
             'transition-colors duration-100',
             isSubmitting && 'opacity-50 cursor-not-allowed',
           )}
@@ -183,7 +182,7 @@ const ToolConfirmationPanelInternal: React.FC<ToolConfirmationPanelProps> = ({
           type="button"
           onClick={() => setShowFeedback(p => !p)}
           className={cn(
-            'flex items-center gap-1 px-2 py-0.5 rounded text-[9px]',
+            'flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px]',
             'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]',
             'hover:bg-[var(--color-surface-2)] transition-colors duration-100',
           )}
@@ -197,8 +196,8 @@ const ToolConfirmationPanelInternal: React.FC<ToolConfirmationPanelProps> = ({
             onClick={handleFeedbackSubmit}
             disabled={isSubmitting}
             className={cn(
-              'ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[9px]',
-              'text-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary)] hover:bg-opacity-10',
+              'ml-auto flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px]',
+              'text-[var(--color-accent-primary)] hover:bg-[var(--color-accent-primary)]/10',
               'transition-colors duration-100',
               isSubmitting && 'opacity-50 cursor-not-allowed',
             )}

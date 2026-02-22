@@ -80,7 +80,7 @@ export const SessionSelector: React.FC<SessionSelectorProps> = memo(function Ses
         disabled={disabled}
         className={cn(
           'flex items-center gap-0.5 text-[10px] font-mono whitespace-nowrap no-drag',
-          'transition-colors duration-75',
+          'transition-colors duration-150',
           'text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)]',
           'focus-visible:outline-none',
           disabled && 'opacity-40 cursor-not-allowed pointer-events-none',

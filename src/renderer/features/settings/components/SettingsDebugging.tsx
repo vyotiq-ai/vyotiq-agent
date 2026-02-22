@@ -147,7 +147,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                     key={level.value}
                     onClick={() => onChange('logLevel', level.value)}
                     className={cn(
-                      'px-1.5 sm:px-2 py-1.5 text-[9px] sm:text-[10px] border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+                      'px-1.5 sm:px-2 py-1.5 text-[9px] sm:text-[10px] border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
                       settings.logLevel === level.value
                         ? 'border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]'
                         : 'border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-medium)]'
@@ -201,7 +201,7 @@ export const SettingsDebugging: React.FC<SettingsDebuggingProps> = ({ settings, 
                     key={format.value}
                     onClick={() => onChange('traceExportFormat', format.value)}
                     className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 text-[10px] border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
+                      'flex items-center gap-1.5 px-3 py-1.5 text-[10px] border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40',
                       settings.traceExportFormat === format.value
                         ? 'border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]'
                         : 'border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-medium)]'

@@ -267,7 +267,7 @@ export const SettingsGLMSubscription: React.FC = () => {
                 <div className="relative">
                   <input
                     type={showKey ? "text" : "password"}
-                    className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 pr-8 text-[10px] outline-none transition-all focus-visible:border-cyan-400/30 placeholder:text-[var(--color-text-placeholder)]"
+                    className="w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1.5 pr-8 text-[10px] outline-none transition-colors focus-visible:border-cyan-400/30 placeholder:text-[var(--color-text-placeholder)]"
                     placeholder="your-z-ai-api-key"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
@@ -294,7 +294,7 @@ export const SettingsGLMSubscription: React.FC = () => {
                     <button
                       key={tier}
                       className={cn(
-                        "flex-1 py-1.5 text-[10px] transition-all border",
+                        "flex-1 py-1.5 text-[10px] transition-colors border",
                         selectedTier === tier
                           ? "bg-[var(--color-surface-2)] text-cyan-400 border-cyan-400/30"
                           : "bg-transparent text-[var(--color-text-dim)] border-[var(--color-border-subtle)] hover:border-[var(--color-border-default)]",

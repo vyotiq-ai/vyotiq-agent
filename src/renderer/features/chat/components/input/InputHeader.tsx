@@ -150,7 +150,7 @@ const TypewriterStatus: React.FC<{
   
   return (
     <span className={cn(
-      'text-[10px] text-[var(--color-text-muted)] opacity-80 tracking-wide',
+      'text-[10px] text-[var(--color-text-muted)]/50 tracking-wider font-medium',
       'transition-all duration-300 ease-out'
     )}>
       vyotiq
@@ -377,8 +377,8 @@ export const InputHeader: React.FC<InputHeaderProps> = memo(({
       {/* Main header row */}
       <div 
         className={cn(
-          'flex items-center justify-between px-2 py-0.5',
-          'border-b border-[var(--color-border-subtle)]/20',
+          'flex items-center justify-between px-2.5 py-0.5',
+          'border-b border-[var(--color-border-subtle)]/25',
           'bg-transparent',
           'font-mono transition-all duration-200 text-[9px]'
         )}

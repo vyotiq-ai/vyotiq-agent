@@ -92,6 +92,11 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
   const onFlushRef = useRef(onFlush);
   const isActiveRef = useRef(false);
   
+  // Use ref for flushInterval to avoid recreating flush/flushAll/startFlushLoop
+  // on agent running state changes (which caused dead flush loops)
+  const flushIntervalRef = useRef(flushInterval);
+  flushIntervalRef.current = flushInterval;
+  
   // Track high-throughput sessions for adaptive batching
   const highThroughputRef = useRef<Set<string>>(new Set());
 
@@ -109,7 +114,7 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
     const timeSinceLastFlush = now - buffer.lastFlush;
     
     // Adaptive batching: increase flush interval if receiving many characters
-    let effectiveInterval = flushInterval;
+    let effectiveInterval = flushIntervalRef.current;
     if (adaptiveBatching) {
       const timeSinceCount = now - buffer.recentCharsTimestamp;
       if (timeSinceCount < 1000 && timeSinceCount > 0) {
@@ -119,7 +124,7 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
         // If receiving more than 500 chars/second, slightly increase interval
         // Capped at 1.5x base to avoid visible chunking during fast streaming
         if (charsPerSecond > 500) {
-          effectiveInterval = Math.min(flushInterval * 1.5, 64);
+          effectiveInterval = Math.min(flushIntervalRef.current * 1.5, 64);
           highThroughputRef.current.add(sessionId);
         } else {
           highThroughputRef.current.delete(sessionId);
@@ -134,7 +139,7 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
       buffer.lastFlush = now;
       onFlushRef.current(sessionId, messageId, content);
     }
-  }, [flushInterval, maxBufferSize, adaptiveBatching]);
+  }, [maxBufferSize, adaptiveBatching]);
 
   const flushSession = useCallback((sessionId: string, force = false) => {
     for (const buffer of buffersRef.current.values()) {
@@ -173,7 +178,7 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
       
       // Only continue the loop if there's still content to flush
       if (stillActive) {
-        flushTimerRef.current = setTimeout(tick, flushInterval);
+        flushTimerRef.current = setTimeout(tick, flushIntervalRef.current);
       } else {
         flushTimerRef.current = null;
         isActiveRef.current = false;
@@ -181,16 +186,17 @@ export const useStreamingBuffer = (options: StreamingBufferOptions) => {
     };
     
     isActiveRef.current = true;
-    flushTimerRef.current = setTimeout(tick, flushInterval);
-  }, [flushAll, flushInterval]);
+    flushTimerRef.current = setTimeout(tick, flushIntervalRef.current);
+  }, [flushAll]);
 
-  // Cleanup on unmount only
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (flushTimerRef.current) {
         clearTimeout(flushTimerRef.current);
         flushTimerRef.current = null;
       }
+      isActiveRef.current = false;
       // Flush any remaining content on unmount
       flushAll(true);
     };

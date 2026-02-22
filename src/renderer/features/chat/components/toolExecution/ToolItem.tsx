@@ -198,10 +198,10 @@ const ToolItemInternal: React.FC<ToolItemProps> = ({
   return (
     <div
       className={cn(
-        'rounded border font-mono',
+        'rounded-sm border font-mono',
         'border-[var(--color-border-subtle)]',
         'bg-[var(--color-surface-base)]',
-        tool.status === 'error' && 'border-[var(--color-error)] border-opacity-30',
+        tool.status === 'error' && 'border-[var(--color-error)]/30',
         className,
       )}
     >

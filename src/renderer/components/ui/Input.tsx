@@ -54,7 +54,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
                         aria-invalid={error ? 'true' : undefined}
                         aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
                         className={cn(
-                            'w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] outline-none transition-all duration-150 rounded-sm',
+                            'w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] outline-none transition-[border-color,box-shadow,background-color] duration-150 rounded-sm',
                             'placeholder:text-[var(--color-text-placeholder)]',
                             'focus-visible:border-[var(--color-accent-primary)]/50 focus-visible:bg-[var(--color-surface-header)] focus-visible:shadow-[0_0_0_2px_rgba(52,211,153,0.1)]',
                             'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -129,7 +129,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
                         aria-invalid={error ? 'true' : undefined}
                         aria-describedby={error ? `${textareaId}-error` : hint ? `${textareaId}-hint` : undefined}
                         className={cn(
-                            'w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] outline-none transition-all duration-150 rounded-sm',
+                            'w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] outline-none transition-[border-color,box-shadow,background-color] duration-150 rounded-sm',
                             'placeholder:text-[var(--color-text-placeholder)] resize-none',
                             'focus-visible:border-[var(--color-accent-primary)]/50 focus-visible:bg-[var(--color-surface-header)] focus-visible:shadow-[0_0_0_2px_rgba(52,211,153,0.1)]',
                             'disabled:opacity-50 disabled:cursor-not-allowed',

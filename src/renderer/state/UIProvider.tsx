@@ -179,8 +179,8 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         return;
       }
 
-      // ? to show shortcuts (when no modals are open and not in an input)
-      if (e.key === '?' && !settingsOpen && !shortcutsOpen) {
+      // ? to show shortcuts (when no modals/panels are open and not in an input)
+      if (e.key === '?' && !settingsOpen && !shortcutsOpen && !commandPaletteOpen && !quickOpenOpen && !debugPanelOpen && !metricsDashboardOpen) {
         const target = e.target as HTMLElement;
         const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
         if (!isInput) {
@@ -234,7 +234,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [settingsOpen, shortcutsOpen, metricsDashboardOpen, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard, toggleDebugPanel]);
+  }, [settingsOpen, shortcutsOpen, commandPaletteOpen, quickOpenOpen, debugPanelOpen, metricsDashboardOpen, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard, toggleDebugPanel]);
 
   // Listen for custom events from activity bar
   useEffect(() => {

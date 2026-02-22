@@ -75,7 +75,7 @@ export const SettingsPrompts: React.FC<SettingsPromptsProps> = ({ settings, onCh
             key={section.id}
             onClick={() => setActiveSubSection(section.id)}
             className={cn(
-              "px-2 py-1 text-[10px] transition-all",
+              "px-2 py-1 text-[10px] transition-colors",
               activeSubSection === section.id
                 ? "bg-[var(--color-surface-2)] text-[var(--color-accent-primary)] border-b border-[var(--color-accent-primary)]"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]"

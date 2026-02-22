@@ -77,6 +77,12 @@ export function useAsync<T, Args extends unknown[] = []>(
   // Track the latest async function to avoid stale closures
   const asyncFunctionRef = useRef(asyncFunction);
   asyncFunctionRef.current = asyncFunction;
+  // Store callbacks in refs to avoid re-creating execute on every render
+  // when consumers pass inline onSuccess/onError (prevents infinite loop with immediate: true)
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   const execute = useCallback(async (...args: Args): Promise<T | null> => {
     setState(prev => ({
@@ -98,7 +104,7 @@ export function useAsync<T, Args extends unknown[] = []>(
           isSuccess: true,
           isError: false,
         });
-        onSuccess?.(result);
+        onSuccessRef.current?.(result);
       }
       
       return result;
@@ -114,12 +120,12 @@ export function useAsync<T, Args extends unknown[] = []>(
           isSuccess: false,
           isError: true,
         }));
-        onError?.(error);
+        onErrorRef.current?.(error);
       }
       
       return null;
     }
-  }, [onSuccess, onError, resetErrorOnExecute]);
+  }, [resetErrorOnExecute]);
 
   const reset = useCallback(() => {
     setState({

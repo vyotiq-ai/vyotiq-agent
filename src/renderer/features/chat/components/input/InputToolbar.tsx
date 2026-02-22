@@ -286,7 +286,7 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
 
   return (
     <div 
-      className={cn('flex items-center gap-1 min-w-0 text-[9px]', className)}
+      className={cn('flex items-center gap-1.5 min-w-0 text-[9px]', className)}
       role="toolbar"
       aria-label="Chat input options"
     >
@@ -319,7 +319,7 @@ export const InputToolbar: React.FC<InputToolbarProps> = memo(({
       <AutoConfirmToggle enabled={yoloEnabled} onToggle={onToggleYolo} disabled={isModelDisabled} />
 
       {/* Stats - Right aligned, CLI style */}
-      <div className="hidden md:flex items-center gap-2 ml-auto text-[9px] font-mono text-[var(--color-text-muted)]">
+      <div className="hidden md:flex items-center gap-2.5 ml-auto text-[9px] font-mono text-[var(--color-text-muted)]">
         {costInfo?.hasUsage && (
           <CostDisplay formattedCost={costInfo.formattedCost} detailsTitle={costInfo.detailsTitle} />
         )}

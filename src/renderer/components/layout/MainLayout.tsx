@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { HEADER_HEIGHT } from './header/constants';
 import { MOBILE_BREAKPOINT, TABLET_BREAKPOINT } from '../../utils/constants';
 import { cn } from '../../utils/cn';
 import { useLocalStorage, useResizablePanel } from '../../hooks';
@@ -64,11 +65,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
 
   // --- LSP initialization ---
   const lsp = useLSP();
+  const lspRef = useRef(lsp);
+  lspRef.current = lsp;
 
   useEffect(() => {
     const wsPath = getCurrentWorkspacePath();
-    if (wsPath && !lsp.status.initialized && !lsp.status.initializing) {
-      lsp.initialize(wsPath).catch((err) =>
+    if (wsPath && !lspRef.current.status.initialized && !lspRef.current.status.initializing) {
+      lspRef.current.initialize(wsPath).catch((err) =>
         logger.warn('LSP auto-init failed', { error: err instanceof Error ? err.message : String(err) })
       );
     }
@@ -76,14 +79,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
     const handleWorkspaceChanged = () => {
       const newPath = getCurrentWorkspacePath();
       if (newPath) {
-        lsp.initialize(newPath).catch((err) =>
+        lspRef.current.initialize(newPath).catch((err) =>
           logger.warn('LSP reinit failed', { error: err instanceof Error ? err.message : String(err) })
         );
       }
     };
     document.addEventListener('vyotiq:workspace-changed', handleWorkspaceChanged);
     return () => document.removeEventListener('vyotiq:workspace-changed', handleWorkspaceChanged);
-  }, [lsp]);
+  }, []); // lspRef stabilizes the dependency — runs once on mount
 
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
@@ -190,23 +193,21 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
     };
   }, []);
 
-  // Memoized content renderer
-  const chatContent = useMemo(() => (
+  // Chat content area
+  const chatContent = (
     <main className="flex-1 min-w-0 min-h-0 overflow-hidden relative flex flex-col bg-[var(--color-surface-base)] h-full w-full transition-colors">
       <div className="flex-1 min-h-0 h-full overflow-hidden">
         {children}
       </div>
     </main>
-  ), [children]);
+  );
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[var(--color-surface-base)] text-[var(--color-text-primary)] font-sans transition-colors">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[var(--color-surface-base)] text-[var(--color-text-primary)] font-mono transition-colors">
       <Header
         collapsed={sidebarCollapsed}
         onToggle={handleToggleSidebar}
         onOpenSettings={onOpenSettings}
-        isMobile={isMobile}
-        isTablet={isTablet}
       />
       <div className="flex flex-1 overflow-hidden relative z-0">
         {/* Mobile overlay */}
@@ -222,12 +223,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, onOpenSettings
         <div
           className={cn(
             'shrink-0 relative',
-            isMobile && !sidebarCollapsed && 'fixed left-0 top-[32px] bottom-0 z-20',
+            isMobile && !sidebarCollapsed && 'fixed left-0 bottom-0 z-20',
             !sidebarCollapsed && !isMobile && 'transition-none',
             sidebarCollapsed && 'transition-all duration-300 ease-in-out'
           )}
           style={{
             width: sidebarCollapsed ? 0 : (isMobile ? 248 : sidebarWidth),
+            ...(isMobile && !sidebarCollapsed ? { top: HEADER_HEIGHT } : {}),
           }}
         >
           <Sidebar

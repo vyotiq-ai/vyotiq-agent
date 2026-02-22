@@ -99,7 +99,7 @@ export const SettingsBrowser: React.FC<SettingsBrowserProps> = ({ settings, onCh
               onChange={(e) => setPortInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddPort()}
               placeholder="3000"
-              className="w-24 px-2 py-1.5 text-[10px] bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30"
+              className="w-24 px-2 py-1.5 text-[10px] bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] outline-none transition-colors focus-visible:border-[var(--color-accent-primary)]/30"
             />
             <button
               onClick={handleAddPort}
@@ -127,7 +127,7 @@ export const SettingsBrowser: React.FC<SettingsBrowserProps> = ({ settings, onCh
             value={settings.customUserAgent}
             onChange={(e) => onChange('customUserAgent', e.target.value)}
             placeholder="# default Chrome user agent"
-            className="w-full px-2 py-1.5 text-[10px] bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30"
+            className="w-full px-2 py-1.5 text-[10px] bg-[var(--color-surface-editor)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] outline-none transition-colors focus-visible:border-[var(--color-accent-primary)]/30"
           />
           <p className="text-[9px] text-[var(--color-text-dim)]"># custom user agent string (leave empty for default)</p>
         </div>

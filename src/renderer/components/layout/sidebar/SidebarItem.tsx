@@ -25,8 +25,11 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
 }) => {
   return (
     <div 
+      role="button"
+      tabIndex={0}
       className={cn(
         "flex items-center px-1.5 py-1 text-[11px] font-mono cursor-pointer transition-colors group select-none",
+        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40 rounded-sm",
         active 
           ? "text-[var(--color-accent-primary)]" 
           : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]",
@@ -34,6 +37,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
         className
       )}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
       title={collapsed ? label : title}
     >
       <div className={cn("flex items-center gap-1.5 overflow-hidden min-w-0", collapsed && "justify-center w-full")}>
@@ -47,7 +51,6 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
         )}
         {!collapsed && (
           <span className="truncate flex items-center gap-1 min-w-0">
-            {active && <span className="text-[var(--color-accent-primary)] text-[9px] shrink-0">❯</span>}
             <span className="truncate">{label}</span>
           </span>
         )}

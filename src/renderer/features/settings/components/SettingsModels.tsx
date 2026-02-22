@@ -45,7 +45,7 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, isSelected, onSelect }) =>
   return (
     <button
       className={cn(
-        "w-full p-2 border text-left transition-all duration-100 font-mono",
+        "w-full p-2 border text-left transition-colors duration-100 font-mono",
         isSelected 
           ? "border-[var(--color-accent-primary)]/30 bg-[var(--color-accent-primary)]/5" 
           : "border-[var(--color-border-subtle)] bg-transparent hover:border-[var(--color-border-default)] hover:bg-[var(--color-surface-2)]/30",

@@ -9,6 +9,7 @@
  * lambda branding, and CSS variable-based theming.
  */
 import React, { memo, useState, useCallback, useMemo } from 'react';
+import { useCopyTimer } from '../../../hooks/useCopyTimer';
 import {
   User,
   Bot,
@@ -111,7 +112,7 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
   className,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, triggerCopy } = useCopyTimer();
   const [showActions, setShowActions] = useState(false);
 
   const isUser = message.role === 'user';
@@ -121,9 +122,8 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
   // Copy message content
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(message.content || '');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [message.content]);
+    triggerCopy();
+  }, [message.content, triggerCopy]);
 
   // Toggle reaction
   const handleReaction = useCallback((type: 'up' | 'down') => {
@@ -157,7 +157,7 @@ const MessageLineInternal: React.FC<MessageLineProps> = ({
     <div
       className={cn(
         'group relative font-mono',
-        isHighlighted && 'bg-[var(--color-accent-primary)] bg-opacity-5 rounded',
+        isHighlighted && 'bg-[var(--color-accent-primary)]/5 rounded-sm',
         className,
       )}
       onMouseEnter={() => setShowActions(true)}

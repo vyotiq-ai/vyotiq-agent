@@ -52,6 +52,8 @@ interface WorkspaceActionsType {
   closeWorkspace: () => Promise<void>;
   /** Refresh the recent paths list */
   refreshRecentPaths: () => Promise<void>;
+  /** Remove a path from the recent workspaces list */
+  removeRecentPath: (path: string) => void;
 }
 
 // Combined type for convenience hook
@@ -441,6 +443,14 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, []);
 
+  const removeRecentPath = useCallback((path: string) => {
+    setRecentPaths((prev) => {
+      const updated = prev.filter((p) => p !== path);
+      saveRecentPaths(updated);
+      return updated;
+    });
+  }, []);
+
   // ---- Context values (split for performance) ------------------------------
 
   const stateValue = useMemo<WorkspaceStateType>(
@@ -449,8 +459,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
   );
 
   const actionsValue = useMemo<WorkspaceActionsType>(
-    () => ({ setWorkspacePath, selectWorkspaceFolder, closeWorkspace, refreshRecentPaths }),
-    [setWorkspacePath, selectWorkspaceFolder, closeWorkspace, refreshRecentPaths],
+    () => ({ setWorkspacePath, selectWorkspaceFolder, closeWorkspace, refreshRecentPaths, removeRecentPath }),
+    [setWorkspacePath, selectWorkspaceFolder, closeWorkspace, refreshRecentPaths, removeRecentPath],
   );
 
   const contextValue = useMemo<WorkspaceContextType>(

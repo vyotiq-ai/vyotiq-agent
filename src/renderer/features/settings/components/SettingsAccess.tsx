@@ -75,7 +75,7 @@ export const SettingsAccess: React.FC<SettingsAccessProps> = ({ settings, onChan
                   onChange('categoryPermissions', {});
                 }}
                 className={cn(
-                  'flex items-start gap-2 p-2 sm:p-2.5 border text-left transition-all',
+                  'flex items-start gap-2 p-2 sm:p-2.5 border text-left transition-colors',
                   isSelected
                     ? 'border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10'
                     : 'border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] hover:border-[var(--color-border-default)]',

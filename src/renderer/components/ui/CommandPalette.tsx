@@ -147,7 +147,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
         className={cn(
           'relative w-[560px] max-h-[60vh] flex flex-col',
           'bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)]',
-          'rounded-xl shadow-2xl overflow-hidden',
+          'rounded-sm shadow-2xl overflow-hidden',
           'animate-scale-in'
         )}
         onClick={e => e.stopPropagation()}
@@ -157,7 +157,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
       >
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-border-subtle)]">
-          <Search size={18} className="text-[var(--color-text-muted)]" aria-hidden="true" />
+          <Search size={14} className="text-[var(--color-text-muted)]" aria-hidden="true" />
           <input
             ref={inputRef}
             type="text"
@@ -166,7 +166,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
             onKeyDown={handleKeyDown}
             placeholder="Type a command or search..."
             className={cn(
-              'flex-1 bg-transparent text-xs',
+              'flex-1 bg-transparent text-[11px]',
               'text-[var(--color-text-primary)] placeholder-[var(--color-text-placeholder)]',
               'outline-none'
             )}
@@ -179,7 +179,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
             aria-expanded="true"
             aria-activedescendant={flatCommands[selectedIndex] ? `cmd-${flatCommands[selectedIndex].id}` : undefined}
           />
-          <kbd className="px-2 py-0.5 text-[10px] rounded bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)]" aria-hidden="true">
+          <kbd className="px-2 py-0.5 text-[10px] rounded-sm bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border-subtle)]" aria-hidden="true">
             ESC
           </kbd>
         </div>
@@ -241,7 +241,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
                       </div>
                       {cmd.shortcut && (
                         <kbd className={cn(
-                          'px-1.5 py-0.5 text-[10px] rounded',
+                          'px-1.5 py-0.5 text-[10px] rounded-sm',
                           'bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]',
                           isSelected ? 'text-[var(--color-accent-primary)]' : 'text-[var(--color-text-dim)]'
                         )}>
@@ -260,15 +260,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = memo(({
         <div className="px-4 py-2 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
           <div className="flex items-center gap-4 text-[10px] text-[var(--color-text-dim)]">
             <span className="flex items-center gap-1">
-              <kbd className="px-1 rounded bg-[var(--color-surface-2)]">↑↓</kbd>
+              <kbd className="px-1 rounded-sm bg-[var(--color-surface-2)]">↑↓</kbd>
               navigate
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="px-1 rounded bg-[var(--color-surface-2)]">↵</kbd>
+              <kbd className="px-1 rounded-sm bg-[var(--color-surface-2)]">↵</kbd>
               select
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="px-1 rounded bg-[var(--color-surface-2)]">esc</kbd>
+              <kbd className="px-1 rounded-sm bg-[var(--color-surface-2)]">esc</kbd>
               close
             </span>
           </div>

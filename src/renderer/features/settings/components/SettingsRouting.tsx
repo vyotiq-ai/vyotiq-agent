@@ -47,7 +47,7 @@ const TaskMappingCard: React.FC<TaskMappingCardProps> = ({ taskType, mapping, av
 
   return (
     <div className={cn(
-      'border border-[var(--color-border-subtle)] transition-all duration-200',
+      'border border-[var(--color-border-subtle)] transition-colors duration-200',
       mapping.enabled ? 'bg-[var(--color-surface-1)]' : 'bg-[var(--color-surface-base)] opacity-60'
     )}>
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-subtle)]">
@@ -75,7 +75,7 @@ const TaskMappingCard: React.FC<TaskMappingCardProps> = ({ taskType, mapping, av
               value={mapping.provider}
               onChange={(e) => onUpdate({ ...mapping, provider: e.target.value as LLMProviderName | 'auto', modelId: undefined })}
               disabled={!mapping.enabled}
-              className="w-full bg-[var(--color-surface-base)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30 disabled:opacity-50"
+              className="w-full bg-[var(--color-surface-base)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] outline-none transition-colors focus-visible:border-[var(--color-accent-primary)]/30 disabled:opacity-50"
             >
               <option value="auto">auto (use default)</option>
               {availableProviders.map(p => <option key={p.name} value={p.name}>{p.displayName}</option>)}
@@ -87,7 +87,7 @@ const TaskMappingCard: React.FC<TaskMappingCardProps> = ({ taskType, mapping, av
               value={mapping.modelId ?? ''}
               onChange={(e) => onUpdate({ ...mapping, modelId: e.target.value || undefined })}
               disabled={!mapping.enabled || mapping.provider === 'auto'}
-              className="w-full bg-[var(--color-surface-base)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30 disabled:opacity-50"
+              className="w-full bg-[var(--color-surface-base)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] outline-none transition-colors focus-visible:border-[var(--color-accent-primary)]/30 disabled:opacity-50"
             >
               <option value="">default</option>
               {selectedProviderModels.map(m => <option key={m} value={m}>{m}</option>)}
@@ -107,7 +107,7 @@ const TaskMappingCard: React.FC<TaskMappingCardProps> = ({ taskType, mapping, av
                       value={mapping.fallbackProvider ?? ''}
                       onChange={(e) => onUpdate({ ...mapping, fallbackProvider: e.target.value as LLMProviderName || undefined, fallbackModelId: undefined })}
                       disabled={!mapping.enabled}
-                      className="w-full bg-[var(--color-surface-base)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30 disabled:opacity-50"
+                      className="w-full bg-[var(--color-surface-base)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] outline-none transition-colors focus-visible:border-[var(--color-accent-primary)]/30 disabled:opacity-50"
                     >
                       <option value="">none</option>
                       {availableProviders.filter(p => p.name !== mapping.provider).map(p => <option key={p.name} value={p.name}>{p.displayName}</option>)}
@@ -119,7 +119,7 @@ const TaskMappingCard: React.FC<TaskMappingCardProps> = ({ taskType, mapping, av
                       value={mapping.fallbackModelId ?? ''}
                       onChange={(e) => onUpdate({ ...mapping, fallbackModelId: e.target.value || undefined })}
                       disabled={!mapping.enabled || !mapping.fallbackProvider}
-                      className="w-full bg-[var(--color-surface-base)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] outline-none transition-all focus-visible:border-[var(--color-accent-primary)]/30 disabled:opacity-50"
+                      className="w-full bg-[var(--color-surface-base)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] outline-none transition-colors focus-visible:border-[var(--color-accent-primary)]/30 disabled:opacity-50"
                     >
                       <option value="">default</option>
                       {fallbackProviderModels.map(m => <option key={m} value={m}>{m}</option>)}

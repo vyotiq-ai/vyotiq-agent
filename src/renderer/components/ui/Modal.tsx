@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useId } from 'react';
 import { X } from 'lucide-react';
-import { Button } from './Button';
 import { cn } from '../../utils/cn';
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { useFocusTrap, useAnnouncer, useReducedMotion } from '../../utils/accessibility';
@@ -42,15 +41,16 @@ export const Modal: React.FC<ModalProps> = ({
       if (e.key === 'Escape') onClose();
     };
     if (open) {
+      const prevOverflow = document.body.style.overflow;
       document.addEventListener('keydown', handleEscape);
       document.body.style.overflow = 'hidden';
       // Announce modal to screen readers
       announce(`${title} dialog opened`, 'polite');
+      return () => {
+        document.removeEventListener('keydown', handleEscape);
+        document.body.style.overflow = prevOverflow;
+      };
     }
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
-    };
   }, [open, onClose, title, announce]);
 
   if (!open) return null;
@@ -78,34 +78,21 @@ export const Modal: React.FC<ModalProps> = ({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
       >
-        {/* Terminal header bar */}
+        {/* Header bar */}
         <div className="flex items-center justify-between px-3 py-2 bg-[var(--color-surface-header)] border-b border-[var(--color-border-subtle)] shrink-0">
-          <div className="flex items-center gap-3">
-            {/* Traffic lights with hover effects */}
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={onClose}
-                className="w-2.5 h-2.5 rounded-full bg-[var(--color-error)] opacity-80 hover:opacity-100 transition-all duration-150 hover:scale-110"
-                aria-label="Close"
-              />
-              <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-warning)] opacity-80 hover:opacity-100 transition-all duration-150" />
-              <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-success)] opacity-80 hover:opacity-100 transition-all duration-150" />
-            </div>
-            <div>
-              <h2 id={titleId} className="text-[11px] text-[var(--color-text-primary)]">{title}</h2>
-              {description && (
-                <p id={descId} className="text-[9px] text-[var(--color-text-placeholder)]"># {description}</p>
-              )}
-            </div>
+          <div>
+            <h2 id={titleId} className="text-[11px] text-[var(--color-text-primary)]">{title}</h2>
+            {description && (
+              <p id={descId} className="text-[9px] text-[var(--color-text-placeholder)]"># {description}</p>
+            )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             onClick={onClose}
-            className="text-[var(--color-text-placeholder)] hover:text-[var(--color-text-secondary)] h-6 w-6 hover:bg-[var(--color-surface-2)] transition-all duration-150"
+            className="flex items-center justify-center w-6 h-6 rounded-sm text-[var(--color-text-dim)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-2)] transition-colors duration-150"
+            aria-label="Close"
           >
             <X size={14} />
-          </Button>
+          </button>
         </div>
         
         {/* Content area */}

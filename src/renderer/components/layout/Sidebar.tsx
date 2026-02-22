@@ -35,7 +35,7 @@ const PanelIcon = memo<PanelIconProps>(({ icon, label, shortcut, onClick, badge,
   <button
     onClick={onClick}
     className={cn(
-      'group relative p-1.5 rounded transition-all duration-150',
+      'group relative p-1.5 rounded-sm transition-colors duration-150',
       'text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)]',
       'hover:bg-[var(--color-accent-primary)]/10',
       'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/50',
@@ -59,8 +59,6 @@ const PanelIcon = memo<PanelIconProps>(({ icon, label, shortcut, onClick, badge,
         {badge > 99 ? '99+' : badge}
       </span>
     )}
-    {/* Hover indicator line */}
-    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-[var(--color-accent-primary)] rounded-full transition-all duration-150 group-hover:w-3/4" />
   </button>
   </Tooltip>
 ));
@@ -132,7 +130,7 @@ const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) =>
   return (
     <aside
       className={cn(
-        'flex flex-col h-full bg-[var(--color-surface-sidebar)] border-r border-[var(--color-border-subtle)] shrink-0 z-20 box-border overflow-hidden font-mono',
+        'flex flex-col h-full bg-[var(--color-surface-sidebar)] border-r border-[var(--color-border-subtle)]/80 shrink-0 z-20 box-border overflow-hidden font-mono',
         collapsed ? 'w-0 border-none opacity-0 transition-all duration-300 ease-in-out' : 'opacity-100',
       )}
       style={{ width: collapsed ? 0 : width }}
@@ -143,7 +141,7 @@ const SidebarComponent: React.FC<SidebarProps> = ({ collapsed, width = 248 }) =>
       {/* Sidebar content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Tab switcher — replaces activity bar icons */}
-        <div className="shrink-0 flex items-center border-b border-[var(--color-border-subtle)] px-1 h-[28px] gap-px">
+        <div className="shrink-0 flex items-center border-b border-[var(--color-border-subtle)] px-1 h-[28px] gap-0.5">
           {(['files', 'search', 'outline'] as const).map((tab) => (
             <Tooltip key={tab} content={tab === 'files' ? 'Explorer' : tab === 'search' ? 'Search' : 'Outline'} shortcut={tab === 'files' ? 'Ctrl+Shift+E' : tab === 'search' ? 'Ctrl+Shift+F' : 'Ctrl+Shift+O'}>
               <SidebarItem

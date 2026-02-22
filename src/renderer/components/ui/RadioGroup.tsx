@@ -71,7 +71,7 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
                             value={option.value}
                             checked={isSelected}
                             disabled={isDisabled}
-                            onChange={() => onChange(option.value)}
+                            readOnly
                             className="sr-only"
                         />
 

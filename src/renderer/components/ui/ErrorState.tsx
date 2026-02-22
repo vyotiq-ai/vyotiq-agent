@@ -7,6 +7,7 @@
 import React, { memo, useCallback } from 'react';
 import { cn } from '../../utils/cn';
 import { Button } from './Button';
+import { useCopyTimer } from '../../hooks/useCopyTimer';
 
 // =============================================================================
 // Types
@@ -157,7 +158,7 @@ export const ErrorState: React.FC<ErrorStateProps> = memo(({
   copyable = false,
 }) => {
   const [showDetails, setShowDetails] = React.useState(!collapsibleDetails);
-  const [copied, setCopied] = React.useState(false);
+  const { copied, triggerCopy } = useCopyTimer();
   const config = severityConfig[severity];
   const IconComponent = config.icon;
 
@@ -174,12 +175,11 @@ export const ErrorState: React.FC<ErrorStateProps> = memo(({
     ].filter(Boolean).join('\n');
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      triggerCopy();
     } catch {
       // Clipboard not available
     }
-  }, [title, message, details, errorCode]);
+  }, [title, message, details, errorCode, triggerCopy]);
 
   const textSizes = {
     sm: { title: 'text-[11px]', message: 'text-[10px]', details: 'text-[9px]' },
@@ -189,7 +189,7 @@ export const ErrorState: React.FC<ErrorStateProps> = memo(({
 
   const containerClasses = cn(
     'flex flex-col gap-2',
-    variant === 'card' && cn('p-4 rounded-lg border', config.bgClass, config.borderClass),
+    variant === 'card' && cn('p-4 rounded-sm border', config.bgClass, config.borderClass),
     variant === 'banner' && cn('p-3 border-l-4', config.bgClass, config.borderClass.replace('border-', 'border-l-')),
     variant === 'inline' && 'p-2',
     fullScreen && 'fixed inset-0 items-center justify-center bg-[var(--color-surface-base)]/90 z-50',

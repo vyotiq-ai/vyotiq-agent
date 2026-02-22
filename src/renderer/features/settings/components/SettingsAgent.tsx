@@ -256,7 +256,7 @@ export const SettingsAgent: React.FC<SettingsAgentProps> = ({ config, apiKeys, o
               }}
               disabled={configuredProviders.length === 0}
               className={cn(
-                "w-full bg-[var(--color-surface-1)] text-left border px-3 py-1.5 text-[11px] font-mono outline-none transition-all",
+                "w-full bg-[var(--color-surface-1)] text-left border px-3 py-1.5 text-[11px] font-mono outline-none transition-colors",
                 configuredProviders.length === 0 
                   ? "border-[var(--color-border-subtle)]/50 text-[var(--color-text-dim)] cursor-not-allowed"
                   : "border-[var(--color-border-subtle)] text-[var(--color-text-primary)] hover:border-[var(--color-accent-primary)]/30",

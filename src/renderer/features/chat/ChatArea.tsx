@@ -521,7 +521,7 @@ const RunGroup: React.FC<RunGroupProps> = memo(({
 
       {/* Messages (hidden when collapsed) */}
       {!isCollapsed && (
-        <div className={cn('flex flex-col gap-2', showHeader && 'ml-2 pl-2 border-l border-[var(--color-border-subtle)] border-opacity-30')}>
+        <div className={cn('flex flex-col gap-2', showHeader && 'ml-2 pl-2 border-l border-[var(--color-border-subtle)]/30')}>
           {group.messages.map((msg, msgIdx) => {
             // Skip tool messages rendered inline by their parent assistant's ToolExecution
             if (msg.role === 'tool') return null;

@@ -205,7 +205,7 @@ export const SettingsListManager: React.FC<ListManagerProps> = ({
                   'p-0.5',
                   'text-[var(--color-text-dim)]',
                   'opacity-0 group-hover:opacity-100',
-                  'transition-all duration-150',
+                  'transition-opacity duration-150',
                   !disabled && [
                     'hover:text-[var(--color-status-error)]',
                     'hover:bg-[var(--color-status-error)]/10',
