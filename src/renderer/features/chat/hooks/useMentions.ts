@@ -140,8 +140,12 @@ export interface UseMentionsReturn {
 // Constants
 // =============================================================================
 
-/** Regex to detect @ mention trigger */
-const MENTION_TRIGGER_REGEX = /@(\w*)$/;
+/** 
+ * Regex to detect @ mention trigger.
+ * Matches @ followed by any non-space, non-@ characters (file paths, names, etc.)
+ * Supports: @, @fi, @file, @src/foo, @App.tsx, etc.
+ */
+const MENTION_TRIGGER_REGEX = /@([^\s@]*)$/;
 
 /** Regex to parse completed @file mentions with path */
 const MENTION_PARSE_REGEX = /@file(?:\s+([^\s@]+))?/g;
@@ -230,13 +234,30 @@ function fuzzyMatch(query: string, target: string): number {
   return queryIdx === q.length ? score : 0;
 }
 
+// Import shared mention pattern for completed mention detection
+import { MENTION_MATCH_REGEX } from '../utils/mentionPatterns';
+
 /**
- * Detect if cursor is in an active mention
+ * Detect if cursor is in an active mention.
+ * Returns null if the cursor is inside an already-completed @file mention
+ * (prevents re-triggering autocomplete on click inside a finished mention).
  */
 function detectActiveMention(
   message: string, 
   cursorPosition: number
 ): ActiveMention | null {
+  // First check: is cursor inside an already-completed mention?
+  // If so, do NOT trigger autocomplete — the mention is already done.
+  MENTION_MATCH_REGEX.lastIndex = 0;
+  let existing: RegExpExecArray | null;
+  while ((existing = MENTION_MATCH_REGEX.exec(message)) !== null) {
+    const mStart = existing.index;
+    const mEnd = existing.index + existing[0].length;
+    if (cursorPosition > mStart && cursorPosition <= mEnd) {
+      return null;
+    }
+  }
+
   // Get text before cursor
   const textBeforeCursor = message.slice(0, cursorPosition);
   
@@ -394,8 +415,8 @@ export function useMentions(options: UseMentionsOptions): UseMentionsReturn {
     const before = message.slice(0, activeMention.startIndex);
     const after = message.slice(cursorPosition);
     
-    // Insert just the file path with a space after
-    const insertValue = item.value + ' ';
+    // Insert @file <path> format so parseMentions can locate it later
+    const insertValue = `@file ${item.value} `;
     const newMessage = before + insertValue + after;
     const newCursorPos = activeMention.startIndex + insertValue.length;
 

@@ -1034,9 +1034,22 @@ declare global {
 
         /**
          * Refresh all diagnostics (TypeScript + LSP)
+         * Returns merged diagnostics from all sources.
          */
         refreshDiagnostics: () => Promise<{
           success: boolean;
+          diagnostics?: Array<{
+            filePath?: string;
+            fileName?: string;
+            line: number;
+            column: number;
+            endLine?: number;
+            endColumn?: number;
+            message: string;
+            severity: 'error' | 'warning' | 'info' | 'hint';
+            source?: string;
+            code?: string | number;
+          }>;
           typescript?: { errorCount: number; warningCount: number; diagnosticsCount: number } | null;
           lsp?: { diagnosticsCount: number };
           error?: string;
@@ -1049,6 +1062,38 @@ declare global {
         restartTypeScriptServer: () => Promise<{
           success: boolean;
           diagnostics?: { errorCount: number; warningCount: number; diagnosticsCount: number };
+          error?: string;
+        }>;
+
+        /**
+         * Initialize workspace diagnostics for a workspace path.
+         * Re-initializes both TypeScript diagnostics and LSP for the workspace.
+         */
+        initializeWorkspaceDiagnostics: (workspacePath: string) => Promise<{
+          success: boolean;
+          diagnostics?: Array<{
+            filePath?: string;
+            fileName?: string;
+            line: number;
+            column: number;
+            endLine?: number;
+            endColumn?: number;
+            message: string;
+            severity: 'error' | 'warning' | 'info' | 'hint';
+            source?: string;
+            code?: string | number;
+          }>;
+          typescript?: { ready: boolean };
+          lsp?: { ready: boolean };
+          error?: string;
+        }>;
+
+        /**
+         * Notify the diagnostics system about a file change.
+         * Propagates to LSP + TypeScript diagnostics for incremental updates.
+         */
+        notifyFileChanged: (filePath: string, changeType: 'create' | 'change' | 'delete') => Promise<{
+          success: boolean;
           error?: string;
         }>;
 

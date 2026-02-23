@@ -204,11 +204,59 @@ export function registerLspHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle('lsp:diagnostics', async (_event, filePath?: string) => {
-    return withLSPManager('get diagnostics', async (manager) => {
-      const diagnostics = filePath
-        ? await manager.getDiagnostics(filePath)
-        : manager.getAllDiagnostics();
-      return { diagnostics };
+    return withErrorGuard('lsp:diagnostics', async () => {
+      const { getLSPManager } = await getLSPModuleCached();
+      const manager = getLSPManager();
+
+      // Per-file: delegate to LSP manager only
+      if (filePath) {
+        if (!manager) {
+          return { success: false, error: 'LSP manager not initialized', diagnostics: [] };
+        }
+        const diagnostics = await manager.getDiagnostics(filePath);
+        return { success: true, diagnostics };
+      }
+
+      // Workspace-wide: merge LSP cache + TypeScript service snapshot
+      const lspDiagnostics = manager?.getAllDiagnostics() ?? [];
+
+      // Also include TypeScript diagnostics service snapshot
+      let tsDiagnostics: unknown[] = [];
+      try {
+        const { getTypeScriptDiagnosticsService } = await getTSModuleCached();
+        const tsService = getTypeScriptDiagnosticsService();
+        if (tsService?.isReady()) {
+          const snapshot = tsService.getSnapshot();
+          if (snapshot?.diagnostics) {
+            tsDiagnostics = snapshot.diagnostics;
+          }
+        }
+      } catch {
+        // TS service may not be available — that's fine
+      }
+
+      // Deduplicate by filePath:line:column:message
+      const seen = new Set<string>();
+      const merged: unknown[] = [];
+
+      for (const d of lspDiagnostics) {
+        const key = `${d.filePath}:${d.line}:${d.column}:${d.message}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(d);
+        }
+      }
+
+      for (const d of tsDiagnostics) {
+        const td = d as { filePath?: string; line?: number; column?: number; message?: string };
+        const key = `${td.filePath ?? ''}:${td.line ?? 0}:${td.column ?? 0}:${td.message ?? ''}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(d);
+        }
+      }
+
+      return { success: true, diagnostics: merged };
     });
   });
 
@@ -295,8 +343,31 @@ export function registerLspHandlers(context: IpcContext): void {
       const lspManager = getLSPManager();
       const lspDiagnostics = lspManager?.getAllDiagnostics() ?? [];
 
+      // Deduplicate and merge all diagnostics for the response
+      const seen = new Set<string>();
+      const allDiagnostics: unknown[] = [];
+
+      for (const d of lspDiagnostics) {
+        const key = `${d.filePath}:${d.line}:${d.column}:${d.message}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          allDiagnostics.push(d);
+        }
+      }
+
+      if (tsSnapshot?.diagnostics) {
+        for (const d of tsSnapshot.diagnostics) {
+          const key = `${d.filePath}:${d.line}:${d.column}:${d.message}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            allDiagnostics.push(d);
+          }
+        }
+      }
+
       return {
         success: true,
+        diagnostics: allDiagnostics,
         typescript: tsSnapshot ? {
           errorCount: tsSnapshot.errorCount,
           warningCount: tsSnapshot.warningCount,
@@ -356,6 +427,161 @@ export function registerLspHandlers(context: IpcContext): void {
           diagnosticsCount: snapshot.diagnostics.length,
         },
       };
+    });
+  });
+
+  // ==========================================================================
+  // Workspace Diagnostics Initialization
+  // ==========================================================================
+
+  /**
+   * Initialize diagnostics for a workspace path.
+   * Called by the renderer when workspace changes or on first load.
+   * Re-initializes both TypeScript diagnostics and LSP for the given workspace.
+   */
+  ipcMain.handle('lsp:initialize-workspace-diagnostics', async (_event, workspacePath: string) => {
+    return withErrorGuard('lsp:initialize-workspace-diagnostics', async () => {
+      if (!workspacePath) {
+        return { success: false, error: 'No workspace path provided' };
+      }
+
+      logger.info('Initializing workspace diagnostics', { workspacePath });
+
+      let tsReady = false;
+      let lspReady = false;
+
+      // Initialize or re-initialize TypeScript diagnostics service
+      try {
+        const { getTypeScriptDiagnosticsService, initTypeScriptDiagnosticsService } = await getTSModuleCached();
+        let tsService = getTypeScriptDiagnosticsService();
+        
+        if (!tsService) {
+          // Service not yet created — import logger and create it
+          const { createLogger: createLog } = await import('../logger');
+          tsService = initTypeScriptDiagnosticsService(createLog('TSDiagnostics'));
+        }
+
+        if (tsService.isReady()) {
+          // Already initialized — reinitialize for new workspace
+          await tsService.reinitialize();
+        } else {
+          await tsService.initialize(workspacePath);
+        }
+
+        tsReady = tsService.isReady();
+
+        // Forward events to renderer if a new service was created
+        const mainWindow = getMainWindow();
+        if (mainWindow && tsService) {
+          // Re-emit the current snapshot immediately
+          const snapshot = tsService.getSnapshot();
+          if (snapshot.diagnostics.length > 0) {
+            mainWindow.webContents.send('diagnostics:updated', {
+              diagnostics: snapshot.diagnostics,
+              errorCount: snapshot.errorCount,
+              warningCount: snapshot.warningCount,
+              filesWithErrors: snapshot.filesWithErrors,
+              timestamp: snapshot.timestamp,
+            });
+          }
+        }
+      } catch (err) {
+        logger.debug('TypeScript diagnostics init failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      // Initialize LSP manager for the workspace
+      try {
+        const { getLSPManager } = await getLSPModuleCached();
+        const lspManager = getLSPManager();
+        if (lspManager) {
+          await lspManager.initialize(workspacePath);
+          lspReady = true;
+        }
+      } catch (err) {
+        logger.debug('LSP initialization failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      // Now do a full refresh to return merged diagnostics
+      const allDiagnostics: unknown[] = [];
+      const seen = new Set<string>();
+
+      try {
+        const { getLSPManager } = await getLSPModuleCached();
+        const lspManager = getLSPManager();
+        const lspDiags = lspManager?.getAllDiagnostics() ?? [];
+        for (const d of lspDiags) {
+          const key = `${d.filePath}:${d.line}:${d.column}:${d.message}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            allDiagnostics.push(d);
+          }
+        }
+      } catch { /* ignore */ }
+
+      try {
+        const { getTypeScriptDiagnosticsService } = await getTSModuleCached();
+        const tsService = getTypeScriptDiagnosticsService();
+        if (tsService?.isReady()) {
+          const snapshot = tsService.getSnapshot();
+          for (const d of snapshot.diagnostics) {
+            const key = `${d.filePath}:${d.line}:${d.column}:${d.message}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              allDiagnostics.push(d);
+            }
+          }
+        }
+      } catch { /* ignore */ }
+
+      logger.info('Workspace diagnostics initialized', {
+        workspacePath,
+        tsReady,
+        lspReady,
+        diagnosticsCount: allDiagnostics.length,
+      });
+
+      return {
+        success: true,
+        diagnostics: allDiagnostics,
+        typescript: { ready: tsReady },
+        lsp: { ready: lspReady },
+      };
+    });
+  });
+
+  /**
+   * Notify the diagnostics system about a file change
+   * (used by renderer to proactively push file changes when editor saves)
+   */
+  ipcMain.handle('lsp:notify-file-changed', async (_event, filePath: string, changeType: 'create' | 'change' | 'delete') => {
+    return withErrorGuard('lsp:notify-file-changed', async () => {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      // Forward to LSP Bridge which handles both LSP + TS diagnostics
+      try {
+        const { getLSPBridge } = await getLSPModuleCached();
+        const bridge = getLSPBridge();
+        if (bridge) {
+          bridge.onFileChanged(filePath, changeType);
+        }
+      } catch { /* ignore */ }
+
+      // Also directly notify TypeScript diagnostics service for faster response
+      try {
+        const { getTypeScriptDiagnosticsService } = await getTSModuleCached();
+        const tsService = getTypeScriptDiagnosticsService();
+        if (tsService?.isReady()) {
+          tsService.onFileChanged(filePath, changeType);
+        }
+      } catch { /* ignore */ }
+
+      return { success: true };
     });
   });
 }

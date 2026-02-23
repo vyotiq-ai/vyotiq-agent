@@ -37,7 +37,9 @@
 
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useAgentActions, useAgentSelector } from '../../../state/AgentProvider';
+import { useWorkspaceState } from '../../../state/WorkspaceProvider';
 import type { ChatMessage } from '../../../../shared/types';
+import { MENTION_MATCH_REGEX } from '../utils/mentionPatterns';
 
 // Import composable hooks
 import { useMessageState } from './useMessageState';
@@ -59,6 +61,7 @@ import { useWorkspaceFiles } from './useWorkspaceFiles';
  */
 export const useChatInput = () => {
   const actions = useAgentActions();
+  const { workspacePath } = useWorkspaceState();
 
   const sessionSnapshot = useAgentSelector(
     (state) => {
@@ -160,7 +163,7 @@ export const useChatInput = () => {
 
   // Workspace files for @ mentions
   const workspaceFiles = useWorkspaceFiles({
-    workspacePath: undefined,
+    workspacePath: workspacePath,
     autoLoad: true,
   });
 
@@ -169,7 +172,7 @@ export const useChatInput = () => {
     message: messageState.message,
     cursorPosition,
     workspaceFiles: workspaceFiles.filesWithType,
-    workspacePath: undefined,
+    workspacePath: workspacePath ?? undefined,
     enabled: true,
     isLoading: workspaceFiles.isLoading,
   });
@@ -297,6 +300,48 @@ export const useChatInput = () => {
         setCursorPosition(-1);
         setTimeout(() => setCursorPosition(messageState.textareaRef.current?.selectionStart ?? 0), 0);
         return;
+      }
+    }
+
+    // Atomic deletion of @file mentions on Backspace/Delete
+    // If cursor is inside or at the boundary of a mention, remove the whole thing
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      const textarea = messageState.textareaRef.current;
+      if (textarea) {
+        const pos = textarea.selectionStart;
+        const selEnd = textarea.selectionEnd;
+        // Only for collapsed cursor (no text selected)
+        if (pos === selEnd) {
+          const msg = messageState.message;
+          // Find all @file <path> mentions and check if cursor touches one
+          MENTION_MATCH_REGEX.lastIndex = 0;
+          let match: RegExpExecArray | null;
+          while ((match = MENTION_MATCH_REGEX.exec(msg)) !== null) {
+            const mStart = match.index;
+            const mEnd = match.index + match[0].length;
+            // Backspace: cursor is anywhere inside or right after the mention
+            // Delete: cursor is anywhere inside or right before the mention
+            const shouldDelete =
+              (e.key === 'Backspace' && pos > mStart && pos <= mEnd) ||
+              (e.key === 'Delete' && pos >= mStart && pos < mEnd);
+            if (shouldDelete) {
+              e.preventDefault();
+              // Also consume any trailing space after the mention
+              const deleteEnd = (mEnd < msg.length && msg[mEnd] === ' ') ? mEnd + 1 : mEnd;
+              const newMsg = msg.slice(0, mStart) + msg.slice(deleteEnd);
+              messageState.setMessage(newMsg);
+              setCursorPosition(mStart);
+              // Update the textarea cursor position after React renders
+              setTimeout(() => {
+                if (messageState.textareaRef.current) {
+                  messageState.textareaRef.current.selectionStart = mStart;
+                  messageState.textareaRef.current.selectionEnd = mStart;
+                }
+              }, 0);
+              return;
+            }
+          }
+        }
       }
     }
 

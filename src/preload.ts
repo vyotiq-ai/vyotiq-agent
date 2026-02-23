@@ -1275,9 +1275,11 @@ const lspAPI = {
 
 	/**
 	 * Refresh all diagnostics (TypeScript + LSP)
+	 * Returns merged diagnostics from all sources.
 	 */
 	refreshDiagnostics: (): Promise<{
 		success: boolean;
+		diagnostics?: LSPDiagnostic[];
 		typescript?: { errorCount: number; warningCount: number; diagnosticsCount: number } | null;
 		lsp?: { diagnosticsCount: number };
 		error?: string;
@@ -1338,6 +1340,28 @@ const lspAPI = {
 		diagnostics?: { errorCount: number; warningCount: number; diagnosticsCount: number };
 		error?: string;
 	}> => ipcRenderer.invoke('lsp:restart-typescript-server'),
+
+	/**
+	 * Initialize workspace diagnostics for a given workspace path.
+	 * Re-initializes both TypeScript diagnostics and LSP for the workspace.
+	 * Call when workspace changes or on first load.
+	 */
+	initializeWorkspaceDiagnostics: (workspacePath: string): Promise<{
+		success: boolean;
+		diagnostics?: LSPDiagnostic[];
+		typescript?: { ready: boolean };
+		lsp?: { ready: boolean };
+		error?: string;
+	}> => ipcRenderer.invoke('lsp:initialize-workspace-diagnostics', workspacePath),
+
+	/**
+	 * Notify the diagnostics system about a file change.
+	 * Propagates to LSP + TypeScript diagnostics for incremental updates.
+	 */
+	notifyFileChanged: (filePath: string, changeType: 'create' | 'change' | 'delete'): Promise<{
+		success: boolean;
+		error?: string;
+	}> => ipcRenderer.invoke('lsp:notify-file-changed', filePath, changeType),
 };
 
 // ==========================================================================

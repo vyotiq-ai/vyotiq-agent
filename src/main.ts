@@ -123,12 +123,23 @@ const initializeDeferredServices = async () => {
   });
   
   // Initialize LSP manager for multi-language code intelligence
-  const { initLSPManager, getLSPManager, initLSPBridge } = await import('./main/lsp');
+  const { initLSPManager, getLSPManager, initLSPBridge, getLSPBridge } = await import('./main/lsp');
   initLSPManager(logger);
   logger.info('LSP manager initialized');
 
   // Initialize LSP bridge for real-time file change synchronization
   const lspBridge = initLSPBridge(logger);
+
+  // Wire up diagnostics notifier so file changes from IPC handlers
+  // (agent file operations) propagate to LSPBridge → LSP + TS diagnostics
+  const { setDiagnosticsNotifier } = await import('./main/ipc/fileHandlers');
+  setDiagnosticsNotifier((filePath: string, changeType: 'create' | 'change' | 'delete') => {
+    const bridge = getLSPBridge();
+    if (bridge) {
+      bridge.onFileChanged(filePath, changeType);
+    }
+  });
+  logger.info('Diagnostics notifier wired to LSP bridge');
 
   // Initialize LSP for workspace (runs async checks now)
   {
@@ -203,7 +214,51 @@ const initializeDeferredServices = async () => {
     });
   }
 
-  // File watcher removed — rely on LSP for file change events
+  // Listen for workspace changes and re-initialize diagnostics services
+  ipcMain.on('workspace:changed', async (_event, data: { path: string }) => {
+    const newPath = data?.path;
+    if (!newPath) {
+      // Workspace closed — clear diagnostics
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('diagnostics:cleared', {});
+      }
+      return;
+    }
+
+    logger.info('Workspace changed — re-initializing diagnostics', { path: newPath });
+
+    // Re-initialize TypeScript diagnostics service for the new workspace
+    try {
+      const { getTypeScriptDiagnosticsService } = await import('./main/agent/workspace/TypeScriptDiagnosticsService');
+      const tsService = getTypeScriptDiagnosticsService();
+      if (tsService) {
+        const success = await tsService.reinitialize();
+        if (!success) {
+          // Try a fresh initialize with the new workspace path
+          await tsService.initialize(newPath);
+        }
+        logger.info('TypeScript diagnostics re-initialized for new workspace');
+      }
+    } catch (err) {
+      logger.debug('Failed to re-initialize TS diagnostics for workspace', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // Re-initialize LSP manager for the new workspace
+    try {
+      const { getLSPManager: getLSP } = await import('./main/lsp');
+      const lspManager = getLSP();
+      if (lspManager) {
+        await lspManager.initialize(newPath);
+        logger.info('LSP manager re-initialized for new workspace');
+      }
+    } catch (err) {
+      logger.debug('Failed to re-initialize LSP for workspace', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
 
   // Forward LSP diagnostics updates to renderer
   lspBridge.on('diagnostics', (event) => {
@@ -212,7 +267,7 @@ const initializeDeferredServices = async () => {
     }
   });
 
-  logger.info('LSP bridge connected to file watcher');
+  logger.info('LSP bridge connected to file change notifications');
   
   logger.info('Deferred services initialization complete');
 };
