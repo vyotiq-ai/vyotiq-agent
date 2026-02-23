@@ -1,7 +1,7 @@
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::{Request, State},
-    http::StatusCode,
+    http::{HeaderValue, Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     routing::{delete, get, post},
@@ -11,7 +11,7 @@ use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tower_http::{
     compression::CompressionLayer,
-    cors::{Any, CorsLayer},
+    cors::CorsLayer,
     trace::TraceLayer,
 };
 
@@ -19,10 +19,22 @@ use crate::routes;
 use crate::state::AppState;
 
 pub fn create_app(state: AppState) -> Router {
+    // Restrict CORS to localhost origins only — the Electron renderer
+    // connects from localhost so we don't need to allow arbitrary origins.
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin([
+            "http://localhost".parse::<HeaderValue>().unwrap(),
+            "http://127.0.0.1".parse::<HeaderValue>().unwrap(),
+            "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+            "http://127.0.0.1:5173".parse::<HeaderValue>().unwrap(),
+        ])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers(tower_http::cors::Any);
 
     // Public routes — no auth required (health probes only)
     let public_routes = Router::new()
@@ -140,6 +152,9 @@ async fn auth_middleware(req: Request, next: Next) -> Result<Response, (StatusCo
     };
 
     // 1. Check Authorization: Bearer <token> header
+    // Use constant-time comparison to prevent timing side-channel attacks
+    use subtle::ConstantTimeEq;
+
     let auth_header = req
         .headers()
         .get("authorization")
@@ -148,7 +163,7 @@ async fn auth_middleware(req: Request, next: Next) -> Result<Response, (StatusCo
     if let Some(header) = auth_header {
         if header.len() > 7 && header[..7].eq_ignore_ascii_case("bearer ") {
             let token = &header[7..];
-            if token == expected_token {
+            if token.as_bytes().ct_eq(expected_token.as_bytes()).into() {
                 return Ok(next.run(req).await);
             }
         }
@@ -159,7 +174,7 @@ async fn auth_middleware(req: Request, next: Next) -> Result<Response, (StatusCo
     if let Some(query) = req.uri().query() {
         for pair in query.split('&') {
             if let Some(val) = pair.strip_prefix("token=") {
-                if val == expected_token {
+                if val.as_bytes().ct_eq(expected_token.as_bytes()).into() {
                     return Ok(next.run(req).await);
                 }
             }

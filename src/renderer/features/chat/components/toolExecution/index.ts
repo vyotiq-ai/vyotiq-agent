@@ -5,6 +5,7 @@
  */
 
 export { AutoFetchPreview } from './AutoFetchPreview';
+export { BrowserResultPreview, ALL_BROWSER_TOOL_NAMES } from './BrowserResultPreview';
 export { CopyIconButton } from './CopyIconButton';
 export { DiffViewer } from './DiffViewer';
 export { FileChangeDiff } from './FileChangeDiff';

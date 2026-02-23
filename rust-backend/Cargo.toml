@@ -70,6 +70,9 @@ rayon = "1.11"
 # Faster Mutex/RwLock
 parking_lot = "0.12"
 
+# Constant-time comparison for auth tokens
+subtle = "2"
+
 [profile.release]
 opt-level = 3
 lto = "thin"

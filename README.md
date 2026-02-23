@@ -59,6 +59,19 @@
 
 ## 📢 Recent Updates
 
+### Rich Previews, Granular Settings & State Refactor (v1.10.0 - February 2026)
+
+Feature-rich release with inline chat previews, expanded settings panels, and a major state management refactor.
+
+**Highlights:**
+
+- 🖼️ **File Preview Popover**: Hover-based rich previews for chat attachments — images, syntax-highlighted code, and binary metadata
+- 🌐 **Browser Result Preview**: Inline visual rendering for browser tool results — screenshots, navigation, content extraction, console logs
+- ⚙️ **Granular Settings**: 5 new settings panels — per-provider context windows, instruction files, expanded autonomous/routing/access control
+- 🏷️ **Tool Action Descriptions**: Human-readable labels for all 40+ tools with status-specific verb forms
+- 🏗️ **AgentProvider Refactor**: Event handling extracted to dedicated module (648 lines), slimming the core provider
+- 🔒 **Backend Hardening**: Auth headers on all Rust backend requests, CORS restricted to localhost, browser tool cancellation support
+
 ### Indexing Config, Auth Lifecycle & UI Polish (v1.9.0 - February 2026)
 
 Stability and polish release with configurable indexing, auth lifecycle hardening, 20+ bug fixes, and a terminal-aesthetic UI refresh.

@@ -70,6 +70,10 @@ export interface CommunicationState {
 // =============================================================================
 
 export function useCommunication(): CommunicationState {
+  // Resolve active session ID so communication is routed to the correct session
+  const activeSessionId = useAgentSelector(
+    useCallback((state: AgentUIState) => state.activeSessionId ?? '', []),
+  );
   const pendingQuestions = useAgentSelector(
     useCallback((state: AgentUIState) => state.pendingQuestions ?? EMPTY_QUESTIONS, []),
     shallowArrayEqual,
@@ -87,35 +91,35 @@ export function useCommunication(): CommunicationState {
 
   const answerQuestion = useCallback(async (questionId: string, answer: unknown) => {
     try {
-      await window.vyotiq?.agent?.answerQuestion?.(questionId, answer);
+      await window.vyotiq?.agent?.answerQuestion?.(questionId, answer, activeSessionId || undefined);
     } catch (error) {
       logger.error('Failed to answer question', { questionId, error: error instanceof Error ? error.message : String(error) });
     }
-  }, []);
+  }, [activeSessionId]);
 
   const skipQuestion = useCallback(async (questionId: string) => {
     try {
-      await window.vyotiq?.agent?.skipQuestion?.(questionId);
+      await window.vyotiq?.agent?.skipQuestion?.(questionId, activeSessionId || undefined);
     } catch (error) {
       logger.error('Failed to skip question', { questionId, error: error instanceof Error ? error.message : String(error) });
     }
-  }, []);
+  }, [activeSessionId]);
 
   const makeDecision = useCallback(async (decisionId: string, selectedOptionId: string) => {
     try {
-      await window.vyotiq?.agent?.makeDecision?.(decisionId, selectedOptionId);
+      await window.vyotiq?.agent?.makeDecision?.(decisionId, selectedOptionId, activeSessionId || undefined);
     } catch (error) {
       logger.error('Failed to make decision', { decisionId, error: error instanceof Error ? error.message : String(error) });
     }
-  }, []);
+  }, [activeSessionId]);
 
   const skipDecision = useCallback(async (decisionId: string) => {
     try {
-      await window.vyotiq?.agent?.skipDecision?.(decisionId);
+      await window.vyotiq?.agent?.skipDecision?.(decisionId, activeSessionId || undefined);
     } catch (error) {
       logger.error('Failed to skip decision', { decisionId, error: error instanceof Error ? error.message : String(error) });
     }
-  }, []);
+  }, [activeSessionId]);
 
   return useMemo(() => ({
     pendingQuestions,

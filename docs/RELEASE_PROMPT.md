@@ -7,20 +7,43 @@
 ## 📋 RELEASE PROMPT
 
 ```
-I need you to help me prepare a complete release for Vyotiq AI. Perform the following tasks in order:
+I need you to help me prepare a complete release for Vyotiq AI. Perform the following tasks in order to ensure a smooth and well-documented release process. Follow each step carefully and provide detailed outputs where applicable.
 
 ## 1. ANALYZE CHANGES
 First, analyze all changes since the last release:
-- Run `git diff v1.9.0..HEAD --stat` to see changed files
-- Run `git log v1.9.0..HEAD --oneline` to see commits
+- Run `git diff v1.10.0..HEAD --stat` to see changed files
+- Run `git log v1.10.0..HEAD --oneline` to see commits
 - Identify all modified, added, and deleted files
 - Categorize changes by type (features, fixes, docs, refactors, etc.)
+- Note any breaking changes or important updates
+- Summarize the overall scope and impact of the changes
+- Identify any critical issues that should be highlighted in the release notes
+- Determine if any changes require special attention (e.g., security fixes, performance improvements)
+- Check if any dependencies were updated and if they introduce breaking changes
+- Review commit messages for clarity and adherence to Conventional Commits format
+- Assess if the changes align with the project's roadmap and goals
+- Consider the potential impact on users and how to communicate it effectively in the release notes
+- Ensure that all changes are properly documented in the codebase and that any necessary documentation updates are included in the release
+- Verify that all tests pass and that there are no critical bugs before proceeding with the release
+```
+
+NOTE: Exclude any unnecessary files and documents to commit&release on GitHub (e.g., local config files, logs, etc.).
 
 ## 2. DETERMINE VERSION BUMP
 Based on Semantic Versioning (semver.org):
 - **MAJOR** (X.0.0): Breaking API changes, incompatible updates
 - **MINOR** (1.X.0): New features, backward-compatible additions
 - **PATCH** (1.3.X): Bug fixes, minor improvements, documentation
+- **PRE-RELEASE** (1.3.0-alpha.1): Unstable, testing versions
+- **NO BUMP**: Code style changes, refactors, tests, chores
+- **DEPENDENCY UPDATE**: Depends on whether it introduces breaking changes or not
+- **SECURITY FIX**: Always at least a PATCH, even if no code changes (document in release notes)
+- **PERFORMANCE IMPROVEMENT**: Depends on scope - if it significantly improves performance, consider MINOR; otherwise PATCH
+- **DOCUMENTATION ONLY**: PATCH (since it doesn't affect code but is still a change)
+- **OTHER NON-CODE CHANGES**: None (e.g., updating README badges, CI config without code changes)
+- **MULTIPLE CHANGE TYPES**: If there are multiple types of changes, the version bump should reflect the most significant change (e.g., if there are both features and fixes, it should be a MINOR bump)
+- **PRE-RELEASES**: If the release is not ready for production, use pre-release labels like `-alpha`, `-beta`, or `-rc` to indicate its status (e.g., `1.3.0-alpha.1`)
+- **BREAKING CHANGES**: If there are breaking changes, they must be clearly documented in the release notes with migration instructions. This should trigger a MAJOR version bump.
 
 Tell me what the new version should be and why.
 
@@ -58,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vulnerability fixes
 
 [Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/vX.X.X...HEAD
-[X.X.X]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.9.0...vX.X.X
+[X.X.X]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.10.0...vX.X.X
 ```
 
 ## 4. UPDATE VERSION IN FILES
@@ -218,14 +241,38 @@ gh release create vX.X.X --title "vX.X.X - <short description>"
 ## 🙏 Acknowledgments
 <Thank contributors if applicable>
 
+## 📖 Full Changelog
+<Link to full changelog comparing this version to the previous one>
+
+## Installation
+<Instructions for installing the new version>
+
+## Additional Notes
+<Any additional information about the release>
+
+## Links
+- [GitHub Repository](https://github.com/vyotiq-ai/vyotiq-agent)
+
+## Resources
+- [Documentation](https://vyotiq-ai.github.io/vyotiq-agent/)
+- [Support](https://github.com/vyotiq-ai/vyotiq-agent/issues)
+- [Contributing](https://github.com/vyotiq-ai/vyotiq-agent/blob/main/CONTRIBUTING.md)
+- [Changelog](https://github.com/vyotiq-ai/vyotiq-agent/blob/main/CHANGELOG.md)
+- [License](https://github.com/vyotiq-ai/vyotiq-agent/blob/main/LICENSE)
+- [Contact](mailto:support@vyotiq.ai)
+
 ---
 
-**Full Changelog:** https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.9.0...vX.X.X
+**Full Changelog:** https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.10.0...vX.X.X
 
 ## Installation
 
 ### From Release
-Download the appropriate installer for your platform from the assets below.
+Download the appropriate installer for your platform from the assets below. Follow the installation instructions provided in the README.
+- [Windows Installer](#)
+- [macOS Installer](#)
+- [Linux AppImage](#)
+- [Source Code](#)
 
 ### From Source
 \`\`\`bash
@@ -240,12 +287,30 @@ npm start
 - Windows 10/11, macOS 12+, or Linux (Ubuntu 20.04+)
 - 8GB RAM recommended
 - 500MB disk space
+- Internet connection for updates and LLM interactions
 ```
 
 ## 9. POST-RELEASE CHECKLIST
 After the release, verify:
 - [ ] Tag appears on GitHub (check: `git ls-remote --tags origin`)
 - [ ] **GitHub Release is published** (NOT just the tag - verify at /releases page)
+- [ ] Release notes are accurate and well-formatted
+- [ ] Assets (if any) are attached to the release
+- [ ] Release is linked to the correct previous version in CHANGELOG.md
+- [ ] All links in release notes work correctly
+- [ ] Release is announced on social media and relevant channels
+- [ ] Contributors are acknowledged in release notes
+- [ ] Version number is updated in all necessary files
+- [ ] No critical bugs are reported immediately after release (monitor for hotfixes)
+- [ ] Release is tagged as "Latest" if it's the most recent stable release
+- [ ] CI/CD pipelines show the release as successful (if applicable)
+- [ ] Update `RELEASE_PROMPT.md` with the new version for next release
+- [ ] Communicate the release to the team and community
+- [ ] Monitor for any issues or feedback post-release and be prepared to release hotfixes if necessary
+- [ ] Update any relevant documentation or website content to reflect the new release
+- [ ] Ensure that the release is properly indexed and discoverable on GitHub and package registries (if applicable)
+- [ ] Verify that the release is correctly tagged in version control and that the tag points to the correct commit
+- [ ] Check that the release is correctly linked to the corresponding issues and pull requests on GitHub
 - [ ] Release shows as "Latest" on the repository page
 - [ ] CHANGELOG.md is up to date
 - [ ] package.json version is correct
@@ -279,25 +344,74 @@ gh release list
 
 5. **Wrong comparison base**: Ensure `git diff` and `git log` commands reference the correct previous version tag.
 
+6. **Not following Conventional Commits**: This can lead to unclear commit history and incorrect version bumps.
+
+7. **Not testing the release**: Always test the release locally before pushing to ensure there are no critical issues.
+
+8. **Forgetting to update documentation**: Ensure all relevant documentation is updated to reflect changes in the new release.
+
+9. **Not thanking contributors**: Acknowledge the efforts of contributors in the release notes to foster community engagement.
+
+10. **Not verifying the release**: After pushing, verify that the release is correctly published on GitHub and that all links and references are accurate.
+
+11. **Not using annotated tags**: Always use `git tag -a` to create annotated tags with messages for better traceability.
+
+12. **Not including breaking changes in release notes**: If there are breaking changes, they must be clearly documented in the release notes with migration instructions.
+
+13. **Not updating version in all necessary files**: Ensure that the version number is updated in `package.json`, `README.md`, and any other files that reference the version.
+
+14. **Not using pre-release labels for testing**: If the release is not ready for production, use pre-release labels like `-alpha`, `-beta`, or `-rc` to indicate its status.
+
+15. **Not following semantic versioning**: Ensure that the version bump (MAJOR, MINOR, PATCH) accurately reflects the nature of the changes made.
+
+16. **Not providing a migration guide for breaking changes**: If there are breaking changes, provide clear instructions on how users can migrate to the new version.
+
+17. **Not linking to the full changelog**: Always include a link to the full changelog in the release notes for users who want more details.
+
+18. **Not testing the release process**: Regularly test the release process in a staging environment to catch any issues before they affect users.
+
+19. **Not automating the release process**: Consider using tools like `semantic-release` or GitHub Actions to automate versioning and releases, reducing the chance of human error.
+
+20. **Not communicating the release**: Announce the new release on social media, forums, and other channels to ensure users are aware of the updates.
+
+21. **Not monitoring post-release**: After releasing, monitor for any issues or feedback from users and be prepared to release hotfixes if necessary.
+
 ---
 
 ## CONTEXT ABOUT CURRENT STATE
 
-**Current Version:** 1.9.0
+**Current Version:** 1.10.0
 **Repository:** https://github.com/vyotiq-ai/vyotiq-agent
-**Last Release Tag:** v1.9.0
+**Last Release Tag:** v1.10.0
 
 **Project Stack:**
 - Electron 39.2 + React 19.2 + TypeScript 5.9
 - Tailwind CSS 4.1
 - Playwright for browser automation
 - SQLite for persistence
+- Custom LLM provider integrations
+- Modular tool system with dynamic loading
+- Advanced file handling with inline viewers
+- Full-text search and indexing
+- Git integration for version control
+- Language Server Protocol (LSP) support
+- Comprehensive documentation and contribution guidelines
+- Active community engagement and support
+- Regular updates and improvements based on user feedback
+- Strong focus on performance, reliability, and user experience
+- Commitment to open-source principles and transparency
+- Continuous integration and automated testing for quality assurance
+- Robust error handling and logging for easier debugging
+- Cross-platform support for Windows, macOS, and Linux
+- Extensive test coverage with unit, integration, and end-to-end tests
+- Modular architecture for easy maintenance and extensibility
 
 **Key Files to Check:**
 - `package.json` - Version field
 - `README.md` - Badges, recent updates
 - `CHANGELOG.md` - Create if missing
 - `docs/*.md` - All documentation
+- `src/**/*` - Source code changes
 
 Now analyze the changes and proceed with the release!
 ```text
@@ -330,6 +444,11 @@ Create a commit for this refactoring.
 Explain what was refactored and why, without changing functionality.
 ```
 
+### Chore Commit
+```Create a commit for this chore (build, ci, etc.).
+Describe the maintenance task performed.
+```
+
 ---
 
 ## 🔄 VERSION BUMP QUICK REFERENCE
@@ -339,11 +458,16 @@ Explain what was refactored and why, without changing functionality.
 | Breaking API change | MAJOR | 1.3.0 → 2.0.0 |
 | New feature (backward compatible) | MINOR | 1.3.0 → 1.4.0 |
 | Bug fix | PATCH | 1.3.0 → 1.3.1 |
-| Documentation only | PATCH | 1.3.0 → 1.3.1 |
+| Documentation only | PATCH | 1.3.0 → 1.3.1 | 
 | Performance improvement | PATCH/MINOR | Depends on scope |
 | Security fix | PATCH | 1.3.0 → 1.3.1 |
 | Dependency update (no breaking) | PATCH | 1.3.0 → 1.3.1 |
 | Dependency update (breaking) | MAJOR | 1.3.0 → 2.0.0 |
+| Code style change | None | No version bump |
+| Refactor (no behavior change) | None | No version bump |
+| Test updates | None | No version bump |
+| Chore (build, ci, etc.) | None | No version bump |
+| Other non-code changes | None | No version bump |
 
 ---
 

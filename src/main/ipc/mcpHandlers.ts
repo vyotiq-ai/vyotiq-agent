@@ -95,7 +95,7 @@ export function registerMCPHandlers(context: IpcContext): void {
       logger.error('Failed to get MCP settings', {
         error: error instanceof Error ? error.message : String(error),
       });
-      throw error;
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
@@ -120,7 +120,7 @@ export function registerMCPHandlers(context: IpcContext): void {
       logger.error('Failed to update MCP settings', {
         error: error instanceof Error ? error.message : String(error),
       });
-      throw error;
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 

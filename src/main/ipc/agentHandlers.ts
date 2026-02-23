@@ -99,16 +99,22 @@ export function registerAgentHandlers(context: IpcContext): void {
     }, { operationName: 'agent:get-sessions', returnOnError: [] as never[] });
   });
 
-  ipcMain.handle('agent:has-available-providers', () => {
-    return getOrchestrator()?.hasAvailableProviders() ?? false;
+  ipcMain.handle('agent:has-available-providers', async () => {
+    return withErrorGuard('agent:has-available-providers', async () => {
+      return getOrchestrator()?.hasAvailableProviders() ?? false;
+    }, { returnOnError: false });
   });
 
-  ipcMain.handle('agent:get-available-providers', () => {
-    return getOrchestrator()?.getAvailableProviders() ?? [];
+  ipcMain.handle('agent:get-available-providers', async () => {
+    return withErrorGuard('agent:get-available-providers', async () => {
+      return getOrchestrator()?.getAvailableProviders() ?? [];
+    }, { returnOnError: [] as never[] });
   });
 
-  ipcMain.handle('agent:get-providers-cooldown', () => {
-    return getOrchestrator()?.getProvidersCooldownStatus() ?? {};
+  ipcMain.handle('agent:get-providers-cooldown', async () => {
+    return withErrorGuard('agent:get-providers-cooldown', async () => {
+      return getOrchestrator()?.getProvidersCooldownStatus() ?? {};
+    }, { returnOnError: {} });
   });
 
   ipcMain.handle('agent:get-session-summaries', async () => {
@@ -165,8 +171,10 @@ export function registerAgentHandlers(context: IpcContext): void {
     }, { returnOnError: { success: false } as { success: boolean }, additionalContext: { sessionId } });
   });
 
-  ipcMain.handle('agent:is-run-paused', (_event, sessionId: string) => {
-    return getOrchestrator()?.isRunPaused(sessionId) ?? false;
+  ipcMain.handle('agent:is-run-paused', async (_event, sessionId: string) => {
+    return withErrorGuard('agent:is-run-paused', async () => {
+      return getOrchestrator()?.isRunPaused(sessionId) ?? false;
+    }, { returnOnError: false, additionalContext: { sessionId } });
   });
 
   // ==========================================================================
@@ -301,12 +309,13 @@ export function registerAgentHandlers(context: IpcContext): void {
   // Communication: Questions & Decisions
   // ==========================================================================
 
-  ipcMain.handle('agent:answer-question', async (_event, questionId: string, answer: unknown) => {
+  ipcMain.handle('agent:answer-question', async (_event, questionId: string, answer: unknown, sessionId?: string) => {
     return withSafeHandler(context, 'agent:answer-question', async (orchestrator) => {
-      logger.info('Answering question', { questionId });
-      // Resolve sessionId from active sessions — questions only exist during active runs
-      const sessions = orchestrator.getSessions();
-      const resolvedSessionId = sessions.find(s => s.status === 'running' || s.status === 'awaiting-confirmation')?.id ?? '';
+      logger.info('Answering question', { questionId, sessionId });
+      // Use provided sessionId, or fall back to heuristic resolution for backward compatibility
+      const resolvedSessionId = sessionId
+        ?? orchestrator.getSessions().find(s => s.status === 'running' || s.status === 'awaiting-confirmation')?.id
+        ?? '';
       // Emit the answer event back through the orchestrator event system
       orchestrator.emit('event', {
         type: 'question-answered',
@@ -316,14 +325,15 @@ export function registerAgentHandlers(context: IpcContext): void {
         timestamp: Date.now(),
       });
       return { success: true };
-    }, { returnOnError: { success: false }, additionalContext: { questionId } });
+    }, { returnOnError: { success: false }, additionalContext: { questionId, sessionId } });
   });
 
-  ipcMain.handle('agent:skip-question', async (_event, questionId: string) => {
+  ipcMain.handle('agent:skip-question', async (_event, questionId: string, sessionId?: string) => {
     return withSafeHandler(context, 'agent:skip-question', async (orchestrator) => {
-      logger.info('Skipping question', { questionId });
-      const sessions = orchestrator.getSessions();
-      const resolvedSessionId = sessions.find(s => s.status === 'running' || s.status === 'awaiting-confirmation')?.id ?? '';
+      logger.info('Skipping question', { questionId, sessionId });
+      const resolvedSessionId = sessionId
+        ?? orchestrator.getSessions().find(s => s.status === 'running' || s.status === 'awaiting-confirmation')?.id
+        ?? '';
       orchestrator.emit('event', {
         type: 'question-skipped',
         sessionId: resolvedSessionId,
@@ -334,11 +344,12 @@ export function registerAgentHandlers(context: IpcContext): void {
     }, { returnOnError: { success: false }, additionalContext: { questionId } });
   });
 
-  ipcMain.handle('agent:make-decision', async (_event, decisionId: string, selectedOptionId: string) => {
+  ipcMain.handle('agent:make-decision', async (_event, decisionId: string, selectedOptionId: string, sessionId?: string) => {
     return withSafeHandler(context, 'agent:make-decision', async (orchestrator) => {
-      logger.info('Making decision', { decisionId, selectedOptionId });
-      const sessions = orchestrator.getSessions();
-      const resolvedSessionId = sessions.find(s => s.status === 'running' || s.status === 'awaiting-confirmation')?.id ?? '';
+      logger.info('Making decision', { decisionId, selectedOptionId, sessionId });
+      const resolvedSessionId = sessionId
+        ?? orchestrator.getSessions().find(s => s.status === 'running' || s.status === 'awaiting-confirmation')?.id
+        ?? '';
       orchestrator.emit('event', {
         type: 'decision-made',
         sessionId: resolvedSessionId,
@@ -350,11 +361,12 @@ export function registerAgentHandlers(context: IpcContext): void {
     }, { returnOnError: { success: false }, additionalContext: { decisionId } });
   });
 
-  ipcMain.handle('agent:skip-decision', async (_event, decisionId: string) => {
+  ipcMain.handle('agent:skip-decision', async (_event, decisionId: string, sessionId?: string) => {
     return withSafeHandler(context, 'agent:skip-decision', async (orchestrator) => {
-      logger.info('Skipping decision', { decisionId });
-      const sessions = orchestrator.getSessions();
-      const resolvedSessionId = sessions.find(s => s.status === 'running' || s.status === 'awaiting-confirmation')?.id ?? '';
+      logger.info('Skipping decision', { decisionId, sessionId });
+      const resolvedSessionId = sessionId
+        ?? orchestrator.getSessions().find(s => s.status === 'running' || s.status === 'awaiting-confirmation')?.id
+        ?? '';
       orchestrator.emit('event', {
         type: 'decision-skipped',
         sessionId: resolvedSessionId,

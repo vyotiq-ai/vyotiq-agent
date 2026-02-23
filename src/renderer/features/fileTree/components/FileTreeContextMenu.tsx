@@ -168,7 +168,7 @@ export const FileTreeContextMenu: React.FC<FileTreeContextMenuProps> = ({
       className={cn(
         'fixed z-50 min-w-[180px] max-w-[280px] max-h-[70vh] overflow-y-auto',
         'bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]/60',
-        'rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.25)] font-mono text-[11px]',
+        'rounded-lg shadow-[var(--shadow-dropdown)] font-mono text-[11px]',
         'animate-in fade-in-0 slide-in-from-top-1 duration-100',
         'scrollbar-thin scrollbar-thumb-[var(--color-border-subtle)] scrollbar-track-transparent'
       )}

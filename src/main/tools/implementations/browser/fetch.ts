@@ -327,6 +327,17 @@ async function executeFetchWeb(
       }
     }
 
+    // Collect image data for inline rendering (limit to first 6)
+    const inlineImages = content.images
+      .filter(img => img.src && !img.src.startsWith('data:'))
+      .slice(0, 6)
+      .map(img => ({
+        src: img.src,
+        alt: img.alt || '',
+        width: img.width,
+        height: img.height,
+      }));
+
     return {
       toolName: 'browser_fetch',
       success: true,
@@ -339,6 +350,14 @@ async function executeFetchWeb(
         linkCount: content.links.length,
         imageCount: content.images.length,
         metadata: content.metadata,
+        inlineImages,
+        links: content.links.slice(0, 10).map(l => ({
+          text: l.text.slice(0, 60),
+          href: l.href,
+          isExternal: l.isExternal,
+        })),
+        ogImage: content.metadata.ogImage,
+        description: content.metadata.description,
       },
     };
   } catch (error) {

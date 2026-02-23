@@ -6,6 +6,11 @@
  */
 import React, { createContext, useContext, useCallback, useReducer, useMemo, memo } from 'react';
 
+// HMR: invalidate the module so React re-mounts with fresh contexts
+if (import.meta.hot) {
+  import.meta.hot.accept(() => import.meta.hot?.invalidate());
+}
+
 // =============================================================================
 // Types
 // =============================================================================

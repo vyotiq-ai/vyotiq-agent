@@ -1,3 +1,8 @@
+/**
+ * @orphaned — This component is never imported or rendered anywhere in the app.
+ * It was planned as a reusable sidebar list but not wired into the component tree.
+ * Safe to remove in a future cleanup.
+ */
 import React from 'react';
 import { cn } from '../../utils/cn';
 

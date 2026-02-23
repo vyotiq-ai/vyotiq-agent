@@ -297,7 +297,7 @@ export interface AgentConfig {
  */
 export const SETTINGS_CONSTRAINTS = {
   // AgentConfig constraints
-  temperature: { min: 0, max: 2, default: 0.7 },
+  temperature: { min: 0, max: 2, default: 0.2 },
   maxOutputTokens: { min: 1, max: 200000, default: 8192 },
   maxIterations: { min: 1, max: Infinity, default: 20 }, // No upper limit - fully configurable
   maxRetries: { min: 0, max: 10, default: 2 },

@@ -194,14 +194,6 @@ export const lightTheme: ThemeColors = {
 // The ThemeColors objects above remain available for programmatic color access.
 
 /**
- * @deprecated No longer applies CSS variables — kept for backward compatibility.
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function applyThemeToDocument(_theme: ThemeColors): void {
-  // No-op: all theming is handled by html.dark/html.light classes in index.css
-}
-
-/**
  * Get CSS variable reference for theme color path.
  * @deprecated Prefer using `var(--color-*)` directly in Tailwind classes.
  */
@@ -400,7 +392,5 @@ export default {
   useTheme,
   useThemeColors,
   useResolvedTheme,
-  themeVar,
   themeTransition,
-  applyThemeToDocument,
 };

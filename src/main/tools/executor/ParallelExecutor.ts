@@ -411,8 +411,12 @@ export async function executeToolsParallel(
     
     return {
       results,
-      succeeded: results.filter(r => r.success).map((_, i) => tools[i].name),
-      failed: results.filter(r => !r.success).map((_, i) => tools[i].name),
+      succeeded: results
+        .map((r, i) => r.success ? tools[i].name : null)
+        .filter((name): name is string => name !== null),
+      failed: results
+        .map((r, i) => !r.success ? tools[i].name : null)
+        .filter((name): name is string => name !== null),
       totalDurationMs: totalDuration,
       timeSavedMs: 0, // No time saved in sequential mode
       wasParallel: false,

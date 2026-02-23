@@ -182,7 +182,14 @@ async function executeFillForm(
       toolName: 'browser_fill_form',
       success: failedCount === 0,
       output,
-      metadata: { results, submitResult },
+      metadata: {
+        results,
+        submitResult,
+        filledCount: successCount,
+        failedCount,
+        totalCount: results.length,
+        submitted: submit && submitResult.success,
+      },
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

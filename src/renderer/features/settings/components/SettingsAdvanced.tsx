@@ -4,11 +4,12 @@
  * Expert settings for rate limits, timeouts, and custom endpoints.
  */
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Server, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, Server, TriangleAlert, Brain } from 'lucide-react';
 import type { AgentSettings, LLMProviderName } from '../../../../shared/types';
 import { PROVIDERS, PROVIDER_ORDER, isProviderConfigured } from '../../../../shared/providers';
 import { cn } from '../../../utils/cn';
 import { SettingsSection, SettingsGroup } from '../primitives';
+import { ProviderContextSection } from './ProviderContextSection';
 
 interface SettingsAdvancedProps {
   rateLimits: AgentSettings['rateLimits'];
@@ -179,6 +180,15 @@ export const SettingsAdvanced: React.FC<SettingsAdvancedProps> = ({
             <p className="text-[9px] text-[var(--color-text-dim)]">
               # override for self-hosted/proxy setups | DeepSeek strict mode: use https://api.deepseek.com/beta
             </p>
+          </SettingsGroup>
+
+          {/* Context Window Settings */}
+          <SettingsGroup title="context-window" icon={<Brain size={11} />}>
+            <ProviderContextSection
+              providerSettings={providerSettings}
+              apiKeys={apiKeys}
+              onProviderSettingChange={onProviderSettingChange}
+            />
           </SettingsGroup>
         </div>
       )}

@@ -118,18 +118,28 @@ export function registerFileHandlers(context: IpcContext): void {
   // ========================================================================
 
   ipcMain.handle('workspace:get-path', async () => {
-    const p = getActiveWorkspacePath();
-    return { success: true, path: p || '' };
+    try {
+      const p = getActiveWorkspacePath();
+      return { success: true, path: p || '' };
+    } catch (error) {
+      logger.error('workspace:get-path failed', { error });
+      return { success: false, path: '', error: (error as Error).message };
+    }
   });
 
   ipcMain.handle('workspace:close', async () => {
-    activeWorkspacePath = '';
-    logger.info('Workspace closed');
-    const mainWindow = getMainWindow();
-    if (mainWindow) {
-      mainWindow.webContents.send('workspace:changed', { path: '' });
+    try {
+      activeWorkspacePath = '';
+      logger.info('Workspace closed');
+      const mainWindow = getMainWindow();
+      if (mainWindow) {
+        mainWindow.webContents.send('workspace:changed', { path: '' });
+      }
+      return { success: true };
+    } catch (error) {
+      logger.error('workspace:close failed', { error });
+      return { success: false, error: (error as Error).message };
     }
-    return { success: true };
   });
 
   ipcMain.handle('workspace:set-path', async (_event, newPath: string) => {
@@ -214,28 +224,33 @@ export function registerFileHandlers(context: IpcContext): void {
   // ==========================================================================
 
   ipcMain.handle('files:select', async (_event, options?: { filters?: Electron.FileFilter[] }) => {
-    const mainWindow = getMainWindow();
-    if (!mainWindow) return [];
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openFile', 'multiSelections'],
-      filters: options?.filters,
-    });
-    if (result.canceled) return [];
-    const files: AttachmentPayload[] = await Promise.all(
-      result.filePaths.map(async (filePath) => {
-        const buffer = await fs.readFile(filePath);
-        return {
-          id: randomUUID(),
-          name: path.basename(filePath),
-          path: filePath,
-          size: buffer.byteLength,
-          mimeType: guessMimeType(filePath),
-          encoding: 'base64',
-          content: buffer.toString('base64'),
-        };
-      }),
-    );
-    return files;
+    try {
+      const mainWindow = getMainWindow();
+      if (!mainWindow) return [];
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openFile', 'multiSelections'],
+        filters: options?.filters,
+      });
+      if (result.canceled) return [];
+      const files: AttachmentPayload[] = await Promise.all(
+        result.filePaths.map(async (filePath) => {
+          const buffer = await fs.readFile(filePath);
+          return {
+            id: randomUUID(),
+            name: path.basename(filePath),
+            path: filePath,
+            size: buffer.byteLength,
+            mimeType: guessMimeType(filePath),
+            encoding: 'base64',
+            content: buffer.toString('base64'),
+          };
+        }),
+      );
+      return files;
+    } catch (error) {
+      logger.error('files:select failed', { error });
+      return [];
+    }
   });
 
   ipcMain.handle('files:read', async (_event, filePaths: string[]) => {

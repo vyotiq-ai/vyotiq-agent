@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Read File Tool
  * 
  * Reads a file from the local filesystem with support for:
@@ -116,32 +116,32 @@ export const readFileTool: ToolDefinition<ReadFileArgs> = {
 - To read configuration, documentation, or data files
 
 ## Workflow Integration
-This is the FIRST step in the Read → Edit → Verify cycle:
+This is the FIRST step in the Read â†’ Edit â†’ Verify cycle:
 \`\`\`
-read(file) → Get exact file content
-  │
-  ├─ Understand the code structure
-  ├─ Copy EXACT text for edit tool's old_string
-  │
-edit(file, old, new) → Make targeted changes
-  │
-read_lints() → Verify no errors introduced
+read(file) â†’ Get exact file content
+  â”‚
+  â”œâ”€ Understand the code structure
+  â”œâ”€ Copy EXACT text for edit tool's old_string
+  â”‚
+edit(file, old, new) â†’ Make targeted changes
+  â”‚
+read_lints() â†’ Verify no errors introduced
 \`\`\`
 
 ## Tool Chaining Patterns
-**Pattern 1: Discovery → Read → Modify**
+**Pattern 1: Discovery â†’ Read â†’ Modify**
 \`\`\`
-grep("pattern") → Find files containing pattern
-read(files) → Understand context (batch multiple files)
-edit(file, old, new) → Make changes
+grep("pattern") â†’ Find files containing pattern
+read(files) â†’ Understand context (batch multiple files)
+edit(file, old, new) â†’ Make changes
 \`\`\`
 
-**Pattern 2: Explore → Read → Plan**
+**Pattern 2: Explore â†’ Read â†’ Plan**
 \`\`\`
-glob("**/*.ts") → Find all TypeScript files
-ls(directory) → Understand structure
-read(key_files) → Understand architecture
-CreatePlan → Break down the task
+glob("**/*.ts") â†’ Find all TypeScript files
+ls(directory) â†’ Understand structure
+read(key_files) â†’ Understand architecture
+CreatePlan â†’ Break down the task
 \`\`\`
 
 ## Supported File Types
@@ -158,7 +158,7 @@ CreatePlan → Break down the task
 
 ## Large File Strategy
 Files over ${MAX_FILE_LINES} lines are automatically chunked:
-1. First read: \`read(path)\` → Returns first ${MAX_FILE_LINES} lines + total count
+1. First read: \`read(path)\` â†’ Returns first ${MAX_FILE_LINES} lines + total count
 2. Next chunk: \`read(path, offset=${MAX_FILE_LINES + 1}, limit=${MAX_FILE_LINES})\`
 3. Continue until you've read what you need
 
@@ -303,7 +303,7 @@ ${wasTruncated ? '[Content truncated - use offset/limit for specific sections]\n
 --- Extracted Text ---
 `;
           
-          markFileAsRead(filePath);
+          markFileAsRead(filePath, context.sessionId);
           return {
             toolName: 'read',
             success: true,
@@ -322,7 +322,7 @@ ${wasTruncated ? '[Content truncated - use offset/limit for specific sections]\n
           const err = pdfError as Error;
           // Fall back to metadata-only if parsing fails
           const stats = await fs.stat(filePath);
-          markFileAsRead(filePath);
+          markFileAsRead(filePath, context.sessionId);
           return {
             toolName: 'read',
             success: true,
@@ -357,7 +357,7 @@ This may be a scanned/image-only PDF or have security restrictions.`,
             return `[${idx + 1}] ${cell.cell_type}: ${preview}${source.length > 100 ? '...' : ''}`;
           }).join('\n');
           
-          markFileAsRead(filePath);
+          markFileAsRead(filePath, context.sessionId);
           return {
             toolName: 'read',
             success: true,
@@ -389,7 +389,7 @@ This may be a scanned/image-only PDF or have security restrictions.`,
       if (isImage) {
         const stats = await fs.stat(filePath);
         // Track that this file was read
-        markFileAsRead(filePath);
+        markFileAsRead(filePath, context.sessionId);
         return {
           toolName: 'read',
           success: true,
@@ -446,7 +446,7 @@ This may be a scanned/image-only PDF or have security restrictions.`,
         }
 
         // Track that this file was read
-        markFileAsRead(filePath);
+        markFileAsRead(filePath, context.sessionId);
 
         return {
           toolName: 'read',
@@ -466,7 +466,7 @@ This may be a scanned/image-only PDF or have security restrictions.`,
       // Check for empty file
       if (content.trim().length === 0) {
         // Track that this file was read (even if empty)
-        markFileAsRead(filePath);
+        markFileAsRead(filePath, context.sessionId);
         return {
           toolName: 'read',
           success: true,
@@ -495,7 +495,7 @@ This may be a scanned/image-only PDF or have security restrictions.`,
       }
 
       // Track that this file was read
-      markFileAsRead(filePath);
+      markFileAsRead(filePath, context.sessionId);
 
       return {
         toolName: 'read',
@@ -552,29 +552,29 @@ This may be a scanned/image-only PDF or have security restrictions.`,
           ? `\n  Resolved to: ${filePath}` 
           : '';
         
-        let output = `═══ FILE NOT FOUND ═══\n\n`;
+        let output = `â•â•â• FILE NOT FOUND â•â•â•\n\n`;
         output += `Requested: ${args.path}${resolvedNote}\n\n`;
         
         if (!parentExists) {
           output += `The parent directory does not exist.\n`;
-          output += `\n═══ SUGGESTIONS ═══\n`;
-          output += `• Check the full path is correct\n`;
-          output += `• Use 'ls' on workspace root to find the correct directory structure\n`;
-          output += `• Use 'glob' to search for '**/${filename}'\n`;
+          output += `\nâ•â•â• SUGGESTIONS â•â•â•\n`;
+          output += `â€¢ Check the full path is correct\n`;
+          output += `â€¢ Use 'ls' on workspace root to find the correct directory structure\n`;
+          output += `â€¢ Use 'glob' to search for '**/${filename}'\n`;
         } else if (similarFiles.length > 0) {
-          output += `═══ SIMILAR FILES FOUND ═══\n`;
+          output += `â•â•â• SIMILAR FILES FOUND â•â•â•\n`;
           for (const f of similarFiles) {
-            output += `  • ${directory}/${f}\n`;
+            output += `  â€¢ ${directory}/${f}\n`;
           }
-          output += `\n═══ SUGGESTIONS ═══\n`;
-          output += `• Did you mean one of the files above?\n`;
-          output += `• Check for typos or case sensitivity\n`;
+          output += `\nâ•â•â• SUGGESTIONS â•â•â•\n`;
+          output += `â€¢ Did you mean one of the files above?\n`;
+          output += `â€¢ Check for typos or case sensitivity\n`;
         } else {
           output += `The directory exists but the file was not found.\n`;
-          output += `\n═══ SUGGESTIONS ═══\n`;
-          output += `• Use 'ls' to list files in '${directory}'\n`;
-          output += `• Use 'glob' to search for '**/${filename}'\n`;
-          output += `• Check for typos (paths are case-sensitive)\n`;
+          output += `\nâ•â•â• SUGGESTIONS â•â•â•\n`;
+          output += `â€¢ Use 'ls' to list files in '${directory}'\n`;
+          output += `â€¢ Use 'glob' to search for '**/${filename}'\n`;
+          output += `â€¢ Check for typos (paths are case-sensitive)\n`;
         }
         
         return {
@@ -587,27 +587,27 @@ This may be a scanned/image-only PDF or have security restrictions.`,
         return {
           toolName: 'read',
           success: false,
-          output: `═══ PERMISSION DENIED ═══\n\nFile: ${args.path}\nResolved: ${filePath}\n\nThe file exists but cannot be read due to permission restrictions.\n\nSuggestions:\n• Check file permissions (chmod on Unix, Properties on Windows)\n• The file may be locked by another process`,
+          output: `â•â•â• PERMISSION DENIED â•â•â•\n\nFile: ${args.path}\nResolved: ${filePath}\n\nThe file exists but cannot be read due to permission restrictions.\n\nSuggestions:\nâ€¢ Check file permissions (chmod on Unix, Properties on Windows)\nâ€¢ The file may be locked by another process`,
         };
       }
       if (err.code === 'EISDIR') {
         return {
           toolName: 'read',
           success: false,
-          output: `═══ PATH IS A DIRECTORY ═══\n\nPath: ${args.path}\n\nCannot read directory as a file.\n\nSuggestions:\n• Use 'ls' tool to list directory contents\n• Add a filename to the path`,
+          output: `â•â•â• PATH IS A DIRECTORY â•â•â•\n\nPath: ${args.path}\n\nCannot read directory as a file.\n\nSuggestions:\nâ€¢ Use 'ls' tool to list directory contents\nâ€¢ Add a filename to the path`,
         };
       }
       if (err.code === 'ENAMETOOLONG') {
         return {
           toolName: 'read',
           success: false,
-          output: `═══ PATH TOO LONG ═══\n\nThe file path exceeds system limits.\n\nSuggestions:\n• Use a shorter path\n• Navigate to a closer directory first`,
+          output: `â•â•â• PATH TOO LONG â•â•â•\n\nThe file path exceeds system limits.\n\nSuggestions:\nâ€¢ Use a shorter path\nâ€¢ Navigate to a closer directory first`,
         };
       }
       return {
         toolName: 'read',
         success: false,
-        output: `═══ READ ERROR ═══\n\nFile: ${args.path}\nError: ${err.message}\nCode: ${err.code || 'unknown'}`,
+        output: `â•â•â• READ ERROR â•â•â•\n\nFile: ${args.path}\nError: ${err.message}\nCode: ${err.code || 'unknown'}`,
       };
     }
   },

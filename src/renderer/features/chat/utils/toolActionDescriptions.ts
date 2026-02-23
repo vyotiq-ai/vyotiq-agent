@@ -568,6 +568,118 @@ const TOOL_ACTIONS: Record<string, ToolActionConfig> = {
     },
     category: 'browser',
   },
+  browser_extract: {
+    verbs: {
+      queued: 'Waiting to extract',
+      running: 'Extracting page content',
+      completed: 'Extracted content',
+      error: 'Extraction failed',
+      pending: 'Will extract content',
+    },
+    category: 'browser',
+  },
+  browser_fetch: {
+    verbs: {
+      queued: 'Waiting to fetch',
+      running: 'Fetching web content',
+      completed: 'Fetched content',
+      error: 'Fetch failed',
+      pending: 'Will fetch',
+    },
+    category: 'browser',
+    getContext: extractUrl,
+  },
+  browser_snapshot: {
+    verbs: {
+      queued: 'Waiting to snapshot',
+      running: 'Taking page snapshot',
+      completed: 'Page snapshot taken',
+      error: 'Snapshot failed',
+      pending: 'Will take snapshot',
+    },
+    category: 'browser',
+  },
+  browser_fill_form: {
+    verbs: {
+      queued: 'Waiting to fill form',
+      running: 'Filling form fields',
+      completed: 'Filled form',
+      error: 'Form fill failed',
+      pending: 'Will fill form',
+    },
+    category: 'browser',
+  },
+  browser_hover: {
+    verbs: {
+      queued: 'Waiting to hover',
+      running: 'Hovering over element',
+      completed: 'Hovered',
+      error: 'Hover failed',
+      pending: 'Will hover',
+    },
+    category: 'browser',
+  },
+  browser_back: {
+    verbs: {
+      queued: 'Waiting to go back',
+      running: 'Navigating back',
+      completed: 'Navigated back',
+      error: 'Back navigation failed',
+      pending: 'Will go back',
+    },
+    category: 'browser',
+  },
+  browser_forward: {
+    verbs: {
+      queued: 'Waiting to go forward',
+      running: 'Navigating forward',
+      completed: 'Navigated forward',
+      error: 'Forward navigation failed',
+      pending: 'Will go forward',
+    },
+    category: 'browser',
+  },
+  browser_reload: {
+    verbs: {
+      queued: 'Waiting to reload',
+      running: 'Reloading page',
+      completed: 'Reloaded page',
+      error: 'Reload failed',
+      pending: 'Will reload',
+    },
+    category: 'browser',
+  },
+  browser_console: {
+    verbs: {
+      queued: 'Waiting to get logs',
+      running: 'Getting console logs',
+      completed: 'Got console logs',
+      error: 'Console log retrieval failed',
+      pending: 'Will get console logs',
+    },
+    category: 'browser',
+  },
+  browser_check_url: {
+    verbs: {
+      queued: 'Waiting to check URL',
+      running: 'Checking URL safety',
+      completed: 'URL checked',
+      error: 'URL check failed',
+      pending: 'Will check URL',
+    },
+    category: 'browser',
+    getContext: extractUrl,
+  },
+  browser_state: {
+    verbs: {
+      queued: 'Waiting to get state',
+      running: 'Getting browser state',
+      completed: 'Got browser state',
+      error: 'State retrieval failed',
+      pending: 'Will get browser state',
+    },
+    category: 'browser',
+  },
   browser_get: {
     verbs: {
       queued: 'Waiting to get page',

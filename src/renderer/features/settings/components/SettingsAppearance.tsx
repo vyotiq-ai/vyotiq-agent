@@ -58,6 +58,7 @@ const accentColorOptions: SelectOption<AccentColorPreset>[] = [
   { value: 'amber', label: 'Amber' },
   { value: 'rose', label: 'Rose' },
   { value: 'cyan', label: 'Cyan' },
+  { value: 'custom', label: 'Custom' },
 ];
 
 const terminalFontOptions: SelectOption<TerminalFont>[] = [
@@ -156,6 +157,29 @@ export const SettingsAppearance: React.FC<SettingsAppearanceProps> = ({
           options={accentColorOptions}
           onChange={(value) => handleChange('accentColor', value)}
         />
+        {settings.accentColor === 'custom' && (
+          <div className="flex items-center gap-2 mt-1">
+            <input
+              type="color"
+              value={settings.customAccentColor || '#10b981'}
+              onChange={(e) => handleChange('customAccentColor', e.target.value)}
+              className="w-6 h-6 border border-[var(--color-border-subtle)] cursor-pointer bg-transparent p-0"
+            />
+            <input
+              type="text"
+              value={settings.customAccentColor || '#10b981'}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (/^#([0-9a-fA-F]{3}){1,2}$/.test(v)) {
+                  handleChange('customAccentColor', v);
+                }
+              }}
+              placeholder="#10b981"
+              className="w-24 px-2 py-1 text-[9px] bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent-primary)]/40 font-mono placeholder:text-[var(--color-text-dim)]"
+            />
+            <span className="text-[8px] text-[var(--color-text-dim)]">hex color</span>
+          </div>
+        )}
       </SettingsGroup>
 
       {/* Terminal Font */}

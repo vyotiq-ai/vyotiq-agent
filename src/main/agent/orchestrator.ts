@@ -60,6 +60,8 @@ export class AgentOrchestrator extends EventEmitter {
 
   // Periodic cleanup interval for orphaned session throttle tracking
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+  // Periodic stall detection watchdog
+  private stallCheckIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(deps: OrchestratorDeps) {
     super();
@@ -209,6 +211,29 @@ export class AgentOrchestrator extends EventEmitter {
     }, 5 * 60 * 1000);
     if (this.cleanupIntervalId && typeof this.cleanupIntervalId === 'object' && 'unref' in this.cleanupIntervalId) {
       (this.cleanupIntervalId as NodeJS.Timeout).unref();
+    }
+
+    // Periodic stall detection watchdog (every 60s)
+    // If a session's LLM call is stuck indefinitely, the iteration loop can't
+    // reach its own shouldStopRun() check. This external watchdog detects stalled
+    // sessions and aborts their AbortController so the stuck call unblocks.
+    this.stallCheckIntervalId = setInterval(() => {
+      try {
+        const healthMonitor = getSessionHealthMonitor();
+        const stalledIds = healthMonitor.checkForStalls();
+        for (const sessionId of stalledIds) {
+          const session = this.sessionManager.getSession(sessionId);
+          if (session && session.state.status === 'running') {
+            this.logger.warn('Stall watchdog: aborting stalled session', { sessionId });
+            this.runExecutor.cancelRun(sessionId, session);
+          }
+        }
+      } catch (err) {
+        this.logger.warn('Stall watchdog error', { error: err });
+      }
+    }, 60_000);
+    if (this.stallCheckIntervalId && typeof this.stallCheckIntervalId === 'object' && 'unref' in this.stallCheckIntervalId) {
+      (this.stallCheckIntervalId as NodeJS.Timeout).unref();
     }
   }
 
@@ -880,6 +905,12 @@ export class AgentOrchestrator extends EventEmitter {
     if (this.cleanupIntervalId) {
       clearInterval(this.cleanupIntervalId);
       this.cleanupIntervalId = null;
+    }
+
+    // Clear the stall detection watchdog interval
+    if (this.stallCheckIntervalId) {
+      clearInterval(this.stallCheckIntervalId);
+      this.stallCheckIntervalId = null;
     }
 
     // Clear all pending session state emit timers to prevent leaks

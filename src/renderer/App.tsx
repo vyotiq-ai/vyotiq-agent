@@ -56,7 +56,6 @@ const App: React.FC = () => {
     closeMetricsDashboard,
     openQuickOpen,
     closeQuickOpen,
-    closeDebugPanel: _closeDebugPanel,
     toggleDebugPanel,
   } = useUIActions();
 

@@ -20,6 +20,7 @@ import {
   AgentInstructionsSection,
   ContextRulesSection,
   ResponseFormatSection,
+  InstructionFilesSection,
 } from './prompts';
 import type { PromptSettings, ResponseFormatPreferences } from '../../../../shared/types';
 import { DEFAULT_RESPONSE_FORMAT } from '../../../../shared/types';
@@ -29,12 +30,13 @@ interface SettingsPromptsProps {
   onChange: <K extends keyof PromptSettings>(field: K, value: PromptSettings[K]) => void;
 }
 
-type PromptsSubSection = 'system-prompt' | 'personas' | 'agent-instructions' | 'context-rules' | 'response-format';
+type PromptsSubSection = 'system-prompt' | 'personas' | 'agent-instructions' | 'instruction-files' | 'context-rules' | 'response-format';
 
 const SUB_SECTIONS: { id: PromptsSubSection; label: string }[] = [
   { id: 'system-prompt', label: 'System Prompt' },
   { id: 'personas', label: 'Personas' },
   { id: 'agent-instructions', label: 'Agents' },
+  { id: 'instruction-files', label: 'Instruction Files' },
   { id: 'context-rules', label: 'Context Rules' },
   { id: 'response-format', label: 'Response Format' },
 ];
@@ -104,6 +106,13 @@ export const SettingsPrompts: React.FC<SettingsPromptsProps> = ({ settings, onCh
 
       {activeSubSection === 'agent-instructions' && (
         <AgentInstructionsSection
+          settings={settings}
+          onChange={onChange}
+        />
+      )}
+
+      {activeSubSection === 'instruction-files' && (
+        <InstructionFilesSection
           settings={settings}
           onChange={onChange}
         />

@@ -1,5 +1,5 @@
 // State management barrel export
-export { AgentProvider, useAgent } from './AgentProvider';
+export { AgentProvider } from './AgentProvider';
 export { UIProvider } from './UIProvider';
 
 // Types from centralized types module

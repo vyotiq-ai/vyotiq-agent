@@ -6,23 +6,14 @@ import type {
   AgentSettings,
   AttachmentPayload,
   RendererEvent,
-  ProgressEvent,
-  ArtifactEvent,
-  AgentStatusEvent,
-  ToolResultEvent,
-  ToolCallEvent,
-  ContextMetricsEvent,
-  RoutingDecisionEvent,
-  StreamDeltaEvent,
-  TodoUpdateEvent,
 } from '../../shared/types';
 import { initialState, type AgentUIState, type AgentAction } from './agentReducer';
 import { combinedAgentReducer } from './reducers';
 import { useStreamingBuffer } from '../hooks/useStreamingBuffer';
 import { createLogger } from '../utils/logger';
 import { withIpcRetry } from '../utils/ipcRetry';
-import { computeSessionDelta } from './sessionDelta';
 import { getCurrentWorkspacePath } from './WorkspaceProvider';
+import { createAgentEventHandler } from './agentEventHandler';
 
 // Force full page reload on HMR to avoid React context identity issues
 // Context objects get new identity on module reload, breaking consumers using stale context
@@ -118,10 +109,6 @@ export function useAgentActions() {
   return store.actions;
 }
 
-export function useAgentState() {
-  return useAgentSelector((s) => s);
-}
-
 export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const storeRef = useRef<AgentStore | null>(null);
 
@@ -180,6 +167,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   const dispatchRef = useRef(store.dispatch);
   const dispatchBatchRef = useRef(store.dispatchBatch);
   dispatchRef.current = store.dispatch;
+  dispatchBatchRef.current = store.dispatchBatch;
 
   // Event batching refs for low-priority updates
   const eventBatchRef = useRef<AgentAction[]>([]);
@@ -208,9 +196,7 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 
         // Dispatch all batched events in a transition to avoid blocking
         startTransition(() => {
-          for (const action of batch) {
-            dispatchRef.current(action);
-          }
+          dispatchBatchRef.current(batch);
         });
       }, EVENT_BATCH_INTERVAL_MS);
     }
@@ -320,594 +306,26 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   }, [flushTerminalBuffers]);
 
   const handleAgentEvent = useCallback(
-    (event: AgentEvent | RendererEvent) => {
-      switch (event.type) {
-        case 'session-state': {
-          // CRITICAL: Flush any buffered streaming deltas BEFORE processing session state
-          // This prevents a race condition where:
-          // 1. Deltas are buffered but not yet dispatched
-          // 2. Session-state arrives with full content
-          // 3. Merge keeps incoming content (buffer not flushed yet)
-          // 4. Buffer flushes and appends content again → DUPLICATION
-          flushSession(event.session.id, true);
-
-          // Try delta-based update for existing sessions to reduce GC pressure.
-          // Falls back to full SESSION_UPSERT for new sessions or when delta fails.
-          const existingSession = store.getState().sessions.find(s => s.id === event.session.id);
-          if (existingSession) {
-            const delta = computeSessionDelta(existingSession, event.session);
-            if (delta) {
-              dispatchRef.current({ type: 'SESSION_APPLY_DELTA', payload: delta });
-              break;
-            }
-            // delta === null means no changes, skip dispatch entirely
-            break;
-          }
-
-          // New session — full upsert
-          dispatchRef.current({ type: 'SESSION_UPSERT', payload: event.session });
-          break;
-        }
-        case 'session-patch': {
-          // Lightweight session update — O(1) patch for trivial field changes
-          // (rename, config, reaction) without serializing/deserializing all messages
-          const patchEvent = event as import('../../shared/types').SessionPatchEvent;
-          dispatchRef.current({
-            type: 'SESSION_PATCH',
-            payload: {
-              sessionId: patchEvent.sessionId,
-              patch: patchEvent.patch,
-              messagePatch: patchEvent.messagePatch,
-            },
-          });
-          break;
-        }
-        case 'stream-delta': {
-          const deltaEvent = event as StreamDeltaEvent;
-          if (deltaEvent.isThinking) {
-            // Buffer thinking deltas for smooth word-by-word streaming
-            // Same 32ms batching as content deltas for consistent rendering
-            if (deltaEvent.delta) {
-              appendThinkingDelta(deltaEvent.sessionId, deltaEvent.messageId, deltaEvent.delta);
-            }
-          } else if (deltaEvent.toolCall) {
-            // Forward tool call deltas directly
-            dispatchRef.current({
-              type: 'STREAM_DELTA',
-              payload: {
-                sessionId: deltaEvent.sessionId,
-                messageId: deltaEvent.messageId,
-                toolCall: deltaEvent.toolCall,
-              },
-            });
-          } else if (deltaEvent.delta) {
-            // Use buffered delta updates instead of immediate dispatch
-            // This is already batched by useStreamingBuffer
-            appendDelta(deltaEvent.sessionId, deltaEvent.messageId, deltaEvent.delta);
-          }
-          break;
-        }
-        case 'run-status': {
-          // Run status changes are urgent - user needs immediate feedback.
-          // Collect all actions and dispatch them in a single batch to avoid
-          // multiple notify() → useSyncExternalStore snapshot cycles.
-          const runActions: AgentAction[] = [];
-
-          if (event.status === 'running') {
-            // Clear task state from previous runs when a new run starts
-            runActions.push({ type: 'CLEAR_SESSION_TASK_STATE', payload: event.sessionId });
-            // Clear any previous run error when a new run starts
-            runActions.push({ type: 'RUN_ERROR_CLEAR', payload: event.sessionId });
-          }
-          if (event.status === 'idle' || event.status === 'error') {
-            clearBuffer(event.sessionId);
-            clearThinkingBuffer(event.sessionId);
-          }
-          runActions.push({
-            type: 'RUN_STATUS',
-            payload: { sessionId: event.sessionId, status: event.status, runId: event.runId },
-          });
-          // Dispatch structured error info when run fails
-          if (event.status === 'error' && event.errorCode) {
-            runActions.push({
-              type: 'RUN_ERROR',
-              payload: {
-                sessionId: event.sessionId,
-                errorCode: event.errorCode,
-                message: event.message || 'An unknown error occurred',
-                recoverable: event.recoverable ?? true,
-                recoveryHint: event.recoveryHint,
-              },
-            });
-          }
-          if (event.status === 'idle' || event.status === 'error') {
-            runActions.push({ type: 'PENDING_TOOL_REMOVE', payload: event.runId });
-            if (event.runId) {
-              runActions.push({ type: 'RUN_TOOLSTATE_CLEAR', payload: event.runId });
-            }
-          }
-          if (event.status === 'awaiting-confirmation' && event.runId) {
-            // Awaiting approval: ensure no tools show as running/queued
-            runActions.push({ type: 'RUN_TOOLSTATE_CLEAR', payload: event.runId });
-          }
-          dispatchBatchRef.current(runActions);
-          break;
-        }
-        case 'tool-call': {
-          // Track tool execution start for immediate UI feedback
-          // This enables showing the tool as "running" instantly
-          const toolCallEvent = event as ToolCallEvent;
-          if (toolCallEvent.toolCall && toolCallEvent.runId && !event.requiresApproval) {
-            dispatchRef.current({
-              type: 'TOOL_EXECUTION_START',
-              payload: {
-                runId: toolCallEvent.runId,
-                callId: toolCallEvent.toolCall.callId,
-                name: toolCallEvent.toolCall.name,
-                arguments: toolCallEvent.toolCall.arguments as Record<string, unknown> | undefined,
-              },
-            });
-          }
-          
-          // Only add to pending confirmations if approval is actually required
-          // This prevents flickering when tools auto-execute in yolo mode
-          if (event.requiresApproval) {
-            dispatchRef.current({ type: 'PENDING_TOOL_ADD', payload: event });
-          }
-          break;
-        }
-        case 'tool-result': {
-          // Dispatch tool result to state for inline display in ToolExecution
-          const toolResultEvent = event as ToolResultEvent;
-          // Use the actual toolCallId from the event, fallback to generated if not available
-          const callId = toolResultEvent.toolCallId ||
-            `${toolResultEvent.result.toolName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-          logger.debug('Received tool-result event', {
-            runId: toolResultEvent.runId,
-            callId,
-            toolName: toolResultEvent.result.toolName,
-            hasMetadata: !!toolResultEvent.result.metadata,
-            metadataKeys: toolResultEvent.result.metadata ? Object.keys(toolResultEvent.result.metadata) : [],
-          });
-
-          // Batch PENDING_TOOL_REMOVE + TOOL_RESULT_RECEIVE into a single notify
-          dispatchBatchRef.current([
-            { type: 'PENDING_TOOL_REMOVE', payload: event.runId },
-            {
-              type: 'TOOL_RESULT_RECEIVE',
-              payload: {
-                runId: toolResultEvent.runId,
-                sessionId: toolResultEvent.sessionId,
-                callId,
-                toolName: toolResultEvent.result.toolName,
-                result: toolResultEvent.result,
-              },
-            },
-          ]);
-          break;
-        }
-
-        case 'tool-queued': {
-          // Track queued tools for immediate UI feedback
-          // Shows users what tools are waiting to execute
-          const queuedEvent = event as import('../../shared/types').ToolQueuedEvent;
-          dispatchRef.current({
-            type: 'TOOL_QUEUED',
-            payload: {
-              runId: queuedEvent.runId,
-              tools: queuedEvent.tools,
-            },
-          });
-          break;
-        }
-
-        case 'tool-started': {
-          // Tool is now actively executing (distinct from tool-call which may require approval)
-          // Batch both dequeue + execution start into a single notify cycle
-          const startedEvent = event as import('../../shared/types').ToolStartedEvent;
-          dispatchBatchRef.current([
-            {
-              type: 'TOOL_DEQUEUED',
-              payload: {
-                runId: startedEvent.runId,
-                callId: startedEvent.toolCall.callId,
-              },
-            },
-            {
-              type: 'TOOL_EXECUTION_START',
-              payload: {
-                runId: startedEvent.runId,
-                callId: startedEvent.toolCall.callId,
-                name: startedEvent.toolCall.name,
-                arguments: startedEvent.toolCall.arguments as Record<string, unknown> | undefined,
-              },
-            },
-          ]);
-          break;
-        }
-
-        case 'media-output': {
-          // Handle generated media (images, audio) from multimodal models
-          // @see https://ai.google.dev/gemini-api/docs/image-generation
-          const mediaEvent = event as RendererEvent & {
-            mediaType: 'image' | 'audio';
-            data: string;
-            mimeType: string;
-            messageId: string;
-          };
-          dispatchRef.current({
-            type: 'MEDIA_OUTPUT_RECEIVE',
-            payload: {
-              sessionId: event.sessionId,
-              messageId: mediaEvent.messageId,
-              mediaType: mediaEvent.mediaType,
-              data: mediaEvent.data,
-              mimeType: mediaEvent.mimeType,
-            },
-          });
-          break;
-        }
-
-        case 'file-diff-stream': {
-          // Real-time file diff streaming — enables inline diff display as files are modified
-          const diffEvent = event as import('../../shared/types').FileDiffStreamEvent;
-          dispatchRef.current({
-            type: 'FILE_DIFF_STREAM',
-            payload: {
-              runId: diffEvent.runId,
-              toolCallId: diffEvent.toolCallId,
-              toolName: diffEvent.toolName,
-              filePath: diffEvent.filePath,
-              originalContent: diffEvent.originalContent,
-              modifiedContent: diffEvent.modifiedContent,
-              isNewFile: diffEvent.isNewFile,
-              isComplete: diffEvent.isComplete,
-              action: diffEvent.action,
-            },
-          });
-          break;
-        }
-
-        case 'settings-update':
-          // Settings updates are non-urgent - use batched dispatch
-          batchedDispatch({ type: 'SETTINGS_UPDATE', payload: event.settings });
-          break;
-        case 'progress':
-          // Progress updates can be batched
-          batchedDispatch({
-            type: 'PROGRESS_UPDATE',
-            payload: {
-              sessionId: (event as ProgressEvent).sessionId,
-              groupId: (event as ProgressEvent).groupId,
-              groupTitle: (event as ProgressEvent).groupTitle,
-              startedAt: (event as ProgressEvent).timestamp,
-              item: (event as ProgressEvent).item,
-            },
-          });
-          break;
-        case 'artifact':
-          // Artifact updates can be batched
-          batchedDispatch({
-            type: 'ARTIFACT_ADD',
-            payload: {
-              sessionId: (event as ArtifactEvent).sessionId,
-              artifact: (event as ArtifactEvent).artifact,
-            },
-          });
-          break;
-        case 'agent-status': {
-          // Agent status updates (summarizing, analyzing, iteration progress, etc.)
-          const statusEvent = event as AgentStatusEvent;
-          const last = lastAgentStatusRef.current[statusEvent.sessionId];
-          const now = Date.now();
-          const isSameStatus = last?.status === statusEvent.status;
-          const isSameMessage = last?.message === statusEvent.message;
-          const recentlyUpdated = last ? (now - last.timestamp) < 1200 : false;
-
-          // CRITICAL: Never drop events that carry iteration metadata changes.
-          // Iteration counter updates must reach the UI immediately so
-          // IterationControl and InputHeader display correct progress.
-          const hasIterationChange =
-            statusEvent.metadata?.currentIteration !== undefined &&
-            (last as Record<string, unknown> | undefined)?.lastIteration !== statusEvent.metadata.currentIteration;
-
-          // Drop noisy, repetitive executing updates — but NOT if iteration changed
-          if (
-            !hasIterationChange &&
-            statusEvent.status === 'executing' &&
-            isSameStatus &&
-            recentlyUpdated &&
-            (!statusEvent.message || statusEvent.message.startsWith('Executing:'))
-          ) {
-            break;
-          }
-
-          if (!hasIterationChange && isSameStatus && isSameMessage && recentlyUpdated) {
-            break;
-          }
-
-          lastAgentStatusRef.current[statusEvent.sessionId] = {
-            status: statusEvent.status,
-            message: statusEvent.message,
-            timestamp: now,
-            lastIteration: statusEvent.metadata?.currentIteration,
-          };
-
-          dispatchRef.current({
-            type: 'AGENT_STATUS_UPDATE',
-            payload: {
-              sessionId: statusEvent.sessionId,
-              status: {
-                status: statusEvent.status === 'analyzing' ? 'summarizing' : statusEvent.status,
-                message: statusEvent.message,
-                timestamp: statusEvent.timestamp,
-                contextUtilization: statusEvent.metadata?.contextUtilization,
-                messageCount: statusEvent.metadata?.messageCount,
-                // Iteration tracking for progress display
-                currentIteration: statusEvent.metadata?.currentIteration,
-                maxIterations: statusEvent.metadata?.maxIterations,
-                runStartedAt: statusEvent.metadata?.runStartedAt,
-                avgIterationTimeMs: statusEvent.metadata?.avgIterationTimeMs,
-                // Provider/model info for current iteration
-                provider: statusEvent.metadata?.provider,
-                modelId: statusEvent.metadata?.modelId,
-              },
-            },
-          });
-          break;
-        }
-
-        case 'context-metrics': {
-          // Context metrics are non-urgent - use batched dispatch
-          const ctxEvent = event as ContextMetricsEvent;
-          batchedDispatch({
-            type: 'CONTEXT_METRICS_UPDATE',
-            payload: {
-              sessionId: ctxEvent.sessionId,
-              provider: ctxEvent.provider,
-              modelId: ctxEvent.modelId,
-              runId: ctxEvent.runId,
-              timestamp: ctxEvent.timestamp,
-              metrics: ctxEvent.metrics,
-            },
-          });
-          break;
-        }
-        // Debug events - log them in development
-        case 'debug:trace-start':
-        case 'debug:trace-complete':
-        case 'debug:llm-call':
-        case 'debug:tool-call':
-        case 'debug:tool-result':
-        case 'debug:error':
-        case 'debug:log': {
-          // Debug events can be handled here if needed
-          if (process.env.NODE_ENV === 'development') {
-            logger.debug('Debug event', { type: event.type });
-          }
-          break;
-        }
-        case 'sessions-update': {
-          // Bulk sessions update from backend - atomically replace all sessions
-          const sessionsEvent = event as RendererEvent & { sessions?: AgentSessionState[] };
-          const sessions = (sessionsEvent.sessions || []) as AgentSessionState[];
-
-          const currentState = getCurrentState();
-
-          // Use atomic SESSIONS_REPLACE to avoid empty-state flash between clear and upsert
-          if (sessions.length > 0) {
-            const sortedSessions = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
-            const activeId = !currentState.activeSessionId ? sortedSessions[0].id : undefined;
-            dispatchRef.current({
-              type: 'SESSIONS_REPLACE',
-              payload: { sessions, activeSessionId: activeId },
-            });
-          } else {
-            // No sessions from backend — clear all
-            dispatchRef.current({ type: 'SESSIONS_CLEAR' });
-          }
-          break;
-        }
-        case 'routing-decision': {
-          // Task-based routing decision event
-          const routingEvent = event as RoutingDecisionEvent;
-          dispatchRef.current({
-            type: 'ROUTING_DECISION',
-            payload: {
-              sessionId: routingEvent.sessionId,
-              decision: {
-                taskType: routingEvent.decision.detectedTaskType,
-                selectedProvider: routingEvent.decision.selectedProvider ?? null,
-                selectedModel: routingEvent.decision.selectedModel ?? null,
-                confidence: routingEvent.decision.confidence,
-                reason: routingEvent.decision.reason,
-                signals: routingEvent.decision.signals,
-                alternatives: routingEvent.decision.alternatives?.map((a: { taskType: string; confidence: number }) => ({
-                  taskType: a.taskType,
-                  confidence: a.confidence,
-                })),
-                usedFallback: routingEvent.decision.usedFallback,
-                originalProvider: routingEvent.decision.originalProvider,
-                isCustomTask: routingEvent.decision.isCustomTask,
-              },
-              timestamp: routingEvent.timestamp,
-            },
-          });
-          break;
-        }
-        // Terminal streaming events for real-time output display
-        case 'terminal-output': {
-          const terminalEvent = event as RendererEvent & { pid: number; data: string; stream: 'stdout' | 'stderr' };
-          if (terminalEvent.data) {
-            const existing = terminalBufferRef.current.get(terminalEvent.pid) ?? [];
-            existing.push({ stream: terminalEvent.stream, data: terminalEvent.data });
-            terminalBufferRef.current.set(terminalEvent.pid, existing);
-            scheduleTerminalFlush();
-          }
-          break;
-        }
-        case 'terminal-exit': {
-          const terminalEvent = event as RendererEvent & { pid: number; code: number };
-          dispatchRef.current({
-            type: 'TERMINAL_EXIT',
-            payload: {
-              pid: terminalEvent.pid,
-              code: terminalEvent.code,
-            },
-          });
-          break;
-        }
-        case 'terminal-error': {
-          // Terminal errors are handled similarly to exit
-          const terminalEvent = event as RendererEvent & { pid: number; error: string };
-          logger.warn('Terminal error', { pid: terminalEvent.pid, error: terminalEvent.error });
-          dispatchRef.current({
-            type: 'TERMINAL_EXIT',
-            payload: {
-              pid: terminalEvent.pid,
-              code: -1,
-            },
-          });
-          break;
-        }
-        // Phase 4: Communication events
-        case 'question-asked': {
-          const questionEvent = event as RendererEvent & { question: AgentUIState['pendingQuestions'][0] };
-          dispatchRef.current({
-            type: 'COMMUNICATION_QUESTION_ADD',
-            payload: questionEvent.question,
-          });
-          break;
-        }
-        case 'question-answered':
-        case 'question-skipped': {
-          const questionEvent = event as RendererEvent & { questionId: string };
-          dispatchRef.current({
-            type: 'COMMUNICATION_QUESTION_REMOVE',
-            payload: questionEvent.questionId,
-          });
-          break;
-        }
-        case 'decision-requested': {
-          const decisionEvent = event as RendererEvent & { decision: AgentUIState['pendingDecisions'][0] };
-          dispatchRef.current({
-            type: 'COMMUNICATION_DECISION_ADD',
-            payload: decisionEvent.decision,
-          });
-          break;
-        }
-        case 'decision-made':
-        case 'decision-skipped': {
-          const decisionEvent = event as RendererEvent & { decisionId: string };
-          dispatchRef.current({
-            type: 'COMMUNICATION_DECISION_REMOVE',
-            payload: decisionEvent.decisionId,
-          });
-          break;
-        }
-        case 'progress-update': {
-          const progressEvent = event as RendererEvent & { update: AgentUIState['communicationProgress'][0] };
-          // Check if update already exists - use batched dispatch as this is non-urgent
-          const existingIndex = getCurrentState().communicationProgress.findIndex(
-            p => p.id === progressEvent.update.id
-          );
-          if (existingIndex >= 0) {
-            batchedDispatch({
-              type: 'COMMUNICATION_PROGRESS_UPDATE',
-              payload: {
-                id: progressEvent.update.id,
-                progress: progressEvent.update.progress,
-                message: progressEvent.update.message,
-              },
-            });
-          } else {
-            batchedDispatch({
-              type: 'COMMUNICATION_PROGRESS_ADD',
-              payload: progressEvent.update,
-            });
-          }
-          break;
-        }
-        case 'todo-update': {
-          // Handle todo list updates from the TodoWrite tool
-          const todoEvent = event as TodoUpdateEvent;
-          dispatchRef.current({
-            type: 'TODO_UPDATE',
-            payload: {
-              sessionId: todoEvent.sessionId,
-              runId: todoEvent.runId,
-              todos: todoEvent.todos,
-              timestamp: todoEvent.timestamp,
-            },
-          });
-          break;
-        }
-        case 'follow-up-received': {
-          // Follow-up was received by the main process and added to the session
-          // The session-state event will handle updating messages in the UI
-          const followUpEvent = event as RendererEvent & { sessionId: string; messageId: string; content: string };
-          logger.info('Follow-up received by agent', {
-            sessionId: followUpEvent.sessionId,
-            messageId: followUpEvent.messageId,
-          });
-          break;
-        }
-        case 'follow-up-injected': {
-          // Follow-up was acknowledged by the agent run loop and will be used in next iteration
-          const injectedEvent = event as RendererEvent & { sessionId: string; messageId: string; runId: string; iteration: number };
-          logger.info('Follow-up injected into agent context', {
-            sessionId: injectedEvent.sessionId,
-            messageId: injectedEvent.messageId,
-            runId: injectedEvent.runId,
-            iteration: injectedEvent.iteration,
-          });
-          break;
-        }
-
-        default:
-          break;
-      }
-
-      // ---- Output log dispatch ----
-      // Fire a vyotiq:output-log CustomEvent for key events so the BottomPanel
-      // Output tab captures real-time agent activity.
-      const outputLogTypes: Record<string, (e: unknown) => { level: string; message: string; source: string } | null> = {
-        'run-status': (e) => {
-          const ev = e as { status?: string; message?: string };
-          return {
-            level: ev.status === 'error' ? 'error' : 'info',
-            message: `Run ${ev.status ?? 'unknown'}${ev.message ? `: ${ev.message}` : ''}`,
-            source: 'agent',
-          };
-        },
-        'tool-call': (e) => {
-          const tc = (e as { toolCall?: { name?: string } }).toolCall;
-          return tc ? { level: 'info', message: `Tool call: ${tc.name}`, source: 'tool' } : null;
-        },
-        'tool-result': (e) => {
-          const tr = (e as { result?: { toolName?: string; error?: string } }).result;
-          return tr ? { level: tr.error ? 'error' : 'info', message: `Tool result: ${tr.toolName}${tr.error ? ' (error)' : ''}`, source: 'tool' } : null;
-        },
-        'agent-status': (e) => {
-          const se = e as { message?: string };
-          return se.message ? { level: 'info', message: se.message, source: 'agent' } : null;
-        },
-        'question-asked': () => ({ level: 'info', message: 'Agent is asking a question', source: 'communication' }),
-        'decision-requested': () => ({ level: 'info', message: 'Agent requests a decision', source: 'communication' }),
-        'terminal-error': (e) => ({ level: 'error', message: `Terminal error: ${(e as { error?: string }).error ?? 'unknown'}`, source: 'terminal' }),
-      };
-
-      const logFactory = outputLogTypes[event.type];
-      if (logFactory) {
-        const logEntry = logFactory(event);
-        if (logEntry) {
-          document.dispatchEvent(new CustomEvent('vyotiq:output-log', {
-            detail: { type: event.type, ...logEntry },
-          }));
-        }
-      }
-    },
+    createAgentEventHandler({
+      dispatch: (action) => dispatchRef.current(action),
+      dispatchBatch: (actions) => dispatchBatchRef.current(actions),
+      batchedDispatch,
+      getCurrentState,
+      getState: () => store.getState(),
+      appendDelta,
+      appendThinkingDelta,
+      clearBuffer,
+      clearThinkingBuffer,
+      flushSession,
+      flushThinkingSession,
+      bufferTerminalOutput: (pid, stream, data) => {
+        const existing = terminalBufferRef.current.get(pid) ?? [];
+        existing.push({ stream, data });
+        terminalBufferRef.current.set(pid, existing);
+        scheduleTerminalFlush();
+      },
+      lastAgentStatusRef,
+    }),
     [appendDelta, appendThinkingDelta, clearBuffer, clearThinkingBuffer, flushSession, flushThinkingSession, batchedDispatch, getCurrentState, scheduleTerminalFlush, store],
   );
 
@@ -1318,11 +736,5 @@ export const AgentProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       {children}
     </AgentContext.Provider>
   );
-};
-
-export const useAgent = () => {
-  const state = useAgentState();
-  const actions = useAgentActions();
-  return { state, actions };
 };
 

@@ -9,6 +9,11 @@ import React, { createContext, useContext, useEffect, useState, useMemo, useCall
 import rustBackend, { type ServerEvent } from '../utils/rustBackendClient';
 import { createLogger } from '../utils/logger';
 
+// HMR: invalidate the module so React re-mounts with fresh contexts
+if (import.meta.hot) {
+  import.meta.hot.accept(() => import.meta.hot?.invalidate());
+}
+
 const logger = createLogger('RustBackendProvider');
 
 // ---------------------------------------------------------------------------

@@ -182,7 +182,16 @@ export const UndoHistoryPanel: React.FC<UndoHistoryPanelProps> = memo(({ isOpen,
 
   const { groupedHistory, undoableCount, isLoading, error, refresh, undoChange, redoChange, undoRun, clearHistory, undoLastChange, undoAllSession } = useUndoHistory({ sessionId, refreshInterval: 5000 });
 
-  const showStatus = useCallback((type: 'success' | 'error', text: string) => { setStatusMessage({ type, text }); setTimeout(() => setStatusMessage(null), 3000); }, []);
+  // Use a ref for the status timeout to allow cleanup on unmount
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showStatus = useCallback((type: 'success' | 'error', text: string) => {
+    setStatusMessage({ type, text });
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => setStatusMessage(null), 3000);
+  }, []);
+  useEffect(() => () => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+  }, []);
 
   const handleUndoChange = useCallback(async (changeId: string) => { setIsProcessing(true); try { const r = await undoChange(changeId); showStatus(r.success ? 'success' : 'error', r.message); } finally { setIsProcessing(false); } }, [undoChange, showStatus]);
   const handleRedoChange = useCallback(async (changeId: string) => { setIsProcessing(true); try { const r = await redoChange(changeId); showStatus(r.success ? 'success' : 'error', r.message); } finally { setIsProcessing(false); } }, [redoChange, showStatus]);

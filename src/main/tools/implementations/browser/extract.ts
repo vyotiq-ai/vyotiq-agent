@@ -184,6 +184,17 @@ async function executeExtract(
       }
     }
 
+    // Collect image data for inline rendering in chat (limit to first 6 images)
+    const inlineImages = content.images
+      .filter(img => img.src && !img.src.startsWith('data:'))
+      .slice(0, 6)
+      .map(img => ({
+        src: img.src,
+        alt: img.alt || '',
+        width: img.width,
+        height: img.height,
+      }));
+
     return {
       toolName: 'browser_extract',
       success: true,
@@ -196,6 +207,13 @@ async function executeExtract(
         imageCount: content.images.length,
         metadata: content.metadata,
         html: includeHtml ? content.html : undefined,
+        inlineImages,
+        links: content.links.slice(0, 10).map(l => ({
+          text: l.text.slice(0, 60),
+          href: l.href,
+          isExternal: l.isExternal,
+        })),
+        ogImage: content.metadata.ogImage,
       },
     };
   } catch (error) {

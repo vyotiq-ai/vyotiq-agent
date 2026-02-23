@@ -9,10 +9,11 @@
  * - Tool configuration (confirm/disable lists)
  * - Safety monitoring options
  */
-import React, { useState, useMemo } from 'react';
-import { Shield, Wrench, AlertTriangle, X, Plus, ChevronDown, ChevronRight, Cpu, ListChecks, Puzzle } from 'lucide-react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { Shield, Wrench, AlertTriangle, X, Plus, ChevronDown, ChevronRight, Cpu, ListChecks, Puzzle, Clock, Zap, Trash2 } from 'lucide-react';
 import type { AutonomousFeatureFlags, ToolConfigSettings } from '../../../../shared/types';
-import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsInfoBox } from '../primitives';
+import type { CustomToolConfig, CustomToolStep } from '../../../../shared/types/tools';
+import { SettingsSection, SettingsGroup, SettingsToggleRow, SettingsSlider, SettingsInfoBox, SettingsInput } from '../primitives';
 import { FeatureToggle, FeatureToggleGroup } from '../../../components/ui/FeatureToggle';
 
 interface SettingsAutonomousProps {
@@ -42,7 +43,11 @@ const CORE_TOOLS = [
 ] as const;
 
 export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings, onChange }) => {
-  const [expandedToolSection, setExpandedToolSection] = useState<'confirm' | 'disabled' | null>(null);
+  const [expandedToolSection, setExpandedToolSection] = useState<'confirm' | 'disabled' | 'timeouts' | null>(null);
+  const [timeoutToolName, setTimeoutToolName] = useState('');
+  const [timeoutValue, setTimeoutValue] = useState('');
+  const [customToolName, setCustomToolName] = useState('');
+  const [customToolDescription, setCustomToolDescription] = useState('');
 
   const toolSettings = settings?.toolSettings || {};
   const alwaysConfirmTools = useMemo(
@@ -52,6 +57,14 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
   const disabledTools = useMemo(
     () => toolSettings.disabledTools ?? [],
     [toolSettings.disabledTools]
+  );
+  const toolTimeouts = useMemo(
+    () => toolSettings.toolTimeouts ?? {},
+    [toolSettings.toolTimeouts]
+  );
+  const customTools = useMemo(
+    () => toolSettings.customTools ?? [],
+    [toolSettings.customTools]
   );
 
   // Tools available for adding to confirm/disable lists
@@ -96,6 +109,95 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
       disabledTools: disabledTools.filter((t: string) => t !== toolId) 
     });
   };
+
+  // --- Tool Timeouts ---
+  const handleAddToolTimeout = useCallback(() => {
+    const name = timeoutToolName.trim();
+    const seconds = parseFloat(timeoutValue);
+    if (!name || isNaN(seconds) || seconds <= 0) return;
+    onChange('toolSettings', {
+      ...toolSettings,
+      toolTimeouts: { ...toolTimeouts, [name]: Math.round(seconds * 1000) },
+    });
+    setTimeoutToolName('');
+    setTimeoutValue('');
+  }, [timeoutToolName, timeoutValue, toolSettings, toolTimeouts, onChange]);
+
+  const handleRemoveToolTimeout = useCallback((toolId: string) => {
+    const updated = { ...toolTimeouts };
+    delete updated[toolId];
+    onChange('toolSettings', { ...toolSettings, toolTimeouts: updated });
+  }, [toolSettings, toolTimeouts, onChange]);
+
+  // --- Custom Tools ---
+  const handleAddCustomTool = useCallback(() => {
+    const name = customToolName.trim();
+    const description = customToolDescription.trim();
+    if (!name) return;
+    const id = `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`;
+    const newTool: CustomToolConfig = {
+      id,
+      name,
+      description: description || `Custom tool: ${name}`,
+      steps: [],
+      enabled: true,
+      requiresConfirmation: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      usageCount: 0,
+    };
+    onChange('toolSettings', {
+      ...toolSettings,
+      customTools: [...customTools, newTool],
+    });
+    setCustomToolName('');
+    setCustomToolDescription('');
+  }, [customToolName, customToolDescription, toolSettings, customTools, onChange]);
+
+  const handleToggleCustomTool = useCallback((toolId: string, field: 'enabled' | 'requiresConfirmation') => {
+    onChange('toolSettings', {
+      ...toolSettings,
+      customTools: customTools.map((t: CustomToolConfig) =>
+        t.id === toolId ? { ...t, [field]: !t[field], updatedAt: Date.now() } : t
+      ),
+    });
+  }, [toolSettings, customTools, onChange]);
+
+  const handleRemoveCustomTool = useCallback((toolId: string) => {
+    onChange('toolSettings', {
+      ...toolSettings,
+      customTools: customTools.filter((t: CustomToolConfig) => t.id !== toolId),
+    });
+  }, [toolSettings, customTools, onChange]);
+
+  const handleAddCustomToolStep = useCallback((toolId: string, toolName: string) => {
+    if (!toolName.trim()) return;
+    const step: CustomToolStep = {
+      id: `step-${Date.now()}`,
+      toolName: toolName.trim(),
+      input: {},
+      onError: 'stop',
+    };
+    onChange('toolSettings', {
+      ...toolSettings,
+      customTools: customTools.map((t: CustomToolConfig) =>
+        t.id === toolId
+          ? { ...t, steps: [...t.steps, step], updatedAt: Date.now() }
+          : t
+      ),
+    });
+  }, [toolSettings, customTools, onChange]);
+
+  const handleRemoveCustomToolStep = useCallback((toolId: string, stepId: string) => {
+    onChange('toolSettings', {
+      ...toolSettings,
+      customTools: customTools.map((t: CustomToolConfig) =>
+        t.id === toolId
+          ? { ...t, steps: t.steps.filter((s: CustomToolStep) => s.id !== stepId), updatedAt: Date.now() }
+          : t
+      ),
+    });
+  }, [toolSettings, customTools, onChange]);
 
   return (
     <SettingsSection title="autonomous" description="Configure autonomous agent capabilities and advanced features">
@@ -168,7 +270,7 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
         <SettingsSlider
           label="max-exec-time"
           description="Max seconds per tool execution (10-600)"
-          value={(toolSettings.maxToolExecutionTime ?? 300000) / 1000}
+          value={(toolSettings.maxToolExecutionTime ?? 120000) / 1000}
           onChange={(v) => onChange('toolSettings', { ...toolSettings, maxToolExecutionTime: v * 1000 })}
           min={10}
           max={600}
@@ -344,6 +446,121 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
         </div>
       </SettingsGroup>
 
+      {/* Tool Timeouts */}
+      <SettingsGroup title="per-tool timeouts" icon={<Clock size={11} />}>
+        <p className="text-[9px] text-[var(--color-text-dim)] mb-2"># override default timeout for specific tools (seconds)</p>
+
+        {/* Existing timeouts */}
+        {Object.keys(toolTimeouts).length > 0 ? (
+          <div className="space-y-1 mb-2">
+            {Object.entries(toolTimeouts).map(([toolId, ms]) => (
+              <div
+                key={toolId}
+                className="flex items-center justify-between px-2 py-1 border border-[var(--color-border-subtle)] bg-[var(--color-surface-inset)]"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[var(--color-text-primary)] font-mono">{toolId}</span>
+                  <span className="text-[9px] text-[var(--color-text-dim)]">{(ms / 1000).toFixed(0)}s</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveToolTimeout(toolId)}
+                  className="text-[var(--color-text-muted)] hover:text-[var(--color-error)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+                  aria-label={`Remove timeout for ${toolId}`}
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[9px] text-[var(--color-text-placeholder)] italic mb-2"># no per-tool timeouts set (global default applies)</p>
+        )}
+
+        {/* Add timeout */}
+        <div className="flex items-end gap-2 pt-1 border-t border-[var(--color-border-subtle)]">
+          <div className="flex-1">
+            <SettingsInput
+              label="tool-name"
+              value={timeoutToolName}
+              onChange={setTimeoutToolName}
+              placeholder="e.g. run"
+            />
+          </div>
+          <div className="w-24">
+            <SettingsInput
+              label="seconds"
+              value={timeoutValue}
+              onChange={setTimeoutValue}
+              type="number"
+              placeholder="60"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleAddToolTimeout}
+            disabled={!timeoutToolName.trim() || !timeoutValue.trim()}
+            className="px-2 py-1 text-[9px] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-accent-primary)]/50 hover:text-[var(--color-accent-primary)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40 mb-1"
+          >
+            <Plus size={10} className="inline mr-0.5" />add
+          </button>
+        </div>
+      </SettingsGroup>
+
+      {/* Custom Tools */}
+      <SettingsGroup title="custom tools" icon={<Zap size={11} />}>
+        <p className="text-[9px] text-[var(--color-text-dim)] mb-2"># define composite tools that chain existing tools together</p>
+
+        {/* Existing custom tools */}
+        {customTools.length > 0 ? (
+          <div className="space-y-2 mb-2">
+            {customTools.map((tool: CustomToolConfig) => (
+              <CustomToolEntry
+                key={tool.id}
+                tool={tool}
+                onToggle={handleToggleCustomTool}
+                onRemove={handleRemoveCustomTool}
+                onAddStep={handleAddCustomToolStep}
+                onRemoveStep={handleRemoveCustomToolStep}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-[9px] text-[var(--color-text-placeholder)] italic mb-2"># no custom tools defined</p>
+        )}
+
+        {/* Add custom tool */}
+        <div className="space-y-2 pt-2 border-t border-[var(--color-border-subtle)]">
+          <span className="text-[9px] text-[var(--color-text-dim)]"># create a new custom tool:</span>
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <SettingsInput
+                label="name"
+                value={customToolName}
+                onChange={setCustomToolName}
+                placeholder="my-tool"
+              />
+            </div>
+            <div className="flex-1">
+              <SettingsInput
+                label="description"
+                value={customToolDescription}
+                onChange={setCustomToolDescription}
+                placeholder="What does this tool do?"
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleAddCustomTool}
+            disabled={!customToolName.trim()}
+            className="px-2 py-1 text-[9px] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-accent-primary)]/50 hover:text-[var(--color-accent-primary)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+          >
+            <Plus size={10} className="inline mr-0.5" />create tool
+          </button>
+        </div>
+      </SettingsGroup>
+
       {/* Info Box */}
       <SettingsInfoBox title="# about autonomous mode">
         <p>
@@ -366,6 +583,160 @@ export const SettingsAutonomous: React.FC<SettingsAutonomousProps> = ({ settings
         </ul>
       </SettingsInfoBox>
     </SettingsSection>
+  );
+};
+
+// --- Custom Tool Entry Sub-Component ---
+interface CustomToolEntryProps {
+  tool: CustomToolConfig;
+  onToggle: (id: string, field: 'enabled' | 'requiresConfirmation') => void;
+  onRemove: (id: string) => void;
+  onAddStep: (id: string, toolName: string) => void;
+  onRemoveStep: (id: string, stepId: string) => void;
+}
+
+const CustomToolEntry: React.FC<CustomToolEntryProps> = ({ tool, onToggle, onRemove, onAddStep, onRemoveStep }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [stepToolName, setStepToolName] = useState('');
+
+  return (
+    <div className="border border-[var(--color-border-subtle)] bg-[var(--color-surface-inset)]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-2 py-1.5">
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1.5 text-left flex-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+        >
+          {expanded ? (
+            <ChevronDown size={10} className="text-[var(--color-text-muted)]" />
+          ) : (
+            <ChevronRight size={10} className="text-[var(--color-text-muted)]" />
+          )}
+          <span className="text-[10px] text-[var(--color-text-primary)] font-mono">{tool.name}</span>
+          <span className="text-[9px] text-[var(--color-text-dim)]">
+            ({tool.steps.length} step{tool.steps.length !== 1 ? 's' : ''})
+          </span>
+          {!tool.enabled && (
+            <span className="text-[8px] px-1 py-0.5 bg-[var(--color-error)]/10 text-[var(--color-error)] border border-[var(--color-error)]/20">disabled</span>
+          )}
+        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onToggle(tool.id, 'enabled')}
+            className={`text-[9px] px-1 py-0.5 border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40 ${
+              tool.enabled
+                ? 'border-[var(--color-success)]/30 text-[var(--color-success)] bg-[var(--color-success)]/10'
+                : 'border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
+            }`}
+            title={tool.enabled ? 'Disable tool' : 'Enable tool'}
+          >
+            {tool.enabled ? 'on' : 'off'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onRemove(tool.id)}
+            className="text-[var(--color-text-muted)] hover:text-[var(--color-error)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+            aria-label={`Delete custom tool ${tool.name}`}
+          >
+            <Trash2 size={10} />
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded details */}
+      {expanded && (
+        <div className="px-2 pb-2 space-y-2 border-t border-[var(--color-border-subtle)] animate-in slide-in-from-top-1 duration-150">
+          <p className="text-[9px] text-[var(--color-text-dim)] pt-1.5">{tool.description}</p>
+
+          {/* Confirmation toggle */}
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] text-[var(--color-text-muted)]">requires-confirmation</span>
+            <button
+              type="button"
+              onClick={() => onToggle(tool.id, 'requiresConfirmation')}
+              className={`text-[9px] px-1 py-0.5 border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40 ${
+                tool.requiresConfirmation
+                  ? 'border-[var(--color-warning)]/30 text-[var(--color-warning)] bg-[var(--color-warning)]/10'
+                  : 'border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
+              }`}
+            >
+              {tool.requiresConfirmation ? 'yes' : 'no'}
+            </button>
+          </div>
+
+          {/* Steps */}
+          <div className="space-y-1">
+            <span className="text-[9px] text-[var(--color-text-dim)]"># workflow steps:</span>
+            {tool.steps.length > 0 ? (
+              <div className="space-y-1">
+                {tool.steps.map((step: CustomToolStep, idx: number) => (
+                  <div
+                    key={step.id}
+                    className="flex items-center justify-between px-1.5 py-0.5 bg-[var(--color-surface-overlay)] border border-[var(--color-border-subtle)]"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[8px] text-[var(--color-text-dim)]">{idx + 1}.</span>
+                      <span className="text-[9px] text-[var(--color-text-primary)] font-mono">{step.toolName}</span>
+                      <span className="text-[8px] text-[var(--color-text-dim)]">
+                        on-error: {step.onError}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveStep(tool.id, step.id)}
+                      className="text-[var(--color-text-muted)] hover:text-[var(--color-error)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+                      aria-label={`Remove step ${idx + 1}`}
+                    >
+                      <X size={8} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[9px] text-[var(--color-text-placeholder)] italic"># no steps — add tools to build workflow</p>
+            )}
+
+            {/* Add step */}
+            <div className="flex items-center gap-1 pt-1">
+              <input
+                type="text"
+                value={stepToolName}
+                onChange={(e) => setStepToolName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    onAddStep(tool.id, stepToolName);
+                    setStepToolName('');
+                  }
+                }}
+                placeholder="tool name"
+                className="flex-1 px-1.5 py-0.5 text-[9px] font-mono bg-[var(--color-surface-input)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] focus:outline-none focus:border-[var(--color-accent-primary)]/40"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  onAddStep(tool.id, stepToolName);
+                  setStepToolName('');
+                }}
+                disabled={!stepToolName.trim()}
+                className="px-1.5 py-0.5 text-[9px] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-accent-primary)]/50 hover:text-[var(--color-accent-primary)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+              >
+                <Plus size={8} className="inline" />
+              </button>
+            </div>
+          </div>
+
+          {/* Meta info */}
+          <div className="flex items-center gap-3 pt-1 border-t border-[var(--color-border-subtle)]">
+            <span className="text-[8px] text-[var(--color-text-dim)]">uses: {tool.usageCount}</span>
+            <span className="text-[8px] text-[var(--color-text-dim)]">
+              created: {new Date(tool.createdAt).toLocaleDateString()}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

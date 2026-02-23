@@ -164,8 +164,11 @@ export function streamingReducer(
           return state;
         }
         
-        const streamingSessions = safeCreateSet(state.streamingSessions);
-        streamingSessions.add(sessionId);
+        // Only allocate a new Set if this session isn't already tracked
+        const alreadyStreaming = state.streamingSessions.has(sessionId);
+        const streamingSessions = alreadyStreaming
+          ? state.streamingSessions
+          : new Set(state.streamingSessions).add(sessionId);
         
         return { ...state, sessions, streamingSessions };
       }
@@ -179,9 +182,11 @@ export function streamingReducer(
           return state;
         }
         
-        // Track streaming state
-        const streamingSessions = safeCreateSet(state.streamingSessions);
-        streamingSessions.add(sessionId);
+        // Only allocate a new Set if this session isn't already tracked
+        const alreadyStreaming = state.streamingSessions.has(sessionId);
+        const streamingSessions = alreadyStreaming
+          ? state.streamingSessions
+          : new Set(state.streamingSessions).add(sessionId);
         
         return { ...state, sessions, streamingSessions };
       }
@@ -197,8 +202,11 @@ export function streamingReducer(
         return state;
       }
 
-      const streamingSessions = safeCreateSet(state.streamingSessions);
-      streamingSessions.add(action.payload.sessionId);
+      // Only allocate a new Set if this session isn't already tracked
+      const alreadyStreaming = state.streamingSessions.has(action.payload.sessionId);
+      const streamingSessions = alreadyStreaming
+        ? state.streamingSessions
+        : new Set(state.streamingSessions).add(action.payload.sessionId);
 
       return { ...state, sessions, streamingSessions };
     }

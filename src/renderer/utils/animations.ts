@@ -222,6 +222,7 @@ export function useAnimatedNumber(value: number, duration = 500) {
     const end = value;
     const diff = end - start;
     const startTime = performance.now();
+    let rafId: number;
     
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
@@ -234,13 +235,15 @@ export function useAnimatedNumber(value: number, duration = 500) {
       setDisplayValue(Math.round(current));
       
       if (progress < 1) {
-        requestAnimationFrame(animate);
+        rafId = requestAnimationFrame(animate);
       } else {
         previousValue.current = value;
       }
     };
     
-    requestAnimationFrame(animate);
+    rafId = requestAnimationFrame(animate);
+    
+    return () => cancelAnimationFrame(rafId);
   }, [value, duration]);
   
   return displayValue;

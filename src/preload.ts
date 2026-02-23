@@ -51,14 +51,14 @@ const agentAPI = {
 	addReaction: (sessionId: string, messageId: string, reaction: 'up' | 'down' | null) =>
 		ipcRenderer.invoke('agent:add-reaction', sessionId, messageId, reaction),
 	// Communication: Questions & Decisions
-	answerQuestion: (questionId: string, answer: unknown) =>
-		ipcRenderer.invoke('agent:answer-question', questionId, answer),
-	skipQuestion: (questionId: string) =>
-		ipcRenderer.invoke('agent:skip-question', questionId),
-	makeDecision: (decisionId: string, selectedOptionId: string) =>
-		ipcRenderer.invoke('agent:make-decision', decisionId, selectedOptionId),
-	skipDecision: (decisionId: string) =>
-		ipcRenderer.invoke('agent:skip-decision', decisionId),
+	answerQuestion: (questionId: string, answer: unknown, sessionId?: string) =>
+		ipcRenderer.invoke('agent:answer-question', questionId, answer, sessionId),
+	skipQuestion: (questionId: string, sessionId?: string) =>
+		ipcRenderer.invoke('agent:skip-question', questionId, sessionId),
+	makeDecision: (decisionId: string, selectedOptionId: string, sessionId?: string) =>
+		ipcRenderer.invoke('agent:make-decision', decisionId, selectedOptionId, sessionId),
+	skipDecision: (decisionId: string, sessionId?: string) =>
+		ipcRenderer.invoke('agent:skip-decision', decisionId, sessionId),
 	onEvent: (handler: (event: RendererEvent) => void) => {
 		const listener = (_event: IpcRendererEvent, data: RendererEvent) => handler(data);
 		ipcRenderer.on('agent:event', listener);

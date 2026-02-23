@@ -93,16 +93,6 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
       const ctx = id ? state.contextMetrics[id] : undefined;
       const agentStatus = id ? state.agentStatus[id] : undefined;
       
-      // Get all sessions for the all-sessions tab
-      const allSessions = state.sessions.map(sess => ({
-        id: sess.id,
-        title: sess.title,
-        status: sess.status,
-        messageCount: sess.messages.length,
-        createdAt: sess.createdAt,
-        cost: state.sessionCost[sess.id],
-      }));
-      
       return {
         id,
         title: s?.title ?? 'No session',
@@ -111,8 +101,10 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
         isPaused: s?.status === 'paused',
         ctx: ctx?.metrics,
         agentStatus,
-        allSessions,
         totalSessions: state.sessions.length,
+        // Store sessions reference for lazy consumption — avoid mapping on every selector call
+        _sessions: state.sessions,
+        _sessionCost: state.sessionCost,
       };
     },
     (a, b) => 
@@ -123,7 +115,22 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
       a.isPaused === b.isPaused &&
       a.ctx === b.ctx &&
       a.agentStatus === b.agentStatus &&
-      a.totalSessions === b.totalSessions
+      a.totalSessions === b.totalSessions &&
+      a._sessions === b._sessions &&
+      a._sessionCost === b._sessionCost
+  );
+
+  // Derive allSessions outside the selector to avoid creating arrays on every invocation
+  const allSessions = useMemo(() => 
+    sessionData._sessions.map(sess => ({
+      id: sess.id,
+      title: sess.title,
+      status: sess.status,
+      messageCount: sess.messages.length,
+      createdAt: sess.createdAt,
+      cost: sessionData._sessionCost[sess.id],
+    })),
+    [sessionData._sessions, sessionData._sessionCost]
   );
 
   const totalTokens = cost.totalInputTokens + cost.totalOutputTokens;
@@ -371,7 +378,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
               </span>
             </div>
             
-            {sessionData.allSessions.length === 0 ? (
+            {allSessions.length === 0 ? (
               <div className="py-12 text-center">
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-surface-2)] mb-3">
                   <Layers size={20} className="text-[var(--color-text-muted)]" />
@@ -383,7 +390,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = () => {
               </div>
             ) : (
               <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {sessionData.allSessions.map((sess) => {
+                {allSessions.map((sess) => {
                   const isActive = sess.id === sessionData.id;
                   const sessCost = sess.cost;
                   const sessTokens = sessCost ? sessCost.totalInputTokens + sessCost.totalOutputTokens : 0;

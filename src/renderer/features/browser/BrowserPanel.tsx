@@ -264,7 +264,8 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
               onClick={onToggleMaximize}
               className="p-1 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
               title={isMaximized ? 'Minimize' : 'Maximize'}
-            >
+            aria-label={isMaximized ? 'Minimize browser' : 'Maximize browser'}
+          >
               {isMaximized ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
             </button>
           )}
@@ -272,6 +273,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
             onClick={onClose}
             className="p-1 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
             title="Close"
+            aria-label="Close browser"
           >
             <X size={12} />
           </button>
@@ -292,6 +294,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
                 : "text-[var(--color-text-dim)] cursor-not-allowed opacity-50"
             )}
             title="Back"
+            aria-label="Navigate back"
           >
             <ArrowLeft size={12} />
           </button>
@@ -306,6 +309,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
                 : "text-[var(--color-text-dim)] cursor-not-allowed opacity-50"
             )}
             title="Forward"
+            aria-label="Navigate forward"
           >
             <ArrowRight size={12} />
           </button>
@@ -314,6 +318,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
             onClick={browser.isLoading ? browser.stop : browser.reload}
             className="p-1 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
             title={browser.isLoading ? 'Stop' : 'Reload'}
+            aria-label={browser.isLoading ? 'Stop loading' : 'Reload page'}
           >
             {browser.isLoading ? (
               <Square size={12} />
@@ -326,6 +331,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
             onClick={handleHome}
             className="p-1 rounded hover:bg-[var(--color-surface-2)] text-[var(--color-text-muted)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
             title="Home"
+            aria-label="Go to home page"
           >
             <Home size={12} />
           </button>
@@ -374,6 +380,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
                 : "text-[var(--color-text-dim)] cursor-not-allowed opacity-50"
             )}
             title="Take Screenshot"
+            aria-label="Take screenshot of current page"
           >
             <Camera size={12} />
           </button>
@@ -388,6 +395,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
                 : "text-[var(--color-text-dim)] cursor-not-allowed opacity-50"
             )}
             title="Extract Content"
+            aria-label="Extract page content"
           >
             <FileText size={12} />
           </button>
@@ -605,14 +613,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = memo(({
         </div>
       )}
 
-      {/* Loading bar animation styles */}
-      <style>{`
-        @keyframes loading-bar {
-          0% { transform: translateX(-100%); }
-          50% { transform: translateX(100%); }
-          100% { transform: translateX(300%); }
-        }
-      `}</style>
+      {/* Loading bar animation defined in src/index.css */}
     </div>
   );
 });

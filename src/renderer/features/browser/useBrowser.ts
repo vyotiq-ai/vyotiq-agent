@@ -4,7 +4,11 @@
  * React hook for interacting with the embedded browser
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { BrowserState, BrowserBounds, NavigationResult, PageContent, ElementInfo } from './types';
+import type {
+  BrowserState, BrowserBounds, NavigationResult, PageContent, ElementInfo,
+  SecurityStats, SecurityEvent, UrlSafetyResult,
+  ConsoleLogOptions, ConsoleLog, NetworkRequestOptions, NetworkRequestInfo,
+} from './types';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('useBrowser');
@@ -63,66 +67,6 @@ interface UseBrowserReturn {
   // Utils
   refreshState: () => Promise<void>;
   clearData: () => Promise<void>;
-}
-
-// Security types
-interface SecurityStats {
-  blockedUrls: number;
-  blockedPopups: number;
-  blockedAds: number;
-  blockedTrackers: number;
-  blockedDownloads: number;
-  warnings: number;
-}
-
-interface SecurityEvent {
-  type: 'blocked' | 'warning' | 'allowed';
-  category: string;
-  url: string;
-  reason: string;
-  timestamp: number;
-}
-
-// Debugging types
-interface ConsoleLogOptions {
-  level?: 'all' | 'errors' | 'warnings' | 'info' | 'debug';
-  limit?: number;
-  filter?: string;
-}
-
-interface ConsoleLog {
-  level: 'error' | 'warning' | 'info' | 'debug' | 'log';
-  message: string;
-  timestamp: number;
-  source?: string;
-  line?: number;
-}
-
-interface NetworkRequestOptions {
-  type?: string;
-  status?: string;
-  limit?: number;
-  urlPattern?: string;
-}
-
-interface NetworkRequestInfo {
-  id: string;
-  url: string;
-  method: string;
-  resourceType: string;
-  status: number | null;
-  statusText: string;
-  startTime: number;
-  endTime?: number;
-  duration?: number;
-  size?: number;
-  error?: string;
-}
-
-interface UrlSafetyResult {
-  safe: boolean;
-  warnings: string[];
-  riskScore: number;
 }
 
 const DEFAULT_STATE: BrowserState = {

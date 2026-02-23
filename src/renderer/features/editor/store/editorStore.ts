@@ -200,20 +200,40 @@ export function toggleEditor(): void {
 }
 
 /**
- * Update the content of a tab (called when user edits in Monaco)
+ * Update the content of a tab (called when user edits in Monaco).
+ * Content is stored immediately; metadata (lineCount, lineEnding) is
+ * debounced to avoid expensive string scans on every keystroke.
  */
+const pendingMetadata = new Map<string, ReturnType<typeof setTimeout>>();
+
 export function updateTabContent(tabId: string, content: string): void {
   const tab = store.state.tabs.find(t => t.id === tabId);
   if (!tab) return;
 
   const isDirty = content !== (tab.originalContent ?? '');
-  const lineCount = content.split('\n').length;
-  const lineEnding = content.includes('\r\n') ? 'CRLF' as const : 'LF' as const;
 
+  // Immediate update: content + dirty flag (cheap)
   const updatedTabs = store.state.tabs.map(t =>
-    t.id === tabId ? { ...t, content, isDirty, lineCount, lineEnding } : t
+    t.id === tabId ? { ...t, content, isDirty } : t
   );
   setState({ tabs: updatedTabs });
+
+  // Debounced update: expensive metadata (lineCount, lineEnding)
+  const existing = pendingMetadata.get(tabId);
+  if (existing) clearTimeout(existing);
+  pendingMetadata.set(tabId, setTimeout(() => {
+    pendingMetadata.delete(tabId);
+    const currentTab = store.state.tabs.find(t => t.id === tabId);
+    if (!currentTab) return;
+    const lineCount = currentTab.content.split('\n').length;
+    const lineEnding = currentTab.content.includes('\r\n') ? 'CRLF' as const : 'LF' as const;
+    if (currentTab.lineCount !== lineCount || currentTab.lineEnding !== lineEnding) {
+      const metaTabs = store.state.tabs.map(t =>
+        t.id === tabId ? { ...t, lineCount, lineEnding } : t
+      );
+      setState({ tabs: metaTabs });
+    }
+  }, 150));
 }
 
 /**

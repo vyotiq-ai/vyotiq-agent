@@ -13,6 +13,7 @@ import { TerminalOutputPreview } from './TerminalOutputPreview';
 import { AutoFetchPreview } from './AutoFetchPreview';
 import { LiveFetchPreview } from './LiveFetchPreview';
 import { ResearchResultPreview } from './ResearchResultPreview';
+import { BrowserResultPreview, ALL_BROWSER_TOOL_NAMES } from './BrowserResultPreview';
 import { FileChangeDiff } from './FileChangeDiff';
 import { CopyIconButton } from './CopyIconButton';
 import { useToast } from '../../../../components/ui/Toast';
@@ -51,6 +52,8 @@ const ToolItemInternal: React.FC<ToolItemProps> = ({
     // Auto-expand running, errored, or file-modifying tools (to show diffs)
     if (tool.status === 'running' || tool.status === 'error') return true;
     if (FILE_WRITE_TOOLS.has(tool.name) && tool.status === 'completed') return true;
+    // Auto-expand screenshot results so images are immediately visible
+    if (tool.name === 'browser_screenshot' && tool.status === 'completed') return true;
     return false;
   });
   const { toast } = useToast();
@@ -134,6 +137,11 @@ const ToolItemInternal: React.FC<ToolItemProps> = ({
           output={output}
         />
       );
+    }
+
+    // Browser tools - specialized renderer for screenshots, navigation, extraction, etc.
+    if (ALL_BROWSER_TOOL_NAMES.has(name)) {
+      return <BrowserResultPreview tool={tool} />;
     }
 
     // Generic output

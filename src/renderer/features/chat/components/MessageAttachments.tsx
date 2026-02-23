@@ -12,6 +12,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { Image, FileCode, FileText, File, X, Maximize2 } from 'lucide-react';
 import type { AttachmentMetadata } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
+import { FilePreviewPopover } from './FilePreviewPopover';
 
 // =============================================================================
 // Types
@@ -140,32 +141,42 @@ const ImageAttachment: React.FC<{
   }
 
   return (
-    <button
-      onClick={onExpand}
-      className={cn(
-        'group relative flex-shrink-0 rounded overflow-hidden',
-        'border border-[var(--color-border-subtle)]/50',
-        'hover:border-[var(--color-accent-primary)]/50 transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/40'
-      )}
-      title={`${attachment.name} - click to expand`}
-      aria-label={`View ${attachment.name} full size`}
+    <FilePreviewPopover
+      name={attachment.name}
+      path={attachment.path}
+      mimeType={attachment.mimeType}
+      size={attachment.size}
+      content={attachment.content}
+      encoding={attachment.encoding}
+      preview={attachment.preview}
+      placement="top"
     >
-      <img
-        src={thumbnailUrl}
-        alt={attachment.name}
-        className="w-16 h-16 object-cover"
-      />
-      <div className={cn(
-        'absolute inset-0 flex items-center justify-center',
-        'bg-black/0 group-hover:bg-black/30 transition-colors'
-      )}>
-        <Maximize2 
-          size={14} 
-          className="text-white opacity-0 group-hover:opacity-100 transition-opacity" 
+      <button
+        onClick={onExpand}
+        className={cn(
+          'group relative flex-shrink-0 rounded overflow-hidden',
+          'border border-[var(--color-border-subtle)]/50',
+          'hover:border-[var(--color-accent-primary)]/50 transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]/40'
+        )}
+        aria-label={`View ${attachment.name} full size`}
+      >
+        <img
+          src={thumbnailUrl}
+          alt={attachment.name}
+          className="w-16 h-16 object-cover"
         />
-      </div>
-    </button>
+        <div className={cn(
+          'absolute inset-0 flex items-center justify-center',
+          'bg-black/0 group-hover:bg-black/30 transition-colors'
+        )}>
+          <Maximize2 
+            size={14} 
+            className="text-white opacity-0 group-hover:opacity-100 transition-opacity" 
+          />
+        </div>
+      </button>
+    </FilePreviewPopover>
   );
 };
 
@@ -176,23 +187,33 @@ const FileAttachment: React.FC<{
   attachment: AttachmentMetadata;
 }> = ({ attachment }) => {
   return (
-    <div
-      className={cn(
-        'flex items-center gap-1.5 px-2 py-1',
-        'text-[10px] font-mono',
-        'bg-[var(--color-surface-2)]/50 rounded',
-        'border border-[var(--color-border-subtle)]/50'
-      )}
-      title={`${attachment.name} (${formatFileSize(attachment.size)})`}
+    <FilePreviewPopover
+      name={attachment.name}
+      path={attachment.path}
+      mimeType={attachment.mimeType}
+      size={attachment.size}
+      content={attachment.content}
+      encoding={attachment.encoding}
+      preview={attachment.preview}
+      placement="top"
     >
-      <FileIcon mimeType={attachment.mimeType} />
-      <span className="text-[var(--color-info)] truncate max-w-[120px]">
-        {attachment.name}
-      </span>
-      <span className="text-[var(--color-text-dim)]">
-        {formatFileSize(attachment.size)}
-      </span>
-    </div>
+      <div
+        className={cn(
+          'flex items-center gap-1.5 px-2 py-1',
+          'text-[10px] font-mono',
+          'bg-[var(--color-surface-2)]/50 rounded',
+          'border border-[var(--color-border-subtle)]/50'
+        )}
+      >
+        <FileIcon mimeType={attachment.mimeType} />
+        <span className="text-[var(--color-info)] truncate max-w-[120px]">
+          {attachment.name}
+        </span>
+        <span className="text-[var(--color-text-dim)]">
+          {formatFileSize(attachment.size)}
+        </span>
+      </div>
+    </FilePreviewPopover>
   );
 };
 

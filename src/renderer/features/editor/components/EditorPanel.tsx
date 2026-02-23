@@ -32,6 +32,7 @@ import { EditorContextMenu, type EditorContextAction } from './EditorContextMenu
 import { GoToLineDialog } from './GoToLineDialog';
 import { EditorSettingsPanel } from './EditorSettingsPanel';
 import { useEditorActions } from '../hooks/useEditorActions';
+import { getCurrentWorkspacePath } from '../../../state/WorkspaceProvider';
 import { createLogger } from '../../../utils/logger';
 
 const logger = createLogger('EditorPanel');
@@ -241,8 +242,7 @@ export const EditorPanel: React.FC = memo(() => {
         void navigator.clipboard?.writeText(tab.filePath);
         break;
       case 'copyRelativePath': {
-        // Best effort relative path
-        const workspacePath = (window as Record<string, unknown>).__vyotiq_workspace_path as string | undefined;
+        const workspacePath = getCurrentWorkspacePath();
         const relative = workspacePath
           ? tab.filePath.replace(workspacePath, '').replace(/^[/\\]/, '')
           : tab.filePath;
@@ -317,9 +317,13 @@ export const EditorPanel: React.FC = memo(() => {
         if (activeTab) void window.vyotiq?.files?.reveal?.(activeTab.filePath);
         break;
       case 'commandPalette':
+        editorActions.openCommandPalette();
+        break;
       case 'changeLanguage':
+        editorActions.changeLanguage();
+        break;
       case 'refactor':
-        logger.debug('Action not yet wired:', action);
+        editorActions.triggerRefactor();
         break;
       default:
         break;

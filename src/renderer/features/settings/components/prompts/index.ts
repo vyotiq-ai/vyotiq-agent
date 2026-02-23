@@ -6,5 +6,6 @@ export { PersonaSection } from './PersonaSection';
 export { AgentInstructionsSection } from './AgentInstructionsSection';
 export { ContextRulesSection } from './ContextRulesSection';
 export { ResponseFormatSection } from './ResponseFormatSection';
+export { InstructionFilesSection } from './InstructionFilesSection';
 
 export type * from './types';

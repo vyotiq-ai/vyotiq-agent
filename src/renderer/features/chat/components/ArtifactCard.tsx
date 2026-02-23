@@ -1,6 +1,9 @@
 /**
  * ArtifactCard Component
  * 
+ * @orphaned — This component is only imported by ArtifactPanel.tsx which is itself orphaned.
+ * Neither is rendered anywhere in the app. Safe to remove in a future cleanup.
+ * 
  * Renders an individual artifact card with type icon, title, preview,
  * and action indicator. Supports file, code, document, and link artifacts.
  * 

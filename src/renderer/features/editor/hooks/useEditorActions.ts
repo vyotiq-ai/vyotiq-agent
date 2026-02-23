@@ -56,6 +56,12 @@ export interface EditorActions {
   openLocation: (filePath: string, line: number, column: number) => void;
   /** Toggle word wrap */
   toggleWordWrap: () => void;
+  /** Open the Monaco command palette */
+  openCommandPalette: () => void;
+  /** Open the language mode picker */
+  changeLanguage: () => void;
+  /** Trigger the refactor code action */
+  triggerRefactor: () => void;
   /** Set the active editor reference */
   setEditorRef: (editor: monaco.editor.IStandaloneCodeEditor | null) => void;
 }
@@ -192,6 +198,18 @@ export function useEditorActions(): EditorActions {
     triggerAction('editor.action.toggleWordWrap');
   }, [triggerAction]);
 
+  const openCommandPalette = useCallback(() => {
+    triggerAction('editor.action.quickCommand');
+  }, [triggerAction]);
+
+  const changeLanguage = useCallback(() => {
+    triggerAction('editor.action.changeLanguageMode');
+  }, [triggerAction]);
+
+  const triggerRefactor = useCallback(() => {
+    triggerAction('editor.action.refactor');
+  }, [triggerAction]);
+
   return {
     goToDefinition,
     goToTypeDefinition,
@@ -212,6 +230,9 @@ export function useEditorActions(): EditorActions {
     selectAll,
     openLocation,
     toggleWordWrap,
+    openCommandPalette,
+    changeLanguage,
+    triggerRefactor,
     setEditorRef,
   };
 }

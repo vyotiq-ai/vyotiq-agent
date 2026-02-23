@@ -7,7 +7,6 @@
  *
  * Complements grep (exact pattern matching) by offering ranked relevance search with Tantivy's BM25 scoring algorithm.
  */
-import { rustSidecar } from '../../rustSidecar';
 import { createLogger } from '../../logger';
 import { resolveWorkspaceId } from '../../utils/rustBackend';
 import { formatToolError, formatToolSuccess, checkCancellation, formatCancelled } from '../types/formatUtils';
@@ -23,31 +22,10 @@ const MAX_RESULTS = 100;
 // Rust backend HTTP helper
 // ---------------------------------------------------------------------------
 
-async function rustRequest<T>(path: string, options: RequestInit = {}, signal?: AbortSignal): Promise<T> {
-  const port = rustSidecar.getPort();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-
-  if (signal) {
-    signal.addEventListener('abort', () => controller.abort(), { once: true });
-  }
-
-  try {
-    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-      ...options,
-      signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...options.headers },
-    });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`Rust backend ${response.status}: ${body}`);
-    }
-    return (await response.json()) as T;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+// Use the shared rustRequest helper that includes auth headers.
+// Re-export for local convenience — removes duplicate code and fixes
+// the security gap where auth headers were previously omitted.
+import { rustRequest } from '../../utils/rustBackend';
 
 // ---------------------------------------------------------------------------
 // Types

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-02-23
+
+### Added
+
+- **File Preview Popover**: Hover-based rich preview for chat file attachments with type-specific rendering — scaled images, syntax-highlighted code snippets, and file metadata for binary files
+- **Browser Result Preview**: Inline visual rendering for browser tool execution results — screenshots with expand/download, navigation results, content extraction previews, console logs, network requests, and interaction feedback
+- **Provider Context Window Settings**: Per-provider expert-level context window management with auto-prune toggle, warn/prune thresholds, target utilization, min messages to keep, and summarization settings
+- **Instruction Files Settings**: Control which workspace instruction files (AGENTS.md, CLAUDE.md, copilot-instructions.md, GEMINI.md, .cursor/rules) are loaded into the agent's system prompt, with max content length slider and source annotation toggle
+- **Tool Action Descriptions**: Human-readable action labels for all 40+ tools with status-specific verb forms (queued/running/completed/error), category tags, and context extractors
+- **Expanded Autonomous Settings**: Tool confirm/disable lists, per-tool timeouts, custom tool definitions, and per-category tool management UI
+- **Expanded Task-Based Routing**: Task mapping cards with provider/model selectors, fallback chains, and enable toggles per task type (frontend, backend, debugging, etc.)
+- **Expanded Access Control Settings**: Granular per-category permissions across 16 tool categories (including browser-read/write, code-intelligence, agent-internal, media) with per-tool overrides
+- **Workspace Diagnostics IPC**: LSP diagnostics bridge for file create/change/delete events with `setDiagnosticsNotifier` hook integration
+- **Dynamic Tools Preload API**: New `dynamicTools` IPC namespace with `list`, `getSpec`, and `updateState` methods
+- **Renderer Error Reporting**: New `log.report` preload bridge for forwarding renderer errors to the main process logger
+
+### Changed
+
+- **AgentProvider Event Handler Extraction**: Refactored 648-line event handling logic from `AgentProvider.tsx` into dedicated `agentEventHandler.ts` module for improved separation of concerns
+- **Session Delta Removal**: Removed `sessionDelta.ts` (154 lines) — simplified session state update flow
+- **File Tracker Session Scoping**: Session-scoped read tracking with LRU eviction (max 2000 files per session, oldest 10% evicted)
+- **Browser Hook Refactor**: Streamlined `useBrowser.ts` with cleaner state management and lifecycle handling
+- **Rust Backend Hardening**: CORS restricted to localhost origins, new Cargo dependencies, enhanced file routes with typed request/response structs
+- **Full-Text Search Auth**: Added auth headers to Rust backend requests in `fullTextSearch` tool (previously unauthenticated)
+- **Grep Dual-Mode**: Rust backend fast grep (indexed, gitignore-aware) with 15s timeout + local fallback
+- **Browser Tools Cancellation**: Added `context.signal` cancellation support to extract, fetch, fillForm, and navigate browser tools
+- **Chat Attachment Redesign**: Overhauled `ChatAttachmentList` and `MessageAttachments` with improved layout and interaction
+- **Settings UI Enhancements**: Updated metrics dashboard, appearance settings, providers panel, and safety settings
+- **Editor Store Refinements**: Improved editor state management and action hooks
+- **State Reducers Cleanup**: Refined streaming, settings, and task reducers with additional state handling
+- **Animation Utilities**: Updated transition effects and animation helpers
+- **Theme Mode Cleanup**: Removed unused theme mode utilities
+
+### Fixed
+
+- **React Best Practices**: Addressed react-doctor warnings improving score from 94 to 99
+- **UI Transition Effects**: Improved animation smoothness and consistency across components
+
 ## [1.9.0] - 2026-02-21
 
 ### Added
@@ -343,7 +381,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session persistence with SQLite
 - Conversation branching and history
 
-[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.6.0...v1.7.0

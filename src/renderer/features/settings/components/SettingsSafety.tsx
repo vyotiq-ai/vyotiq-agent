@@ -33,8 +33,8 @@ export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChan
             description="max files modified per run"
             value={settings.maxFilesPerRun}
             onChange={(value) => onChange('maxFilesPerRun', value)}
-            min={10}
-            max={200}
+            min={1}
+            max={500}
             step={5}
           />
           <SettingsSlider
@@ -42,7 +42,7 @@ export const SettingsSafety: React.FC<SettingsSafetyProps> = ({ settings, onChan
             description="max data written per run"
             value={settings.maxBytesPerRun}
             onChange={(value) => onChange('maxBytesPerRun', value)}
-            min={1024 * 1024}
+            min={1024}
             max={100 * 1024 * 1024}
             step={1024 * 1024}
             format={formatBytes}

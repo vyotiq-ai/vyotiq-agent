@@ -189,6 +189,17 @@ async function executeNavigate(
       }
     }
 
+    // Auto-capture a thumbnail screenshot for visual feedback in chat
+    let thumbnail: string | undefined;
+    try {
+      // Small delay to allow final render after navigation
+      await new Promise(resolve => setTimeout(resolve, 300));
+      thumbnail = await browser.screenshot({ format: 'jpeg', quality: 50 }, 5000);
+    } catch {
+      // Screenshot is optional - don't fail the navigation if it fails
+      context.logger.debug('Auto-screenshot after navigation failed (non-critical)');
+    }
+
     return {
       toolName: 'browser_navigate',
       success: true,
@@ -198,6 +209,7 @@ async function executeNavigate(
       metadata: {
         url: result.url,
         title: result.title,
+        thumbnail,
         loadTime: result.loadTime,
       },
     };

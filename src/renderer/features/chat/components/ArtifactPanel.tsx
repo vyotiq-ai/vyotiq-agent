@@ -1,6 +1,9 @@
 /**
  * ArtifactPanel Component
  * 
+ * @orphaned — This component is never imported or rendered anywhere in the app.
+ * It was planned but not wired into the component tree. Safe to remove in a future cleanup.
+ * 
  * Renders session-level artifacts as a collapsible section in the chat area.
  * Shows all artifacts produced during the current session grouped by type.
  * 

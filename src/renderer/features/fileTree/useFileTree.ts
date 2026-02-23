@@ -435,11 +435,6 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
           ...node,
           depth: actualDepth,
           isExpanded: query ? true : expandedPaths.has(node.path),
-          isSelected: selectedPaths.has(node.path),
-          isRenaming: renamingPath === node.path,
-          isFocused: focusedPath === node.path,
-          isCut: clipboard.operation === 'cut' && clipboard.paths.includes(node.path),
-          gitStatus: gitStatus.get(node.path) || null,
         });
         
         // When searching, show all matching descendants
@@ -456,7 +451,20 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
     
     flatten(nodes);
     return result;
-  }, [nodes, expandedPaths, selectedPaths, renamingPath, searchQuery, focusedPath, clipboard, gitStatus]);
+  }, [nodes, expandedPaths, searchQuery]);
+
+  // Decorate flat nodes with per-node UI state (selection, focus, git, etc.)
+  // This is a separate memo so that changing focus/selection doesn't re-flatten the tree.
+  const decoratedNodes = useMemo(() => {
+    return flatNodes.map(node => ({
+      ...node,
+      isSelected: selectedPaths.has(node.path),
+      isRenaming: renamingPath === node.path,
+      isFocused: focusedPath === node.path,
+      isCut: clipboard.operation === 'cut' && clipboard.paths.includes(node.path),
+      gitStatus: gitStatus.get(node.path) || null,
+    }));
+  }, [flatNodes, selectedPaths, renamingPath, focusedPath, clipboard, gitStatus]);
 
   // ==========================================================================
   // Expand/Collapse actions
@@ -1075,7 +1083,7 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeReturn {
 
   return {
     nodes,
-    flatNodes,
+    flatNodes: decoratedNodes,
     expandedPaths,
     selectedPaths,
     isLoading,

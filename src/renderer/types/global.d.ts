@@ -88,10 +88,10 @@ declare global {
         deleteBranch: (sessionId: string, branchId: string) => Promise<{ success: boolean; error?: string }>;
         addReaction: (sessionId: string, messageId: string, reaction: 'up' | 'down' | null) => Promise<{ success: boolean; error?: string }>;
         // Communication
-        answerQuestion: (questionId: string, answer: unknown) => Promise<void>;
-        skipQuestion: (questionId: string) => Promise<void>;
-        makeDecision: (decisionId: string, selectedOptionId: string) => Promise<void>;
-        skipDecision: (decisionId: string) => Promise<void>;
+        answerQuestion: (questionId: string, answer: unknown, sessionId?: string) => Promise<{ success: boolean }>;
+        skipQuestion: (questionId: string, sessionId?: string) => Promise<{ success: boolean }>;
+        makeDecision: (decisionId: string, selectedOptionId: string, sessionId?: string) => Promise<{ success: boolean }>;
+        skipDecision: (decisionId: string, sessionId?: string) => Promise<{ success: boolean }>;
       };
       settings: {
         get: () => Promise<AgentSettings>;

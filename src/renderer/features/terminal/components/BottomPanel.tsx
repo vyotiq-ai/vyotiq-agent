@@ -155,13 +155,6 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, activeTab, onToggle]);
 
-  useEffect(() => {
-    if (isOpen && activeTab === 'terminal' && terminals.length === 0) {
-      spawnTerminal();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, activeTab]);
-
   const spawnTerminal = useCallback(async () => {
     terminalCounterRef.current++;
     const id = `term-${Date.now()}-${terminalCounterRef.current}`;
@@ -174,6 +167,12 @@ const BottomPanelComponent: React.FC<BottomPanelProps> = ({ isOpen, onToggle }) 
       setActiveTerminalId(id);
     }
   }, []);
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'terminal' && terminals.length === 0) {
+      spawnTerminal();
+    }
+  }, [isOpen, activeTab, spawnTerminal, terminals.length]);
 
   const killTerminal = useCallback(async (termId: string) => {
     await window.vyotiq.terminal.kill(termId);

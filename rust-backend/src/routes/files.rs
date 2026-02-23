@@ -92,13 +92,21 @@ pub async fn list_files(
 
     debug!(path = %relative_path, recursive, show_hidden, max_depth, "Listing files");
 
-    let entries = state.workspace_manager.list_directory(
-        &workspace_id,
-        &relative_path,
-        recursive,
-        show_hidden,
-        max_depth,
-    )?;
+    // Use spawn_blocking because list_directory does synchronous std::fs I/O
+    // which would otherwise block the tokio runtime thread.
+    let wm = state.workspace_manager.clone();
+    let ws_id = workspace_id.clone();
+    let entries = tokio::task::spawn_blocking(move || {
+        wm.list_directory(
+            &ws_id,
+            &relative_path,
+            recursive,
+            show_hidden,
+            max_depth,
+        )
+    })
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("Task join error: {}", e)))??;
 
     debug!(count = entries.len(), "Listed files");
     Ok(Json(entries))
@@ -157,20 +165,29 @@ async fn read_file_inner(
     }))
 }
 
+/// Maximum write content size (50 MiB) to prevent OOM from oversized payloads
+const MAX_WRITE_SIZE: usize = 50 * 1024 * 1024;
+
 #[instrument(skip(state, req), fields(workspace_id = %workspace_id, path = %req.path))]
 pub async fn write_file(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
     Json(req): Json<WriteFileRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let size = req.content.len();
+    if size > MAX_WRITE_SIZE {
+        return Err(AppError::BadRequest(format!(
+            "Content too large ({} bytes, max {} bytes)",
+            size, MAX_WRITE_SIZE
+        )));
+    }
+
     let full_path = state.workspace_manager.validate_path(&workspace_id, &req.path)?;
     
     // Ensure parent directory exists
     if let Some(parent) = full_path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-
-    let size = req.content.len();
     tokio::fs::write(&full_path, &req.content).await?;
 
     info!(path = %req.path, size, "File written");

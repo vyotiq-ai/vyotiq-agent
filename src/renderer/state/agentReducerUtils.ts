@@ -22,29 +22,6 @@ export function safeCreateSet(streamingSessions: Set<string> | unknown): Set<str
 }
 
 /**
- * PERFORMANCE OPTIMIZATION: Shallow compare two message arrays
- * Returns true if arrays are structurally equivalent (same messages by id and content length)
- */
-export function areMessagesEqual(
-    a: AgentSessionState['messages'],
-    b: AgentSessionState['messages']
-): boolean {
-    if (a === b) return true;
-    if (a.length !== b.length) return false;
-    
-    // Quick check: compare last message (most likely to change)
-    const lastA = a[a.length - 1];
-    const lastB = b[b.length - 1];
-    if (lastA && lastB) {
-        if (lastA.id !== lastB.id) return false;
-        if ((lastA.content?.length ?? 0) !== (lastB.content?.length ?? 0)) return false;
-        if ((lastA.toolCalls?.length ?? 0) !== (lastB.toolCalls?.length ?? 0)) return false;
-    }
-    
-    return true;
-}
-
-/**
  * PERFORMANCE OPTIMIZATION: Check if session has meaningful changes
  * Avoids expensive merge operations when nothing important changed
  */
@@ -66,16 +43,14 @@ export function hasSessionChanged(
     
     // Config changes are meaningful (yoloMode, provider, model selection, etc.)
     if (existing.config !== incoming.config) {
-        // Check specific config fields that affect UI behavior
-        if (existing.config.yoloMode !== incoming.config.yoloMode) return true;
-        if (existing.config.preferredProvider !== incoming.config.preferredProvider) return true;
-        if (existing.config.selectedModelId !== incoming.config.selectedModelId) return true;
-        if (existing.config.allowAutoSwitch !== incoming.config.allowAutoSwitch) return true;
-        if (existing.config.enableProviderFallback !== incoming.config.enableProviderFallback) return true;
-        if (existing.config.enableAutoModelSelection !== incoming.config.enableAutoModelSelection) return true;
-        if (existing.config.temperature !== incoming.config.temperature) return true;
-        if (existing.config.maxOutputTokens !== incoming.config.maxOutputTokens) return true;
-        if (existing.config.maxIterations !== incoming.config.maxIterations) return true;
+        // Shallow compare all config fields to detect any change
+        // This avoids a fragile whitelist that silently ignores new config fields
+        const eConfig = existing.config;
+        const iConfig = incoming.config;
+        const allKeys = new Set([...Object.keys(eConfig), ...Object.keys(iConfig)]);
+        for (const key of allKeys) {
+            if ((eConfig as Record<string, unknown>)[key] !== (iConfig as Record<string, unknown>)[key]) return true;
+        }
     }
     
     // Message count change is meaningful

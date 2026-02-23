@@ -56,13 +56,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
                         className={cn(
                             'w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] outline-none transition-[border-color,box-shadow,background-color] duration-150 rounded-sm',
                             'placeholder:text-[var(--color-text-placeholder)]',
-                            'focus-visible:border-[var(--color-accent-primary)]/50 focus-visible:bg-[var(--color-surface-header)] focus-visible:shadow-[0_0_0_2px_rgba(52,211,153,0.1)]',
+                            'focus-visible:border-[var(--color-accent-primary)]/50 focus-visible:bg-[var(--color-surface-header)] focus-visible:shadow-[0_0_0_2px_var(--color-focus-ring)]',
                             'disabled:opacity-50 disabled:cursor-not-allowed',
                             'hover:border-[var(--color-border-default)]',
                             sizeStyles[inputSize],
                             leftIcon && 'pl-8',
                             rightIcon && 'pr-8',
-                            error && 'border-[var(--color-error)]/40 focus-visible:border-[var(--color-error)]/40 focus-visible:shadow-[0_0_0_2px_rgba(239,68,68,0.1)]',
+                            error && 'border-[var(--color-error)]/40 focus-visible:border-[var(--color-error)]/40 focus-visible:shadow-[0_0_0_2px_var(--color-error-ring)]',
                             className
                         )}
                         {...props}
@@ -131,12 +131,12 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
                         className={cn(
                             'w-full bg-[var(--color-surface-1)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)] outline-none transition-[border-color,box-shadow,background-color] duration-150 rounded-sm',
                             'placeholder:text-[var(--color-text-placeholder)] resize-none',
-                            'focus-visible:border-[var(--color-accent-primary)]/50 focus-visible:bg-[var(--color-surface-header)] focus-visible:shadow-[0_0_0_2px_rgba(52,211,153,0.1)]',
+                            'focus-visible:border-[var(--color-accent-primary)]/50 focus-visible:bg-[var(--color-surface-header)] focus-visible:shadow-[0_0_0_2px_var(--color-focus-ring)]',
                             'disabled:opacity-50 disabled:cursor-not-allowed',
                             'hover:border-[var(--color-border-default)]',
                             'scrollbar-thin scrollbar-thumb-[var(--scrollbar-thumb)] scrollbar-track-transparent',
                             sizeStyles[inputSize],
-                            error && 'border-[var(--color-error)]/40 focus-visible:border-[var(--color-error)]/40 focus-visible:shadow-[0_0_0_2px_rgba(239,68,68,0.1)]',
+                            error && 'border-[var(--color-error)]/40 focus-visible:border-[var(--color-error)]/40 focus-visible:shadow-[0_0_0_2px_var(--color-error-ring)]',
                             className
                         )}
                         {...props}

@@ -179,13 +179,17 @@ export function registerTerminalHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle('terminal:list', async () => {
-    return {
-      success: true,
-      terminals: Array.from(terminalSessions.entries()).map(([id, session]) => ({
-        id,
-        cwd: session.cwd,
-      })),
-    };
+    try {
+      return {
+        success: true,
+        terminals: Array.from(terminalSessions.entries()).map(([id, session]) => ({
+          id,
+          cwd: session.cwd,
+        })),
+      };
+    } catch (error) {
+      return { success: false, terminals: [], error: error instanceof Error ? error.message : 'List failed' };
+    }
   });
 }
 

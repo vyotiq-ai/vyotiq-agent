@@ -434,6 +434,7 @@ export function taskReducer(
       };
     }
 
+    // @planned — Available for per-run inline artifacts (not yet dispatched from main)
     case 'INLINE_ARTIFACT_ADD': {
       const { runId, artifact } = action.payload;
       const existing = state.inlineArtifacts[runId] || [];
@@ -447,6 +448,7 @@ export function taskReducer(
       };
     }
 
+    // @planned — Full run cleanup (currently handled by RUN_TOOLSTATE_CLEAR + CLEAR_SESSION_TASK_STATE)
     case 'RUN_CLEANUP': {
       const runId = action.payload;
       const { [runId]: _deletedResults, ...remainingResults } = state.toolResults;
@@ -649,6 +651,7 @@ export function taskReducer(
       };
     }
 
+    // @planned — Individual terminal stream cleanup (not yet dispatched from main)
     case 'TERMINAL_CLEAR': {
       const { pid } = action.payload;
       const { [pid]: _removed, ...remaining } = state.terminalStreams;
@@ -671,6 +674,7 @@ export function taskReducer(
       };
     }
 
+    // @planned — Standalone todo clear (currently handled by CLEAR_SESSION_TASK_STATE + SESSION_DELETE)
     case 'TODO_CLEAR': {
       const sessionId = action.payload;
       const { [sessionId]: _removed, ...remainingTodos } = state.todos;
@@ -737,6 +741,7 @@ export function taskReducer(
       };
     }
 
+    // @planned — Explicit diff cleanup (diffs intentionally persist across runs for review)
     case 'FILE_DIFF_STREAM_CLEAR': {
       const { runId, toolCallId } = action.payload;
       if (!state.fileDiffStreams[runId]) return state;

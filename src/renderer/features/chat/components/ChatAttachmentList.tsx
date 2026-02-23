@@ -34,6 +34,7 @@ import React, { useMemo } from 'react';
 import { X, Image, FileCode, FileText, File } from 'lucide-react';
 import type { AttachmentPayload } from '../../../../shared/types';
 import { cn } from '../../../utils/cn';
+import { FilePreviewPopover } from './FilePreviewPopover';
 
 /**
  * Props for ChatAttachmentList component
@@ -59,6 +60,7 @@ const isCodeMimeType = (mimeType: string): boolean => {
   return (
     mimeType?.startsWith('text/') ||
     mimeType?.includes('javascript') ||
+    mimeType?.includes('typescript') ||
     mimeType?.includes('json') ||
     mimeType?.includes('xml') ||
     mimeType?.includes('yaml')
@@ -111,74 +113,84 @@ const AttachmentItem: React.FC<{
   const title = sizeLabel ? `${attachment.name} (${sizeLabel})` : attachment.name;
 
   return (
-    <div
-      className={cn(
-        "group relative flex items-center gap-1.5",
-        variant === 'strip'
-          ? 'h-7 px-1.5 py-0.5'
-          : 'h-auto min-h-[24px] px-2 py-1',
-        'font-mono',
-        "text-[10px] text-[var(--color-text-muted)]",
-        "bg-[var(--color-surface-2)]/50 rounded",
-        "border border-[var(--color-border-subtle)]/50",
-        "hover:border-[var(--color-border-subtle)] transition-colors"
-      )}
-      title={title}
+    <FilePreviewPopover
+      name={attachment.name}
+      path={attachment.path}
+      mimeType={attachment.mimeType}
+      size={attachment.size}
+      content={attachment.content}
+      encoding={attachment.encoding}
+      preview={attachment.preview}
+      placement="top"
     >
-      {/* Image thumbnail or file icon */}
-      {thumbnailUrl ? (
-        <div className={cn(
-          'flex-shrink-0 rounded overflow-hidden bg-[var(--color-surface-3)]',
-          variant === 'strip' ? 'w-5 h-5' : 'w-6 h-6'
-        )}>
-          <img
-            src={thumbnailUrl}
-            alt={attachment.name}
-            className="w-full h-full object-cover"
-          />
-        </div>
-      ) : (
-        <FileIcon mimeType={attachment.mimeType} />
-      )}
-
-      {/* File info */}
-      <div className={cn('min-w-0', variant === 'strip' ? 'flex items-center gap-1' : 'flex flex-col')}>
-        <span
-          className={cn(
-            'text-[var(--color-text-secondary)] truncate',
-            variant === 'strip' ? 'max-w-[140px]' : 'max-w-[100px] sm:max-w-[140px]'
-          )}
-        >
-          {attachment.name}
-        </span>
-        {variant === 'default' && attachment.size > 0 && (
-          <span className="text-[8px] text-[var(--color-text-dim)]">
-            {formatFileSize(attachment.size)}
-          </span>
-        )}
-      </div>
-
-      {/* Index badge */}
-      <span className="text-[8px] text-[var(--color-text-dim)] opacity-60">[{index}]</span>
-
-      {/* Remove button */}
-      <button
-        type="button"
+      <div
         className={cn(
-          "ml-auto text-[var(--color-text-dim)] hover:text-[var(--color-error)]",
+          "group relative flex items-center gap-1.5",
           variant === 'strip'
-            ? 'opacity-70 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100'
-            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100',
-          "transition-opacity p-0.5 rounded-sm",
-          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
+            ? 'h-7 px-1.5 py-0.5'
+            : 'h-auto min-h-[24px] px-2 py-1',
+          'font-mono',
+          "text-[10px] text-[var(--color-text-muted)]",
+          "bg-[var(--color-surface-2)]/50 rounded",
+          "border border-[var(--color-border-subtle)]/50",
+          "hover:border-[var(--color-border-subtle)] transition-colors"
         )}
-        onClick={() => onRemove(attachment.id)}
-        title="Remove attachment"
-        aria-label={`Remove attachment ${attachment.name}`}
       >
-        <X size={12} />
-      </button>
-    </div>
+        {/* Image thumbnail or file icon */}
+        {thumbnailUrl ? (
+          <div className={cn(
+            'flex-shrink-0 rounded overflow-hidden bg-[var(--color-surface-3)]',
+            variant === 'strip' ? 'w-5 h-5' : 'w-6 h-6'
+          )}>
+            <img
+              src={thumbnailUrl}
+              alt={attachment.name}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        ) : (
+          <FileIcon mimeType={attachment.mimeType} />
+        )}
+
+        {/* File info */}
+        <div className={cn('min-w-0', variant === 'strip' ? 'flex items-center gap-1' : 'flex flex-col')}>
+          <span
+            className={cn(
+              'text-[var(--color-text-secondary)] truncate',
+              variant === 'strip' ? 'max-w-[140px]' : 'max-w-[100px] sm:max-w-[140px]'
+            )}
+          >
+            {attachment.name}
+          </span>
+          {variant === 'default' && attachment.size > 0 && (
+            <span className="text-[8px] text-[var(--color-text-dim)]">
+              {formatFileSize(attachment.size)}
+            </span>
+          )}
+        </div>
+
+        {/* Index badge */}
+        <span className="text-[8px] text-[var(--color-text-dim)] opacity-60">[{index}]</span>
+
+        {/* Remove button */}
+        <button
+          type="button"
+          className={cn(
+            "ml-auto text-[var(--color-text-dim)] hover:text-[var(--color-error)]",
+            variant === 'strip'
+              ? 'opacity-70 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100',
+            "transition-opacity p-0.5 rounded-sm",
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40'
+          )}
+          onClick={() => onRemove(attachment.id)}
+          title="Remove attachment"
+          aria-label={`Remove attachment ${attachment.name}`}
+        >
+          <X size={12} />
+        </button>
+      </div>
+    </FilePreviewPopover>
   );
 };
 

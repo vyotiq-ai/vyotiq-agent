@@ -26,6 +26,7 @@ export {
   wasFileRead,
   getFileReadTime,
   clearFileTracking,
+  clearSessionFileTracking,
   clearAllFileTracking,
   getTrackedFiles,
   getReadFilesCache,

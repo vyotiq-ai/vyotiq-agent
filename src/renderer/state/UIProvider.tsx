@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode, useMemo } from 'react';
 import { createLogger } from '../utils/logger';
 
+// HMR: invalidate the module so React re-mounts with fresh contexts
+if (import.meta.hot) {
+  import.meta.hot.accept(() => import.meta.hot?.invalidate());
+}
+
 const logger = createLogger('UIProvider');
 
 interface UIStateType {
@@ -169,18 +174,32 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const openQuickOpen = useCallback(() => setQuickOpenOpen(true), []);
   const closeQuickOpen = useCallback(() => setQuickOpenOpen(false), []);
 
-  // Global keyboard shortcut handler
+  // Refs for keyboard handler to avoid re-registering listener on every state change
+  const settingsOpenRef = useRef(settingsOpen);
+  settingsOpenRef.current = settingsOpen;
+  const shortcutsOpenRef = useRef(shortcutsOpen);
+  shortcutsOpenRef.current = shortcutsOpen;
+  const commandPaletteOpenRef = useRef(commandPaletteOpen);
+  commandPaletteOpenRef.current = commandPaletteOpen;
+  const quickOpenOpenRef = useRef(quickOpenOpen);
+  quickOpenOpenRef.current = quickOpenOpen;
+  const debugPanelOpenRef = useRef(debugPanelOpen);
+  debugPanelOpenRef.current = debugPanelOpen;
+  const metricsDashboardOpenRef = useRef(metricsDashboardOpen);
+  metricsDashboardOpenRef.current = metricsDashboardOpen;
+
+  // Global keyboard shortcut handler — registered once, reads state via refs
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Escape to close metrics dashboard
-      if (e.key === 'Escape' && metricsDashboardOpen) {
+      if (e.key === 'Escape' && metricsDashboardOpenRef.current) {
         e.preventDefault();
         setMetricsDashboardOpen(false);
         return;
       }
 
       // ? to show shortcuts (when no modals/panels are open and not in an input)
-      if (e.key === '?' && !settingsOpen && !shortcutsOpen && !commandPaletteOpen && !quickOpenOpen && !debugPanelOpen && !metricsDashboardOpen) {
+      if (e.key === '?' && !settingsOpenRef.current && !shortcutsOpenRef.current && !commandPaletteOpenRef.current && !quickOpenOpenRef.current && !debugPanelOpenRef.current && !metricsDashboardOpenRef.current) {
         const target = e.target as HTMLElement;
         const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
         if (!isInput) {
@@ -234,7 +253,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [settingsOpen, shortcutsOpen, commandPaletteOpen, quickOpenOpen, debugPanelOpen, metricsDashboardOpen, toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard, toggleDebugPanel]);
+  }, [toggleUndoHistory, toggleBrowserPanel, toggleCommandPalette, toggleMetricsDashboard, toggleDebugPanel]);
 
   // Listen for custom events from activity bar
   useEffect(() => {

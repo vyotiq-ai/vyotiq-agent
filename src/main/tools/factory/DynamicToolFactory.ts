@@ -272,8 +272,10 @@ export class DynamicToolFactory {
       return stepNum >= 0 && stepNum < stepResults.length && stepResults[stepNum].success;
     }
 
-    // Default to true for unknown conditions
-    return true;
+    // Unknown condition pattern — log a warning and fail-closed to avoid
+    // silently executing steps with typos or unsupported expressions.
+    logger.warn('Unknown condition pattern, skipping step (fail-closed)', { condition });
+    return false;
   }
 
   /**

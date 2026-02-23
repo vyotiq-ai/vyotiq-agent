@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { ExternalLink } from 'lucide-react';
-import type { AgentSettings, LLMProviderName } from '../../../../shared/types';
+import type { AgentSettings, LLMProviderName, ModelPreferences } from '../../../../shared/types';
 import { PROVIDERS, PROVIDER_ORDER, type ProviderInfo } from '../../../../shared/providers';
+import { SETTINGS_CONSTRAINTS } from '../../../../shared/types';
 import { ProviderIcon } from '../../../components/ui/ProviderIcons';
 import { cn } from '../../../utils/cn';
 import { SettingsClaudeSubscription } from './SettingsClaudeSubscription';
@@ -11,6 +12,7 @@ import {
   SettingsInput,
   SettingsToggleRow,
   SettingsSelect,
+  SettingsSlider,
 } from '../primitives';
 
 interface SettingsProvidersProps {
@@ -25,9 +27,11 @@ interface ProviderCardProps {
   apiKey: string;
   isEnabled: boolean;
   priority: number;
+  modelPreferences?: ModelPreferences;
   onApiKeyChange: (value: string) => void;
   onToggleEnabled: () => void;
   onPriorityChange: (priority: number) => void;
+  onModelSettingChange: (field: keyof ModelPreferences, value: unknown) => void;
 }
 
 const PRIORITY_OPTIONS = [
@@ -42,9 +46,11 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   apiKey,
   isEnabled,
   priority,
+  modelPreferences,
   onApiKeyChange,
   onToggleEnabled,
   onPriorityChange,
+  onModelSettingChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -141,6 +147,32 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             options={PRIORITY_OPTIONS}
             className="py-1"
           />
+
+          {/* Model overrides */}
+          <div className="pt-1 space-y-2">
+            <div className="h-px bg-[var(--color-border-subtle)]/40" />
+            <p className="text-[9px] text-[var(--color-text-dim)]"># per-provider model overrides (leave blank for global defaults)</p>
+            <SettingsSlider
+              label="temperature"
+              description="Override global temperature for this provider"
+              value={modelPreferences?.temperature ?? SETTINGS_CONSTRAINTS.temperature.default}
+              onChange={(v) => onModelSettingChange('temperature', v)}
+              min={SETTINGS_CONSTRAINTS.temperature.min}
+              max={SETTINGS_CONSTRAINTS.temperature.max}
+              step={0.1}
+              format={(v) => v.toFixed(1)}
+            />
+            <SettingsSlider
+              label="max-output-tokens"
+              description="Override max output tokens for this provider"
+              value={modelPreferences?.maxOutputTokens ?? SETTINGS_CONSTRAINTS.maxOutputTokens.default}
+              onChange={(v) => onModelSettingChange('maxOutputTokens', v)}
+              min={256}
+              max={SETTINGS_CONSTRAINTS.maxOutputTokens.max}
+              step={256}
+              format={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -172,6 +204,15 @@ export const SettingsProviders: React.FC<SettingsProvidersProps> = ({
     onProviderSettingChange(providerId, 'enabled', !currentlyEnabled);
   }, [providerSettings, onProviderSettingChange]);
 
+  // Handle model preference changes (merges with existing model object)
+  const handleModelSettingChange = useCallback(
+    (providerId: LLMProviderName, field: keyof ModelPreferences, value: unknown) => {
+      const currentModel = providerSettings[providerId]?.model ?? { modelId: '' };
+      onProviderSettingChange(providerId, 'model', { ...currentModel, [field]: value });
+    },
+    [providerSettings, onProviderSettingChange],
+  );
+
   return (
     <div className="space-y-6">
       {/* Claude Code Subscription Section */}
@@ -200,9 +241,11 @@ export const SettingsProviders: React.FC<SettingsProvidersProps> = ({
                 apiKey={apiKeys[providerId] ?? ''}
                 isEnabled={settings?.enabled ?? true}
                 priority={settings?.priority ?? 1}
+                modelPreferences={settings?.model}
                 onApiKeyChange={(value) => onApiKeyChange(providerId, value)}
                 onToggleEnabled={() => handleToggleEnabled(providerId)}
                 onPriorityChange={(priority) => onProviderSettingChange(providerId, 'priority', priority)}
+                onModelSettingChange={(field, value) => handleModelSettingChange(providerId, field, value)}
               />
             );
           })}

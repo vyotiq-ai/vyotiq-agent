@@ -179,9 +179,7 @@ export {
   useTheme,
   useThemeColors,
   useResolvedTheme,
-  themeVar,
   themeTransition,
-  applyThemeToDocument,
   enableThemeTransition,
   disableThemeTransition,
 } from './themeMode.tsx';

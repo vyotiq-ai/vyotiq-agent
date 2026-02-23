@@ -1,6 +1,9 @@
 /**
  * ProgressGroupPanel Component
  * 
+ * @orphaned — This component is never imported or rendered anywhere in the app.
+ * It was planned but not wired into the component tree. Safe to remove in a future cleanup.
+ * 
  * Renders active progress groups for the current session.
  * Each group contains a list of progress items (tool calls, file ops, etc.)
  * with real-time status updates and duration tracking.

@@ -234,6 +234,12 @@ export async function fetchProviderModels(provider: LLMProviderName): Promise<Mo
       case 'glm':
         result = await window.vyotiq.glm.fetchModels();
         break;
+      case 'xai':
+        result = await window.vyotiq.xai.fetchModels();
+        break;
+      case 'mistral':
+        result = await window.vyotiq.mistral.fetchModels();
+        break;
       default:
         return [];
     }

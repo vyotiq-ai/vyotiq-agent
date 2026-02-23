@@ -290,6 +290,7 @@ edit(file, old_string, new_string)
     completedLabel: 'File edited',
   },
   mustReadBeforeWrite: true,
+  // Session-scoped cache is resolved dynamically during execution
   trackedReadsInSession: getReadFilesCache(),
   
   // Input examples for improved accuracy
@@ -534,7 +535,7 @@ String preview (first 100 chars):
     // Safety check: verify file was read before editing
     // This is a soft warning - we don't block the operation since the file content
     // may have been provided through other means (editor context, conversation, etc.)
-    const fileWasRead = wasFileRead(resolvedPath);
+    const fileWasRead = wasFileRead(resolvedPath, undefined, context.sessionId);
     let safetyWarning = '';
     if (!fileWasRead) {
       safetyWarning = `Note: File was not read via the read tool in this session. Ensure old_string matches exactly.\n\n`;

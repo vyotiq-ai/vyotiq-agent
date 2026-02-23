@@ -19,6 +19,8 @@ export function settingsReducer(
 ): AgentUIState {
   switch (action.type) {
     case 'SETTINGS_UPDATE':
+      // Skip update if settings reference hasn't changed
+      if (state.settings === action.payload) return state;
       return { ...state, settings: action.payload };
       
     default:

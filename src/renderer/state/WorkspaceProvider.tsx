@@ -18,6 +18,11 @@ import React, {
 import { createLogger } from '../utils/logger';
 import rustBackend from '../utils/rustBackendClient';
 
+// HMR: invalidate the module so React re-mounts with fresh contexts
+if (import.meta.hot) {
+  import.meta.hot.accept(() => import.meta.hot?.invalidate());
+}
+
 const logger = createLogger('WorkspaceProvider');
 
 // ---------------------------------------------------------------------------

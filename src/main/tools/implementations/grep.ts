@@ -9,6 +9,7 @@ import { join, relative } from 'node:path';
 import { resolvePath } from '../../utils/fileSystem';
 import { createLogger } from '../../logger';
 import { rustSidecar } from '../../rustSidecar';
+import { resolveWorkspaceId, rustRequest } from '../../utils/rustBackend';
 import { checkCancellation, formatCancelled } from '../types/formatUtils';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
@@ -78,20 +79,9 @@ async function tryRustBackendGrep(
   try {
     if (!rustSidecar.isRunning()) return null;
 
-    const port = rustSidecar.getPort();
-
-    // Resolve workspace ID
-    const wsResponse = await fetch(`http://127.0.0.1:${port}/api/workspaces`, {
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (!wsResponse.ok) return null;
-
-    const workspaces = await wsResponse.json() as Array<{ id: string; path: string }>;
-    const list = Array.isArray(workspaces) ? workspaces : [];
-    const normalize = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-    const target = normalize(context.workspacePath);
-    const ws = list.find((w) => normalize(w.path) === target);
-    if (!ws) return null;
+    // Resolve workspace ID using shared utility (includes auth headers)
+    const wsId = await resolveWorkspaceId(context.workspacePath, logger);
+    if (!wsId) return null;
 
     // Resolve search scope — Rust backend now supports sub-directory scoping via `path` field
     const searchPath = args.path?.trim() || '.';
@@ -143,14 +133,15 @@ async function tryRustBackendGrep(
 
     let response: RustGrepResponse;
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/api/workspaces/${ws.id}/search/grep`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      if (!res.ok) return null;
-      response = await res.json() as RustGrepResponse;
+      response = await rustRequest<RustGrepResponse>(
+        `/api/workspaces/${wsId}/search/grep`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+        controller.signal,
+        RUST_GREP_TIMEOUT,
+      );
     } finally {
       clearTimeout(timeout);
     }

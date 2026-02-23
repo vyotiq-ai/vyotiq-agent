@@ -247,7 +247,9 @@ export class RunExecutor {
   }
 
   /**
-   * Validated session state update
+   * Validated session state update — validates messages before persisting.
+   * This SHOULD be used instead of raw updateSessionState for all mutation
+   * paths that include user/assistant messages.
    */
   private safeUpdateSessionState(
     sessionId: string,

@@ -134,10 +134,10 @@ export class SettingsStore {
                   apiKeys[key as LLMProviderName] = decrypted;
                   logger.debug('Successfully decrypted API key', { provider: key, length: decrypted.length });
                 } else {
-                  // Encryption not available but key is encrypted — preserve the raw
-                  // encrypted value so it can be decrypted when safeStorage becomes available
-                  logger.error('Cannot decrypt API key: safeStorage not available', { provider: key });
-                  apiKeys[key as LLMProviderName] = value;
+                  // Encryption not available — key is unusable. Leaving it as
+                  // undefined prevents sending the raw `enc:...` string to providers
+                  // which would cause confusing authentication failures.
+                  logger.error('Cannot decrypt API key: safeStorage not available — key will be unavailable until encryption is ready', { provider: key });
                 }
               } else {
                 // Plain text key (shouldn't happen in production but handle it)

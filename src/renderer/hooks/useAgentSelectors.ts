@@ -71,7 +71,9 @@ export function useActiveSessionId(): string | undefined {
 
 /**
  * Get the active session state
- * Re-renders when the active session changes
+ * Re-renders only when the session object's identity changes.
+ * Uses referential equality — session objects are replaced on content changes
+ * but the selector stabilizes by default.
  */
 export function useActiveSession(): AgentSessionState | undefined {
   const sessionId = useActiveSessionId();
@@ -234,6 +236,8 @@ export function useIsActiveSessionIdle(): boolean {
 
 /**
  * Get agent status info for the active session
+ * Uses shallow object equality to prevent re-renders when status object
+ * is replaced with identical contents during streaming.
  */
 export function useActiveSessionAgentStatus() {
   const sessionId = useActiveSessionId();
@@ -245,7 +249,8 @@ export function useActiveSessionAgentStatus() {
         return state.agentStatus[sessionId];
       },
       [sessionId]
-    )
+    ),
+    shallowObjectEqual
   );
 }
 
@@ -347,6 +352,8 @@ export function useIsActiveSessionStreaming(): boolean {
 
 /**
  * Get the active session's config
+ * Uses shallow object equality to prevent re-renders when config
+ * is replaced with identical contents during session updates.
  */
 export function useActiveSessionConfig(): AgentSessionState['config'] | undefined {
   const sessionId = useActiveSessionId();
@@ -359,7 +366,8 @@ export function useActiveSessionConfig(): AgentSessionState['config'] | undefine
         return session?.config;
       },
       [sessionId]
-    )
+    ),
+    shallowObjectEqual
   );
 }
 

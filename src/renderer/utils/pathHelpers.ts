@@ -1,14 +1,22 @@
 /**
  * Path helper utilities for the renderer process.
- * Centralizes path parsing functions used across multiple features.
+ *
+ * Re-exports shared path utilities for backward compatibility.
+ * New code should import directly from '@shared/utils/pathUtils'.
  */
+import {
+  getFilename,
+  getExtension,
+  getDirname,
+  normalizePath as sharedNormalizePath,
+} from '../../shared/utils/pathUtils';
 
 /**
  * Extract the file name from a full file path.
  * Works with both forward slashes and backslashes.
  */
 export function getFileName(filePath: string): string {
-  return filePath.split(/[/\\]/).pop() ?? filePath;
+  return getFilename(filePath);
 }
 
 /**
@@ -16,9 +24,7 @@ export function getFileName(filePath: string): string {
  * Returns empty string if no extension is found.
  */
 export function getFileExtension(filePath: string): string {
-  const fileName = getFileName(filePath);
-  const lastDot = fileName.lastIndexOf('.');
-  return lastDot > 0 ? fileName.slice(lastDot + 1).toLowerCase() : '';
+  return getExtension(filePath);
 }
 
 /**
@@ -26,14 +32,13 @@ export function getFileExtension(filePath: string): string {
  * Returns empty string if the path has no directory.
  */
 export function getDirectoryPath(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/');
-  const lastSlash = normalized.lastIndexOf('/');
-  return lastSlash >= 0 ? normalized.slice(0, lastSlash) : '';
+  const dir = getDirname(filePath);
+  return dir === '.' ? '' : dir;
 }
 
 /**
  * Normalize path separators to forward slashes.
  */
 export function normalizePath(filePath: string): string {
-  return filePath.replace(/\\/g, '/');
+  return sharedNormalizePath(filePath);
 }

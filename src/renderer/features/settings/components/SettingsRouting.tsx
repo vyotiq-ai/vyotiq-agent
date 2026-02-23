@@ -4,11 +4,11 @@
  * Configure task-based model routing - assign different AI models
  * to different task types (frontend, backend, debugging, etc.)
  */
-import React, { useMemo } from 'react';
-import { ChevronDown, ChevronUp, RefreshCw, BarChart3 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown, ChevronUp, RefreshCw, BarChart3, Plus, X, Settings2 } from 'lucide-react';
 import { Toggle } from '../../../components/ui/Toggle';
 import type { 
-  TaskRoutingSettings, RoutingTaskType, TaskModelMapping, LLMProviderName, ProviderSettings,
+  TaskRoutingSettings, RoutingTaskType, TaskModelMapping, LLMProviderName, ProviderSettings, CustomTaskType,
 } from '../../../../shared/types';
 import { ROUTING_TASK_INFO } from '../../../../shared/types';
 import { PROVIDERS, getModelsForProvider } from '../../../../shared/providers';
@@ -166,11 +166,138 @@ interface SettingsRoutingProps {
   onMappingChange?: (taskType: RoutingTaskType, mapping: TaskModelMapping) => void;
 }
 
+/**
+ * Custom Task Types Section — user-defined task type detectors
+ */
+const CustomTaskTypesSection: React.FC<{
+  customTaskTypes: CustomTaskType[];
+  onChange: (types: CustomTaskType[]) => void;
+}> = ({ customTaskTypes, onChange }) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newKeywords, setNewKeywords] = useState('');
+
+  const addCustomType = () => {
+    const name = newName.trim();
+    const keywords = newKeywords.split(',').map(k => k.trim()).filter(Boolean);
+    if (!name || keywords.length === 0) return;
+
+    const id = `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    if (customTaskTypes.some(t => t.id === id)) return;
+
+    onChange([...customTaskTypes, {
+      id,
+      name,
+      description: `Custom task: ${name}`,
+      icon: 'code',
+      keywords,
+      priority: 50 + customTaskTypes.length,
+      enabled: true,
+    }]);
+    setNewName('');
+    setNewKeywords('');
+    setIsAdding(false);
+  };
+
+  const removeCustomType = (id: string) => {
+    onChange(customTaskTypes.filter(t => t.id !== id));
+  };
+
+  const toggleCustomType = (id: string) => {
+    onChange(customTaskTypes.map(t => t.id === id ? { ...t, enabled: !t.enabled } : t));
+  };
+
+  return (
+    <SettingsGroup title="custom task types" icon={<Plus size={11} />}>
+      <p className="text-[9px] text-[var(--color-text-dim)]"># define custom task types with detection keywords</p>
+
+      {customTaskTypes.length > 0 && (
+        <div className="space-y-1.5">
+          {customTaskTypes.map((task) => (
+            <div
+              key={task.id}
+              className={cn(
+                "flex items-center gap-2 p-2 border",
+                task.enabled
+                  ? "border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"
+                  : "border-[var(--color-border-subtle)]/50 bg-[var(--color-surface-2)]/10 opacity-60"
+              )}
+            >
+              <Toggle
+                checked={task.enabled}
+                onToggle={() => toggleCustomType(task.id)}
+                size="sm"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] text-[var(--color-text-primary)]">{task.name}</div>
+                <div className="text-[8px] text-[var(--color-text-dim)] truncate">
+                  {task.keywords.join(', ')}
+                </div>
+              </div>
+              <button
+                onClick={() => removeCustomType(task.id)}
+                className="text-[var(--color-text-dim)] hover:text-[var(--color-error)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+                aria-label={`Remove ${task.name}`}
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isAdding ? (
+        <div className="space-y-2 p-2 border border-[var(--color-accent-primary)]/20 bg-[var(--color-surface-1)]">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Task name (e.g., Mobile Development)"
+            className="w-full px-2 py-1 text-[9px] bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent-primary)]/40 placeholder:text-[var(--color-text-dim)]"
+          />
+          <input
+            type="text"
+            value={newKeywords}
+            onChange={(e) => setNewKeywords(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addCustomType()}
+            placeholder="Keywords (comma separated): flutter, react-native, mobile"
+            className="w-full px-2 py-1 text-[9px] bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent-primary)]/40 placeholder:text-[var(--color-text-dim)]"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={addCustomType}
+              disabled={!newName.trim() || !newKeywords.trim()}
+              className="px-2 py-1 text-[9px] text-[var(--color-accent-primary)] border border-[var(--color-accent-primary)]/30 hover:bg-[var(--color-accent-primary)]/10 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none"
+            >
+              add
+            </button>
+            <button
+              onClick={() => { setIsAdding(false); setNewName(''); setNewKeywords(''); }}
+              className="px-2 py-1 text-[9px] text-[var(--color-text-dim)] hover:text-[var(--color-text-primary)] focus-visible:outline-none"
+            >
+              cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setIsAdding(true)}
+          className="flex items-center gap-1.5 px-2 py-1.5 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-accent-primary)] border border-dashed border-[var(--color-border-subtle)] hover:border-[var(--color-accent-primary)]/30 w-full transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/40"
+        >
+          <Plus size={10} />
+          add custom task type
+        </button>
+      )}
+    </SettingsGroup>
+  );
+};
+
 export const SettingsRouting: React.FC<SettingsRoutingProps> = ({ settings, providerSettings, apiKeys, onSettingChange, onMappingChange }) => {
   const {
     enabled = false, confidenceThreshold = 0.6, taskMappings = [], showRoutingDecisions = true,
     showRoutingBadge = true, allowAgentOverride = true, enableFallback = true,
     useConversationContext = true, contextWindowSize = 10, logRoutingDecisions = false,
+    defaultMapping, customTaskTypes = [],
   } = settings ?? {};
 
   const { stats: modelQualityStats, rankedModels, isLoading: isQualityLoading, refresh: refreshQuality } = useModelQuality();
@@ -225,6 +352,47 @@ export const SettingsRouting: React.FC<SettingsRoutingProps> = ({ settings, prov
           <SettingsToggleRow label="log-decisions" description="log routing decisions for debugging" checked={logRoutingDecisions} onToggle={() => onSettingChange?.('logRoutingDecisions', !logRoutingDecisions)} />
         </SettingsGroup>
 
+        {/* Default Mapping — fallback when no task type detected */}
+        <SettingsGroup title="default mapping" icon={<Settings2 size={11} />}>
+          <p className="text-[9px] text-[var(--color-text-dim)]"># fallback provider/model when no specific task is detected</p>
+          {availableProviders.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-[9px] text-[var(--color-text-muted)] w-16">provider</label>
+                <select
+                  value={defaultMapping?.provider ?? 'auto'}
+                  onChange={(e) => onSettingChange?.('defaultMapping', { ...defaultMapping, taskType: 'general', enabled: true, priority: 100, provider: e.target.value as LLMProviderName | 'auto' })}
+                  className="flex-1 text-[9px] px-2 py-1 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent-primary)]/40"
+                >
+                  <option value="auto">auto (default selection)</option>
+                  {availableProviders.map((p) => (
+                    <option key={p.name} value={p.name}>{p.displayName}</option>
+                  ))}
+                </select>
+              </div>
+              {defaultMapping?.provider && defaultMapping.provider !== 'auto' && (
+                <div className="flex items-center gap-2">
+                  <label className="text-[9px] text-[var(--color-text-muted)] w-16">model</label>
+                  <select
+                    value={defaultMapping?.modelId ?? ''}
+                    onChange={(e) => onSettingChange?.('defaultMapping', { ...defaultMapping, modelId: e.target.value || undefined })}
+                    className="flex-1 text-[9px] px-2 py-1 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent-primary)]/40"
+                  >
+                    <option value="">auto (provider default)</option>
+                    {(availableProviders.find(p => p.name === defaultMapping.provider)?.models ?? []).map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-[10px] text-[var(--color-text-dim)] bg-[var(--color-surface-1)] p-2 border border-[var(--color-border-subtle)]">
+              Configure providers first
+            </div>
+          )}
+        </SettingsGroup>
+
         {/* Task Mappings */}
         <SettingsGroup title="task mappings">
           {availableProviders.length === 0 ? (
@@ -239,6 +407,12 @@ export const SettingsRouting: React.FC<SettingsRoutingProps> = ({ settings, prov
             </div>
           )}
         </SettingsGroup>
+
+        {/* Custom Task Types */}
+        <CustomTaskTypesSection
+          customTaskTypes={customTaskTypes}
+          onChange={(types) => onSettingChange?.('customTaskTypes', types)}
+        />
 
         {/* Model Performance Stats */}
         <SettingsGroup title="model performance" icon={<BarChart3 size={11} />}>

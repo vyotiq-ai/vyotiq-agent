@@ -83,7 +83,11 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
   });
 
   ipcMain.handle('rust-backend:get-auth-token', () => {
-    return rustSidecar.getAuthToken();
+    try {
+      return rustSidecar.getAuthToken();
+    } catch (error) {
+      return null;
+    }
   });
 
   // ---- Workspace management ----
@@ -156,6 +160,9 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
 
   ipcMain.handle('rust-backend:read-file', async (_event, workspaceId: string, filePath: string) => {
     try {
+      if (!validateWorkspaceId(workspaceId)) {
+        return { success: false, error: 'Invalid workspace ID format' };
+      }
       const data = await rustRequest<Record<string, unknown>>(`/api/workspaces/${workspaceId}/files/read?path=${encodeURIComponent(filePath)}`);
       return { success: true, ...data };
     } catch (error) {
@@ -165,6 +172,9 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
 
   ipcMain.handle('rust-backend:write-file', async (_event, workspaceId: string, filePath: string, content: string) => {
     try {
+      if (!validateWorkspaceId(workspaceId)) {
+        return { success: false, error: 'Invalid workspace ID format' };
+      }
       await rustRequest(`/api/workspaces/${workspaceId}/files/write`, {
         method: 'POST',
         body: JSON.stringify({ path: filePath, content }),
@@ -179,6 +189,9 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
 
   ipcMain.handle('rust-backend:search', async (_event, workspaceId: string, query: string, options?: { limit?: number; fuzzy?: boolean }) => {
     try {
+      if (!validateWorkspaceId(workspaceId)) {
+        return { success: false, error: 'Invalid workspace ID format', results: [] };
+      }
       const result = await rustRequest<Record<string, unknown>>(`/api/workspaces/${workspaceId}/search`, {
         method: 'POST',
         body: JSON.stringify({ query, limit: options?.limit ?? 20, fuzzy: options?.fuzzy ?? false }),
@@ -191,6 +204,9 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
 
   ipcMain.handle('rust-backend:grep', async (_event, workspaceId: string, pattern: string, options?: { is_regex?: boolean; case_sensitive?: boolean; limit?: number }) => {
     try {
+      if (!validateWorkspaceId(workspaceId)) {
+        return { success: false, error: 'Invalid workspace ID format', results: [] };
+      }
       const result = await rustRequest<Record<string, unknown>>(`/api/workspaces/${workspaceId}/search/grep`, {
         method: 'POST',
         body: JSON.stringify({
@@ -210,6 +226,9 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
 
   ipcMain.handle('rust-backend:trigger-index', async (_event, workspaceId: string) => {
     try {
+      if (!validateWorkspaceId(workspaceId)) {
+        return { success: false, error: 'Invalid workspace ID format' };
+      }
       const result = await rustRequest<Record<string, unknown>>(`/api/workspaces/${workspaceId}/index`, { method: 'POST' });
       return { success: true, ...result };
     } catch (error) {
@@ -219,6 +238,9 @@ export function registerRustBackendHandlers(_context: IpcContext): void {
 
   ipcMain.handle('rust-backend:index-status', async (_event, workspaceId: string) => {
     try {
+      if (!validateWorkspaceId(workspaceId)) {
+        return { success: false, error: 'Invalid workspace ID format' };
+      }
       const status = await rustRequest<Record<string, unknown>>(`/api/workspaces/${workspaceId}/index/status`);
       return { success: true, ...status };
     } catch (error) {
