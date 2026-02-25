@@ -13,7 +13,10 @@
  * - Debugging: console, network
  * 
  * Primary tools are always loaded.
- * Secondary tools are deferred and loaded on-demand via request_tools.
+ * browser_interact is a single deferred tool that consolidates 10 secondary tools
+ * (fill_form, hover, evaluate, state, back, forward, reload, network, tabs,
+ * security_status) — reducing the model's decision surface per the
+ * "addition by subtraction" principle.
  */
 
 // Type exports
@@ -41,6 +44,9 @@ export { browserConsoleTool, addConsoleLog, clearConsoleLogs, getConsoleLogs, se
 export { browserNetworkTool, addNetworkRequest, updateNetworkRequest, clearNetworkRequests, getNetworkRequests, type NetworkRequest } from './network';
 export { browserTabsTool } from './tabs';
 
+// Unified deferred tool (replaces 10 separate deferred tools)
+export { browserInteractTool } from './interact';
+
 // Import all tools for array export
 import { browserNavigateTool } from './navigate';
 import { browserExtractTool } from './extract';
@@ -49,18 +55,22 @@ import { browserClickTool } from './click';
 import { browserTypeTool } from './type';
 import { browserScrollTool } from './scroll';
 import { browserSnapshotTool } from './snapshot';
-import { browserFillFormTool } from './fillForm';
-import { browserEvaluateTool } from './evaluate';
 import { browserWaitTool } from './wait';
-import { browserStateTool } from './state';
-import { browserBackTool, browserForwardTool, browserReloadTool } from './navigation';
 import { browserFetchTool } from './fetch';
-import { browserHoverTool } from './hover';
-import { browserSecurityStatusTool } from './securityStatus';
 import { browserCheckUrlTool } from './checkUrl';
 import { browserConsoleTool } from './console';
+import { browserInteractTool } from './interact';
+
+// Legacy imports (kept for backwards-compatible named exports)
+import { browserFillFormTool } from './fillForm';
+import { browserHoverTool } from './hover';
+import { browserEvaluateTool } from './evaluate';
+import { browserStateTool } from './state';
+import { browserBackTool, browserForwardTool, browserReloadTool } from './navigation';
 import { browserNetworkTool } from './network';
 import { browserTabsTool } from './tabs';
+import { browserSecurityStatusTool } from './securityStatus';
+
 import type { ToolDefinition } from '../../types';
 import { markAsDeferred as markAsDeferredBase } from '../index';
 
@@ -72,26 +82,9 @@ function markAsDeferred<T extends ToolDefinition>(tool: T): T {
 /**
  * All browser tools in a single array for easy registration.
  * 
- * Tools are ordered by frequency of use:
- * 1. browser_fetch - Most common: fetch web content
- * 2. browser_navigate - Go to URLs
- * 3. browser_extract - Extract page content
- * 4. browser_snapshot - Get page structure
- * 5. browser_screenshot - Visual capture
- * 6. browser_click - Click elements
- * 7. browser_type - Type into inputs
- * 8. browser_scroll - Scroll pages
- * 9. browser_fill_form - Fill multiple form fields (deferred)
- * 10. browser_wait - Wait for conditions
- * 11. browser_hover - Hover interactions (deferred)
- * 12. browser_evaluate - Custom JS (deferred)
- * 13. browser_state - Get state (deferred)
- * 14. browser_back/forward/reload - Navigation (deferred)
- * 15. browser_console - Debugging console logs
- * 16. browser_network - Network request monitoring (deferred)
- * 17. browser_tabs - Tab management (deferred)
- * 18. browser_security_status - Security monitoring (deferred)
- * 19. browser_check_url - URL safety check
+ * Primary tools (11) are always loaded.
+ * browser_interact (1 deferred tool) consolidates all 10 former secondary tools
+ * into a single action-dispatched tool — reducing context overhead by ~85%.
  */
 export const BROWSER_TOOLS: ToolDefinition[] = [
   // Primary tools (always loaded for browser tasks)
@@ -106,17 +99,10 @@ export const BROWSER_TOOLS: ToolDefinition[] = [
   browserWaitTool,
   browserConsoleTool,
   browserCheckUrlTool,
-  // Secondary tools (deferred, loaded on-demand)
-  markAsDeferred(browserFillFormTool),
-  markAsDeferred(browserHoverTool),
-  markAsDeferred(browserEvaluateTool),
-  markAsDeferred(browserStateTool),
-  markAsDeferred(browserBackTool),
-  markAsDeferred(browserForwardTool),
-  markAsDeferred(browserReloadTool),
-  markAsDeferred(browserNetworkTool),
-  markAsDeferred(browserTabsTool),
-  markAsDeferred(browserSecurityStatusTool),
+  // Unified secondary tool (deferred, loaded on-demand)
+  // Replaces: fill_form, hover, evaluate, state, back, forward, reload,
+  //           network, tabs, security_status
+  markAsDeferred(browserInteractTool),
 ];
 
 /**
@@ -139,7 +125,8 @@ export const PRIMARY_BROWSER_TOOLS: ToolDefinition[] = [
 
 /**
  * Secondary browser tools that are deferred.
- * These are less frequently used but still valuable.
+ * Now consolidated into a single browser_interact tool.
+ * Legacy individual exports kept for backwards compatibility.
  */
 export const SECONDARY_BROWSER_TOOLS: ToolDefinition[] = [
   browserFillFormTool,

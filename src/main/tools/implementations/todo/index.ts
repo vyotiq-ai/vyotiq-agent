@@ -45,6 +45,9 @@ export { getActivePlanTool } from './getActivePlanTool';
 export { listPlansTool } from './listPlansTool';
 export { deletePlanTool } from './deletePlanTool';
 
+// Unified plan tool (consolidates the 5 individual plan tools above)
+export { taskPlanTool } from './taskPlanTool';
+
 // Types from basic todo
 export type { 
   TodoItem, 

@@ -80,6 +80,7 @@ export interface FileTreeState {
 export type ContextMenuAction =
   | 'newFile'
   | 'newFolder'
+  | 'newFromTemplate'
   | 'rename'
   | 'delete'
   | 'duplicate'
@@ -92,6 +93,8 @@ export type ContextMenuAction =
   | 'openInTerminal'
   | 'openInEditor'
   | 'openDiff'
+  | 'preview'
+  | 'fileInfo'
   | 'refresh'
   | 'collapseAll'
   | 'expandAll'

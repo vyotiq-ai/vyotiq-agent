@@ -479,19 +479,20 @@ export class ToolRegistry {
     // Use coerced args if available (from validation)
     const finalArgs = validationResult.coercedArgs ?? normalizedArgs;
 
-    // Check cache for idempotent tools
-    const cache = getToolResultCache();
-    const cachedResult = cache.get(name, finalArgs);
-    
-    if (cachedResult) {
-      const completedAt = Date.now();
-      const estimatedTokensSaved = Math.ceil(cachedResult.output.length / 4);
+    // Check cache for idempotent tools (skip if caching disabled via context)
+    if (!context.skipCache) {
+      const cache = getToolResultCache();
+      const cachedResult = cache.get(name, finalArgs);
       
-      logger.debug('Cache hit for tool execution', {
-        tool: name,
-        estimatedTokensSaved,
-        cacheStats: cache.getStats(),
-      });
+      if (cachedResult) {
+        const completedAt = Date.now();
+        const estimatedTokensSaved = Math.ceil(cachedResult.output.length / 4);
+        
+        logger.debug('Cache hit for tool execution', {
+          tool: name,
+          estimatedTokensSaved,
+          cacheStats: cache.getStats(),
+        });
 
       // Return cached result with cache metadata
       const enhanced: EnhancedToolResult = {
@@ -512,20 +513,24 @@ export class ToolRegistry {
       enhanced.preview = this.generatePreview(cachedResult.output, name);
 
       return enhanced;
+      }
     }
 
     try {
       const result = await tool.execute(finalArgs, context);
       const completedAt = Date.now();
 
-      // Cache successful results for idempotent tools
-      if (result.success && cache.isCacheable(name)) {
-        cache.set(name, finalArgs, result, context.sessionId);
-        logger.debug('Cached tool result', {
-          tool: name,
-          outputLength: result.output.length,
-          sessionId: context.sessionId,
-        });
+      // Cache successful results for idempotent tools (skip if caching disabled)
+      if (!context.skipCache) {
+        const cache = getToolResultCache();
+        if (result.success && cache.isCacheable(name)) {
+          cache.set(name, finalArgs, result, context.sessionId);
+          logger.debug('Cached tool result', {
+            tool: name,
+            outputLength: result.output.length,
+            sessionId: context.sessionId,
+          });
+        }
       }
 
       // Invalidate cache for write operations

@@ -77,6 +77,18 @@ export function buildToolingSystem(config: ToolingConfig): ToolingSystem {
   registry.registerAlias('tasks', 'TodoWrite');
   registry.registerAlias('checklist', 'TodoWrite');
 
+  // Plan tool aliases — map legacy individual tool names to unified task_plan
+  registry.registerAlias('CreatePlan', 'task_plan');
+  registry.registerAlias('create_plan', 'task_plan');
+  registry.registerAlias('VerifyTasks', 'task_plan');
+  registry.registerAlias('verify_tasks', 'task_plan');
+  registry.registerAlias('GetActivePlan', 'task_plan');
+  registry.registerAlias('get_active_plan', 'task_plan');
+  registry.registerAlias('ListPlans', 'task_plan');
+  registry.registerAlias('list_plans', 'task_plan');
+  registry.registerAlias('DeletePlan', 'task_plan');
+  registry.registerAlias('delete_plan', 'task_plan');
+
   // Full-text search aliases (BM25 ranked keyword search)
   registry.registerAlias('fulltext_search', 'full_text_search');
   registry.registerAlias('text_search', 'full_text_search');
@@ -87,6 +99,18 @@ export function buildToolingSystem(config: ToolingConfig): ToolingSystem {
   registry.registerAlias('fetch', 'browser_fetch');
   registry.registerAlias('fetch_url', 'browser_fetch');
   registry.registerAlias('get_page', 'browser_fetch');
+
+  // Browser interact aliases — map legacy deferred tool names to unified browser_interact
+  registry.registerAlias('browser_fill_form', 'browser_interact');
+  registry.registerAlias('browser_hover', 'browser_interact');
+  registry.registerAlias('browser_evaluate', 'browser_interact');
+  registry.registerAlias('browser_state', 'browser_interact');
+  registry.registerAlias('browser_back', 'browser_interact');
+  registry.registerAlias('browser_forward', 'browser_interact');
+  registry.registerAlias('browser_reload', 'browser_interact');
+  registry.registerAlias('browser_network', 'browser_interact');
+  registry.registerAlias('browser_tabs', 'browser_interact');
+  registry.registerAlias('browser_security_status', 'browser_interact');
 
   // Terminal tool aliases (LLMs may use longer names)
   registry.registerAlias('check_terminal_output', 'check_terminal');

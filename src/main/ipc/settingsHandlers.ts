@@ -14,11 +14,12 @@ import { createLogger } from '../logger';
 import type { IpcContext } from './types';
 import type { AgentSettings } from '../../shared/types';
 import { getToolResultCache, getContextCache } from '../agent/cache';
-import { getBrowserManager } from '../browser';
+import { getBrowserManager, getBrowserSecurity } from '../browser';
 import { withErrorGuard } from './guards';
 import { validateAllSettings } from '../agent/settingsValidation';
 import { syncMCPSettingsToManager } from './mcpSettingsSync';
 import { rustSidecar } from '../rustSidecar';
+import { getSystemPromptCache } from '../agent/systemPrompt';
 
 const logger = createLogger('IPC:Settings');
 
@@ -36,7 +37,7 @@ interface ValidationError {
  */
 function validateSettings(settings: Partial<AgentSettings>): ValidationError[] {
   const errors: ValidationError[] = [];
-  
+
   // Use comprehensive validation from settingsValidation.ts
   const fullValidation = validateAllSettings({
     defaultConfig: settings.defaultConfig,
@@ -66,7 +67,7 @@ function validateSettings(settings: Partial<AgentSettings>): ValidationError[] {
       }
     }
   }
-  
+
   return errors;
 }
 
@@ -113,14 +114,15 @@ function applyCacheSettings(settings: AgentSettings): void {
 }
 
 /**
- * Apply browser settings to the browser manager
- * This ensures browser behavior settings are immediately effective without restart
+ * Apply browser settings to the browser manager and browser security
+ * This ensures both behavior and security settings are immediately effective without restart
  */
 function applyBrowserSettings(settings: AgentSettings): void {
   try {
     const browserSettings = settings.browserSettings;
     if (!browserSettings) return;
 
+    // Apply behavior settings to BrowserManager
     const browserManager = getBrowserManager();
     browserManager.applyBehaviorSettings({
       navigationTimeout: browserSettings.navigationTimeout,
@@ -130,7 +132,27 @@ function applyBrowserSettings(settings: AgentSettings): void {
       enableCookies: browserSettings.enableCookies,
       clearDataOnExit: browserSettings.clearDataOnExit,
     });
-    logger.debug('Browser settings applied reactively');
+
+    // Apply security settings to BrowserSecurity
+    try {
+      const browserSecurity = getBrowserSecurity();
+      browserSecurity.updateConfig({
+        urlFilteringEnabled: browserSettings.urlFilteringEnabled,
+        popupBlockingEnabled: browserSettings.popupBlockingEnabled,
+        adBlockingEnabled: browserSettings.adBlockingEnabled,
+        trackerBlockingEnabled: browserSettings.trackerBlockingEnabled,
+        downloadProtectionEnabled: browserSettings.downloadProtectionEnabled,
+        blockMixedContent: browserSettings.blockMixedContent,
+        allowList: browserSettings.allowList,
+        customBlockList: browserSettings.customBlockList,
+        trustedLocalhostPorts: browserSettings.trustedLocalhostPorts,
+      });
+    } catch {
+      // BrowserSecurity may not be initialized yet (lazy init)
+      logger.debug('BrowserSecurity not yet initialized, security settings will be applied on first use');
+    }
+
+    logger.debug('Browser settings applied reactively (behavior + security)');
   } catch (error) {
     logger.warn('Failed to apply browser settings', {
       error: error instanceof Error ? error.message : String(error),
@@ -207,7 +229,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
     return withErrorGuard('settings:get-safe', async () => {
       const settingsStore = getSettingsStore();
       const settings = settingsStore.get();
-      
+
       // Create a copy without sensitive data
       const safeSettings: Partial<AgentSettings> = {
         ...settings,
@@ -230,7 +252,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
           apiKey: settings.glmSubscription.apiKey ? '••••••••' : undefined,
         } : undefined,
       };
-      
+
       logger.debug('Safe settings retrieved (API keys masked)');
       return safeSettings;
     });
@@ -242,7 +264,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
   ipcMain.handle('settings:update', async (_event, payload: { settings: Partial<AgentSettings> }) => {
     return withErrorGuard('settings:update', async () => {
       const settingsStore = getSettingsStore();
-      
+
       // Validate settings before applying
       const validationErrors = validateSettings(payload.settings);
       if (validationErrors.length > 0) {
@@ -253,14 +275,14 @@ export function registerSettingsHandlers(context: IpcContext): void {
           validationErrors,
         };
       }
-      
-      logger.info('Updating settings', { 
+
+      logger.info('Updating settings', {
         keys: Object.keys(payload.settings),
       });
-      
+
       // Update the settings store (uses set() which persists automatically)
       const updated = settingsStore.set(payload.settings);
-      
+
       // Apply cache settings immediately if they were updated
       if (payload.settings.cacheSettings) {
         applyCacheSettings(updated);
@@ -269,6 +291,39 @@ export function registerSettingsHandlers(context: IpcContext): void {
       // Apply browser settings immediately if they were updated
       if (payload.settings.browserSettings) {
         applyBrowserSettings(updated);
+      }
+
+      // Apply compliance settings immediately if they were updated
+      if (payload.settings.complianceSettings) {
+        const orchestrator = context.getOrchestrator();
+        if (orchestrator) {
+          orchestrator.updateComplianceConfig(updated.complianceSettings);
+          logger.info('Compliance settings applied to running validator');
+        }
+      }
+
+      // Apply safety settings immediately if they were updated
+      if (payload.settings.safetySettings) {
+        const orchestrator = context.getOrchestrator();
+        if (orchestrator) {
+          orchestrator.updateActiveSafetySettings(updated.safetySettings);
+          logger.info('Safety settings applied to active safety managers');
+        }
+      }
+
+      // Apply debug settings immediately if they were updated
+      if (payload.settings.debugSettings) {
+        const orchestrator = context.getOrchestrator();
+        if (orchestrator) {
+          orchestrator.updateDebugConfig({
+            verbose: updated.debugSettings?.verboseLogging,
+            captureFullPayloads: updated.debugSettings?.captureFullPayloads,
+            stepMode: updated.debugSettings?.stepByStepMode,
+            exportOnError: updated.debugSettings?.autoExportOnError,
+            exportFormat: updated.debugSettings?.traceExportFormat,
+          });
+          logger.info('Debug settings applied to running orchestrator');
+        }
       }
 
       // Propagate MCP settings/servers changes to live MCPServerManager
@@ -280,10 +335,44 @@ export function registerSettingsHandlers(context: IpcContext): void {
       if (payload.settings.workspaceSettings) {
         applyWorkspaceSettings(updated, notifyRendererToken).catch(() => { /* handled internally */ });
       }
-      
+
+      // Refresh provider map when provider-related settings change
+      // This ensures API key changes, model selections, enable/disable toggles,
+      // priority changes, and base URL updates take effect immediately
+      if (
+        payload.settings.apiKeys ||
+        payload.settings.providerSettings ||
+        payload.settings.defaultConfig ||
+        payload.settings.rateLimits
+      ) {
+        const orchestrator = context.getOrchestrator();
+        if (orchestrator) {
+          orchestrator.refreshProviders();
+          logger.info('Providers refreshed after settings update');
+        }
+      }
+
+      // Invalidate system prompt cache when prompt-affecting settings change
+      // This ensures custom system prompts, personas, agent instructions,
+      // response format, and context rules are picked up on next request
+      if (
+        payload.settings.promptSettings ||
+        payload.settings.accessLevelSettings ||
+        payload.settings.complianceSettings ||
+        payload.settings.defaultConfig ||
+        payload.settings.safetySettings
+      ) {
+        try {
+          getSystemPromptCache().invalidate();
+          logger.debug('System prompt cache invalidated after settings update');
+        } catch (err) {
+          logger.warn('Failed to invalidate system prompt cache', { error: err });
+        }
+      }
+
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });
-      
+
       logger.info('Settings updated successfully');
       return { success: true, data: updated };
     });
@@ -295,7 +384,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
   ipcMain.handle('settings:reset', async (_event, payload?: { section?: keyof AgentSettings }) => {
     return withErrorGuard('settings:reset', async () => {
       const settingsStore = getSettingsStore();
-      
+
       if (payload?.section) {
         // Reset only a specific section
         logger.info('Resetting settings section to defaults', { section: payload.section });
@@ -305,7 +394,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
         logger.info('Resetting all settings to defaults');
         await settingsStore.resetToDefaults();
       }
-      
+
       const updated = settingsStore.get();
       applyCacheSettings(updated);
       applyBrowserSettings(updated);
@@ -315,10 +404,40 @@ export function registerSettingsHandlers(context: IpcContext): void {
 
       // Restart Rust sidecar with reset workspace settings
       applyWorkspaceSettings(updated, notifyRendererToken).catch(() => { /* handled internally */ });
-      
+
+      // Apply compliance and safety settings after reset
+      const orchestratorForReset = context.getOrchestrator();
+      if (orchestratorForReset) {
+        orchestratorForReset.updateComplianceConfig(updated.complianceSettings);
+        orchestratorForReset.updateActiveSafetySettings(updated.safetySettings);
+        logger.info('Compliance and safety settings applied after reset');
+
+        // Apply debug settings after reset
+        if (updated.debugSettings) {
+          orchestratorForReset.updateDebugConfig({
+            verbose: updated.debugSettings.verboseLogging,
+            captureFullPayloads: updated.debugSettings.captureFullPayloads,
+            stepMode: updated.debugSettings.stepByStepMode,
+            exportOnError: updated.debugSettings.autoExportOnError,
+            exportFormat: updated.debugSettings.traceExportFormat,
+          });
+          logger.info('Debug settings applied after reset');
+        }
+      }
+
+      // Refresh providers and invalidate prompt cache after reset
+      const orchestrator = context.getOrchestrator();
+      if (orchestrator) {
+        orchestrator.refreshProviders();
+        logger.info('Providers refreshed after settings reset');
+      }
+      try {
+        getSystemPromptCache().invalidate();
+      } catch { /* handled */ }
+
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });
-      
+
       logger.info('Settings reset successfully');
       return { success: true, data: updated };
     });
@@ -344,7 +463,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
     return withErrorGuard('settings:export', async () => {
       const settingsStore = getSettingsStore();
       const settings = settingsStore.get();
-      
+
       // Remove sensitive data (API keys, subscription tokens) for export
       const exportData = {
         ...settings,
@@ -360,7 +479,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
           apiKey: undefined as string | undefined,
         } : undefined,
       };
-      
+
       return { success: true, data: exportData };
     });
   });
@@ -371,7 +490,7 @@ export function registerSettingsHandlers(context: IpcContext): void {
   ipcMain.handle('settings:import', async (_event, payload: { settings: Partial<AgentSettings> }) => {
     return withErrorGuard('settings:import', async () => {
       const settingsStore = getSettingsStore();
-      
+
       // Validate before importing
       const validationErrors = validateSettings(payload.settings);
       if (validationErrors.length > 0) {
@@ -381,13 +500,13 @@ export function registerSettingsHandlers(context: IpcContext): void {
           validationErrors,
         };
       }
-      
+
       // Don't import API keys or subscription credentials from external sources for security
       const safeSettings = { ...payload.settings };
       delete safeSettings.apiKeys;
       delete safeSettings.claudeSubscription;
       delete safeSettings.glmSubscription;
-      
+
       const updated = settingsStore.set(safeSettings);
       applyCacheSettings(updated);
       applyBrowserSettings(updated);
@@ -397,10 +516,40 @@ export function registerSettingsHandlers(context: IpcContext): void {
 
       // Restart Rust sidecar with imported workspace settings
       applyWorkspaceSettings(updated, notifyRendererToken).catch(() => { /* handled internally */ });
-      
+
+      // Apply compliance and safety settings after import
+      const orchestratorForImport = context.getOrchestrator();
+      if (orchestratorForImport) {
+        orchestratorForImport.updateComplianceConfig(updated.complianceSettings);
+        orchestratorForImport.updateActiveSafetySettings(updated.safetySettings);
+        logger.info('Compliance and safety settings applied after import');
+
+        // Apply debug settings after import
+        if (updated.debugSettings) {
+          orchestratorForImport.updateDebugConfig({
+            verbose: updated.debugSettings.verboseLogging,
+            captureFullPayloads: updated.debugSettings.captureFullPayloads,
+            stepMode: updated.debugSettings.stepByStepMode,
+            exportOnError: updated.debugSettings.autoExportOnError,
+            exportFormat: updated.debugSettings.traceExportFormat,
+          });
+          logger.info('Debug settings applied after import');
+        }
+      }
+
+      // Refresh providers and invalidate prompt cache after import
+      const orchestrator = context.getOrchestrator();
+      if (orchestrator) {
+        orchestrator.refreshProviders();
+        logger.info('Providers refreshed after settings import');
+      }
+      try {
+        getSystemPromptCache().invalidate();
+      } catch { /* handled */ }
+
       // Emit settings update to renderer for real-time application
       emitToRenderer({ type: 'settings-update', settings: updated });
-      
+
       logger.info('Settings imported successfully');
       return { success: true, data: updated };
     });

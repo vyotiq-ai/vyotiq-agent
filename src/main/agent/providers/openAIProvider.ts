@@ -507,6 +507,9 @@ export class OpenAIProvider extends BaseLLMProvider {
     const reader = (response.body as unknown as ReadableStream<Uint8Array>).getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    // Track whether we've received streaming thinking deltas for the current reasoning block.
+    // Used to prevent duplicate thinking content from response.output_item.done summary fallback.
+    let hasStreamedThinkingDeltas = false;
 
     try {
       while (true) {
@@ -538,11 +541,11 @@ export class OpenAIProvider extends BaseLLMProvider {
             // - response.output_item.done with type='reasoning': Reasoning item complete
             if (eventType === 'response.reasoning_summary_text.delta' && typeof event.delta === 'string') {
               // Stream reasoning summary as thinking content
+              hasStreamedThinkingDeltas = true;
               yield { thinkingDelta: event.delta };
             }
             if (eventType === 'response.reasoning_summary_text.done' && typeof event.text === 'string') {
-              // Final reasoning summary - emit as complete thinking (UI can use this for complete content)
-              // Only emit if we haven't streamed it already (check if text differs from accumulated deltas)
+              // Final reasoning summary — only log, don't re-emit (already streamed via deltas above)
               logger.debug('Reasoning summary completed', { textLength: event.text.length });
             }
             
@@ -553,20 +556,22 @@ export class OpenAIProvider extends BaseLLMProvider {
               logger.debug('Reasoning started', { itemId: event.item?.id });
             }
             if (eventType === 'response.output_item.done' && event.item?.type === 'reasoning') {
-              // Reasoning item complete - extract summary text if present
+              // Reasoning item complete - extract summary text ONLY if we didn't already
+              // receive it via streaming deltas (prevents content duplication).
               const item = event.item as Record<string, unknown>;
               const summary = item.summary as Array<Record<string, unknown>> | undefined;
-              if (Array.isArray(summary)) {
+              if (Array.isArray(summary) && !hasStreamedThinkingDeltas) {
                 for (const summaryItem of summary) {
                   if (summaryItem.type === 'summary_text' && typeof summaryItem.text === 'string') {
-                    // Emit the summary text as thinking content (in case delta streaming wasn't available)
                     yield { thinkingDelta: summaryItem.text };
                   }
                 }
               }
               // Signal that reasoning has ended
               yield { thinkingEnd: true };
-              logger.debug('Reasoning completed', { itemId: item.id, hasSummary: !!summary?.length });
+              // Reset for next reasoning block (interleaved thinking support)
+              hasStreamedThinkingDeltas = false;
+              logger.debug('Reasoning completed', { itemId: item.id, hasSummary: !!summary?.length, hadDeltas: hasStreamedThinkingDeltas });
             }
 
             // Text streaming

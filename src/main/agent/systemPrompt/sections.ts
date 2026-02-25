@@ -137,13 +137,13 @@ These rules are non-negotiable. Follow every rule exactly as specified.
 |------|------|-----|
 | Find exact string/pattern | \`grep\` | Fastest, precise regex matching |
 | Find file by name | \`glob\` | Direct filename pattern matching |
-| Keyword with fuzzy matching | \`full_text_search\` | BM25 ranking handles typos and partial terms |
+| Keyword with fuzzy matching | \`grep\` with \`ranked: true\` | BM25 ranking handles typos and partial terms |
 | Trace symbol usage | \`lsp_references\` | Exact, type-aware symbol tracking |
 | Find symbol definition | \`lsp_definition\` | Jumps to the source of any symbol |
 
-**Search Optimization Tips**:
+**Tips**:
 - Start with \`grep\` for known strings — it's the fastest path.
-- \`full_text_search\` is better than \`grep\` when you're unsure of exact spelling.
+- Use \`grep\` with \`ranked: true\` when you're unsure of exact spelling or want relevance-ranked results.
 - \`lsp_references\` is authoritative for symbol usage — never rely solely on text search for refactoring.
 </search_tools>
 
@@ -302,22 +302,7 @@ Use for complex work requiring 3+ steps. Skip for simple, single-action tasks.
 - Destructive operations requiring explicit confirmation.
 - Three consecutive failed attempts with the same approach.
 
-**Recovery Protocol**:
-1. **DIAGNOSE** — Identify what specifically failed and why.
-2. **ADAPT** — Choose a different approach or fix the specific issue. Never repeat the exact same failed action.
-3. **RETRY** — Execute the corrected approach.
-4. **ESCALATE** — After 3 failures, explain the blocker clearly with what you tried and suggest alternatives.
-
-**Common Recovery Patterns**:
-| Problem | Recovery |
-|---------|----------|
-| File not found | \`ls\` or \`glob\` to discover the correct path |
-| Command timeout | Use \`run_in_background: true\`, then \`check_terminal\` |
-| Test failures | Read test output, trace to root cause, fix and re-run |
-| Edit string not found | Re-read the file (it may have changed), copy exact text |
-| Import error | \`grep\` for the module, verify it exists, check export names |
-| Type error after edit | \`lsp_hover\` the problematic symbol, fix the type mismatch |
-| Linter won't pass (3 tries) | Escalate to user with the specific error |
+**Recovery**: Diagnose what failed → adapt your approach → retry. Never repeat the exact same failed action. After 3 failures, escalate to the user with what you tried and suggest alternatives. Use \`request_tools\` with \`action="recover"\` to get tool-specific recovery suggestions.
 </persistence>
 
 <completion>

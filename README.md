@@ -59,6 +59,20 @@
 
 ## 📢 Recent Updates
 
+### Tool Unification, FileTree DX & Recovery Simplification (v1.11.0 - February 2026)
+
+A major "addition by subtraction" release — fewer tools, smarter tools, and a dramatically simplified recovery system.
+
+**Highlights:**
+
+- 🔀 **`browser_interact` Unified Tool**: 10 deferred browser tools consolidated into one action-dispatched tool (`action: fill_form | hover | evaluate | state | back | forward | reload | network | tabs | security_status`), reducing model context overhead by ~85%
+- 📋 **`task_plan` Unified Tool**: 5 individual plan tools (`CreatePlan`, `VerifyTasks`, `GetActivePlan`, `ListPlans`, `DeletePlan`) merged into a single `task_plan` tool
+- 🔍 **BM25 Search Merged into `grep`**: `full_text_search` tool removed; `grep` now accepts `ranked: true` to enable Tantivy BM25 keyword search with fuzzy matching
+- 📁 **FileTree Panels**: Three new context-menu actions — quick `preview` (no editor open), `fileInfo` (metadata), and `newFromTemplate` (template selector)
+- ⏱️ **Per-Tool Timeout Enforcement**: Tool execution now respects per-tool timeout settings with descriptive timeout error messages
+- 🧹 **Recovery System Simplified**: `SelfHealingAgent`, `DiagnosticEngine`, `ErrorClassifier`, `RecoveryManager`, and all strategies removed; `ErrorRecoveryManager` is sufficient
+- 🐛 **Streaming Thinking Buffer Fixes**: Eliminates thinking-content flash and loss-at-pause race conditions in streaming UI
+
 ### Rich Previews, Granular Settings & State Refactor (v1.10.0 - February 2026)
 
 Feature-rich release with inline chat previews, expanded settings panels, and a major state management refactor.
@@ -485,7 +499,7 @@ vyotiq/
 | [TypeScript](https://www.typescriptlang.org/) | 5.9 | Type-safe JavaScript |
 | [Vite](https://vitejs.dev/) | 7.2 | Lightning-fast build tool |
 | [Tailwind CSS](https://tailwindcss.com/) | 4.1 | Utility-first styling |
-| [xterm.js](https://xtermjs.org/) | 5.5 | Terminal emulator |
+| [xterm.js](https://xtermjs.org/) | 6.0 | Terminal emulator |
 | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) | 12.5 | Local database |
 | [node-pty](https://github.com/microsoft/node-pty) | 1.1 | Terminal process management |
 

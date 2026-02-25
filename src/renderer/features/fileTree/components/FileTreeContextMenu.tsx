@@ -23,6 +23,9 @@ import {
   FileCode2,
   GitCompareArrows,
   Files,
+  Eye,
+  Info,
+  FileText,
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import type { ContextMenuAction, ContextMenuPosition } from '../types';
@@ -50,11 +53,14 @@ interface FileTreeContextMenuProps {
 
 const createMenuItems = (canPaste: boolean): ContextMenuItem[] => [
   { action: 'openInEditor', label: 'open in editor', icon: <FileCode2 size={12} />, show: 'file' },
+  { action: 'preview', label: 'quick preview', icon: <Eye size={12} />, show: 'file' },
   { action: 'openDiff', label: 'open diff', icon: <GitCompareArrows size={12} />, show: 'file', divider: true },
   { action: 'newFile', label: 'new file', icon: <FilePlus size={12} />, show: 'directory' },
-  { action: 'newFolder', label: 'new folder', icon: <FolderPlus size={12} />, show: 'directory', divider: true },
+  { action: 'newFolder', label: 'new folder', icon: <FolderPlus size={12} />, show: 'directory' },
+  { action: 'newFromTemplate', label: 'new from template', icon: <FileText size={12} />, show: 'directory', divider: true },
   { action: 'newFile', label: 'new file', icon: <FilePlus size={12} />, show: 'file' },
-  { action: 'newFolder', label: 'new folder', icon: <FolderPlus size={12} />, show: 'file', divider: true },
+  { action: 'newFolder', label: 'new folder', icon: <FolderPlus size={12} />, show: 'file' },
+  { action: 'newFromTemplate', label: 'new from template', icon: <FileText size={12} />, show: 'file', divider: true },
   { action: 'cut', label: 'cut', icon: <Scissors size={12} />, shortcut: 'Ctrl+X', show: 'both' },
   { action: 'copy', label: 'copy', icon: <Copy size={12} />, shortcut: 'Ctrl+C', show: 'both' },
   { action: 'paste', label: 'paste', icon: <Clipboard size={12} />, shortcut: 'Ctrl+V', show: 'both', disabled: !canPaste, divider: true },
@@ -63,6 +69,7 @@ const createMenuItems = (canPaste: boolean): ContextMenuItem[] => [
   { action: 'delete', label: 'delete', icon: <Trash2 size={12} />, shortcut: 'Del', show: 'both', divider: true, danger: true },
   { action: 'copyPath', label: 'copy path', icon: <Copy size={12} />, shortcut: 'Shift+C', show: 'both' },
   { action: 'copyRelativePath', label: 'copy relative path', icon: <ClipboardCopy size={12} />, show: 'both', divider: true },
+  { action: 'fileInfo', label: 'file info', icon: <Info size={12} />, show: 'both' },
   { action: 'revealInExplorer', label: 'reveal in explorer', icon: <FolderOpen size={12} />, show: 'both' },
   { action: 'openInTerminal', label: 'open in terminal', icon: <Terminal size={12} />, show: 'directory' },
   { action: 'findInFolder', label: 'find in folder', icon: <Search size={12} />, show: 'directory', divider: true },

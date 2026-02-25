@@ -98,6 +98,9 @@ class RustSidecarManager {
     if (ws?.enableFileWatcher != null) {
       settingsEnv.VYOTIQ_ENABLE_FILE_WATCHER = ws.enableFileWatcher ? '1' : '0';
     }
+    if (ws?.autoIndexOnOpen != null) {
+      settingsEnv.VYOTIQ_AUTO_INDEX_ON_OPEN = ws.autoIndexOnOpen ? '1' : '0';
+    }
 
     try {
       this.process = spawn(binaryPath, [], {

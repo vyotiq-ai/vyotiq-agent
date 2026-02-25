@@ -122,22 +122,7 @@ export const todoWriteTool: ToolDefinition<TodoWriteArgsExtended> = {
   name: 'TodoWrite',
   description: `Update the task list for your current session. Shows progress to the user.
 
-## CRITICAL: Include ALL Tasks
-The todos array REPLACES the entire list. Always include ALL tasks, not just the current one.
-
-### CORRECT (all tasks):
-\`\`\`json
-{ "todos": [
-  { "id": "1", "content": "Analyze codebase", "status": "completed" },
-  { "id": "2", "content": "Implement feature", "status": "in_progress" },
-  { "id": "3", "content": "Write tests", "status": "pending" }
-]}
-\`\`\`
-
-### WRONG (loses other tasks):
-\`\`\`json
-{ "todos": [{ "id": "2", "content": "Implement feature", "status": "in_progress" }]}
-\`\`\`
+**CRITICAL**: The todos array REPLACES the entire list — always include ALL tasks, not just the one you're updating.
 
 ## Task States
 - **pending**: Not started yet
@@ -145,30 +130,11 @@ The todos array REPLACES the entire list. Always include ALL tasks, not just the
 - **completed**: Finished and verified
 
 ## When to Use
-- Complex tasks (3+ steps)
-- User provides multiple requirements
-- To show progress on significant work
-- After completing each major step
+- Complex tasks (3+ steps) or multiple user requirements
+- After completing each major step to show progress
 
-## With Plans (Persistent Storage)
-Provide planId (from CreatePlan) to sync with persistent storage in .vyotiq/{task-name}/:
-\`\`\`json
-{ "planId": "plan-123", "todos": [...] }
-\`\`\`
-
-## Workflow Integration
-This is the DO step in Plan-Do-Check-Act:
-\`\`\`
-CreatePlan → get planId
-TodoWrite → update as you work (include ALL tasks)
-VerifyTasks → check completion
-\`\`\`
-
-## Best Practices
-- Update after completing each task
-- Keep only ONE task in_progress at a time
-- Include description and targetFiles for complex tasks
-- Always include ALL tasks in every call`,
+## With Plans
+Provide planId (from CreatePlan) to sync with persistent storage: CreatePlan → TodoWrite (update as you work) → VerifyTasks`,
 
   requiresApproval: false,
   category: 'agent-internal',

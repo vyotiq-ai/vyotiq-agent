@@ -39,6 +39,8 @@ interface EditorStatusBarProps {
   onIncreaseFontSize: () => void;
   onDecreaseFontSize: () => void;
   onSetViewMode: (mode: EditorViewMode) => void;
+  onChangeLineEnding?: (lineEnding: 'LF' | 'CRLF') => void;
+  onChangeEncoding?: (encoding: string) => void;
 }
 
 // =============================================================================
@@ -145,7 +147,28 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = memo(({
   onIncreaseFontSize,
   onDecreaseFontSize,
   onSetViewMode,
+  onChangeLineEnding,
+  onChangeEncoding,
 }) => {
+  const [lineEndingOpen, setLineEndingOpen] = useState(false);
+  const [encodingOpen, setEncodingOpen] = useState(false);
+  const lineEndingRef = useRef<HTMLDivElement>(null);
+  const encodingRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on click outside
+  useEffect(() => {
+    if (!lineEndingOpen && !encodingOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (lineEndingOpen && lineEndingRef.current && !lineEndingRef.current.contains(e.target as Node)) {
+        setLineEndingOpen(false);
+      }
+      if (encodingOpen && encodingRef.current && !encodingRef.current.contains(e.target as Node)) {
+        setEncodingOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [lineEndingOpen, encodingOpen]);
   // Cursor position display
   const cursorInfo = useMemo(() => {
     if (!tab.cursorPosition) return 'Ln 1, Col 1';
@@ -283,15 +306,67 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = memo(({
         {/* Separator */}
         <div className="w-px h-3 bg-[var(--color-border-subtle)]/30 mx-0.5" />
 
-        {/* Line ending */}
-        <StatusItem title={`Line ending: ${tab.lineEnding ?? 'LF'}`}>
-          <span>{tab.lineEnding ?? 'LF'}</span>
-        </StatusItem>
+        {/* Line ending — clickable dropdown */}
+        <div className="relative" ref={lineEndingRef}>
+          <StatusItem
+            onClick={onChangeLineEnding ? () => setLineEndingOpen(prev => !prev) : undefined}
+            title={`Line ending: ${tab.lineEnding ?? 'LF'}${onChangeLineEnding ? ' (click to change)' : ''}`}
+          >
+            <span>{tab.lineEnding ?? 'LF'}</span>
+            {onChangeLineEnding && <ChevronDown size={8} />}
+          </StatusItem>
+          {lineEndingOpen && (
+            <div className="absolute bottom-full right-0 mb-1 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]/60 rounded shadow-[var(--shadow-dropdown)] py-0.5 min-w-[80px] z-50">
+              {(['LF', 'CRLF'] as const).map(le => (
+                <button
+                  key={le}
+                  type="button"
+                  onClick={() => { onChangeLineEnding?.(le); setLineEndingOpen(false); }}
+                  className={cn(
+                    'w-full text-left px-2 py-1 text-[10px] font-mono',
+                    'hover:bg-[var(--color-surface-2)] transition-colors',
+                    (tab.lineEnding ?? 'LF') === le
+                      ? 'text-[var(--color-accent-primary)]'
+                      : 'text-[var(--color-text-secondary)]',
+                  )}
+                >
+                  {le}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
-        {/* Encoding */}
-        <StatusItem title={`Encoding: ${tab.encoding ?? 'UTF-8'}`}>
-          <span>{tab.encoding ?? 'UTF-8'}</span>
-        </StatusItem>
+        {/* Encoding — clickable dropdown */}
+        <div className="relative" ref={encodingRef}>
+          <StatusItem
+            onClick={onChangeEncoding ? () => setEncodingOpen(prev => !prev) : undefined}
+            title={`Encoding: ${tab.encoding ?? 'UTF-8'}${onChangeEncoding ? ' (click to change)' : ''}`}
+          >
+            <span>{tab.encoding ?? 'UTF-8'}</span>
+            {onChangeEncoding && <ChevronDown size={8} />}
+          </StatusItem>
+          {encodingOpen && (
+            <div className="absolute bottom-full right-0 mb-1 bg-[var(--color-surface-1)] border border-[var(--color-border-subtle)]/60 rounded shadow-[var(--shadow-dropdown)] py-0.5 min-w-[100px] z-50 max-h-[200px] overflow-auto scrollbar-thin">
+              {['UTF-8', 'UTF-16 LE', 'UTF-16 BE', 'ASCII', 'ISO-8859-1', 'Windows-1252', 'Shift_JIS', 'EUC-JP', 'GB2312', 'Big5', 'KOI8-R'].map(enc => (
+                <button
+                  key={enc}
+                  type="button"
+                  onClick={() => { onChangeEncoding?.(enc); setEncodingOpen(false); }}
+                  className={cn(
+                    'w-full text-left px-2 py-1 text-[10px] font-mono',
+                    'hover:bg-[var(--color-surface-2)] transition-colors',
+                    (tab.encoding ?? 'UTF-8') === enc
+                      ? 'text-[var(--color-accent-primary)]'
+                      : 'text-[var(--color-text-secondary)]',
+                  )}
+                >
+                  {enc}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Language */}
         <LanguageSelector language={tab.language} />

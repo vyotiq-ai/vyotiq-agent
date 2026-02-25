@@ -326,6 +326,25 @@ const fileAPI = {
 		ipcRenderer.invoke('files:rename', oldPath, newPath),
 	stat: (filePath: string): Promise<FileStatResult> =>
 		ipcRenderer.invoke('files:stat', filePath),
+	// Extended file operations
+	metadata: (filePath: string): Promise<{
+		success: boolean; path?: string; name?: string; size?: number;
+		isFile?: boolean; isDirectory?: boolean; isSymlink?: boolean;
+		createdAt?: number; modifiedAt?: number; accessedAt?: number;
+		permissions?: string; isReadonly?: boolean;
+		encoding?: string; lineEnding?: 'LF' | 'CRLF' | 'CR'; lineCount?: number; hasBom?: boolean;
+		language?: string; error?: string;
+	}> => ipcRenderer.invoke('files:metadata', filePath),
+	copy: (sourcePath: string, targetPath: string): Promise<{ success: boolean; path?: string; error?: string }> =>
+		ipcRenderer.invoke('files:copy', sourcePath, targetPath),
+	move: (sourcePath: string, targetPath: string): Promise<{ success: boolean; oldPath?: string; newPath?: string; error?: string }> =>
+		ipcRenderer.invoke('files:move', sourcePath, targetPath),
+	exists: (filePath: string): Promise<{ success: boolean; exists: boolean }> =>
+		ipcRenderer.invoke('files:exists', filePath),
+	readBinary: (filePath: string): Promise<{ success: boolean; content?: string; size?: number; encoding?: string; error?: string }> =>
+		ipcRenderer.invoke('files:readBinary', filePath),
+	writeEncoded: (filePath: string, content: string, encoding: string): Promise<{ success: boolean; path?: string; error?: string }> =>
+		ipcRenderer.invoke('files:writeEncoded', filePath, content, encoding),
 	// Cache operations for instant file tree loading
 	prewarmCache: (workspacePath: string): Promise<{ success: boolean; error?: string }> =>
 		ipcRenderer.invoke('files:prewarm-cache', workspacePath),

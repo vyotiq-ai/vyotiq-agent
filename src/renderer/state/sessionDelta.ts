@@ -148,12 +148,28 @@ function computeMessagePatch(
     }
   }
   
-  // Check thinking changes — preserve longer streamed thinking
+  // Check thinking changes — preserve longer streamed thinking.
+  // Also preserve isThinkingStreaming state from the renderer (not from server)
+  // to avoid prematurely clearing it during active streaming.
   if (oldMsg.thinking !== newMsg.thinking) {
     const oldLen = oldMsg.thinking?.length ?? 0;
     const newLen = newMsg.thinking?.length ?? 0;
     if (oldMsg.role !== 'assistant' || newLen >= oldLen) {
       patch.thinking = newMsg.thinking;
+    }
+    // When preserving longer renderer thinking, also preserve isThinkingStreaming
+    // to avoid clearing the streaming indicator while thinking is still in progress
+    if (oldMsg.role === 'assistant' && oldLen > newLen && oldMsg.isThinkingStreaming) {
+      patch.isThinkingStreaming = true;
+    }
+  }
+  
+  // Check isThinkingStreaming — only update if explicitly changed to false (thinking completed)
+  // Prevents premature clearing of streaming state during active streaming race conditions
+  if (oldMsg.isThinkingStreaming !== newMsg.isThinkingStreaming) {
+    // Don't clear isThinkingStreaming if we preserved longer renderer thinking above
+    if (!patch.isThinkingStreaming) {
+      patch.isThinkingStreaming = newMsg.isThinkingStreaming;
     }
   }
   
@@ -301,6 +317,7 @@ function isMessageEqual(a: ChatMessage, b: ChatMessage): boolean {
   if (a.content !== b.content) return false;
   if (a.toolSuccess !== b.toolSuccess) return false;
   if (a.thinking !== b.thinking) return false;
+  if (a.isThinkingStreaming !== b.isThinkingStreaming) return false;
   
   // Check array fields
   if (!isEqual(a.toolCalls, b.toolCalls)) return false;

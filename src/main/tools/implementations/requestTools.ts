@@ -26,11 +26,14 @@ import { getMCPToolMetadata } from '../../mcp/MCPToolAdapter';
 const TOOL_CATEGORIES = {
   browser: [
     'browser_navigate', 'browser_extract', 'browser_screenshot', 'browser_click',
-    'browser_type', 'browser_scroll', 'browser_snapshot', 'browser_fill_form',
-    'browser_evaluate', 'browser_wait', 'browser_state', 'browser_back',
-    'browser_forward', 'browser_reload', 'browser_fetch', 'browser_hover',
-    'browser_security_status', 'browser_check_url', 'browser_console',
-    'browser_network', 'browser_tabs',
+    'browser_type', 'browser_scroll', 'browser_snapshot', 'browser_wait',
+    'browser_fetch', 'browser_check_url', 'browser_console',
+    // Unified tool replacing 10 individual deferred tools
+    'browser_interact',
+    // Legacy names still resolved via aliases
+    'browser_fill_form', 'browser_evaluate', 'browser_state', 'browser_back',
+    'browser_forward', 'browser_reload', 'browser_hover',
+    'browser_security_status', 'browser_network', 'browser_tabs',
   ],
   lsp: [
     'lsp_hover', 'lsp_definition', 'lsp_references', 'lsp_symbols',
@@ -39,15 +42,14 @@ const TOOL_CATEGORIES = {
   file: [
     'read', 'write', 'edit', 'ls', 'grep', 'glob', 'bulk', 'read_lints',
   ],
-  search: [
-    'full_text_search',
-  ],
   terminal: [
     'run', 'check_terminal', 'kill_terminal',
   ],
   // Task tools are ALWAYS available - no need to request them
   task: [
-    'TodoWrite', 'CreatePlan', 'VerifyTasks', 'GetActivePlan', 'ListPlans', 'DeletePlan',
+    'TodoWrite', 'task_plan',
+    // Legacy names (aliased to task_plan)
+    'CreatePlan', 'VerifyTasks', 'GetActivePlan', 'ListPlans', 'DeletePlan',
   ],
   advanced: [
     'create_tool',
@@ -64,21 +66,24 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   browser_type: 'Type text into an input field. Use for single field input. For multiple fields, prefer browser_fill_form.',
   browser_scroll: 'Scroll the page to reveal content. Use when elements are below the fold or for infinite scroll pages.',
   browser_snapshot: 'Get a snapshot of the page DOM structure. Useful for understanding page layout and finding correct selectors.',
-  browser_fill_form: 'Fill multiple form fields at once. More efficient than multiple browser_type calls for forms.',
-  browser_evaluate: 'Execute JavaScript in the browser context. Use for complex interactions or data extraction not possible with other tools.',
   browser_wait: 'Wait for a condition or element to appear. Essential for dynamic pages that load content asynchronously.',
-  browser_state: 'Get current browser state including URL, title, and page status. Use to verify navigation succeeded.',
-  browser_back: 'Navigate back in browser history. Use to return to previous page in multi-page workflows.',
-  browser_forward: 'Navigate forward in browser history. Use after browser_back to go forward again.',
-  browser_reload: 'Reload the current page. Use when page state needs to be refreshed or after making changes.',
   browser_fetch: 'Fetch content from a URL directly without rendering. Faster than navigate for simple content retrieval.',
-  browser_hover: 'Hover over an element to trigger hover states. Use for dropdown menus or tooltips.',
-  browser_security_status: 'Check page security status (HTTPS, certificates). Use for security audits or verification.',
   browser_check_url: 'Check if a URL is safe before navigating. Use for untrusted URLs.',
   browser_console: 'Get browser console logs. Essential for debugging JavaScript errors or tracking console output.',
-  browser_network: 'Monitor network requests. Use to track API calls, verify requests, or debug loading issues.',
-  browser_tabs: 'Manage browser tabs (list, switch, close). Use for multi-tab workflows.',
-  
+  // Unified browser_interact replaces 10 separate deferred tools
+  browser_interact: 'Advanced browser interactions in one tool: fill_form, hover, evaluate, state, back, forward, reload, network, tabs, security_status. Use action parameter to choose.',
+  // Legacy names map to browser_interact actions
+  browser_fill_form: 'Use browser_interact action="fill_form" — fill multiple form fields at once.',
+  browser_evaluate: 'Use browser_interact action="evaluate" — execute JavaScript in browser context.',
+  browser_state: 'Use browser_interact action="state" — get browser URL, title, page info.',
+  browser_back: 'Use browser_interact action="back" — navigate back in history.',
+  browser_forward: 'Use browser_interact action="forward" — navigate forward in history.',
+  browser_reload: 'Use browser_interact action="reload" — reload current page.',
+  browser_hover: 'Use browser_interact action="hover" — hover over elements for menus/tooltips.',
+  browser_security_status: 'Use browser_interact action="security_status" — check security stats.',
+  browser_network: 'Use browser_interact action="network" — monitor network requests.',
+  browser_tabs: 'Use browser_interact action="tabs" — manage browser tabs.',
+
   // LSP tools - Code intelligence and navigation
   lsp_hover: 'Get type info and documentation for a symbol at a specific position. Use to understand what a variable/function is.',
   lsp_definition: 'Go to symbol definition. Use to find where a function/class/variable is defined. Essential for code navigation.',
@@ -88,33 +93,32 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   lsp_completions: 'Get code completion suggestions at a position. Use to see available methods, properties, or imports.',
   lsp_code_actions: 'Get available code actions (quick fixes, refactorings). Use to see automated fixes for issues.',
   lsp_rename: 'Rename a symbol across the entire codebase. Safer than find-replace for refactoring.',
-  
+
   // File tools - Core file operations
   read: 'Read file contents with line numbers. Always read before editing. Supports images, PDFs, and notebooks.',
   write: 'Write/create a file. Use for new files or when rewriting most of a file. Creates parent directories automatically.',
   edit: 'Edit a file with exact string replacement. Use for targeted changes. Requires exact match of old_string.',
   ls: 'List directory contents with details. Use to explore directory structure and find files.',
-  grep: 'Search file contents with regex patterns. Use to find code patterns, function calls, or text across files.',
+  grep: 'Search file contents with regex patterns, or use ranked: true for BM25 keyword search via Tantivy with fuzzy matching and language filtering.',
   glob: 'Find files by pattern (e.g., **/*.ts). Use to locate files by name pattern without searching content.',
   bulk: 'Batch file operations (rename, move, copy, delete). Use for multiple file operations in one call.',
   read_lints: 'Get TypeScript/ESLint diagnostics for files. Use after edits to verify code quality. Essential verification step.',
-  
-  // Search tools - Full-text code search
-  full_text_search: 'BM25 ranked keyword search via Tantivy engine. Supports fuzzy matching, language filtering, and file pattern filtering. Best for exact keyword/identifier searches.',
 
   // Terminal tools - Command execution
   run: 'Run a terminal command. Use for builds, tests, installs, or any shell operation. Supports background mode for servers.',
   check_terminal: 'Check output of a background process by PID. Use to monitor long-running commands started with run_in_background.',
   kill_terminal: 'Kill a background process by PID. Use to stop servers, watchers, or hung processes.',
-  
+
   // Task tools - Task management for complex workflows
   TodoWrite: 'Update task/todo progress. CRITICAL: Include ALL tasks every call as it replaces the entire list.',
-  CreatePlan: 'Create a task plan from user request. Use at START of complex tasks (3+ steps). Parses requirements into tasks.',
-  VerifyTasks: 'Verify task completion against original plan. Use BEFORE declaring work complete. Checks all requirements met.',
-  GetActivePlan: 'Get the active plan for current session. Use FIRST to check for existing work before creating new plan.',
-  ListPlans: 'List all existing plans in workspace. Use to see all tracked work.',
-  DeletePlan: 'Delete a completed or abandoned plan. Use to clean up after work is done.',
-  
+  task_plan: 'Unified plan management: create, get_active, list, verify, delete. Use action parameter to choose.',
+  // Legacy names map to task_plan actions
+  CreatePlan: 'Use task_plan action="create" — create a plan from user request.',
+  VerifyTasks: 'Use task_plan action="verify" — verify task completion.',
+  GetActivePlan: 'Use task_plan action="get_active" — get the active plan.',
+  ListPlans: 'Use task_plan action="list" — list all plans.',
+  DeletePlan: 'Use task_plan action="delete" — delete a plan.',
+
   // Advanced tools
   create_tool: 'Create a new dynamic tool at runtime. Use for specialized operations not covered by existing tools.',
 };
@@ -171,7 +175,7 @@ interface RequestToolsArgs extends Record<string, unknown> {
   /** Search query (for 'search' action) */
   query?: string;
   /** Category to list (for 'list' action) */
-  category?: 'browser' | 'lsp' | 'file' | 'search' | 'terminal' | 'task' | 'advanced' | 'mcp' | 'all';
+  category?: 'browser' | 'lsp' | 'file' | 'terminal' | 'task' | 'advanced' | 'mcp' | 'all';
   /** Reason for requesting tools (helps with debugging) */
   reason?: string;
   /** Error message to get recovery suggestions for (for 'recover' action) */
@@ -180,72 +184,17 @@ interface RequestToolsArgs extends Record<string, unknown> {
 
 export const requestToolsTool: ToolDefinition<RequestToolsArgs> = {
   name: 'request_tools',
-  description: `Request additional tools to be loaded into your context. Use this when you need specialized tools that aren't currently available.
-
-## Autonomous Workflow Integration
-
-This tool is essential for autonomous operation. Use it to:
-- **Expand capabilities**: Load tools for new task types (browser, LSP, etc.)
-- **Recover from errors**: Get suggestions when tools fail
-- **Discover tools**: Search for tools by capability when unsure what's available
+  description: `Request additional tools to be loaded into your context. Use when you need specialized tools (browser, LSP, etc.) that aren't currently available.
 
 ## Actions
+- **request**: Load tools by name. \`tools=["browser_navigate"]\`
+- **search**: Find tools by capability. \`query="screenshot"\`
+- **list**: Browse tools by category. \`category="browser"|"lsp"|"file"|"terminal"|"task"|"advanced"|"mcp"|"all"\`
+- **status**: See loaded tools and recent errors.
+- **recover**: Get recovery suggestions for an error. \`error="file not found"\`
+- **reset_cache_stats**: Clear cache hit/miss counters.
 
-### request - Load specific tools by name
-Load tools you know you need. They become available immediately.
-\`\`\`
-action="request" tools=["browser_navigate", "browser_click"] reason="Need web automation"
-\`\`\`
-
-### search - Find tools by capability
-Don't know the exact tool name? Search by what you need to do.
-\`\`\`
-action="search" query="find symbol definition"
-action="search" query="screenshot"
-\`\`\`
-
-### list - See available tools in a category
-Browse tools by category to understand what's available.
-\`\`\`
-action="list" category="browser"
-action="list" category="lsp"
-action="list" category="all"
-\`\`\`
-
-### status - Check your current tool state
-See what tools are loaded, recent errors, and cache statistics.
-\`\`\`
-action="status"
-\`\`\`
-
-### recover - Get help recovering from errors
-When a tool fails, get suggestions for alternative approaches.
-\`\`\`
-action="recover" error="file not found"
-action="recover" error="old_string not found"
-\`\`\`
-
-### reset_cache_stats - Reset cache statistics
-Clear hit/miss counters for fresh measurement.
-\`\`\`
-action="reset_cache_stats"
-\`\`\`
-
-## Categories
-- **browser**: Web automation, scraping, form filling, screenshots
-- **lsp**: Code intelligence, navigation, refactoring, diagnostics
-- **file**: File operations, bulk rename/move/copy/delete, diagnostics
-- **search**: BM25 keyword search
-- **terminal**: Command execution, process management
-- **task**: Task tracking, planning, verification (always available)
-- **advanced**: Dynamic tool creation
-- **mcp**: Tools from connected MCP servers (dynamic)
-
-## Best Practices
-- Request tools BEFORE you need them (proactive loading)
-- Use "recover" when stuck on errors
-- Check "status" to see what's already loaded
-- Requested tools persist for the entire session`,
+Requested tools persist for the entire session. Request BEFORE you need them.`,
   requiresApproval: false,
   category: 'system',
   riskLevel: 'safe',
@@ -270,7 +219,7 @@ action="reset_cache_stats"
       category: {
         type: 'string',
         description: 'Category to list (for "list" action)',
-        enum: ['browser', 'lsp', 'file', 'search', 'terminal', 'task', 'advanced', 'mcp', 'all'],
+        enum: ['browser', 'lsp', 'file', 'terminal', 'task', 'advanced', 'mcp', 'all'],
       },
       reason: {
         type: 'string',
@@ -305,7 +254,7 @@ action="reset_cache_stats"
 
   async execute(args: RequestToolsArgs, context: ToolExecutionContext): Promise<ToolExecutionResult> {
     const sessionId = (context as { sessionId?: string }).sessionId;
-    
+
     switch (args.action) {
       case 'request':
         return handleRequest(args, sessionId);
@@ -331,7 +280,7 @@ action="reset_cache_stats"
 
 function handleRequest(args: RequestToolsArgs, sessionId?: string): ToolExecutionResult {
   const { tools, reason } = args;
-  
+
   if (!tools || tools.length === 0) {
     return {
       toolName: 'request_tools',
@@ -345,7 +294,7 @@ function handleRequest(args: RequestToolsArgs, sessionId?: string): ToolExecutio
   const mcpToolNames = new Set(getMCPToolMetadata().map(t => t.name));
   const validTools: string[] = [];
   const invalidTools: string[] = [];
-  
+
   for (const tool of tools) {
     if (allKnownTools.includes(tool) || TOOL_DESCRIPTIONS[tool] || tool.startsWith('mcp_') || mcpToolNames.has(tool)) {
       validTools.push(tool);
@@ -393,7 +342,7 @@ function handleRequest(args: RequestToolsArgs, sessionId?: string): ToolExecutio
 
 function handleSearch(args: RequestToolsArgs, sessionId?: string): ToolExecutionResult {
   const { query } = args;
-  
+
   if (!query || query.trim().length === 0) {
     return {
       toolName: 'request_tools',
@@ -490,7 +439,7 @@ function handleList(args: RequestToolsArgs): ToolExecutionResult {
 
   if (category === 'all') {
     const lines = ['Available tool categories:', ''];
-    
+
     for (const [cat, tools] of Object.entries(TOOL_CATEGORIES)) {
       lines.push(`**${cat}** (${tools.length} tools):`);
       for (const tool of tools.slice(0, 5)) {
@@ -590,20 +539,20 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
   const errorRecoveryManager = getErrorRecoveryManager();
   const sessionErrorStats = errorRecoveryManager.getSessionStats(sessionId);
   const loadedToolsInfo = getLoadedToolsInfo(sessionId);
-  
+
   const lines = ['**Tool Loading Status**', ''];
-  
+
   // All loaded tools summary
   lines.push(`**All Loaded Tools (${loadedToolsInfo.totalCount} total)**`);
   lines.push('');
-  
+
   // Core tools (always available)
   lines.push(`Core tools (${loadedToolsInfo.coreTools.length}):`);
   for (const tool of loadedToolsInfo.coreTools) {
     lines.push(`  • ${tool}${TOOL_DESCRIPTIONS[tool] ? ` - ${TOOL_DESCRIPTIONS[tool]}` : ''}`);
   }
   lines.push('');
-  
+
   // Requested tools (agent-requested via request_tools)
   const requestedTools = Array.from(state.requestedTools);
   if (requestedTools.length > 0) {
@@ -613,7 +562,7 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
     }
     lines.push('');
   }
-  
+
   // Discovered tools (found via search)
   const discoveredTools = Array.from(state.discoveredTools);
   if (discoveredTools.length > 0) {
@@ -623,11 +572,11 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
     }
     lines.push('');
   }
-  
+
   // Successful tools (recently used successfully)
   const successfulTools = Array.from(state.successfulTools);
   if (successfulTools.length > 0) {
-    lines.push(`Recently successful tools (${successfulTools.length}):`);  
+    lines.push(`Recently successful tools (${successfulTools.length}):`);
     for (const tool of successfulTools.slice(0, 10)) {
       lines.push(`  [x] ${tool}`);
     }
@@ -636,7 +585,7 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
     }
     lines.push('');
   }
-  
+
   // Cache statistics
   lines.push('**Cache Statistics**');
   lines.push(`  Entries: ${cacheStats.size}/${cacheStats.maxSize}`);
@@ -647,20 +596,20 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
   }
   lines.push(`  (Use action="reset_cache_stats" to reset statistics)`);
   lines.push('');
-  
+
   // Session error history from ErrorRecoveryManager
   if (sessionErrorStats) {
     lines.push('**Session Error History**');
     lines.push(`  Total errors: ${sessionErrorStats.totalErrors}`);
     lines.push(`  Recent errors (last 5 min): ${sessionErrorStats.recentErrors}`);
-    
+
     if (sessionErrorStats.topPatterns.length > 0) {
       lines.push('  Top error patterns:');
       for (const { pattern, count } of sessionErrorStats.topPatterns) {
         lines.push(`    • ${pattern}: ${count} occurrences`);
       }
     }
-    
+
     if (sessionErrorStats.topTools.length > 0) {
       lines.push('  Tools with most errors:');
       for (const { tool, count } of sessionErrorStats.topTools) {
@@ -669,7 +618,7 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
     }
     lines.push('');
   }
-  
+
   // Recent errors (quick view)
   if (recentErrors.length > 0) {
     lines.push(`Recent errors (${recentErrors.length}):`);
@@ -680,7 +629,7 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
     lines.push('');
     lines.push('Use action="recover" error="<error message>" to get recovery suggestions.');
   }
-  
+
   // Request history
   if (state.requestHistory.length > 0) {
     lines.push('');
@@ -711,11 +660,11 @@ function handleStatus(sessionId?: string): ToolExecutionResult {
 function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutionResult {
   const { error } = args;
   const errorRecoveryManager = getErrorRecoveryManager();
-  
+
   // Get recent errors if no specific error provided
   let errorToAnalyze = error;
   let toolNameForError: string | undefined;
-  
+
   if (!errorToAnalyze && sessionId) {
     const recentErrors = errorRecoveryManager.getRecentErrors(sessionId);
     if (recentErrors.length > 0) {
@@ -724,7 +673,7 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
       toolNameForError = lastError.toolName;
     }
   }
-  
+
   if (!errorToAnalyze) {
     return {
       toolName: 'request_tools',
@@ -732,24 +681,24 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
       output: 'No error to analyze. Provide an error message or wait for a tool error to occur.',
     };
   }
-  
+
   // Use ErrorRecoveryManager for sophisticated error analysis
   const suggestion = errorRecoveryManager.analyzeError(
     errorToAnalyze,
     toolNameForError || 'unknown',
     sessionId
   );
-  
+
   // Get session recovery suggestions for additional context
-  const sessionSuggestions = sessionId 
+  const sessionSuggestions = sessionId
     ? errorRecoveryManager.getSessionRecovery(sessionId)
     : [];
-  
+
   // Get session stats for context
-  const sessionStats = sessionId 
+  const sessionStats = sessionId
     ? errorRecoveryManager.getSessionStats(sessionId)
     : null;
-  
+
   // Collect all suggested tools from ErrorRecoveryManager
   const allSuggestedTools = new Set<string>(suggestion.suggestedTools);
   for (const s of sessionSuggestions) {
@@ -757,12 +706,12 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
       allSuggestedTools.add(tool);
     }
   }
-  
+
   // Also check our local ERROR_RECOVERY_SUGGESTIONS for additional tool suggestions
   // This provides a fallback and additional context for common error patterns
   const errorLower = errorToAnalyze.toLowerCase();
   let localSuggestion: { tools: string[]; suggestion: string } | undefined;
-  
+
   for (const [pattern, recovery] of Object.entries(ERROR_RECOVERY_SUGGESTIONS)) {
     if (errorLower.includes(pattern.toLowerCase())) {
       localSuggestion = recovery;
@@ -773,13 +722,13 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
       break;
     }
   }
-  
+
   // Auto-load suggested tools
   const toolsToLoad = Array.from(allSuggestedTools);
   if (sessionId && toolsToLoad.length > 0) {
     addAgentRequestedTools(sessionId, toolsToLoad, `Error recovery: ${errorToAnalyze.slice(0, 50)}`);
   }
-  
+
   const lines = [
     `**Recovery suggestions for:** "${errorToAnalyze.slice(0, 100)}"`,
     '',
@@ -790,18 +739,18 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
     `**Suggested action:** ${suggestion.suggestedAction}`,
     '',
   ];
-  
+
   // Add local suggestion if available and different from main suggestion
   if (localSuggestion && localSuggestion.suggestion !== suggestion.suggestedAction) {
     lines.push(`**Additional tip:** ${localSuggestion.suggestion}`);
     lines.push('');
   }
-  
+
   if (suggestion.isAlternative) {
     lines.push('[!] This is an alternative approach since previous attempts failed repeatedly.');
     lines.push('');
   }
-  
+
   // Show session error statistics if available
   if (sessionStats && sessionStats.totalErrors > 1) {
     lines.push('**Session Error History:**');
@@ -821,7 +770,7 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
     }
     lines.push('');
   }
-  
+
   // Show additional session suggestions if different from main suggestion
   if (sessionSuggestions.length > 1) {
     lines.push('**Additional recovery suggestions from session history:**');
@@ -832,7 +781,7 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
     }
     lines.push('');
   }
-  
+
   if (toolsToLoad.length > 0) {
     lines.push(`[OK] Loaded ${toolsToLoad.length} recovery tools: ${toolsToLoad.join(', ')}`);
     lines.push('');
@@ -855,16 +804,16 @@ function handleRecover(args: RequestToolsArgs, sessionId?: string): ToolExecutio
 
 function handleResetCacheStats(): ToolExecutionResult {
   const cache = getToolResultCache();
-  
+
   // Get stats before reset for reporting
   const statsBefore = cache.getStats();
-  
+
   // Reset the statistics
   cache.resetStats();
-  
+
   // Get stats after reset to confirm
   const statsAfter = cache.getStats();
-  
+
   const lines = [
     '**Cache Statistics Reset**',
     '',

@@ -17,19 +17,39 @@ const logger = createLogger('SettingsSave');
 /**
  * Config keys that should be propagated to existing sessions when changed.
  * These are the keys from defaultConfig that affect runtime behavior.
+ * Adding a key here ensures changing it in settings takes effect immediately
+ * on all active sessions without requiring a new session to be created.
  */
 const PROPAGATABLE_CONFIG_KEYS: (keyof AgentConfig)[] = [
-  'enableAutoModelSelection',
-  'enableProviderFallback',
+  // Provider routing
+  'preferredProvider',
+  'fallbackProvider',
   'allowAutoSwitch',
+  'enableProviderFallback',
+  'enableAutoModelSelection',
+  // Model selection
+  'selectedModelId',
+  // Generation parameters
   'temperature',
   'maxOutputTokens',
   'yoloMode',
+  // OpenAI reasoning model settings
+  'reasoningEffort',
+  'verbosity',
+  // DeepSeek thinking mode
+  'enableDeepSeekThinking',
+  // Anthropic extended thinking
+  'enableAnthropicThinking',
+  'anthropicThinkingBudget',
+  'enableInterleavedThinking',
+  // Iteration settings
   'maxIterations',
   'maxRetries',
+  'retryDelayMs',
+  // Context management
   'enableContextSummarization',
-  'preferredProvider',
-  'fallbackProvider',
+  'summarizationThreshold',
+  'keepRecentMessages',
 ];
 
 /**

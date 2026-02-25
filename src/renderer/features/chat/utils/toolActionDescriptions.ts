@@ -730,6 +730,26 @@ const TOOL_ACTIONS: Record<string, ToolActionConfig> = {
     },
     category: 'browser',
   },
+  browser_interact: {
+    verbs: {
+      queued: 'Waiting to interact',
+      running: 'Interacting with browser',
+      completed: 'Browser interaction done',
+      error: 'Browser interaction failed',
+      pending: 'Will interact with browser',
+    },
+    category: 'browser',
+  },
+  task_plan: {
+    verbs: {
+      queued: 'Waiting to manage plan',
+      running: 'Managing task plan',
+      completed: 'Plan updated',
+      error: 'Plan operation failed',
+      pending: 'Will manage plan',
+    },
+    category: 'system',
+  },
 
   // === Research/Analysis Operations ===
   research: {

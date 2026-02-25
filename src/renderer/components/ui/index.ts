@@ -9,7 +9,7 @@ export { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 export { Modal } from './Modal';
 export { Select } from './Select';
 export type { SelectOption } from './Select';
-export { StatusIndicator, StatusDot as StatusIndicatorDot } from './StatusIndicator';
+export { StatusIndicator } from './StatusIndicator';
 export { Toggle } from './Toggle';
 export { Checkbox } from './Checkbox';
 export { RadioGroup } from './RadioGroup';
@@ -92,9 +92,9 @@ export {
   GlobalLoadingIndicator,
   ConnectedLoadingIndicator,
 } from './LoadingState';
-export type { 
-  LoadingStateProps, 
-  InlineLoadingProps, 
+export type {
+  LoadingStateProps,
+  InlineLoadingProps,
   LoadingOverlayProps,
   SpinnerVariant,
   AgentPhase,

@@ -85,6 +85,9 @@ export default [
         ResizeObserverEntry: 'readonly',
         IntersectionObserver: 'readonly',
         MutationObserver: 'readonly',
+        HTMLImageElement: 'readonly',
+        PromiseRejectionEvent: 'readonly',
+        queueMicrotask: 'readonly',
         // Browser functions
         confirm: 'readonly',
         alert: 'readonly',

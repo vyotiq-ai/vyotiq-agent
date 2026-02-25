@@ -154,31 +154,51 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = memo(({
   }, [handleRenameSubmit]);
 
   // Drag and drop handlers
+  const autoExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', node.path);
+    e.dataTransfer.setData('application/vyotiq-file', JSON.stringify({ path: node.path, type: node.type, name: node.name }));
     onDragStart(node.path, node.type);
-  }, [node.path, node.type, onDragStart]);
+  }, [node.path, node.type, node.name, onDragStart]);
   
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
-    // Only allow drop on directories or to reorder
+    // Allow drop on directories, or drop on files (to move into parent dir)
     if (node.type === 'directory' || dragDrop.draggedType === 'file') {
       e.dataTransfer.dropEffect = 'move';
       setIsDragOver(true);
       onDragOver(node.path);
+
+      // Auto-expand collapsed directories after hovering for 800ms
+      if (node.type === 'directory' && !isExpanded && !autoExpandTimerRef.current) {
+        autoExpandTimerRef.current = setTimeout(() => {
+          onToggleExpand(node.path);
+          autoExpandTimerRef.current = null;
+        }, 800);
+      }
     }
-  }, [node.type, node.path, dragDrop.draggedType, onDragOver]);
+  }, [node.type, node.path, isExpanded, dragDrop.draggedType, onDragOver, onToggleExpand]);
   
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    // Cancel auto-expand timer
+    if (autoExpandTimerRef.current) {
+      clearTimeout(autoExpandTimerRef.current);
+      autoExpandTimerRef.current = null;
+    }
   }, []);
   
   const handleDragEnd = useCallback(() => {
     setIsDragOver(false);
+    if (autoExpandTimerRef.current) {
+      clearTimeout(autoExpandTimerRef.current);
+      autoExpandTimerRef.current = null;
+    }
     onDragEnd();
   }, [onDragEnd]);
   
@@ -186,11 +206,30 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = memo(({
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
+    if (autoExpandTimerRef.current) {
+      clearTimeout(autoExpandTimerRef.current);
+      autoExpandTimerRef.current = null;
+    }
     
+    // For directories: drop into the folder
+    // For files: drop into parent folder
     if (node.type === 'directory') {
       await onDrop(node.path);
+    } else {
+      // Move to same folder as target file
+      const parentDir = node.path.substring(0, node.path.lastIndexOf('/'));
+      if (parentDir) await onDrop(parentDir);
     }
   }, [node.type, node.path, onDrop]);
+  
+  // Cleanup auto-expand timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoExpandTimerRef.current) {
+        clearTimeout(autoExpandTimerRef.current);
+      }
+    };
+  }, []);
   
   // Get appropriate icon
   const Icon = node.type === 'directory' 
@@ -204,7 +243,7 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = memo(({
   const indent = node.depth * 16 + 4;
   
   // Check if this is a drop target
-  const isDropTarget = isDragOver && node.type === 'directory' && dragDrop.draggedPath !== node.path;
+  const isDropTarget = isDragOver && dragDrop.draggedPath !== node.path;
   
   return (
     <div

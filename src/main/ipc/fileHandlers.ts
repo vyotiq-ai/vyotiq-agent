@@ -15,8 +15,10 @@ import { randomUUID } from 'node:crypto';
 import { minimatch } from 'minimatch';
 import { guessMimeType } from '../utils/mime';
 import { resolvePath } from '../utils/fileSystem';
+import { detectEncoding } from '../utils/encoding';
 import { createLogger } from '../logger';
 import { validateSafePath } from './guards';
+import { workspaceWatcher } from '../utils/workspaceWatcher';
 import type { AttachmentPayload } from '../../shared/types';
 import type { IpcContext } from './types';
 
@@ -130,6 +132,7 @@ export function registerFileHandlers(context: IpcContext): void {
   ipcMain.handle('workspace:close', async () => {
     try {
       activeWorkspacePath = '';
+      workspaceWatcher.stop();
       logger.info('Workspace closed');
       const mainWindow = getMainWindow();
       if (mainWindow) {
@@ -149,6 +152,7 @@ export function registerFileHandlers(context: IpcContext): void {
         return { success: false, error: 'Path is not a directory' };
       }
       activeWorkspacePath = newPath;
+      workspaceWatcher.start(newPath);
       logger.info('Workspace path changed', { path: newPath });
 
       // Persist to recent workspaces
@@ -182,6 +186,7 @@ export function registerFileHandlers(context: IpcContext): void {
     
     const selectedPath = result.filePaths[0];
     activeWorkspacePath = selectedPath;
+    workspaceWatcher.start(selectedPath);
     logger.info('Workspace folder selected', { path: selectedPath });
 
     // Persist to recent workspaces
@@ -662,5 +667,185 @@ export function registerFileHandlers(context: IpcContext): void {
   // Invalidate cache (no-op - workspace file cache removed)
   ipcMain.handle('files:invalidate-cache', async () => {
     return { success: true };
+  });
+
+  // ==========================================================================
+  // File Metadata & Encoding
+  // ==========================================================================
+
+  /**
+   * Get detailed file metadata (size, permissions, timestamps, encoding, line endings)
+   */
+  ipcMain.handle('files:metadata', async (_event, filePath: string) => {
+    try {
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, filePath);
+      const stats = await fs.stat(resolvedPath);
+
+      // Read first 4KB to detect encoding and line endings
+      let encoding = 'utf-8';
+      let lineEnding: 'LF' | 'CRLF' | 'CR' = 'LF';
+      let lineCount = 0;
+      let hasBom = false;
+
+      if (stats.isFile()) {
+        const fd = await fs.open(resolvedPath, 'r');
+        try {
+          const buffer = Buffer.alloc(Math.min(stats.size, 4096));
+          await fd.read(buffer, 0, buffer.length, 0);
+          encoding = detectEncoding(buffer);
+          hasBom = buffer.length >= 3 && buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF;
+
+          // Detect line endings from sample
+          const sample = buffer.toString('utf-8');
+          const crlfCount = (sample.match(/\r\n/g) || []).length;
+          const lfCount = (sample.match(/(?<!\r)\n/g) || []).length;
+          const crCount = (sample.match(/\r(?!\n)/g) || []).length;
+          if (crCount > crlfCount && crCount > lfCount) lineEnding = 'CR';
+          else if (crlfCount > lfCount) lineEnding = 'CRLF';
+          else lineEnding = 'LF';
+        } finally {
+          await fd.close();
+        }
+
+        // Count lines for text files
+        if (stats.size < 10 * 1024 * 1024) { // Only for files < 10MB
+          try {
+            const content = await fs.readFile(resolvedPath, 'utf-8');
+            lineCount = (content.match(/\n/g) || []).length + 1;
+          } catch {
+            lineCount = 0;
+          }
+        }
+      }
+
+      // Get file permissions (octal format on Unix, simplified on Windows)
+      const permissions = stats.mode & 0o777;
+      const isReadonly = !(stats.mode & 0o200);
+
+      return {
+        success: true,
+        path: resolvedPath,
+        name: path.basename(resolvedPath),
+        size: stats.size,
+        isFile: stats.isFile(),
+        isDirectory: stats.isDirectory(),
+        isSymlink: stats.isSymbolicLink?.() ?? false,
+        createdAt: stats.birthtimeMs,
+        modifiedAt: stats.mtimeMs,
+        accessedAt: stats.atimeMs,
+        permissions: permissions.toString(8),
+        isReadonly,
+        encoding,
+        lineEnding,
+        lineCount,
+        hasBom,
+        language: stats.isFile() ? languageFromPath(resolvedPath) : undefined,
+      };
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      return { success: false, error: err.code === 'ENOENT' ? `File not found: ${filePath}` : err.message };
+    }
+  });
+
+  /**
+   * Copy files or directories (deep copy for directories)
+   */
+  ipcMain.handle('files:copy', async (_event, sourcePath: string, targetPath: string) => {
+    try {
+      const resolvedSource = resolvePath(getActiveWorkspacePath() ?? undefined, sourcePath);
+      const resolvedTarget = resolvePath(getActiveWorkspacePath() ?? undefined, targetPath);
+
+      const stats = await fs.stat(resolvedSource);
+
+      if (stats.isDirectory()) {
+        await fs.cp(resolvedSource, resolvedTarget, { recursive: true });
+      } else {
+        // Ensure target directory exists
+        await fs.mkdir(path.dirname(resolvedTarget), { recursive: true });
+        await fs.copyFile(resolvedSource, resolvedTarget);
+      }
+
+      emitFileChange('create', resolvedTarget);
+      logger.info('File/directory copied', { from: resolvedSource, to: resolvedTarget });
+      return { success: true, path: resolvedTarget };
+    } catch (error) {
+      const err = error as Error;
+      logger.error('Failed to copy file', { error: err.message, sourcePath, targetPath });
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * Move files or directories
+   */
+  ipcMain.handle('files:move', async (_event, sourcePath: string, targetPath: string) => {
+    try {
+      const resolvedSource = resolvePath(getActiveWorkspacePath() ?? undefined, sourcePath);
+      const resolvedTarget = resolvePath(getActiveWorkspacePath() ?? undefined, targetPath);
+
+      // Ensure target directory exists
+      await fs.mkdir(path.dirname(resolvedTarget), { recursive: true });
+      await fs.rename(resolvedSource, resolvedTarget);
+
+      emitFileChange('rename', resolvedTarget, resolvedSource);
+      logger.info('File/directory moved', { from: resolvedSource, to: resolvedTarget });
+      return { success: true, oldPath: resolvedSource, newPath: resolvedTarget };
+    } catch (error) {
+      const err = error as Error;
+      logger.error('Failed to move file', { error: err.message, sourcePath, targetPath });
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * Check if a path exists
+   */
+  ipcMain.handle('files:exists', async (_event, filePath: string) => {
+    try {
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, filePath);
+      await fs.access(resolvedPath);
+      return { success: true, exists: true };
+    } catch {
+      return { success: true, exists: false };
+    }
+  });
+
+  /**
+   * Read file as binary (returns base64)
+   */
+  ipcMain.handle('files:readBinary', async (_event, filePath: string) => {
+    try {
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, filePath);
+      const buffer = await fs.readFile(resolvedPath);
+      return {
+        success: true,
+        content: buffer.toString('base64'),
+        size: buffer.byteLength,
+        encoding: 'base64',
+      };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  /**
+   * Write file with specific encoding
+   */
+  ipcMain.handle('files:writeEncoded', async (_event, filePath: string, content: string, encoding: string) => {
+    try {
+      const pathError = validateSafePath(filePath, 'filePath', { allowAbsolute: true });
+      if (pathError) return { success: false, error: pathError.error };
+
+      const resolvedPath = resolvePath(getActiveWorkspacePath() ?? undefined, filePath);
+      const dir = path.dirname(resolvedPath);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(resolvedPath, content, { encoding: encoding as BufferEncoding });
+
+      emitFileChange('write', resolvedPath);
+      logger.info('File written with encoding', { path: resolvedPath, encoding });
+      return { success: true, path: resolvedPath };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
   });
 }

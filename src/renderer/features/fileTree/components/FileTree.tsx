@@ -28,6 +28,9 @@ import { useFileTree } from '../useFileTree';
 import { useFileTreeKeyboard } from '../hooks/useFileTreeKeyboard';
 import { FileTreeItem } from './FileTreeItem';
 import { FileTreeContextMenu } from './FileTreeContextMenu';
+import { FilePreviewPanel } from './FilePreviewPanel';
+import { FileInfoPanel } from './FileInfoPanel';
+import { TemplateSelector } from './TemplateSelector';
 import { NewItemInput } from './NewItemInput';
 import { FileTreeSearch } from './FileTreeSearch';
 import { useConfirm } from '../../../components/ui/ConfirmModal';
@@ -114,6 +117,9 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
     parentPath: string;
   } | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [fileInfoState, setFileInfoState] = useState<{ path: string; type: 'file' | 'directory' } | null>(null);
+  const [templateParentPath, setTemplateParentPath] = useState<string | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -282,6 +288,25 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
       case 'findInFolder': {
         // Open search with folder filter
         setShowSearch(true);
+        break;
+      }
+
+      case 'preview': {
+        // Quick preview without opening in editor
+        setPreviewPath(targetPath);
+        break;
+      }
+
+      case 'fileInfo': {
+        // Show detailed file metadata
+        setFileInfoState({ path: targetPath, type: targetType });
+        break;
+      }
+
+      case 'newFromTemplate': {
+        // Open template selector
+        const tmplParent = targetType === 'directory' ? targetPath : targetPath.substring(0, targetPath.lastIndexOf('/'));
+        setTemplateParentPath(tmplParent);
         break;
       }
         
@@ -637,6 +662,50 @@ export const FileTree: React.FC<FileTreeProps> = ({ workspacePath, collapsed = f
         onAction={handleContextMenuAction}
         onClose={closeContextMenu}
       />
+
+      {/* File preview panel */}
+      {previewPath && (
+        <FilePreviewPanel
+          filePath={previewPath}
+          onClose={() => setPreviewPath(null)}
+          onOpenInEditor={(path) => {
+            document.dispatchEvent(new CustomEvent('vyotiq:open-file', {
+              detail: { filePath: path },
+            }));
+          }}
+        />
+      )}
+
+      {/* File info panel */}
+      {fileInfoState && (
+        <FileInfoPanel
+          filePath={fileInfoState.path}
+          fileType={fileInfoState.type}
+          onClose={() => setFileInfoState(null)}
+        />
+      )}
+
+      {/* Template selector */}
+      {templateParentPath && (
+        <TemplateSelector
+          parentPath={templateParentPath}
+          onConfirm={async (filePath, content) => {
+            try {
+              await window.vyotiq?.files?.write?.(filePath, content);
+              setTemplateParentPath(null);
+              void refresh();
+              // Open the new file in editor
+              document.dispatchEvent(new CustomEvent('vyotiq:open-file', {
+                detail: { filePath },
+              }));
+            } catch (err) {
+              logger.warn('Failed to create from template', { error: err instanceof Error ? err.message : String(err) });
+            }
+          }}
+          onCancel={() => setTemplateParentPath(null)}
+        />
+      )}
+
       <ConfirmDialog />
     </div>
   );

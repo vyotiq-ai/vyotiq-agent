@@ -35,7 +35,7 @@ This file contains the licenses and notices for third-party software included in
 ## Terminal
 
 ### xterm.js (@xterm/xterm)
-- **Version**: 5.5.0
+- **Version**: 6.0.0
 - **License**: MIT
 - **Repository**: https://github.com/xtermjs/xterm.js
 - **Copyright**: Copyright (c) 2017-2022, The xterm.js authors
@@ -69,7 +69,7 @@ xterm.js is a terminal emulator for the web.
 - **Copyright**: Copyright (c) Tailwind Labs, Inc.
 
 ### Lucide React
-- **Version**: 0.554.0
+- **Version**: 0.575.0
 - **License**: ISC
 - **Repository**: https://github.com/lucide-icons/lucide
 - **Copyright**: Copyright (c) Lucide Contributors
@@ -127,7 +127,7 @@ xterm.js is a terminal emulator for the web.
 - **Copyright**: Copyright (c) 2006, Ivan Sagalaev
 
 ### KaTeX
-- **Version**: 0.16.27
+- **Version**: 0.16.32
 - **License**: MIT
 - **Repository**: https://github.com/KaTeX/KaTeX
 - **Copyright**: Copyright (c) 2013-2020 Khan Academy and other contributors
@@ -137,7 +137,7 @@ xterm.js is a terminal emulator for the web.
 ## Git Integration
 
 ### simple-git
-- **Version**: 3.30.0
+- **Version**: 3.32.2
 - **License**: MIT
 - **Repository**: https://github.com/steveukx/git-js
 - **Copyright**: Copyright (c) Steve King

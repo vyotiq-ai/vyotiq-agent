@@ -1,151 +1,95 @@
 /**
  * ThinkingPanel Component
- * 
- * Displays the model's reasoning/thinking content with a collapsible panel.
- * Supports streaming state with a pulsing indicator while the model is thinking.
- * Always starts expanded (uncollapsed) by default so the user can see reasoning.
- * Expands with a smooth height transition on click.
- * Used to show extended thinking from models like Gemini, Claude, DeepSeek.
+ *
+ * Displays the assistant's reasoning/thinking content in a collapsible panel.
+ * Follows the existing terminal aesthetic with monospace fonts and CSS variable theming.
  */
-import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Brain, ChevronRight } from 'lucide-react';
+import React, { memo, useState, useCallback, useRef, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Brain } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { MarkdownRenderer } from '../../../components/ui/MarkdownRenderer';
 
 interface ThinkingPanelProps {
-  /** The thinking/reasoning text content */
-  content: string;
-  /** Whether thinking is currently being streamed */
-  isStreaming?: boolean;
-  /** Whether the panel starts expanded — always true by default */
-  defaultExpanded?: boolean;
-  /** Additional CSS class */
-  className?: string;
+    /** The thinking/reasoning content */
+    content: string;
+    /** Whether the thinking content is currently streaming */
+    isStreaming?: boolean;
+    /** Additional CSS classes */
+    className?: string;
 }
 
 const ThinkingPanelInternal: React.FC<ThinkingPanelProps> = ({
-  content,
-  isStreaming = false,
-  defaultExpanded = true,
-  className,
+    content,
+    isStreaming = false,
+    className,
 }) => {
-  // Always start expanded (uncollapsed) by default
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [contentHeight, setContentHeight] = useState(0);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const contentRef = useRef<HTMLDivElement>(null);
 
-  const toggleExpanded = useCallback(() => {
-    setIsExpanded(prev => !prev);
-  }, []);
+    // Auto-scroll to bottom during streaming
+    useEffect(() => {
+        if (isStreaming && isExpanded && contentRef.current) {
+            contentRef.current.scrollTop = contentRef.current.scrollHeight;
+        }
+    }, [content, isStreaming, isExpanded]);
 
-  // Measure content height for smooth transition
-  useEffect(() => {
-    if (!contentRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContentHeight(entry.contentRect.height);
-      }
-    });
-    observer.observe(contentRef.current);
-    return () => observer.disconnect();
-  }, []);
+    const toggleExpand = useCallback(() => {
+        setIsExpanded((prev) => !prev);
+    }, []);
 
-  // Auto-scroll the content pane to bottom when streaming new content while expanded
-  useEffect(() => {
-    if (isExpanded && isStreaming && contentRef.current) {
-      const el = contentRef.current;
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [isExpanded, isStreaming, content]);
+    const trimmedContent = content.trim();
+    if (!trimmedContent) return null;
 
-  const truncatedPreview = useMemo(() => {
-    if (!content) return '';
-    const firstLine = content.split('\n')[0] ?? '';
-    return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
-  }, [content]);
-
-  // Word count for thinking content
-  const wordCount = useMemo(() => {
-    if (!content) return 0;
-    return content.split(/\s+/).filter(Boolean).length;
-  }, [content]);
-
-  // Don't render if there's no meaningful content and we're not streaming.
-  // Also don't render if the only content is whitespace (prevents empty panels
-  // for models/providers that don't support reasoning but emit whitespace deltas).
-  const hasContent = content && content.trim().length > 0;
-  if (!hasContent && !isStreaming) return null;
-
-  return (
-    <div
-      className={cn(
-        'rounded-sm border font-mono text-[10px]',
-        'border-[var(--color-border-subtle)]',
-        'bg-[var(--color-surface-1)]',
-        'transition-colors duration-200 ease-out',
-        className,
-      )}
-    >
-      {/* Header */}
-      <button
-        type="button"
-        onClick={toggleExpanded}
-        className={cn(
-          'flex items-center gap-1.5 w-full px-2 py-1 text-left',
-          'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
-          'transition-colors duration-100',
-        )}
-      >
-        <span className={cn(
-          'shrink-0 transition-transform duration-150',
-          isExpanded && 'rotate-90',
-        )}>
-          <ChevronRight size={10} />
-        </span>
-        <Brain size={10} className="shrink-0" style={{ color: 'var(--color-accent-primary)' }} />
-        <span className="text-[9px] uppercase tracking-wider opacity-70">
-          reasoning
-        </span>
-        {isStreaming && (
-          <span
-            className="ml-1 text-[8px] font-mono text-[var(--color-accent-primary)] opacity-70"
-          >
-            ...
-          </span>
-        )}
-        {/* Word count badge */}
-        {wordCount > 0 && (
-          <span className="ml-1 text-[8px] tabular-nums text-[var(--color-text-dim)]">
-            {wordCount}w
-          </span>
-        )}
-        {!isExpanded && truncatedPreview && (
-          <span className="ml-1 truncate opacity-40 text-[9px]">
-            {truncatedPreview}
-          </span>
-        )}
-      </button>
-
-      {/* Content with smooth height transition */}
-      <div
-        className="overflow-hidden transition-[max-height,opacity] duration-200 ease-out"
-        style={{
-          maxHeight: isExpanded ? `${contentHeight + 16}px` : '0px',
-          opacity: isExpanded ? 1 : 0,
-        }}
-      >
+    return (
         <div
-          ref={contentRef}
-          className={cn(
-            'px-2 pb-2 text-[10px] leading-relaxed',
-            'text-[var(--color-text-secondary)]',
-          )}
+            className={cn(
+                'rounded-sm border font-mono',
+                'border-[var(--color-border-subtle)]',
+                'bg-[var(--color-surface-base)]',
+                isStreaming && 'border-[var(--color-accent-primary)]/20',
+                className,
+            )}
         >
-          <MarkdownRenderer content={content} compact />
+            {/* Header */}
+            <button
+                type="button"
+                onClick={toggleExpand}
+                className={cn(
+                    'w-full flex items-center gap-1.5 px-1.5 py-0.5 text-left',
+                    'text-[9px] text-[var(--color-text-muted)]',
+                    'hover:bg-[var(--color-surface-2)] transition-colors',
+                )}
+                aria-expanded={isExpanded}
+            >
+                {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                <Brain size={9} style={{ color: 'var(--color-accent-secondary, var(--color-accent-primary))' }} />
+                <span className="uppercase tracking-wider">thinking</span>
+                {isStreaming && (
+                    <span className="text-[8px] text-[var(--color-accent-primary)] animate-pulse ml-1">
+                        streaming...
+                    </span>
+                )}
+            </button>
+
+            {/* Content */}
+            {isExpanded && (
+                <div
+                    ref={contentRef}
+                    className={cn(
+                        'px-2 py-1 text-[10px] leading-relaxed',
+                        'text-[var(--color-text-secondary)]',
+                        'max-h-[300px] overflow-y-auto',
+                        'border-t border-[var(--color-border-subtle)]',
+                    )}
+                >
+                    <MarkdownRenderer content={trimmedContent} compact />
+                    {isStreaming && (
+                        <span className="streaming-cursor text-[var(--color-accent-primary)]">▍</span>
+                    )}
+                </div>
+            )}
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export const ThinkingPanel = memo(ThinkingPanelInternal);

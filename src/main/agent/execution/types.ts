@@ -17,6 +17,7 @@ import type {
   RoutingDecision,
   TaskRoutingSettings,
   ToolConfigSettings,
+  AutonomousFeatureFlags,
 } from '../../../shared/types';
 import type { InternalSession } from '../types';
 import type { Logger } from '../../logger';
@@ -54,6 +55,7 @@ export interface RunExecutorDeps {
   getAccessLevelSettings?: () => AccessLevelSettings | undefined;
   getToolSettings?: () => ToolConfigSettings | undefined;
   getTaskRoutingSettings?: () => TaskRoutingSettings | undefined;
+  getAutonomousFeatureFlags?: () => AutonomousFeatureFlags | undefined;
   getEditorState?: () => EditorState;
   getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>;
   /** Callback for tracking provider health (success/failure, latency) */

@@ -17,6 +17,7 @@ export type { EditorContextAction } from './components/EditorContextMenu';
 export { GoToLineDialog } from './components/GoToLineDialog';
 export { SymbolOutlinePanel } from './components/SymbolOutlinePanel';
 export { EditorSettingsPanel } from './components/EditorSettingsPanel';
+export { EncodingCheckerPanel } from './components/EncodingCheckerPanel';
 
 // Store
 export {

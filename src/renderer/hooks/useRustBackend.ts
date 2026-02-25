@@ -12,6 +12,7 @@ import rustBackend, {
   type RustSearchResult,
   type RustGrepMatch,
   type IndexProgress,
+  BackendRequestError,
 } from '../utils/rustBackendClient';
 import { createLogger } from '../utils/logger';
 
@@ -268,7 +269,18 @@ export function useIndexProgress(workspaceId: string | null) {
   const trigger = useCallback(async () => {
     if (!workspaceId) return;
     setIsComplete(false);
-    await rustBackend.triggerIndex(workspaceId);
+    try {
+      await rustBackend.triggerIndex(workspaceId);
+    } catch (err) {
+      // Log but don't propagate — callers don't expect rejections.
+      // 404 means the workspace was removed from the backend (e.g. sidecar restart);
+      // the WorkspaceProvider will re-register it automatically.
+      if (err instanceof BackendRequestError && err.isWorkspaceNotFound) {
+        logger.debug('triggerIndex skipped — workspace not found on backend, will re-register', { workspaceId });
+      } else {
+        logger.warn('triggerIndex failed', { workspaceId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
   }, [workspaceId]);
 
   return { progress, isComplete, trigger };
@@ -476,7 +488,19 @@ export function useRustIndexStatus(workspaceId: string | null) {
   const triggerIndex = useCallback(async () => {
     if (!workspaceId) return;
     setState((prev) => ({ ...prev, isIndexing: true }));
-    await rustBackend.triggerIndex(workspaceId);
+    try {
+      await rustBackend.triggerIndex(workspaceId);
+    } catch (err) {
+      // Revert optimistic isIndexing state and log.
+      // 404 means the workspace was lost from the backend (e.g. sidecar restart);
+      // the WorkspaceProvider will re-register it automatically.
+      setState((prev) => ({ ...prev, isIndexing: false }));
+      if (err instanceof BackendRequestError && err.isWorkspaceNotFound) {
+        logger.debug('triggerIndex skipped — workspace not found on backend', { workspaceId });
+      } else {
+        logger.warn('triggerIndex failed', { workspaceId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
   }, [workspaceId]);
 
   return { ...state, triggerIndex };

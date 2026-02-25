@@ -16,7 +16,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { createLogger } from '../utils/logger';
-import rustBackend from '../utils/rustBackendClient';
+import rustBackend, { BackendRequestError } from '../utils/rustBackendClient';
 
 // HMR: invalidate the module so React re-mounts with fresh contexts
 if (import.meta.hot) {
@@ -210,6 +210,18 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     const registerWorkspace = async () => {
       try {
+        // Check autoIndexOnOpen setting — skip auto-registration if disabled
+        try {
+          const settingsResult = await window.vyotiq.settings.getSafe();
+          const autoIndex = settingsResult?.workspaceSettings?.autoIndexOnOpen ?? true;
+          if (!autoIndex) {
+            logger.debug('Auto-index on open disabled, skipping workspace registration');
+            return;
+          }
+        } catch {
+          // If settings can't be read, proceed with default behavior (auto-index)
+        }
+
         // Use cached availability check — the RustBackendProvider handles
         // polling with proper backoff, so we don't spam extra health requests.
         const available = await rustBackend.isAvailable();
@@ -363,8 +375,22 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         if (status.indexed && !status.is_indexing) {
           setIsSearchReady(true);
         }
-      } catch {
-        // Ignore — backend may be temporarily unreachable
+      } catch (err) {
+        // If the workspace no longer exists on the backend (e.g. sidecar
+        // restarted and lost state), reset registration so the auto-register
+        // effect will re-create it.
+        if (err instanceof BackendRequestError && err.isWorkspaceNotFound) {
+          logger.info('Workspace not found on backend during poll — resetting for re-registration', { rustWorkspaceId });
+          registeredPathRef.current = null;
+          if (!cancelled) {
+            setRustWorkspaceId(null);
+            setIsIndexed(false);
+            setIsIndexing(false);
+            setIsSearchReady(false);
+          }
+          return; // Stop polling — the re-registration effect will take over
+        }
+        // Other errors (timeout, connection refused) — ignore, backend may be temporarily unreachable
       }
       // Schedule next poll: faster while indexing, slower when idle
       if (!cancelled) {
@@ -382,6 +408,35 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
       rustBackend.unsubscribeWorkspace(rustWorkspaceId);
     };
   }, [rustWorkspaceId]);
+
+  // ---- Re-register workspace when backend comes back online ----------------
+  // When the Rust sidecar restarts, the auth token changes and the backend
+  // becomes available again.  The persisted workspaces.json *should* survive,
+  // but in case it doesn't (data dir mismatch, corruption, etc.) we reset the
+  // registration ref so the auto-register effect above will re-check/re-create.
+  useEffect(() => {
+    if (!workspacePath) return;
+
+    const unsub = rustBackend.onAvailabilityChange((available) => {
+      if (available && registeredPathRef.current === workspacePath) {
+        // Backend just came back — verify the workspace still exists
+        const wsId = rustWorkspaceId;
+        if (!wsId) return;
+        rustBackend.getWorkspace(wsId).catch((err) => {
+          if (err instanceof BackendRequestError && err.isWorkspaceNotFound) {
+            logger.info('Backend came back but workspace is gone — triggering re-registration');
+            registeredPathRef.current = null;
+            setRustWorkspaceId(null);
+            setIsIndexed(false);
+            setIsIndexing(false);
+            setIsSearchReady(false);
+          }
+        });
+      }
+    });
+
+    return unsub;
+  }, [workspacePath, rustWorkspaceId]);
 
   // ---- Actions -------------------------------------------------------------
 

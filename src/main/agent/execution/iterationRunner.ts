@@ -172,12 +172,13 @@ export class IterationRunner {
         initialSessionStateSent = true;
 
         // Emit session state with the assistant message's content before this chunk.
-        // OPTIMIZATION: Instead of mapping ALL messages (O(n) allocation), we temporarily
-        // patch the assistant message in-place and restore after emit.
+        // OPTIMIZATION: Temporarily revert content (not thinking) to avoid the renderer
+        // seeing a "jump" when the delta arrives right after.
+        // NOTE: We intentionally keep thinking at its current value. Reverting thinking
+        // to undefined/empty would cause the renderer to briefly see no thinking content
+        // before the STREAM_THINKING_DELTA arrives, creating a visible flash.
         const savedContent = assistantMessage.content;
-        const savedThinking = assistantMessage.thinking;
         assistantMessage.content = contentBeforeAppend;
-        assistantMessage.thinking = thinkingBeforeAppend;
 
         this.updateSessionState(session.state.id, {
           messages: session.state.messages,
@@ -187,7 +188,6 @@ export class IterationRunner {
 
         // Restore current content
         assistantMessage.content = savedContent;
-        assistantMessage.thinking = savedThinking;
       }
 
       if (isThinking) {
@@ -575,7 +575,7 @@ export class IterationRunner {
 
         if (isContextOverflowError(error) && attempt <= 2) {
           this.logger.warn('Context overflow detected, pruning context before retry', { provider: provider.name, runId, attempt });
-          
+
           // Prune older messages from the middle of the conversation to reduce context size.
           // Keep the system prompt (first message) and the most recent messages intact.
           const msgs = session.state.messages;
@@ -592,7 +592,7 @@ export class IterationRunner {
               });
             }
           }
-          
+
           await this.delay(500);
           continue;
         }
@@ -622,12 +622,12 @@ export class IterationRunner {
           const jitter = Math.random() * 2000;
           const delay = Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
 
-          this.logger.warn('Network connectivity error, retrying with extended delay', { 
-            provider: provider.name, 
-            runId, 
+          this.logger.warn('Network connectivity error, retrying with extended delay', {
+            provider: provider.name,
+            runId,
             attempt,
             error: lastError?.message,
-            delay: Math.round(delay) 
+            delay: Math.round(delay)
           });
           await this.delay(delay);
           continue;

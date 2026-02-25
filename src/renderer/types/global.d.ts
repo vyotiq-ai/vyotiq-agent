@@ -418,6 +418,25 @@ declare global {
           path: string;
           oldPath?: string;
         }) => void) => () => void;
+        /** Get extended file metadata (encoding, line endings, permissions, etc.) */
+        metadata: (filePath: string) => Promise<{
+          success: boolean; path?: string; name?: string; size?: number;
+          isFile?: boolean; isDirectory?: boolean; isSymlink?: boolean;
+          createdAt?: number; modifiedAt?: number; accessedAt?: number;
+          permissions?: string; isReadonly?: boolean;
+          encoding?: string; lineEnding?: 'LF' | 'CRLF' | 'CR'; lineCount?: number; hasBom?: boolean;
+          language?: string; error?: string;
+        }>;
+        /** Copy a file to a new location */
+        copy: (sourcePath: string, targetPath: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+        /** Move a file to a new location */
+        move: (sourcePath: string, targetPath: string) => Promise<{ success: boolean; oldPath?: string; newPath?: string; error?: string }>;
+        /** Check if a file exists */
+        exists: (filePath: string) => Promise<{ success: boolean; exists: boolean }>;
+        /** Read a file as base64-encoded binary */
+        readBinary: (filePath: string) => Promise<{ success: boolean; content?: string; size?: number; encoding?: string; error?: string }>;
+        /** Write a file with a specific encoding */
+        writeEncoded: (filePath: string, content: string, encoding: string) => Promise<{ success: boolean; path?: string; error?: string }>;
       };
 
       workspace: {

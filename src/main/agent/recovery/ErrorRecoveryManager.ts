@@ -382,8 +382,8 @@ const ERROR_PATTERNS: Record<string, ErrorRecoveryConfig> = {
 
   // Browser errors (specificity: 7-9)
   'navigation failed': {
-    tools: ['browser_state', 'browser_screenshot', 'browser_check_url'],
-    action: 'Check browser state and verify URL is accessible',
+    tools: ['browser_interact', 'browser_screenshot', 'browser_check_url'],
+    action: 'Check browser state (browser_interact action="state") and verify URL is accessible',
     specificity: 8,
     category: 'browser',
   },
@@ -406,14 +406,14 @@ const ERROR_PATTERNS: Record<string, ErrorRecoveryConfig> = {
     category: 'browser',
   },
   'page crashed': {
-    tools: ['browser_state', 'browser_reload'],
-    action: 'Check browser state and try reloading',
+    tools: ['browser_interact', 'browser_interact'],
+    action: 'Check browser state (action="state") and try reloading (action="reload")',
     specificity: 8,
     category: 'browser',
   },
   'net::ERR': {
-    tools: ['browser_state', 'browser_check_url', 'browser_network'],
-    action: 'Network error. Check URL and network status',
+    tools: ['browser_interact', 'browser_check_url', 'browser_interact'],
+    action: 'Network error. Check state (action="state") and network (action="network")',
     specificity: 7,
     category: 'network',
   },
@@ -438,8 +438,8 @@ const ERROR_PATTERNS: Record<string, ErrorRecoveryConfig> = {
     category: 'network',
   },
   'fetch failed': {
-    tools: ['browser_fetch', 'browser_network'],
-    action: 'Check network connectivity and URL',
+    tools: ['browser_fetch', 'browser_interact'],
+    action: 'Check network (browser_interact action="network") and URL',
     specificity: 7,
     category: 'network',
   },
@@ -509,12 +509,12 @@ const ALTERNATIVE_APPROACHES: Record<string, { tools: string[]; action: string }
   ],
   browser: [
     { tools: ['browser_screenshot', 'browser_snapshot'], action: 'Take a screenshot and snapshot to understand page state' },
-    { tools: ['browser_reload', 'browser_wait'], action: 'Try reloading the page and waiting longer' },
-    { tools: ['browser_state'], action: 'Check browser state to ensure the page is fully loaded' },
+    { tools: ['browser_interact'], action: 'Try reloading (action="reload") and waiting longer (browser_wait)' },
+    { tools: ['browser_interact'], action: 'Check browser state (action="state") to ensure page is loaded' },
   ],
   network: [
     { tools: ['run', 'check_terminal'], action: 'Check if the server is running and accessible' },
-    { tools: ['browser_network'], action: 'Monitor network requests to understand the failure' },
+    { tools: ['browser_interact'], action: 'Monitor network requests (action="network") to understand the failure' },
   ],
   resource: [
     { tools: ['run'], action: 'Try reducing the scope of the operation or increasing resource limits' },

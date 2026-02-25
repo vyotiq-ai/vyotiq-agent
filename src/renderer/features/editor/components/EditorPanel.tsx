@@ -175,6 +175,8 @@ export const EditorPanel: React.FC = memo(() => {
     revertTab,
     closeOtherTabs,
     closeTabsToRight,
+    changeTabLineEnding,
+    updateTabMetadata,
   } = useEditorStore();
 
   const activeTab = useMemo(
@@ -398,6 +400,14 @@ export const EditorPanel: React.FC = memo(() => {
     setViewMode(mode);
   }, [setViewMode]);
 
+  const handleChangeLineEnding = useCallback((lineEnding: 'LF' | 'CRLF') => {
+    if (activeTab) changeTabLineEnding(activeTab.id, lineEnding);
+  }, [activeTab, changeTabLineEnding]);
+
+  const handleChangeEncoding = useCallback((encoding: string) => {
+    if (activeTab) updateTabMetadata(activeTab.id, { encoding });
+  }, [activeTab, updateTabMetadata]);
+
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const modKey = e.ctrlKey || e.metaKey;
@@ -561,6 +571,8 @@ export const EditorPanel: React.FC = memo(() => {
           onIncreaseFontSize={increaseFontSize}
           onDecreaseFontSize={decreaseFontSize}
           onSetViewMode={handleSetViewMode}
+          onChangeLineEnding={handleChangeLineEnding}
+          onChangeEncoding={handleChangeEncoding}
         />
       )}
 

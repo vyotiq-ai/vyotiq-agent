@@ -40,12 +40,18 @@ export interface ToolExecutionContext {
    * Optional callback to emit events to the renderer
    */
   emitEvent?: (event: RendererEvent) => void;
+  /**
+   * When true, skip tool result caching (read & write).
+   * Controlled by the enableToolCaching setting.
+   */
+  skipCache?: boolean;
 }
 
 export interface ToolLogger {
   info(message: string, meta?: Record<string, unknown>): void;
   warn(message: string, meta?: Record<string, unknown>): void;
   error(message: string, meta?: Record<string, unknown>): void;
+  debug(message: string, meta?: Record<string, unknown>): void;
 }
 
 export interface ToolDefinition<TArgs extends Record<string, unknown> = Record<string, unknown>> {
@@ -233,7 +239,7 @@ export interface TerminalManager {
   on(event: 'exit', listener: (payload: TerminalExitPayload) => void): this;
   on(event: 'error', listener: (payload: TerminalErrorPayload) => void): this;
   on(event: 'warning', listener: (payload: { pid: number; message: string }) => void): this;
-  
+
   // Event listener removal methods for cleanup
   removeAllListeners(event: 'stdout' | 'stderr' | 'exit' | 'error' | 'warning'): this;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

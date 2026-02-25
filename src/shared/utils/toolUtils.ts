@@ -31,7 +31,7 @@ const COMMUNICATION_TOOLS = ['email', 'compose_email', 'composeEmail', 'message'
 const CODE_INTEL_TOOLS = ['lsp_', 'symbol', 'definition', 'reference', 'diagnostic', 'hover', 'completion', 'code_action', 'rename'];
 
 // Browser tools - separated into read-only and state-changing
-const BROWSER_READ_TOOLS = ['browser_fetch', 'browser_extract', 'browser_console', 'browser_network', 'browser_snapshot', 'browser_state', 'browser_security', 'browser_check'];
+const BROWSER_READ_TOOLS = ['browser_fetch', 'browser_extract', 'browser_console', 'browser_network', 'browser_snapshot', 'browser_state', 'browser_security', 'browser_check', 'browser_interact'];
 const BROWSER_WRITE_TOOLS = ['browser_click', 'browser_type', 'browser_navigate', 'browser_scroll', 'browser_fill', 'browser_hover', 'browser_evaluate', 'browser_back', 'browser_forward', 'browser_reload', 'browser_tabs'];
 
 /**

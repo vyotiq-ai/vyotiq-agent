@@ -91,6 +91,8 @@ const TOOL_CATEGORIES: Record<string, ToolIconConfig['category']> = {
   browser_network: 'web',
   browser_tabs: 'web',
   browser_security_status: 'web',
+  browser_interact: 'web',
+  task_plan: 'system',
   
   // Research/Analysis
   research: 'analysis',
@@ -190,6 +192,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   browser_network: 'Monitor network',
   browser_tabs: 'Manage tabs',
   browser_security_status: 'Check security',
+  browser_interact: 'Browser interaction',
+  task_plan: 'Manage task plan',
   research: 'Research topic',
   analyze: 'Analyze content',
   think: 'Think step by step',

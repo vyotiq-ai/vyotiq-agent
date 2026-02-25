@@ -26,7 +26,7 @@ import type { ChatMessage } from '../../../../shared/types';
 import { MarkdownRenderer } from '../../../components/ui/MarkdownRenderer';
 import { MessageAttachments } from './MessageAttachments';
 import { ThinkingPanel } from './ThinkingPanel';
-import { ToolExecution } from './ToolExecution';
+import { ToolExecution } from './toolExecution';
 import { GeneratedMedia } from './GeneratedMedia';
 import { RoutingBadge } from './RoutingBadge';
 import { DynamicToolIndicator } from './DynamicToolIndicator';

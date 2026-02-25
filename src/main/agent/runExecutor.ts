@@ -14,6 +14,7 @@ import type {
   RoutingDecision,
   ToolConfigSettings,
   TaskRoutingSettings,
+  AutonomousFeatureFlags,
 } from '../../shared/types';
 import type { InternalSession, AgenticContext } from './types';
 import type { Logger } from '../logger';
@@ -62,6 +63,7 @@ export class RunExecutor {
   private readonly getAccessLevelSettings: () => AccessLevelSettings | undefined;
   private readonly getToolSettings: () => ToolConfigSettings | undefined;
   private readonly getTaskRoutingSettings: () => TaskRoutingSettings | undefined;
+  private readonly getAutonomousFeatureFlags: () => AutonomousFeatureFlags | undefined;
   private readonly getEditorState?: () => EditorState;
   private readonly getWorkspaceDiagnostics?: () => Promise<WorkspaceDiagnostics | null>;
 
@@ -115,21 +117,24 @@ export class RunExecutor {
     this.getAccessLevelSettings = deps.getAccessLevelSettings ?? (() => undefined);
     this.getToolSettings = deps.getToolSettings ?? (() => undefined);
     this.getTaskRoutingSettings = deps.getTaskRoutingSettings ?? (() => undefined);
+    this.getAutonomousFeatureFlags = deps.getAutonomousFeatureFlags ?? (() => undefined);
     this.getEditorState = deps.getEditorState;
     this.getWorkspaceDiagnostics = deps.getWorkspaceDiagnostics;
     this.onProviderHealth = deps.onProviderHealth;
     this.checkBudget = deps.checkBudget;
 
-    // Initialize debugger
+    // Initialize debugger (gated by enableAdvancedDebugging)
     const debugSettings = this.getDebugSettings();
+    const autonomousFlags = this.getAutonomousFeatureFlags();
+    const advancedDebugging = autonomousFlags?.enableAdvancedDebugging !== false;
     this.debugger = new AgentDebugger({
-      verbose: debugSettings?.verboseLogging ?? process.env.NODE_ENV === 'development',
-      captureFullPayloads: debugSettings?.captureFullPayloads ?? false,
-      stepMode: debugSettings?.stepByStepMode ?? false,
-      exportOnError: debugSettings?.autoExportOnError ?? true,
+      verbose: advancedDebugging && (debugSettings?.verboseLogging ?? process.env.NODE_ENV === 'development'),
+      captureFullPayloads: advancedDebugging && (debugSettings?.captureFullPayloads ?? false),
+      stepMode: advancedDebugging && (debugSettings?.stepByStepMode ?? false),
+      exportOnError: advancedDebugging && (debugSettings?.autoExportOnError ?? true),
       exportFormat: debugSettings?.traceExportFormat ?? 'json',
     });
-    this.debugEnabled = debugSettings?.verboseLogging ?? true;
+    this.debugEnabled = advancedDebugging && (debugSettings?.verboseLogging ?? true);
 
     // Initialize compliance validator
     const complianceSettings = this.getComplianceSettings();
@@ -183,7 +188,8 @@ export class RunExecutor {
       this.getAccessLevelSettings,
       this.activeControllers,
       this.getToolSettings,
-      this.getSafetySettings
+      this.getSafetySettings,
+      this.getAutonomousFeatureFlags
     );
     this.sessionQueueManager = new SessionQueueManager(
       this.logger,
@@ -234,6 +240,33 @@ export class RunExecutor {
   updateProviders(providers: ProviderMap): void {
     this.providers = providers;
     this.providerSelector.updateProviders(providers);
+  }
+
+  /**
+   * Update compliance validator config when settings change at runtime.
+   * Called from settings handlers to propagate compliance setting changes
+   * to the running ComplianceValidator instance.
+   */
+  updateComplianceConfig(settings: ComplianceSettings): void {
+    this.complianceValidator.updateConfig({
+      enabled: settings.enabled,
+      enforceReadBeforeWrite: settings.enforceReadBeforeWrite,
+      enforceLintAfterEdit: settings.enforceLintAfterEdit,
+      blockUnnecessaryFiles: settings.blockUnnecessaryFiles,
+      maxViolationsBeforeBlock: settings.maxViolationsBeforeBlock,
+      injectCorrectiveMessages: settings.injectCorrectiveMessages,
+      strictMode: settings.strictMode,
+      logViolations: settings.logViolations,
+    });
+  }
+
+  /**
+   * Update safety settings on all active SafetyManager instances.
+   * Called from settings handlers to propagate safety setting changes
+   * to all per-run SafetyManager instances that are currently active.
+   */
+  updateActiveSafetySettings(settings: SafetySettings): void {
+    this.toolQueueProcessor.updateAllSafetyManagers(settings);
   }
 
   /**
@@ -329,8 +362,8 @@ export class RunExecutor {
       if (!providerForContinuation) {
         const taskRoutingSettings = this.getTaskRoutingSettings();
         const { primary } = await this.providerSelector.selectProvidersWithFallback(
-          session, 
-          undefined, 
+          session,
+          undefined,
           taskRoutingSettings
         );
         providerForContinuation = primary;
@@ -438,7 +471,7 @@ export class RunExecutor {
         this.progressTracker.startIterationProgress(session, runId, iteration, providerForContinuation.name);
 
         try {
-          const buildRequest = (): Promise<ProviderRequest> => 
+          const buildRequest = (): Promise<ProviderRequest> =>
             this.requestBuilder.buildProviderRequest(session, providerForContinuation!, this.updateSessionState);
           const result = await this.iterationRunner.runIteration(
             session,
@@ -503,7 +536,7 @@ export class RunExecutor {
     // Notify IPC event batcher that agent is running to disable background throttling
     // This ensures responsive streaming during agent execution
     setSessionRunning(session.state.id, true);
-    
+
     // Notify throttle controller for coordinated throttle bypass
     const throttleController = getThrottleController();
     const throttleLogger = getThrottleEventLogger();
@@ -564,14 +597,14 @@ export class RunExecutor {
 
     try {
       const taskRoutingSettings = this.getTaskRoutingSettings();
-      const { primary, fallback, allAvailable, routingDecision }: { 
-        primary: LLMProvider | null; 
-        fallback: LLMProvider | null; 
-        allAvailable: LLMProvider[]; 
+      const { primary, fallback, allAvailable, routingDecision }: {
+        primary: LLMProvider | null;
+        fallback: LLMProvider | null;
+        allAvailable: LLMProvider[];
         routingDecision?: RoutingDecision;
       } = await this.providerSelector.selectProvidersWithFallback(
-        session, 
-        undefined, 
+        session,
+        undefined,
         taskRoutingSettings
       );
 
@@ -605,7 +638,11 @@ export class RunExecutor {
         throw new Error(errorMsg);
       }
 
-      agentMetrics.startRun(runId, session.state.id, primary.name, maxIterations);
+      // Gate performance metrics on enablePerformanceMonitoring flag
+      const perfMonitoring = this.getAutonomousFeatureFlags()?.enablePerformanceMonitoring !== false;
+      if (perfMonitoring) {
+        agentMetrics.startRun(runId, session.state.id, primary.name, maxIterations);
+      }
       this.progressTracker.initRunTiming(runId);
 
       let currentProvider = primary;
@@ -686,7 +723,9 @@ export class RunExecutor {
         }
 
         healthMonitor.updateIteration(session.state.id, iteration);
-        agentMetrics.recordIteration(runId);
+        if (this.getAutonomousFeatureFlags()?.enablePerformanceMonitoring !== false) {
+          agentMetrics.recordIteration(runId);
+        }
 
         const iterationModelId = this.requestBuilder.getEffectiveModelId(
           session,
@@ -722,7 +761,9 @@ export class RunExecutor {
 
           if (result === 'completed' || result === 'cancelled') break;
           if (result === 'awaiting-confirmation') {
-            agentMetrics.recordAwaitingConfirmation(runId);
+            if (this.getAutonomousFeatureFlags()?.enablePerformanceMonitoring !== false) {
+              agentMetrics.recordAwaitingConfirmation(runId);
+            }
             return;
           }
         } catch (iterationError) {
@@ -860,7 +901,7 @@ export class RunExecutor {
   private notifySessionStopped(sessionId: string, runDurationMs?: number): void {
     // Notify IPC event batcher
     setSessionRunning(sessionId, false);
-    
+
     // Notify throttle controller
     const throttleController = getThrottleController();
     const throttleLogger = getThrottleEventLogger();
@@ -1028,8 +1069,9 @@ export class RunExecutor {
       lastMessageRole: lastMessage?.role,
     });
 
-    // Calculate run duration from metrics
-    const metricsResult = agentMetrics.completeRun(runId, 'completed');
+    // Calculate run duration from metrics (gated by enablePerformanceMonitoring)
+    const perfEnabled = this.getAutonomousFeatureFlags()?.enablePerformanceMonitoring !== false;
+    const metricsResult = perfEnabled ? agentMetrics.completeRun(runId, 'completed') : null;
     const runDurationMs = metricsResult?.durationMs ?? 0;
 
     // Notify IPC event batcher and throttle controller that this session stopped running
@@ -1058,7 +1100,7 @@ export class RunExecutor {
         provider: provider as LLMProviderName,
         success: true,
         responseTimeMs: metricsResult?.durationMs || 0,
-        tokensUsed: agentMetrics.getRunTokensUsed(runId),
+        tokensUsed: perfEnabled ? agentMetrics.getRunTokensUsed(runId) : 0,
         loopDetected: loopState?.circuitBreakerTriggered || false,
         complianceViolation: complianceSummary.errors > 0,
       });
@@ -1107,7 +1149,10 @@ export class RunExecutor {
     // Re-enables background throttling when no sessions are active
     this.notifySessionStopped(session.state.id);
 
-    agentMetrics.completeRun(runId, 'error');
+    const perfEnabledOnError = this.getAutonomousFeatureFlags()?.enablePerformanceMonitoring !== false;
+    if (perfEnabledOnError) {
+      agentMetrics.completeRun(runId, 'error');
+    }
 
     // Record model quality metrics for failed run
     const modelId = session.state.config.selectedModelId;
@@ -1119,7 +1164,7 @@ export class RunExecutor {
         provider: provider as LLMProviderName,
         success: false,
         responseTimeMs: 0,
-        tokensUsed: agentMetrics.getRunTokensUsed(runId),
+        tokensUsed: perfEnabledOnError ? agentMetrics.getRunTokensUsed(runId) : 0,
         loopDetected: false,
         complianceViolation: false,
       });

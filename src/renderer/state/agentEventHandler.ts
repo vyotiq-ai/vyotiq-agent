@@ -118,9 +118,12 @@ export function createAgentEventHandler(ctx: EventHandlerContext) {
       // Session events
       // -----------------------------------------------------------------------
       case 'session-state': {
-        // Flush buffered streaming deltas BEFORE processing session state
-        // to prevent content duplication race condition.
+        // Flush ALL buffered streaming deltas BEFORE processing session state
+        // to prevent content duplication/loss race condition.
+        // Both content AND thinking buffers must be flushed so the renderer state
+        // reflects the latest streamed data before merging with server state.
         ctx.flushSession(event.session.id, true);
+        ctx.flushThinkingSession(event.session.id, true);
 
         const existingSession = ctx.getState().sessions.find(s => s.id === event.session.id);
         if (existingSession) {
@@ -137,6 +140,8 @@ export function createAgentEventHandler(ctx: EventHandlerContext) {
       }
 
       case 'session-patch': {
+        // Flush thinking buffer before applying patch to prevent stale overwrites
+        ctx.flushThinkingSession((event as import('../../shared/types').SessionPatchEvent).sessionId, true);
         const patchEvent = event as import('../../shared/types').SessionPatchEvent;
         ctx.dispatch({
           type: 'SESSION_PATCH',
@@ -186,6 +191,11 @@ export function createAgentEventHandler(ctx: EventHandlerContext) {
         if (event.status === 'idle' || event.status === 'error') {
           ctx.clearBuffer(event.sessionId);
           ctx.clearThinkingBuffer(event.sessionId);
+        }
+        // Also flush thinking buffer on awaiting-confirmation to prevent
+        // thinking content loss when the run pauses for user input
+        if (event.status === 'awaiting-confirmation') {
+          ctx.flushThinkingSession(event.sessionId, true);
         }
         runActions.push({
           type: 'RUN_STATUS',

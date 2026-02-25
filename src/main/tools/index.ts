@@ -72,6 +72,8 @@ export {
   requestToolsTool,
   // Todo/Task tracking tools
   todoWriteTool,
+  taskPlanTool,
+  // Legacy individual plan tools (still exported for backward compat)
   createPlanTool,
   verifyTasksTool,
   getActivePlanTool,
@@ -90,17 +92,20 @@ export {
   browserTypeTool,
   browserScrollTool,
   browserSnapshotTool,
+  browserWaitTool,
+  browserFetchTool,
+  browserCheckUrlTool,
+  // Unified deferred browser tool
+  browserInteractTool,
+  // Legacy individual browser tools (still exported for backward compat)
   browserFillFormTool,
   browserEvaluateTool,
-  browserWaitTool,
   browserStateTool,
   browserBackTool,
   browserForwardTool,
   browserReloadTool,
-  browserFetchTool,
   browserHoverTool,
   browserSecurityStatusTool,
-  browserCheckUrlTool,
   // Browser debugging tools
   browserConsoleTool,
   browserNetworkTool,

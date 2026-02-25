@@ -18,7 +18,7 @@ export {
 
 // Components
 export { MessageLine } from './components/MessageLine';
-export { ToolExecution } from './components/ToolExecution';
+export { ToolExecution } from './components/toolExecution';
 export { EmptyState } from './components/EmptyState';
 export { ToolConfirmationPanel } from './components/ToolConfirmationPanel';
 export { RoutingBadge } from './components/RoutingBadge';

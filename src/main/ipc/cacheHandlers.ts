@@ -83,7 +83,7 @@ export function registerCacheHandlers(context: IpcContext): void {
         if (cs) {
           const ctxTotal = (cs.hits ?? 0) + (cs.misses ?? 0);
           contextStats = {
-            entries: cs.entries ?? cs.size ?? 0,
+            entries: cs.entries ?? 0,
             sizeBytes: cs.sizeBytes ?? 0,
             hits: cs.hits ?? 0,
             misses: cs.misses ?? 0,

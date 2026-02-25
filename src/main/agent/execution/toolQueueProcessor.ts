@@ -11,6 +11,7 @@ import type {
   AgentEvent,
   AccessLevelSettings,
   ToolConfigSettings,
+  AutonomousFeatureFlags,
 } from '../../../shared/types';
 import { DEFAULT_TOOL_CONFIG_SETTINGS } from '../../../shared/types';
 import type { InternalSession } from '../types';
@@ -48,6 +49,7 @@ export class ToolQueueProcessor {
   private readonly getAccessLevelSettings: () => AccessLevelSettings | undefined;
   private readonly getToolSettings: () => ToolConfigSettings | undefined;
   private readonly getSafetySettings: () => SafetySettings | undefined;
+  private readonly getAutonomousFeatureFlags: () => AutonomousFeatureFlags | undefined;
   private readonly activeControllers: Map<string, AbortController>;
   private readonly safetyManagers = new Map<string, SafetyManager>();
 
@@ -72,7 +74,8 @@ export class ToolQueueProcessor {
     getAccessLevelSettings: () => AccessLevelSettings | undefined,
     activeControllers: Map<string, AbortController>,
     getToolSettings?: () => ToolConfigSettings | undefined,
-    getSafetySettings?: () => SafetySettings | undefined
+    getSafetySettings?: () => SafetySettings | undefined,
+    getAutonomousFeatureFlags?: () => AutonomousFeatureFlags | undefined
   ) {
     this.toolRegistry = toolRegistry;
     this.terminalManager = terminalManager;
@@ -86,6 +89,7 @@ export class ToolQueueProcessor {
     this.activeControllers = activeControllers;
     this.getToolSettings = getToolSettings ?? (() => undefined);
     this.getSafetySettings = getSafetySettings ?? (() => undefined);
+    this.getAutonomousFeatureFlags = getAutonomousFeatureFlags ?? (() => undefined);
   }
 
   /**
@@ -94,7 +98,7 @@ export class ToolQueueProcessor {
   private getParallelConfig(): ParallelExecutionConfig {
     const toolSettings = this.getToolSettings();
     const maxConcurrency = toolSettings?.maxConcurrentTools ?? DEFAULT_TOOL_CONFIG_SETTINGS.maxConcurrentTools;
-    
+
     return {
       ...DEFAULT_PARALLEL_CONFIG,
       maxConcurrency,
@@ -342,10 +346,10 @@ export class ToolQueueProcessor {
     // Emit time savings notification to the UI
     if (result.wasParallel && result.timeSavedMs > 0) {
       const timeSavedSeconds = (result.timeSavedMs / 1000).toFixed(1);
-      const percentageSaved = result.totalDurationMs > 0 
+      const percentageSaved = result.totalDurationMs > 0
         ? ((result.timeSavedMs / (result.totalDurationMs + result.timeSavedMs)) * 100).toFixed(0)
         : '0';
-      
+
       this.emitEvent({
         type: 'agent-status',
         sessionId: session.state.id,
@@ -536,7 +540,10 @@ export class ToolQueueProcessor {
         throw new Error('No active workspace available for tool execution');
       }
 
-      const safetyManager = this.getOrCreateSafetyManager(runId);
+      // Only create safety manager if safety framework is enabled
+      const autonomousFlags = this.getAutonomousFeatureFlags();
+      const safetyEnabled = autonomousFlags?.enableSafetyFramework ?? true;
+      const safetyManager = safetyEnabled ? this.getOrCreateSafetyManager(runId) : new SafetyManager();
       const accessSettings = this.getAccessLevelSettings();
 
       // Create a tool-specific logger that includes tool context in all log messages
@@ -546,6 +553,9 @@ export class ToolQueueProcessor {
         session.state.id,
         runId
       );
+
+      // Determine whether tool caching is enabled
+      const cachingEnabled = this.getToolSettings()?.enableToolCaching ?? true;
 
       const context: ToolExecutionContext = {
         workspacePath: workspace.path,
@@ -559,6 +569,7 @@ export class ToolQueueProcessor {
         allowOutsideWorkspace: accessSettings?.allowOutsideWorkspace ?? false,
         signal,
         emitEvent: this.emitEvent,
+        skipCache: !cachingEnabled,
       };
 
       // Compliance validation
@@ -646,7 +657,49 @@ export class ToolQueueProcessor {
         return;
       }
 
-      const result = await this.toolRegistry.execute(tool.name, toolArgs, context);
+      // Block create_tool if allowDynamicCreation is disabled
+      if (tool.name === 'create_tool') {
+        const toolSettings = this.getToolSettings();
+        if (!(toolSettings?.allowDynamicCreation ?? false)) {
+          const blockedMessage: ChatMessage = {
+            id: randomUUID(),
+            role: 'tool',
+            content: 'Dynamic tool creation is disabled in settings. Enable "allow-dynamic-creation" in Autonomous → Tool Config to use this feature.',
+            toolCallId: tool.callId,
+            toolName: tool.name,
+            toolSuccess: false,
+            createdAt: Date.now(),
+            runId,
+          };
+          session.state.messages.push(blockedMessage);
+          this.progressTracker.finishToolProgress(session, runId, progressId, toolLabel, toolDetail, 'error');
+          this.updateSessionState(session.state.id, {
+            messages: session.state.messages,
+            updatedAt: Date.now(),
+          });
+          return;
+        }
+      }
+
+      // Determine tool-specific timeout from settings
+      const toolSettings = this.getToolSettings();
+      const perToolTimeout = toolSettings?.toolTimeouts?.[tool.name];
+      const globalTimeout = toolSettings?.maxToolExecutionTime ?? DEFAULT_TOOL_CONFIG_SETTINGS.maxToolExecutionTime;
+      const effectiveTimeout = perToolTimeout ?? globalTimeout;
+
+      // Execute tool with timeout enforcement
+      let result: EnhancedToolResult;
+      if (effectiveTimeout && effectiveTimeout > 0) {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`Tool "${tool.name}" exceeded timeout of ${Math.round(effectiveTimeout / 1000)}s`)), effectiveTimeout);
+        });
+        result = await Promise.race([
+          this.toolRegistry.execute(tool.name, toolArgs, context),
+          timeoutPromise,
+        ]);
+      } else {
+        result = await this.toolRegistry.execute(tool.name, toolArgs, context);
+      }
       const duration = Date.now() - startTime;
 
       // Check if result was from cache
@@ -656,7 +709,7 @@ export class ToolQueueProcessor {
       // Apply intelligent output truncation if output exceeds token limit
       const outputTruncator = this._outputTruncator!;
       const truncationResult = outputTruncator.truncate(result.output, tool.name);
-      
+
       // Log truncation if it occurred
       if (truncationResult.wasTruncated) {
         this.logger.info('Tool output truncated', {
@@ -673,12 +726,12 @@ export class ToolQueueProcessor {
 
       // Build tool result content, adding recovery suggestions for failures
       let toolResultContent = truncationResult.content;
-      
+
       // Add truncation summary if output was truncated
       if (truncationResult.wasTruncated && truncationResult.summary) {
         toolResultContent += `\n\n[STATS] ${truncationResult.summary}`;
       }
-      
+
       if (!result.success) {
         // Get recovery suggestion with alternative approach if error is repeated
         const errorRecoveryManager = this._errorRecovery!;
@@ -687,14 +740,14 @@ export class ToolQueueProcessor {
           tool.name,
           session.state.id
         );
-        
+
         // Add recovery suggestion if available
         if (recoverySuggestion.confidence > 0.3) {
           toolResultContent += `\n\n[TIP] Recovery suggestion: ${recoverySuggestion.suggestedAction}`;
           if (recoverySuggestion.suggestedTools.length > 0) {
             toolResultContent += `\n   Suggested tools: ${recoverySuggestion.suggestedTools.join(', ')}`;
           }
-          
+
           // Add alternative approach warning if this is a repeated error
           if (recoverySuggestion.isAlternative) {
             toolResultContent += `\n\n[!] This error has occurred repeatedly. Consider trying a different approach.`;
@@ -922,14 +975,14 @@ export class ToolQueueProcessor {
 
       // Build error message with recovery suggestion
       let errorContent = `Error: ${errorMsg}`;
-      
+
       // Add recovery suggestion if available
       if (recoverySuggestion.confidence > 0.3) {
         errorContent += `\n\n[TIP] Recovery suggestion: ${recoverySuggestion.suggestedAction}`;
         if (recoverySuggestion.suggestedTools.length > 0) {
           errorContent += `\n   Suggested tools: ${recoverySuggestion.suggestedTools.join(', ')}`;
         }
-        
+
         // Add alternative approach warning if this is a repeated error
         if (recoverySuggestion.isAlternative) {
           errorContent += `\n\n[!] This error has occurred repeatedly. Consider trying a different approach.`;
@@ -992,6 +1045,17 @@ export class ToolQueueProcessor {
    */
   cleanupSafetyManager(runId: string): void {
     this.safetyManagers.delete(runId);
+  }
+
+  /**
+   * Update all active SafetyManagers with new user settings.
+   * Called when safety settings change via IPC to propagate
+   * to all currently active per-run SafetyManager instances.
+   */
+  updateAllSafetyManagers(settings: SafetySettings): void {
+    for (const manager of this.safetyManagers.values()) {
+      manager.updateUserSettings(settings);
+    }
   }
 
   /**

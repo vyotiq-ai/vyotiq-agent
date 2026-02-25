@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import type {
   AgentEvent,
   AgentSessionState,
+  ComplianceSettings,
   ConfirmToolPayload,
   FollowUpPayload,
   RendererEvent,
+  SafetySettings,
   SendMessagePayload,
   StartSessionPayload,
   UpdateConfigPayload,
@@ -25,7 +27,7 @@ import { SessionManagementHandler } from './sessionManagementHandler';
 import { getCacheManager, getContextCache, getToolResultCache } from './cache';
 import { TerminalEventHandler } from './terminalEventHandler';
 import { ProviderManager } from './providerManager';
-import { initRecovery, getSelfHealingAgent } from './recovery';
+
 import { getLoopDetector } from './loopDetection';
 import { ModelQualityTracker, getModelQualityTracker } from './modelQuality';
 import { getSessionHealthMonitor } from './sessionHealth';
@@ -116,13 +118,14 @@ export class AgentOrchestrator extends EventEmitter {
         // Merge with defaults to ensure all required properties are present
         return toolSettings ? { ...DEFAULT_TOOL_CONFIG_SETTINGS, ...toolSettings } : DEFAULT_TOOL_CONFIG_SETTINGS;
       },
+      getAutonomousFeatureFlags: () => this.settingsStore.get().autonomousFeatureFlags,
       getWorkspaceDiagnostics: () => this.getWorkspaceDiagnostics(),
       checkBudget: (sessionId: string) => this.costManager.checkBudget(sessionId, 0),
     });
 
     // Initialize new managers
     this.providerManager = new ProviderManager(this.settingsStore, this.logger, this.runExecutor);
-    
+
     // Wire up provider health tracking after ProviderManager is initialized
     this.runExecutor.setProviderHealthCallback((provider, success, latencyMs) => {
       if (success) {
@@ -131,7 +134,7 @@ export class AgentOrchestrator extends EventEmitter {
         this.providerManager.recordProviderFailure(provider, latencyMs);
       }
     });
-    
+
     this.terminalEventHandler = new TerminalEventHandler(this.terminalManager, this.logger, (event) => this.emitEvent(event));
     this.terminalEventHandler.setupEventListeners();
 
@@ -181,14 +184,18 @@ export class AgentOrchestrator extends EventEmitter {
     // This allows dynamically created tools to be registered and available to agents
     await this.initializeDynamicToolFactory();
 
-    // Load custom tools from settings
-    await this.loadCustomTools();
+    // Load custom tools from settings (gated by enableDynamicTools)
+    const featureFlags = this.settingsStore.get().autonomousFeatureFlags;
+    if (featureFlags?.enableDynamicTools !== false) {
+      await this.loadCustomTools();
+    } else {
+      this.logger.info('Custom tool loading skipped (enableDynamicTools is disabled)');
+    }
 
     // Initialize MCP (Model Context Protocol) integration
     await this.initializeMCPIntegration();
 
-    // Initialize recovery/self-healing system
-    await this.initializeRecoverySystem();
+
 
     // Wire session health monitor's event emitter so health updates reach the renderer
     try {
@@ -239,6 +246,20 @@ export class AgentOrchestrator extends EventEmitter {
 
   refreshProviders(): void {
     this.providerManager.refreshProviders();
+  }
+
+  /**
+   * Update compliance validator config when settings change at runtime.
+   */
+  updateComplianceConfig(settings: ComplianceSettings): void {
+    this.runExecutor.updateComplianceConfig(settings);
+  }
+
+  /**
+   * Update safety settings on all active SafetyManager instances.
+   */
+  updateActiveSafetySettings(settings: SafetySettings): void {
+    this.runExecutor.updateActiveSafetySettings(settings);
   }
 
   /**
@@ -295,19 +316,19 @@ export class AgentOrchestrator extends EventEmitter {
     try {
       // Try the new TypeScript Language Service first (real-time, fast)
       const { getTypeScriptDiagnosticsService } = await import('./workspace/TypeScriptDiagnosticsService');
-      
+
       const service = getTypeScriptDiagnosticsService();
       if (!service || !service.isReady()) {
         return null;
       }
-      
+
       const snapshot = service.getSnapshot();
-      
+
       // Also get LSP diagnostics for multi-language support
       const { getLSPManager } = await import('../lsp');
       const lspManager = getLSPManager();
       const lspDiagnostics = lspManager?.getAllDiagnostics() ?? [];
-      
+
       // Merge TypeScript and LSP diagnostics, avoiding duplicates
       const tsDiagnostics = snapshot.diagnostics.map((d: { filePath: string; fileName: string; line: number; column: number; endLine?: number; endColumn?: number; message: string; severity: 'error' | 'warning' | 'info' | 'hint'; code?: string | number }) => ({
         filePath: d.filePath,
@@ -321,7 +342,7 @@ export class AgentOrchestrator extends EventEmitter {
         source: 'typescript' as const,
         code: d.code,
       }));
-      
+
       // Add non-TypeScript LSP diagnostics (Python, Rust, Go, etc.)
       const nonTsDiagnostics = lspDiagnostics
         .filter(d => !d.filePath.match(/\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/))
@@ -337,12 +358,12 @@ export class AgentOrchestrator extends EventEmitter {
           source: d.source || 'lsp',
           code: d.code,
         }));
-      
+
       const allDiagnostics = [...tsDiagnostics, ...nonTsDiagnostics];
       const errorCount = allDiagnostics.filter(d => d.severity === 'error').length;
       const warningCount = allDiagnostics.filter(d => d.severity === 'warning').length;
       const filesWithErrors = [...new Set(allDiagnostics.filter(d => d.severity === 'error').map(d => d.filePath))];
-      
+
       return {
         diagnostics: allDiagnostics,
         errorCount,
@@ -545,7 +566,7 @@ export class AgentOrchestrator extends EventEmitter {
     const session = this.sessionManager.getSession(payload.sessionId);
     if (session) {
       const previousMaxIterations = session.state.config.maxIterations;
-      
+
       // Merge the new config with existing config
       const updatedConfig = { ...session.state.config, ...payload.config };
 
@@ -629,10 +650,10 @@ export class AgentOrchestrator extends EventEmitter {
   deleteSession(sessionId: string): void {
     // Clean up run executor resources for this session (abort controllers, queues, etc.)
     this.runExecutor.cleanupDeletedSession(sessionId);
-    
+
     // Clean up session-state emit throttle tracking to prevent memory leaks
     this.cleanupSessionThrottleTracking(sessionId);
-    
+
     // Clean up undo history files for the deleted session
     undoHistory.clearSessionHistory(sessionId).catch(err => {
       this.logger.error('Failed to clear undo history for deleted session', {
@@ -640,7 +661,7 @@ export class AgentOrchestrator extends EventEmitter {
         error: err instanceof Error ? err.message : String(err),
       });
     });
-    
+
     // Delete the session from storage and memory
     this.sessionManagementHandler.deleteSession(sessionId);
   }
@@ -652,7 +673,7 @@ export class AgentOrchestrator extends EventEmitter {
   private cleanupSessionThrottleTracking(sessionId: string): void {
     // Clear the last emit time tracking
     this.lastSessionStateEmitTime.delete(sessionId);
-    
+
     // Cancel and clear any pending emit timer
     const pendingTimer = this.pendingSessionStateEmits.get(sessionId);
     if (pendingTimer) {
@@ -964,14 +985,7 @@ export class AgentOrchestrator extends EventEmitter {
         });
       }
 
-      // Stop self-healing agent
-      try {
-        const selfHealingAgent = getSelfHealingAgent();
-        selfHealingAgent.stop();
-        this.logger.debug('Self-healing agent stopped');
-      } catch {
-        // Recovery system may not be initialized, ignore
-      }
+
 
       // Shutdown LSP Manager
       try {
@@ -1069,11 +1083,11 @@ export class AgentOrchestrator extends EventEmitter {
     try {
       const settings = this.settingsStore.get();
       const customTools = settings.autonomousFeatureFlags?.toolSettings?.customTools ?? [];
-      
+
       if (customTools.length > 0) {
         const { getDynamicToolFactory } = await import('../tools/factory/DynamicToolFactory');
         const factory = getDynamicToolFactory();
-        
+
         for (const tool of customTools) {
           if (tool.enabled) {
             try {
@@ -1095,7 +1109,7 @@ export class AgentOrchestrator extends EventEmitter {
             }
           }
         }
-        
+
         this.logger.info('Custom tools loaded', { count: customTools.filter((t: { enabled: boolean }) => t.enabled).length });
       }
     } catch (err) {
@@ -1113,12 +1127,12 @@ export class AgentOrchestrator extends EventEmitter {
   private async initializeMCPIntegration(): Promise<void> {
     try {
       const { initializeMCPServerManager, initializeMCPToolRegistryAdapter, getMCPServerManager } = await import('../mcp');
-      
+
       // Initialize MCP server manager with settings from the store
       const settings = this.settingsStore.get();
       const mcpSettings = settings.mcpSettings;
       initializeMCPServerManager(mcpSettings || undefined);
-      
+
       // Initialize the tool registry adapter to sync MCP tools with main registry
       // Pass a getter for the current requireDynamicToolConfirmation setting
       // so MCP tools respect the live setting value (not just the default)
@@ -1127,13 +1141,13 @@ export class AgentOrchestrator extends EventEmitter {
         const toolSettings = currentSettings.autonomousFeatureFlags?.toolSettings;
         return toolSettings?.requireDynamicToolConfirmation ?? DEFAULT_TOOL_CONFIG_SETTINGS.requireDynamicToolConfirmation;
       });
-      
+
       // Load saved MCP servers from settings and connect them
       const mcpServers = settings.mcpServers ?? [];
-      
+
       if (mcpSettings?.enabled && mcpSettings?.autoStartServers) {
         const manager = getMCPServerManager();
-        
+
         // Register saved servers (fast, in-memory)
         for (const serverConfig of mcpServers) {
           try {
@@ -1145,7 +1159,7 @@ export class AgentOrchestrator extends EventEmitter {
             });
           }
         }
-        
+
         // Connect enabled servers in BACKGROUND (don't await)
         const enabledServers = mcpServers.filter(s => s.enabled);
         if (enabledServers.length > 0) {
@@ -1170,7 +1184,7 @@ export class AgentOrchestrator extends EventEmitter {
             });
           });
         }
-        
+
         this.logger.info('MCP integration initialized', {
           serversLoaded: mcpServers.length,
           autoConnecting: enabledServers.length,
@@ -1185,80 +1199,24 @@ export class AgentOrchestrator extends EventEmitter {
     }
   }
 
-  /**
-   * Initialize recovery/self-healing system.
-   * Provides hooks for the self-healing agent to manage sessions.
-   */
-  private async initializeRecoverySystem(): Promise<void> {
-    try {
-      await initRecovery({
-        logger: this.logger,
-        emitEvent: (event: unknown) => this.emitEvent(event as RendererEvent),
-        getSystemState: () => ({
-          activeRuns: this.sessionManager.getAllActiveSessions().length,
-        }),
-        reduceConcurrency: async (factor: number) => {
-          const activeSessions = this.sessionManager.getAllActiveSessions();
-          const count = Math.max(1, Math.ceil(activeSessions.length * Math.min(1, Math.max(0, factor))));
-          for (const session of activeSessions.slice(0, count)) {
-            try { this.runExecutor.pauseRun(session.id); } catch { /* non-critical */ }
-          }
-          this.logger.info('Self-healing: reduced concurrency', { pausedCount: count, totalActive: activeSessions.length });
-        },
-        pauseNewTasks: async (durationMs: number) => {
-          const activeSessions = this.sessionManager.getAllActiveSessions();
-          for (const s of activeSessions) {
-            try { this.runExecutor.pauseRun(s.id); } catch { /* non-critical */ }
-          }
-          setTimeout(() => {
-            for (const s of this.sessionManager.getAllActiveSessions()) {
-              try { this.runExecutor.resumeRun(s.id); } catch { /* non-critical */ }
-            }
-            this.logger.info('Self-healing: auto-resumed paused sessions', { durationMs });
-          }, durationMs);
-        },
-        triggerCircuitBreak: async () => {
-          const activeSessions = this.sessionManager.getAllActiveSessions();
-          let cancelledCount = 0;
-          for (const state of activeSessions) {
-            const session = this.sessionManager.getSession(state.id);
-            if (session) {
-              try { this.runExecutor.cancelRun(state.id, session); cancelledCount++; } catch { /* non-critical */ }
-            }
-          }
-          this.logger.warn('Self-healing: circuit break triggered', { cancelledCount });
-        },
-        clearCaches: async () => {
-          try { getCacheManager().resetStats(); } catch { /* non-critical */ }
-          try { const tc = getToolResultCache(); tc.invalidateAll(); tc.resetStats(); } catch { /* non-critical */ }
-          try { const cc = getContextCache(); cc.clear(); cc.resetStats(); } catch { /* non-critical */ }
-        },
-      });
-      getSelfHealingAgent().start();
-      this.logger.info('Recovery/self-healing system initialized');
-    } catch (err) {
-      this.logger.warn('Failed to initialize recovery system', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+
 
   private emitEvent(event: RendererEvent | AgentEvent): void {
     // Throttle session-state events to prevent renderer thrashing
     if (event.type === 'session-state') {
       const sessionEvent = event as { type: 'session-state'; session: AgentSessionState };
       const sessionId = sessionEvent.session?.id;
-      
+
       if (sessionId) {
         const now = Date.now();
         const lastEmit = this.lastSessionStateEmitTime.get(sessionId) ?? 0;
-        
+
         // If we're within throttle window, schedule for later
         if (now - lastEmit < this.SESSION_STATE_THROTTLE_MS) {
           // Clear existing pending emit
           const existingTimer = this.pendingSessionStateEmits.get(sessionId);
           if (existingTimer) clearTimeout(existingTimer);
-          
+
           // Schedule new emit at the end of throttle window — use lightweight version
           const delay = this.SESSION_STATE_THROTTLE_MS - (now - lastEmit);
           const timer = setTimeout(() => {
@@ -1269,14 +1227,14 @@ export class AgentOrchestrator extends EventEmitter {
           this.pendingSessionStateEmits.set(sessionId, timer);
           return;
         }
-        
+
         this.lastSessionStateEmitTime.set(sessionId, now);
         // Emit lightweight version to reduce IPC payload
         this.emit('event', this.createLightweightSessionEvent(sessionEvent));
         return;
       }
     }
-    
+
     this.emit('event', event);
   }
 
@@ -1293,7 +1251,7 @@ export class AgentOrchestrator extends EventEmitter {
     event: { type: 'session-state'; session: AgentSessionState }
   ): { type: 'session-state'; session: AgentSessionState } {
     const session = event.session;
-    
+
     // Only strip content for running sessions — idle sessions need full data
     if (session.status !== 'running') {
       return event;
@@ -1314,7 +1272,7 @@ export class AgentOrchestrator extends EventEmitter {
         }
         return msg;
       }
-      
+
       // For assistant messages, send structure but strip large content
       // The renderer will keep its longer (streamed) version
       return {

@@ -397,9 +397,8 @@ export const DYNAMIC_TOOL_CATEGORIES: Record<string, { tools: string[]; descript
       // Primary (always loaded)
       'browser_fetch', 'browser_navigate', 'browser_extract', 'browser_snapshot', 'browser_screenshot',
       'browser_click', 'browser_type', 'browser_scroll', 'browser_wait', 'browser_console', 'browser_check_url',
-      // Secondary (deferred, use request_tools to load)
-      'browser_fill_form', 'browser_hover', 'browser_evaluate', 'browser_state',
-      'browser_back', 'browser_forward', 'browser_reload', 'browser_network', 'browser_tabs', 'browser_security_status',
+      // Unified deferred tool (replaces 10 individual browser tools)
+      'browser_interact',
     ],
     description: 'Web automation, scraping, form filling, debugging',
   },
@@ -408,7 +407,7 @@ export const DYNAMIC_TOOL_CATEGORIES: Record<string, { tools: string[]; descript
     description: 'Code intelligence, navigation, refactoring',
   },
   task: {
-    tools: ['TodoWrite', 'CreatePlan', 'VerifyTasks', 'GetActivePlan', 'ListPlans', 'DeletePlan'],
+    tools: ['TodoWrite', 'task_plan'],
     description: 'Task tracking, planning, verification',
   },
   mcp: {

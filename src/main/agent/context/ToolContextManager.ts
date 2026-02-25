@@ -516,11 +516,7 @@ const CORE_TOOLS = [
  */
 const TASK_MANAGEMENT_TOOLS = [
   'TodoWrite',
-  'CreatePlan',
-  'VerifyTasks',
-  'GetActivePlan',
-  'ListPlans',
-  'DeletePlan',
+  'task_plan',
 ];
 
 /**
@@ -548,20 +544,12 @@ const BROWSER_TOOLS = [
   'browser_type',
   'browser_scroll',
   'browser_snapshot',
-  'browser_fill_form',
-  'browser_evaluate',
   'browser_wait',
-  'browser_state',
-  'browser_back',
-  'browser_forward',
-  'browser_reload',
   'browser_fetch',
-  'browser_hover',
-  'browser_security_status',
   'browser_check_url',
   'browser_console',
-  'browser_network',
-  'browser_tabs',
+  // Unified deferred tool
+  'browser_interact',
 ];
 
 /**
@@ -629,7 +617,7 @@ const ERROR_RECOVERY_TOOLS: Record<string, string[]> = {
   'timed out': ['check_terminal', 'kill_terminal'],
   'timeout': ['check_terminal', 'kill_terminal'],
   // Browser errors
-  'navigation failed': ['browser_state', 'browser_screenshot'],
+  'navigation failed': ['browser_interact', 'browser_screenshot'],
   'element not found': ['browser_snapshot', 'browser_screenshot'],
 };
 

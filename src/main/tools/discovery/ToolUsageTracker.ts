@@ -226,6 +226,125 @@ export class ToolUsageTracker {
   }
 
   /**
+   * Audit tool usage patterns — identifies tools with low usage that are candidates
+   * for deferral or removal. Inspired by the "addition by subtraction" principle:
+   * fewer tools = faster decisions, less token overhead, better model reasoning.
+   *
+   * @param registeredTools - All tool names currently registered in the system
+   * @param threshold - Usage percentage below which a tool is flagged (default: 1%)
+   * @param timeWindowMs - Time window to evaluate (default: 7 days)
+   */
+  auditToolUsage(
+    registeredTools: string[],
+    threshold = 0.01,
+    timeWindowMs = 7 * 24 * 60 * 60 * 1000
+  ): {
+    /** Tools that were never called */
+    neverUsed: string[];
+    /** Tools below the usage threshold */
+    lowUsage: Array<{ toolName: string; usagePercent: number; invocations: number; successRate: number }>;
+    /** Tools above threshold — healthy usage */
+    healthy: Array<{ toolName: string; usagePercent: number; invocations: number; successRate: number }>;
+    /** Recommendation: tools to consider deferring */
+    deferralCandidates: string[];
+    /** Total invocations in the time window */
+    totalInvocations: number;
+    /** Time window used for analysis */
+    timeWindowMs: number;
+  } {
+    const cutoff = Date.now() - timeWindowMs;
+    const windowRecords = this.records.filter(r => r.timestamp >= cutoff);
+    const totalInvocations = windowRecords.length;
+
+    // Count invocations per tool in the window
+    const invocationMap = new Map<string, { count: number; successes: number }>();
+    for (const record of windowRecords) {
+      const existing = invocationMap.get(record.toolName) || { count: 0, successes: 0 };
+      existing.count++;
+      if (record.success) existing.successes++;
+      invocationMap.set(record.toolName, existing);
+    }
+
+    const neverUsed: string[] = [];
+    const lowUsage: Array<{ toolName: string; usagePercent: number; invocations: number; successRate: number }> = [];
+    const healthy: Array<{ toolName: string; usagePercent: number; invocations: number; successRate: number }> = [];
+
+    for (const toolName of registeredTools) {
+      const usage = invocationMap.get(toolName);
+      if (!usage || usage.count === 0) {
+        neverUsed.push(toolName);
+        continue;
+      }
+
+      const usagePercent = totalInvocations > 0 ? usage.count / totalInvocations : 0;
+      const successRate = usage.count > 0 ? usage.successes / usage.count : 0;
+      const entry = { toolName, usagePercent, invocations: usage.count, successRate };
+
+      if (usagePercent < threshold) {
+        lowUsage.push(entry);
+      } else {
+        healthy.push(entry);
+      }
+    }
+
+    // Sort by usage ascending for low, descending for healthy
+    lowUsage.sort((a, b) => a.usagePercent - b.usagePercent);
+    healthy.sort((a, b) => b.usagePercent - a.usagePercent);
+
+    // Deferral candidates: never used + low usage (exclude core tools)
+    const coreSafeTools = new Set(['read', 'write', 'edit', 'ls', 'grep', 'glob', 'run', 'TodoWrite', 'request_tools']);
+    const deferralCandidates = [
+      ...neverUsed.filter(t => !coreSafeTools.has(t)),
+      ...lowUsage.filter(t => !coreSafeTools.has(t.toolName)).map(t => t.toolName),
+    ];
+
+    logger.info('Tool usage audit complete', {
+      totalInvocations,
+      registeredCount: registeredTools.length,
+      neverUsedCount: neverUsed.length,
+      lowUsageCount: lowUsage.length,
+      healthyCount: healthy.length,
+      deferralCandidateCount: deferralCandidates.length,
+    });
+
+    return {
+      neverUsed,
+      lowUsage,
+      healthy,
+      deferralCandidates,
+      totalInvocations,
+      timeWindowMs,
+    };
+  }
+
+  /**
+   * Get a ranked list of tools by usage frequency (most to least used).
+   * Useful for understanding which tools are most valuable.
+   */
+  getUsageRanking(timeWindowMs?: number): Array<{ toolName: string; invocations: number; usagePercent: number; avgDurationMs: number }> {
+    const cutoff = timeWindowMs ? Date.now() - timeWindowMs : 0;
+    const windowRecords = this.records.filter(r => r.timestamp >= cutoff);
+    const total = windowRecords.length;
+
+    const toolMap = new Map<string, { count: number; totalDuration: number }>();
+    for (const record of windowRecords) {
+      const existing = toolMap.get(record.toolName) || { count: 0, totalDuration: 0 };
+      existing.count++;
+      existing.totalDuration += record.durationMs;
+      toolMap.set(record.toolName, existing);
+    }
+
+    return Array.from(toolMap.entries())
+      .map(([toolName, data]) => ({
+        toolName,
+        invocations: data.count,
+        usagePercent: total > 0 ? data.count / total : 0,
+        avgDurationMs: Math.round(data.totalDuration / data.count),
+      }))
+      .sort((a, b) => b.invocations - a.invocations);
+  }
+
+  /**
    * Clear old records
    */
   clearOldRecords(maxAgeMs: number): number {

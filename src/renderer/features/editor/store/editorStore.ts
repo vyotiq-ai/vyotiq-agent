@@ -4,9 +4,10 @@
  * Manages editor tab state, file content, view modes, and editing operations.
  * Uses a simple reactive store pattern consistent with the rest of the app.
  * Supports real file editing with save, undo, redo, and dirty state tracking.
+ * Listens for external file changes and reloads affected tabs automatically.
  */
 
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore, useEffect } from 'react';
 import { createLogger } from '../../../utils/logger';
 import { getFileName } from '../../../utils/pathHelpers';
 
@@ -451,6 +452,140 @@ export function openFileImperative(
 }
 
 // =============================================================================
+// External File Change Handler
+// =============================================================================
+
+/** Debounce map for reload requests to avoid rapid reloads */
+const reloadDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Handle an external file change event. Reloads file content for open tabs
+ * that aren't currently dirty (being edited by the user).
+ *
+ * For dirty tabs, marks them with an `externallyChanged` flag so the UI
+ * can prompt the user to reload.
+ */
+export function handleExternalFileChange(event: { type: string; path: string; oldPath?: string }): void {
+  const normalizedPath = event.path.replace(/\\/g, '/');
+
+  if (event.type === 'delete') {
+    // Mark deleted file tabs as having no backing file
+    const tabs = store.state.tabs;
+    const affectedTab = tabs.find(t => t.filePath.replace(/\\/g, '/') === normalizedPath);
+    if (affectedTab) {
+      const updatedTabs = tabs.map(t =>
+        t.id === affectedTab.id ? { ...t, isDirty: true, originalContent: '' } : t
+      );
+      setState({ tabs: updatedTabs });
+      logger.debug('File deleted externally', { filePath: normalizedPath });
+    }
+    return;
+  }
+
+  if (event.type === 'rename' && event.oldPath) {
+    // Handle renamed files: update the tab's path
+    const normalizedOldPath = event.oldPath.replace(/\\/g, '/');
+    const tabs = store.state.tabs;
+    const affectedTab = tabs.find(t => t.filePath.replace(/\\/g, '/') === normalizedOldPath);
+    if (affectedTab) {
+      const updatedTabs = tabs.map(t =>
+        t.id === affectedTab.id
+          ? {
+              ...t,
+              filePath: normalizedPath,
+              fileName: getFileName(normalizedPath),
+              language: getLanguageFromPath(normalizedPath),
+            }
+          : t
+      );
+      setState({ tabs: updatedTabs });
+      logger.debug('File renamed externally', { oldPath: normalizedOldPath, newPath: normalizedPath });
+    }
+    return;
+  }
+
+  if (event.type === 'write' || event.type === 'create') {
+    // Reload content for non-dirty tabs
+    const tabs = store.state.tabs;
+    const affectedTab = tabs.find(t => t.filePath.replace(/\\/g, '/') === normalizedPath);
+    if (!affectedTab) return;
+
+    // Don't reload if the tab is currently being saved by the user
+    if (affectedTab.isSaving) return;
+
+    // Debounce reload to avoid rapid reloads during bulk writes
+    const existing = reloadDebounce.get(affectedTab.id);
+    if (existing) clearTimeout(existing);
+
+    reloadDebounce.set(affectedTab.id, setTimeout(() => {
+      reloadDebounce.delete(affectedTab.id);
+
+      // Re-check tab state (may have changed during debounce)
+      const currentTab = store.state.tabs.find(t => t.id === affectedTab.id);
+      if (!currentTab) return;
+
+      if (currentTab.isDirty) {
+        // Tab has unsaved changes — don't silently overwrite, user must decide
+        logger.debug('External change on dirty tab, skipping reload', { filePath: normalizedPath });
+        return;
+      }
+
+      // Reload content from disk
+      loadFileContent(affectedTab.id, normalizedPath);
+      logger.debug('Reloading externally changed file', { filePath: normalizedPath });
+    }, 250));
+  }
+}
+
+// =============================================================================
+// File Metadata Helpers
+// =============================================================================
+
+/**
+ * Detect line ending format from content.
+ */
+export function detectLineEnding(content: string): 'LF' | 'CRLF' {
+  const crlfCount = (content.match(/\r\n/g) || []).length;
+  const lfCount = (content.match(/(?<!\r)\n/g) || []).length;
+  return crlfCount > lfCount ? 'CRLF' : 'LF';
+}
+
+/**
+ * Convert line endings in content.
+ */
+export function convertLineEndings(content: string, target: 'LF' | 'CRLF'): string {
+  // First normalize to LF, then convert if needed
+  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return target === 'CRLF' ? normalized.replace(/\n/g, '\r\n') : normalized;
+}
+
+/**
+ * Update file metadata for a tab (encoding, line endings, etc.)
+ */
+export function updateTabMetadata(tabId: string, metadata: Partial<Pick<EditorTab, 'encoding' | 'lineEnding' | 'lineCount'>>): void {
+  const updatedTabs = store.state.tabs.map(t =>
+    t.id === tabId ? { ...t, ...metadata } : t
+  );
+  setState({ tabs: updatedTabs });
+}
+
+/**
+ * Change the line ending for a tab and convert its content.
+ */
+export function changeTabLineEnding(tabId: string, lineEnding: 'LF' | 'CRLF'): void {
+  const tab = store.state.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  const converted = convertLineEndings(tab.content, lineEnding);
+  const updatedTabs = store.state.tabs.map(t =>
+    t.id === tabId
+      ? { ...t, content: converted, lineEnding, isDirty: converted !== (t.originalContent ?? '') }
+      : t
+  );
+  setState({ tabs: updatedTabs });
+}
+
+// =============================================================================
 // React Hook
 // =============================================================================
 
@@ -465,6 +600,16 @@ function getSnapshot(): EditorState {
 
 export function useEditorStore() {
   const state = useSyncExternalStore(subscribe, getSnapshot);
+
+  // Subscribe to external file change events for real-time editor updates
+  useEffect(() => {
+    const unsubscribe = window.vyotiq?.files?.onFileChange?.((event) => {
+      handleExternalFileChange(event);
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
 
   const actions = {
     openFile: useCallback((filePath: string, options?: { preview?: boolean; viewMode?: EditorViewMode; content?: string }) => {
@@ -490,6 +635,8 @@ export function useEditorStore() {
     revertTab: useCallback((tabId: string) => revertTab(tabId), []),
     closeOtherTabs: useCallback((tabId: string) => closeOtherTabs(tabId), []),
     closeTabsToRight: useCallback((tabId: string) => closeTabsToRight(tabId), []),
+    changeTabLineEnding: useCallback((tabId: string, lineEnding: 'LF' | 'CRLF') => changeTabLineEnding(tabId, lineEnding), []),
+    updateTabMetadata: useCallback((tabId: string, meta: Partial<Pick<EditorTab, 'encoding' | 'lineEnding' | 'lineCount'>>) => updateTabMetadata(tabId, meta), []),
   };
 
   return { state, ...actions };

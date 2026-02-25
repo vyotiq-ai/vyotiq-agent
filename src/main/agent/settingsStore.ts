@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { safeStorage } from 'electron';
-import type { AgentConfig, AgentSettings, LLMProviderName, ProviderSettings, CacheSettings, DebugSettings, PromptSettings, AutonomousFeatureFlags } from '../../shared/types';
+import type { AgentConfig, AgentSettings, LLMProviderName, ProviderSettings, CacheSettings, DebugSettings, PromptSettings, AutonomousFeatureFlags, TaskRoutingSettings } from '../../shared/types';
 import { DEFAULT_CACHE_SETTINGS, DEFAULT_DEBUG_SETTINGS, DEFAULT_PROMPT_SETTINGS, DEFAULT_COMPLIANCE_SETTINGS, DEFAULT_ACCESS_LEVEL_SETTINGS, DEFAULT_BROWSER_SETTINGS, DEFAULT_TASK_ROUTING_SETTINGS, DEFAULT_AUTONOMOUS_FEATURE_FLAGS, DEFAULT_TOOL_CONFIG_SETTINGS, DEFAULT_APPEARANCE_SETTINGS, DEFAULT_SAFETY_SETTINGS, DEFAULT_WORKSPACE_INDEXING_SETTINGS } from '../../shared/types';
 import type { MCPSettings, MCPServerConfig } from '../../shared/types/mcp';
 import { DEFAULT_MCP_SETTINGS } from '../../shared/types/mcp';
@@ -64,7 +64,7 @@ const defaultConfig: AgentConfig = {
 // Build default provider settings dynamically from the providers config
 function buildDefaultProviderSettings(): Partial<Record<LLMProviderName, ProviderSettings>> {
   const settings: Partial<Record<LLMProviderName, ProviderSettings>> = {};
-  
+
   PROVIDER_ORDER.forEach((provider, index) => {
     const defaultModel = getDefaultModel(provider);
     settings[provider] = {
@@ -77,7 +77,7 @@ function buildDefaultProviderSettings(): Partial<Record<LLMProviderName, Provide
       context: {},
     };
   });
-  
+
   return settings;
 }
 
@@ -104,7 +104,7 @@ const defaultSettings: AgentSettings = {
 export class SettingsStore {
   private settings: AgentSettings = defaultSettings;
 
-  constructor(private readonly filePath: string) {}
+  constructor(private readonly filePath: string) { }
 
   async load(): Promise<void> {
     try {
@@ -115,11 +115,11 @@ export class SettingsStore {
         raw = raw.slice(1);
       }
       const parsed = JSON.parse(raw);
-      
+
       // Check safeStorage availability
       const encryptionAvailable = safeStorage.isEncryptionAvailable();
       logger.debug('Encryption availability', { encryptionAvailable });
-      
+
       // Decrypt API keys if possible
       const apiKeys: Partial<Record<LLMProviderName, string>> = {};
       if (parsed.apiKeys) {
@@ -154,7 +154,7 @@ export class SettingsStore {
         logger.debug('No API keys found in settings file');
       }
       logger.debug('Loaded API keys', { keys: Object.keys(apiKeys).map(k => ({ key: k, length: apiKeys[k as LLMProviderName]?.length || 0 })) });
-      
+
       // Deep merge provider settings to ensure all fields are present
       const mergedProviderSettings = { ...defaultSettings.providerSettings };
       if (parsed.providerSettings) {
@@ -163,11 +163,11 @@ export class SettingsStore {
             const providerName = key as LLMProviderName;
             const savedSettings = value as Partial<ProviderSettings>;
             const defaultProviderSettings = defaultSettings.providerSettings[providerName];
-            
+
             // Migrate deprecated model IDs to current equivalents
             const savedModelId = savedSettings.model?.modelId ?? '';
             const migratedModelId = migrateModelId(savedModelId) || defaultProviderSettings?.model?.modelId || '';
-            
+
             mergedProviderSettings[providerName] = {
               enabled: savedSettings.enabled ?? defaultProviderSettings?.enabled ?? true,
               priority: savedSettings.priority ?? defaultProviderSettings?.priority ?? 99,
@@ -188,8 +188,8 @@ export class SettingsStore {
       }
 
       // Merge with defaults
-      this.settings = { 
-        ...defaultSettings, 
+      this.settings = {
+        ...defaultSettings,
         ...parsed,
         apiKeys: { ...defaultSettings.apiKeys, ...apiKeys },
         providerSettings: mergedProviderSettings,
@@ -200,8 +200,8 @@ export class SettingsStore {
         complianceSettings: { ...defaultSettings.complianceSettings, ...(parsed.complianceSettings ?? {}) },
         browserSettings: { ...defaultSettings.browserSettings, ...(parsed.browserSettings ?? {}) },
         accessLevelSettings: { ...defaultSettings.accessLevelSettings, ...(parsed.accessLevelSettings ?? {}) },
-        taskRoutingSettings: { 
-          ...defaultSettings.taskRoutingSettings, 
+        taskRoutingSettings: {
+          ...defaultSettings.taskRoutingSettings,
           ...(parsed.taskRoutingSettings ?? {}),
           // Deep merge task mappings to preserve structure
           taskMappings: parsed.taskRoutingSettings?.taskMappings?.length > 0
@@ -212,8 +212,8 @@ export class SettingsStore {
             ...(parsed.taskRoutingSettings?.defaultMapping ?? {}),
           },
         },
-        promptSettings: { 
-          ...defaultSettings.promptSettings, 
+        promptSettings: {
+          ...defaultSettings.promptSettings,
           ...(parsed.promptSettings ?? {}),
           // Deep merge personas to preserve built-in ones
           personas: [
@@ -239,8 +239,8 @@ export class SettingsStore {
           parsed.autonomousFeatureFlags
         ),
         appearanceSettings: { ...defaultSettings.appearanceSettings, ...(parsed.appearanceSettings ?? {}) },
-        workspaceSettings: { 
-          ...defaultSettings.workspaceSettings, 
+        workspaceSettings: {
+          ...defaultSettings.workspaceSettings,
           ...(parsed.workspaceSettings ?? {}),
           // Deep merge array fields to preserve defaults when user hasn't customized
           excludePatterns: parsed.workspaceSettings?.excludePatterns?.length > 0
@@ -251,26 +251,26 @@ export class SettingsStore {
         mcpSettings: { ...DEFAULT_MCP_SETTINGS, ...(parsed.mcpSettings ?? {}) },
         mcpServers: parsed.mcpServers ?? [],
       };
-      
+
       // Log loaded access level settings
       logger.debug('Access level settings loaded', {
         level: this.settings.accessLevelSettings?.level,
         restrictedPathsCount: this.settings.accessLevelSettings?.restrictedPaths?.length,
         allowedPathsCount: this.settings.accessLevelSettings?.allowedPaths?.length,
       });
-      
+
       // Log loaded prompt settings
       logger.debug('Prompt settings loaded', {
         activePersonaId: this.settings.promptSettings?.activePersonaId,
         personasCount: this.settings.promptSettings?.personas?.length,
       });
-      
+
       // Log loaded MCP settings
       logger.debug('MCP settings loaded', {
         enabled: this.settings.mcpSettings?.enabled,
         serversCount: this.settings.mcpServers?.length ?? 0,
       });
-      
+
       // MIGRATION: Fix invalid maxOutputTokens values
       // This handles legacy settings files that may have 0 or invalid values stored
       if (!this.settings.defaultConfig.maxOutputTokens || this.settings.defaultConfig.maxOutputTokens <= 0) {
@@ -279,7 +279,7 @@ export class SettingsStore {
         // Persist the fix
         await this.persist();
       }
-      
+
       // Also fix provider-specific maxOutputTokens if invalid
       let needsPersist = false;
       for (const [providerName, providerSettings] of Object.entries(this.settings.providerSettings)) {
@@ -331,7 +331,7 @@ export class SettingsStore {
       logger.warn('setSync called with undefined settings');
       return this.settings;
     }
-    
+
     // Deep merge provider settings to preserve all nested properties
     const mergedProviderSettings = { ...this.settings.providerSettings };
     if (settings.providerSettings) {
@@ -356,31 +356,31 @@ export class SettingsStore {
         }
       }
     }
-    
+
     // Deep merge prompt settings to preserve nested properties
     const mergedPromptSettings = this.mergePromptSettings(
       this.settings.promptSettings,
       settings.promptSettings
     );
-    
+
     // Deep merge autonomous feature flags to preserve nested settings
     const mergedAutonomousFlags = this.mergeAutonomousFeatureFlags(
       this.settings.autonomousFeatureFlags,
       settings.autonomousFeatureFlags
     );
-    
+
     // Deep merge MCP settings
     const mergedMCPSettings = this.mergeMCPSettings(
       this.settings.mcpSettings,
       settings.mcpSettings
     );
-    
+
     // Merge MCP servers (full replacement when provided)
     const mergedMCPServers = this.mergeMCPServers(
       this.settings.mcpServers,
       settings.mcpServers
     );
-    
+
     this.settings = {
       ...this.settings,
       ...settings,
@@ -405,7 +405,7 @@ export class SettingsStore {
             ...(settings.taskRoutingSettings.defaultMapping ?? {}),
           },
         } : {}),
-      },
+      } as TaskRoutingSettings,
       appearanceSettings: { ...this.settings.appearanceSettings, ...(settings.appearanceSettings ?? {}) },
       workspaceSettings: { ...this.settings.workspaceSettings, ...(settings.workspaceSettings ?? {}) },
       promptSettings: mergedPromptSettings,
@@ -413,16 +413,16 @@ export class SettingsStore {
       mcpSettings: mergedMCPSettings,
       mcpServers: mergedMCPServers,
     };
-    
+
     logger.debug('Settings updated via setSync', {
       accessLevel: this.settings.accessLevelSettings?.level,
     });
-    
+
     // Persist asynchronously without blocking (unless caller will handle persistence)
     if (!skipPersist) {
       this.persist().catch(err => logger.error('Failed to persist settings', { error: err instanceof Error ? err.message : String(err) }));
     }
-    
+
     return this.settings;
   }
 
@@ -442,18 +442,18 @@ export class SettingsStore {
     incoming: Partial<PromptSettings> | undefined
   ): PromptSettings {
     const base = existing ?? DEFAULT_PROMPT_SETTINGS;
-    
+
     if (!incoming) {
       return base;
     }
-    
+
     // Merge personas - keep existing ones and update/add incoming ones
     let mergedPersonas = [...base.personas];
     if (incoming.personas) {
       // Replace with incoming personas (full replacement since UI manages full array)
       mergedPersonas = incoming.personas;
     }
-    
+
     // Merge context injection rules
     let mergedRules = [...(base.contextInjectionRules ?? [])];
     if (incoming.contextInjectionRules !== undefined) {
@@ -467,7 +467,7 @@ export class SettingsStore {
       // Replace with incoming instructions (full replacement since UI manages full array)
       mergedAgentInstructions = incoming.agentInstructions;
     }
-    
+
     // Merge response format
     const mergedResponseFormat = {
       ...(base.responseFormat ?? DEFAULT_PROMPT_SETTINGS.responseFormat),
@@ -484,7 +484,7 @@ export class SettingsStore {
         ...(incoming.instructionFilesConfig?.fileOverrides ?? {}),
       },
     };
-    
+
     const result = {
       customSystemPrompt: incoming.customSystemPrompt ?? base.customSystemPrompt,
       useCustomSystemPrompt: incoming.useCustomSystemPrompt ?? base.useCustomSystemPrompt,
@@ -496,7 +496,7 @@ export class SettingsStore {
       includeWorkspaceContext: incoming.includeWorkspaceContext ?? base.includeWorkspaceContext,
       instructionFilesConfig: mergedInstructionFilesConfig,
     };
-    
+
     return result;
   }
 
@@ -508,18 +508,18 @@ export class SettingsStore {
     incoming: Partial<AutonomousFeatureFlags> | undefined
   ): AutonomousFeatureFlags {
     const base = existing ?? DEFAULT_AUTONOMOUS_FEATURE_FLAGS;
-    
+
     if (!incoming) {
       return base;
     }
-    
+
     // Deep merge toolSettings
     const mergedToolSettings = {
       ...DEFAULT_TOOL_CONFIG_SETTINGS,
       ...(base.toolSettings ?? {}),
       ...(incoming.toolSettings ?? {}),
     };
-    
+
     return {
       enableAutonomousMode: incoming.enableAutonomousMode ?? base.enableAutonomousMode,
       enableTaskPlanning: incoming.enableTaskPlanning ?? base.enableTaskPlanning,
@@ -539,16 +539,16 @@ export class SettingsStore {
     incoming: Partial<MCPSettings> | undefined
   ): MCPSettings {
     const base = existing ?? DEFAULT_MCP_SETTINGS;
-    
+
     if (!incoming) {
       return base;
     }
-    
+
     // Log MCP settings changes for debugging
     if (incoming.enabled !== undefined && incoming.enabled !== base.enabled) {
       logger.info('MCP enabled state changed', { from: base.enabled, to: incoming.enabled });
     }
-    
+
     return {
       enabled: incoming.enabled ?? base.enabled,
       autoStartServers: incoming.autoStartServers ?? base.autoStartServers,
@@ -586,15 +586,15 @@ export class SettingsStore {
    */
   async resetToDefaults(): Promise<AgentSettings> {
     logger.info('Resetting all settings to defaults');
-    
+
     // Preserve API keys only
     const apiKeys = this.settings.apiKeys;
-    
+
     this.settings = {
       ...defaultSettings,
       apiKeys,
     };
-    
+
     await this.persist();
     return this.settings;
   }
@@ -604,13 +604,13 @@ export class SettingsStore {
    */
   async resetSection(section: keyof AgentSettings): Promise<AgentSettings> {
     logger.info('Resetting settings section to default', { section });
-    
+
     // Don't allow resetting API keys through this method
     if (section === 'apiKeys') {
       logger.warn('Cannot reset API keys through resetSection');
       return this.settings;
     }
-    
+
     const defaultValue = defaultSettings[section];
     if (defaultValue !== undefined) {
       // Type-safe assignment: use the key directly on this.settings
@@ -618,13 +618,13 @@ export class SettingsStore {
       (this.settings[section] as typeof defaultValue) = defaultValue;
       await this.persist();
     }
-    
+
     return this.settings;
   }
 
   private async persist(): Promise<void> {
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    
+
     // Encrypt API keys before saving
     const encryptedKeys: Partial<Record<LLMProviderName, string>> = {};
     if (this.settings.apiKeys) {

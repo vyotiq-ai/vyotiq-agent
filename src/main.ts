@@ -12,6 +12,7 @@ import { getSessionHealthMonitor } from './main/agent/sessionHealth';
 import { initThrottleController } from './main/agent/performance/BackgroundThrottleController';
 import { getThrottleEventLogger } from './main/agent/performance/ThrottleEventLogger';
 import { rustSidecar } from './main/rustSidecar';
+import { workspaceWatcher } from './main/utils/workspaceWatcher';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -214,16 +215,21 @@ const initializeDeferredServices = async () => {
     });
   }
 
-  // Listen for workspace changes and re-initialize diagnostics services
+  // Listen for workspace changes and re-initialize diagnostics services + file watcher
   ipcMain.on('workspace:changed', async (_event, data: { path: string }) => {
     const newPath = data?.path;
     if (!newPath) {
-      // Workspace closed — clear diagnostics
+      // Workspace closed — stop watcher and clear diagnostics
+      workspaceWatcher.stop();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('diagnostics:cleared', {});
       }
       return;
     }
+
+    // Start/restart native file watcher for the new workspace
+    workspaceWatcher.start(newPath);
+    logger.info('Workspace file watcher started', { path: newPath });
 
     logger.info('Workspace changed — re-initializing diagnostics', { path: newPath });
 
@@ -513,6 +519,9 @@ const createWindow = async () => {
     emitToRenderer({ type: 'browser-state', state });
   });
 
+  // Wire up the native workspace file watcher to emit real-time events
+  workspaceWatcher.setMainWindow(mainWindow);
+
   // CRITICAL: Register IPC handlers BEFORE loading the window URL.
   // This prevents race conditions where the renderer tries to call handlers
   // before they are registered (causing "No handler registered" errors).
@@ -623,6 +632,14 @@ app.on('before-quit', async (event) => {
       logger.info('LSP servers shut down');
     } catch {
       // May not be initialized
+    }
+
+    // Stop workspace file watcher
+    try {
+      workspaceWatcher.dispose();
+      logger.info('Workspace file watcher disposed');
+    } catch {
+      // May not be running
     }
 
     // Stop Rust backend sidecar (always clean up to prevent orphaned processes)

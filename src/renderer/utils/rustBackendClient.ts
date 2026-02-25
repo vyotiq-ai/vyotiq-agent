@@ -160,6 +160,34 @@ export type ServerEvent =
 type EventHandler = (event: ServerEvent) => void;
 
 // ---------------------------------------------------------------------------
+// Error class
+// ---------------------------------------------------------------------------
+
+/**
+ * Typed error thrown by the `request()` helper.
+ * Carries the HTTP status code so callers can branch on 404, 409, etc.
+ * without parsing an error message string.
+ */
+export class BackendRequestError extends Error {
+  /** HTTP status code returned by the Rust backend */
+  readonly status: number;
+  /** Raw response body (may be JSON or empty) */
+  readonly body: string;
+
+  constructor(status: number, statusText: string, body: string, path: string) {
+    super(`Backend request failed: ${status} ${statusText} — ${body}`);
+    this.name = 'BackendRequestError';
+    this.status = status;
+    this.body = body;
+  }
+
+  /** Whether this is a "workspace not found" 404 error */
+  get isWorkspaceNotFound(): boolean {
+    return this.status === 404 && /workspace not found/i.test(this.body);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Fetch helper
 // ---------------------------------------------------------------------------
 
@@ -206,7 +234,7 @@ async function request<T>(
     if (!response.ok) {
       const body = await response.text().catch(() => '');
       log.warn('Backend request failed', { path, status: response.status, durationMs, body: body.slice(0, 200) });
-      throw new Error(`Backend request failed: ${response.status} ${response.statusText} — ${body}`);
+      throw new BackendRequestError(response.status, response.statusText, body, path);
     }
 
     log.debug('Backend request completed', { path, status: response.status, durationMs });

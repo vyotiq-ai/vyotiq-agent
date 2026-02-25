@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-02-25
+
+### Added
+
+- **`browser_interact` unified tool**: Replaces 10 individual deferred browser tools (`browser_fill_form`, `browser_hover`, `browser_evaluate`, `browser_state`, `browser_back`, `browser_forward`, `browser_reload`, `browser_network`, `browser_tabs`, `browser_security_status`) with a single action-dispatched tool, reducing model context overhead by ~85%
+- **`task_plan` unified tool**: Replaces 5 individual plan tools (`CreatePlan`, `VerifyTasks`, `GetActivePlan`, `ListPlans`, `DeletePlan`) with a single unified tool for cleaner agent task management
+- **FileTree preview panel**: Quick file preview without opening in editor — triggered from context menu via new `preview` action (`FilePreviewPanel` component)
+- **FileTree file info panel**: Detailed file metadata view (`FileInfoPanel`) accessible from context menu via new `fileInfo` action
+- **FileTree template selector**: New `newFromTemplate` action in file tree context menu to create files from templates (`TemplateSelector` component)
+- **Per-tool timeout enforcement**: Tool execution now respects both global and per-tool timeout settings from `toolSettings.toolTimeouts`; times out with a descriptive error message
+- **Autonomous feature flags propagation**: `AutonomousFeatureFlags` now passed through to `toolQueueProcessor` and `runExecutor` for fine-grained runtime feature gating
+- **Runtime compliance config updates**: `updateComplianceConfig()` method on orchestrator and runExecutor propagates compliance setting changes without requiring a restart
+- **Runtime safety settings propagation**: `updateActiveSafetySettings()` propagates safety setting changes to all active `SafetyManager` instances at runtime
+- **Editor line-ending / encoding controls**: `EditorPanel` exposes `onChangeLineEnding` and `onChangeEncoding` handlers wired to `EditorStatusBar`
+- **BM25 search via `grep`**: `grep` tool now supports `ranked: true` for BM25 keyword search via Tantivy — `full_text_search` tool functionality merged into `grep`
+- **Tool icons for new tools**: `ToolIcons` map updated with `browser_interact` → `'web'` and `task_plan` → `'system'` entries
+
+### Changed
+
+- **Recovery system simplified**: Removed `SelfHealingAgent`, `DiagnosticEngine`, `ErrorClassifier`, `RecoveryManager`, and all strategy classes. `ErrorRecoveryManager` is now the sole recovery component; the LLM is expected to handle its own recovery reasoning
+- **Browser recovery patterns updated**: All error-recovery action suggestions now reference `browser_interact` with specific `action=` parameters instead of deprecated individual tools
+- **Dynamic tool loading gated by feature flag**: Orchestrator checks `enableDynamicTools` feature flag before loading custom tools on startup
+- **Safety framework conditionally initialized**: `SafetyManager` is only instantiated when `enableSafetyFramework` autonomous flag is true; default behavior preserved
+- **Tool caching respects settings**: `enableToolCaching` flag from tool settings controls whether caching is skipped per execution
+- **`create_tool` blocked when disabled**: Attempting to use `create_tool` when `allowDynamicCreation` is false now returns a friendly error message instead of executing
+- **Advanced debugging gated by feature flag**: `enableAdvancedDebugging` autonomous flag gates verbose logging, payload capture, step-mode, and auto-export-on-error
+- **System prompt search guidance updated**: References to `full_text_search` replaced with `grep` with `ranked: true` throughout agent system prompt
+- **System prompt recovery section condensed**: Verbose protocol table replaced with a concise paragraph pointing to `request_tools action="recover"`
+- **Streaming thinking buffer flush improved**: `agentEventHandler` now flushes both content and thinking buffers on more event paths (session state, session patch, awaiting-confirmation)
+- **Dependency updates** (non-breaking): `@typescript-eslint` `^8.49.0` → `^8.56.0`, `jsdom` `^27.2.0` → `^28.1.0`, `@xterm/xterm` `^5.5.0` → `^6.0.0`, `@xterm/addon-*` patch bumps, `katex` `^0.16.27` → `^0.16.32`, `lucide-react` `^0.554.0` → `^0.575.0`, `simple-git` `^3.30.0` → `^3.32.2`
+
+### Removed
+
+- **`full_text_search` tool** (`fullTextSearch.ts`): BM25 capability merged into `grep` via `ranked: true`; standalone tool removed
+- **`toolCreation.ts` prompt module**: Removed as part of dynamic tool creation simplification
+- **`ToolExecution.tsx` component**: Replaced by `toolExecution/index.ts` modular implementation
+- **Recovery strategy and agent classes**: `EscalateStrategy`, `FallbackStrategy`, `RetryStrategy`, `strategies/index.ts`, `RecoveryManager`, `SelfHealingAgent`, `DiagnosticEngine`, `ErrorClassifier`, and `recovery/types.ts` all removed
+- **`initRecovery()` / `getSelfHealingAgent()` exports**: Removed from `recovery/index.ts`
+
+### Fixed
+
+- **Thinking content flash on streaming**: Only `content` (not `thinking`) is reverted when temporarily patching streamed assistant messages, preventing a visible blank-thinking flash before the next `STREAM_THINKING_DELTA` event
+- **Thinking content loss at run pause**: Thinking buffer is now flushed at `awaiting-confirmation` status events to prevent thinking content being discarded when a run pauses for user confirmation
+- **Thinking buffer race on session patch**: `flushThinkingSession()` called before applying `SESSION_PATCH` events to prevent stale server state overwriting recent streamed thinking
+- **`ChatArea` reaction type safety**: Removed unsafe `as 'up' | 'down'` cast — reaction type is now correctly inferred
+
 ## [1.10.0] - 2026-02-23
 
 ### Added
@@ -381,7 +427,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session persistence with SQLite
 - Conversation branching and history
 
-[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/vyotiq-ai/vyotiq-agent/compare/v1.7.0...v1.8.0

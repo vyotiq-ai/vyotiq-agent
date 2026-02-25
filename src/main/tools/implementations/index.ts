@@ -15,14 +15,12 @@ import { runTerminalTool } from './runTerminal';
 import { checkTerminalTool } from './checkTerminal';
 import { killTerminalTool } from './killTerminal';
 import { readLintsTool } from './readLints';
-// Full-text search tool (BM25 ranked keyword search via Tantivy)
-import { fullTextSearchTool } from './fullTextSearch';
 
 import { createToolTool } from './createTool';
 import { requestToolsTool } from './requestTools';
 // Todo/Task tracking tools
 import { todoWriteTool } from './todoWrite';
-import { createPlanTool, verifyTasksTool, getActivePlanTool, listPlansTool, deletePlanTool } from './todo';
+import { createPlanTool, verifyTasksTool, getActivePlanTool, listPlansTool, deletePlanTool, taskPlanTool } from './todo';
 // Browser tools - now modular (separate tools for each action)
 import { BROWSER_TOOLS } from './browser';
 // LSP tools - multi-language code intelligence
@@ -51,8 +49,9 @@ export function markAsDeferred<T extends ToolDefinition>(tool: T, keywords: stri
 // Task tools are always available - they're essential for autonomous task management
 // The agent should use these tools for any multi-step task to track progress
 
-// Re-export the tools
+// Re-export individual plan tools (backward compat) + unified tool
 export { createPlanTool, verifyTasksTool, getActivePlanTool, listPlansTool, deletePlanTool };
+export { taskPlanTool };
 
 // Re-export individual tools
 export { readFileTool } from './readFile';
@@ -66,9 +65,6 @@ export { runTerminalTool } from './runTerminal';
 export { checkTerminalTool } from './checkTerminal';
 export { killTerminalTool } from './killTerminal';
 export { readLintsTool } from './readLints';
-
-// Full-text search tool (BM25 ranked keyword search)
-export { fullTextSearchTool } from './fullTextSearch';
 
 // Dynamic tool creation
 export { createToolTool } from './createTool';
@@ -105,7 +101,9 @@ export {
   browserHoverTool,
   browserSecurityStatusTool,
   browserCheckUrlTool,
-  // New debugging tools
+  // Unified deferred browser tool (replaces 10 individual deferred tools)
+  browserInteractTool,
+  // Debugging tools
   browserConsoleTool,
   browserNetworkTool,
   browserTabsTool,
@@ -151,20 +149,14 @@ export const ALL_TOOLS: ToolDefinition[] = [
   killTerminalTool,
   // Code intelligence (legacy)
   readLintsTool,
-  // Full-text search (BM25 ranked keyword search via Tantivy)
-  fullTextSearchTool,
   // Dynamic tool creation
   createToolTool,
   // Agent tool control
   requestToolsTool,
   // Todo/Task tracking (basic)
   todoWriteTool,
-  // Todo/Task tracking (enhanced - persistent)
-  createPlanTool,
-  verifyTasksTool,
-  getActivePlanTool,
-  listPlansTool,
-  deletePlanTool,
+  // Unified task plan tool (replaces 5 individual plan tools)
+  taskPlanTool,
   // Browser/Web operations (modular tools)
   ...BROWSER_TOOLS,
   // LSP code intelligence (multi-language)

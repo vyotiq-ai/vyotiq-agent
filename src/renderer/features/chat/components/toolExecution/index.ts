@@ -12,6 +12,7 @@ export { FileChangeDiff } from './FileChangeDiff';
 export { LiveFetchPreview } from './LiveFetchPreview';
 export { ResearchResultPreview } from './ResearchResultPreview';
 export { TerminalOutputPreview } from './TerminalOutputPreview';
+export { ToolExecution } from './ToolExecution';
 export { ToolExecutionHeader } from './ToolExecutionHeader';
 export { ToolItem } from './ToolItem';
 

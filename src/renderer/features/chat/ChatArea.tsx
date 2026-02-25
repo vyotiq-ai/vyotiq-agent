@@ -175,7 +175,7 @@ const ChatAreaInternal: React.FC = () => {
   // Reaction handler
   const handleReaction = useCallback((messageId: string, reaction: 'up' | 'down' | null) => {
     if (!sessionId) return;
-    addReaction(sessionId, messageId, reaction as 'up' | 'down');
+    addReaction(sessionId, messageId, reaction);
   }, [addReaction, sessionId]);
 
   // Branch delete handler

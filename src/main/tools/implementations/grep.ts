@@ -10,7 +10,7 @@ import { resolvePath } from '../../utils/fileSystem';
 import { createLogger } from '../../logger';
 import { rustSidecar } from '../../rustSidecar';
 import { resolveWorkspaceId, rustRequest } from '../../utils/rustBackend';
-import { checkCancellation, formatCancelled } from '../types/formatUtils';
+import { checkCancellation, formatCancelled, formatToolError, formatToolSuccess } from '../types/formatUtils';
 import type { ToolDefinition, ToolExecutionContext } from '../types';
 import type { ToolExecutionResult } from '../../../shared/types';
 
@@ -49,6 +49,8 @@ const FILE_TYPE_MAP: Record<string, string[]> = {
 // ---------------------------------------------------------------------------
 
 const RUST_GREP_TIMEOUT = 15_000;
+const RANKED_SEARCH_TIMEOUT = 15_000;
+const MAX_RANKED_RESULTS = 100;
 
 interface RustGrepResult {
   path: string;
@@ -66,6 +68,33 @@ interface RustGrepResponse {
   total_matches: number;
   files_searched: number;
   query_time_ms: number;
+}
+
+// ---------------------------------------------------------------------------
+// Ranked BM25 search types (Tantivy backend)
+// ---------------------------------------------------------------------------
+
+interface RankedSearchResult {
+  path: string;
+  relative_path: string;
+  filename: string;
+  language: string;
+  score: number;
+  snippet: string;
+  line_number: number | null;
+}
+
+interface RankedSearchResponse {
+  results: RankedSearchResult[];
+  total_hits: number;
+  query_time_ms: number;
+}
+
+interface IndexStatusResponse {
+  indexed: boolean;
+  is_indexing: boolean;
+  indexed_count: number;
+  total_count: number;
 }
 
 /**
@@ -259,8 +288,183 @@ async function tryRustBackendGrep(
   }
 }
 
+/**
+ * Execute a ranked BM25 keyword search via the Rust Tantivy backend.
+ * Used when `ranked: true` is set. Treats the pattern as keywords, not regex.
+ */
+async function executeRankedSearch(
+  args: GrepArgs,
+  context: ToolExecutionContext,
+): Promise<ToolExecutionResult> {
+  if (!rustSidecar.isRunning()) {
+    return {
+      toolName: 'grep',
+      success: false,
+      output: formatToolError({
+        title: 'Backend Not Available',
+        message: 'Ranked keyword search requires the Rust backend (Tantivy). Use grep without ranked mode for regex search.',
+      }),
+    };
+  }
+
+  try {
+    const workspaceId = await resolveWorkspaceId(context.workspacePath);
+    if (!workspaceId) {
+      return {
+        toolName: 'grep',
+        success: false,
+        output: formatToolError({
+          title: 'Workspace Not Indexed',
+          message: 'This workspace is not registered with the search backend.',
+          suggestion: 'Wait for indexing to complete, or use grep without ranked mode.',
+        }),
+      };
+    }
+
+    if (checkCancellation(context.signal)) {
+      return formatCancelled('grep');
+    }
+
+    // Check index status
+    const status = await rustRequest<IndexStatusResponse>(
+      `/api/workspaces/${workspaceId}/index/status`,
+      {},
+      context.signal,
+    );
+
+    if (!status.indexed && !status.is_indexing) {
+      await rustRequest(`/api/workspaces/${workspaceId}/index`, { method: 'POST' }, context.signal);
+      return {
+        toolName: 'grep',
+        success: false,
+        output: formatToolError({
+          title: 'Index Not Ready',
+          message: 'Full-text index not yet built. Indexing has been triggered.',
+          suggestion: 'Wait for indexing, then retry. Use grep without ranked mode for immediate regex search.',
+        }),
+      };
+    }
+
+    if (status.is_indexing) {
+      return {
+        toolName: 'grep',
+        success: false,
+        output: formatToolError({
+          title: 'Index Building',
+          message: `Index is being built (${status.indexed_count}/${status.total_count} files).`,
+          suggestion: 'Wait for indexing, then retry. Use grep without ranked mode for immediate regex search.',
+        }),
+      };
+    }
+
+    if (checkCancellation(context.signal)) {
+      return formatCancelled('grep');
+    }
+
+    const limit = Math.min(Math.max(1, args.head_limit ?? 20), MAX_RANKED_RESULTS);
+    const fuzzy = args.fuzzy ?? false;
+
+    const body: Record<string, unknown> = {
+      query: args.pattern.trim(),
+      limit,
+      fuzzy,
+    };
+    if (args.glob) body.file_pattern = args.glob;
+    if (args.language) body.language = args.language;
+
+    const response = await rustRequest<RankedSearchResponse>(
+      `/api/workspaces/${workspaceId}/search`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+      context.signal,
+    );
+
+    if (response.results.length === 0) {
+      return {
+        toolName: 'grep',
+        success: true,
+        output: formatToolSuccess({
+          title: 'Ranked Search',
+          message: `No results found for: "${args.pattern}"`,
+          details: [
+            `Fuzzy: ${fuzzy ? 'enabled' : 'disabled'}`,
+            args.glob ? `File pattern: ${args.glob}` : '',
+            args.language ? `Language: ${args.language}` : '',
+            `Indexed files: ${status.indexed_count}`,
+            '',
+            fuzzy ? 'Try different keywords.' : 'Try enabling fuzzy mode or broadening your search.',
+          ].filter(Boolean).join('\n'),
+          durationMs: response.query_time_ms,
+        }),
+        metadata: { resultCount: 0, totalHits: 0, queryTimeMs: response.query_time_ms },
+      };
+    }
+
+    // Format ranked results
+    const lines: string[] = [];
+    lines.push(`Ranked search: "${args.pattern}"${fuzzy ? ' (fuzzy)' : ''}`);
+    lines.push(`${response.total_hits} total hits, showing top ${response.results.length} in ${response.query_time_ms}ms`);
+    lines.push('');
+
+    for (let i = 0; i < response.results.length; i++) {
+      const r = response.results[i];
+      const scoreStr = r.score.toFixed(2);
+      const lineInfo = r.line_number != null ? `:${r.line_number}` : '';
+
+      lines.push(`[${i + 1}] ${r.relative_path || r.filename}${lineInfo}  (score: ${scoreStr}${r.language ? `, ${r.language}` : ''})`);
+
+      if (r.snippet) {
+        const snippetLines = r.snippet.trim().split('\n').slice(0, 8);
+        for (const line of snippetLines) {
+          lines.push(`    ${line}`);
+        }
+        if (r.snippet.trim().split('\n').length > 8) {
+          lines.push('    ...');
+        }
+      }
+      lines.push('');
+    }
+
+    logger.info('Ranked search completed', {
+      query: args.pattern,
+      resultCount: response.results.length,
+      totalHits: response.total_hits,
+      queryTimeMs: response.query_time_ms,
+    });
+
+    return {
+      toolName: 'grep',
+      success: true,
+      output: lines.join('\n'),
+      metadata: {
+        resultCount: response.results.length,
+        totalHits: response.total_hits,
+        queryTimeMs: response.query_time_ms,
+        topScore: response.results[0]?.score,
+        indexedFiles: status.indexed_count,
+        source: 'tantivy-bm25',
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Ranked search failed', { error: message, query: args.pattern });
+
+    return {
+      toolName: 'grep',
+      success: false,
+      output: formatToolError({
+        title: 'Ranked Search Failed',
+        message,
+        suggestion: 'The backend may be busy or the index may be rebuilding. Try again shortly, or use grep without ranked mode.',
+      }),
+    };
+  }
+}
+
 interface GrepArgs extends Record<string, unknown> {
-  /** The regular expression pattern to search for in file contents */
+  /** The regular expression pattern to search for (or keywords when ranked=true) */
   pattern: string;
   /** File or directory to search in (defaults to workspace root) */
   path?: string;
@@ -284,56 +488,41 @@ interface GrepArgs extends Record<string, unknown> {
   head_limit?: number;
   /** Enable multiline mode where . matches newlines */
   multiline?: boolean;
+  /** Use BM25 ranked keyword search instead of regex. Pattern becomes keywords */
+  ranked?: boolean;
+  /** Enable fuzzy matching for typo tolerance (only with ranked mode) */
+  fuzzy?: boolean;
+  /** Filter by programming language (only with ranked mode, e.g., "typescript", "rust") */
+  language?: string;
 }
 
 export const grepTool: ToolDefinition<GrepArgs> = {
   name: 'grep',
-  description: `A powerful search tool built on ripgrep-style pattern matching. Use this to search file contents.
+  description: `A powerful search tool for file contents. Supports two modes:
+
+1. **Regex mode** (default): ripgrep-style pattern matching across files
+2. **Ranked mode** (\`ranked: true\`): BM25 keyword search via Tantivy — results ranked by relevance
 
 ## IMPORTANT
-ALWAYS use this Grep tool for search tasks. NEVER invoke \`grep\` or \`rg\` as a terminal command. The Grep tool has been optimized for correct permissions and access.
-
-## When to Use
-- **Find code patterns**: function declarations, imports, class definitions
-- **Search for text**: error messages, comments, strings
-- **Locate usages**: find where a function/variable is used
-- **Code review**: find TODOs, FIXMEs, console.logs
-
-## Output Modes
-- **files_with_matches** (default): Just file paths - fastest, use when you only need to know which files
-- **content**: Shows matching lines with context - use when you need to see the matches
-- **count**: Shows match counts per file - use for statistics
+ALWAYS use this Grep tool for search tasks. NEVER invoke \`grep\` or \`rg\` as a terminal command.
 
 ## Key Parameters
-- **pattern** (required): Regex pattern to search for
+- **pattern** (required): Regex pattern (default) or keywords (when ranked=true)
+- **ranked**: Set true for BM25 keyword search instead of regex
+- **fuzzy**: Enable typo-tolerant matching (ranked mode only)
+- **language**: Filter by language e.g. "typescript" (ranked mode only)
 - **path**: Directory or file to search (defaults to workspace root)
-- **glob**: Filter files by pattern (e.g., "*.ts", "**/*.tsx")
+- **glob**: Filter files by pattern (e.g., "*.ts")
 - **type**: Filter by file type (js, ts, py, rust, go, etc.)
-- **-i**: Case insensitive search
-- **-C/-B/-A**: Context lines (before/after/both)
-- **-n**: Show line numbers (default: true)
-- **multiline**: Enable patterns that span multiple lines
-
-## Pattern Examples
-- \`function\\s+\\w+\` - Find function declarations
-- \`import.*react\` - Find React imports
-- \`console\\.log\` - Find console.log calls (escape the dot!)
-- \`FIXME|TODO\` - Find todos and fixmes
-- \`class\\s+\\w+\\s+extends\` - Find class inheritance
-
-## Workflow Integration
-Use grep as the first step to discover files, then read them:
-\`\`\`
-grep("pattern") → get file list
-read(files) → understand context
-edit(file, old, new) → make changes
-\`\`\``,
+- **output_mode**: "files_with_matches" (default), "content", or "count"
+- **-i/-C/-B/-A/-n**: Case insensitive, context lines, line numbers
+- **multiline**: Enable patterns spanning multiple lines`,
   requiresApproval: false,
   category: 'file-search',
   riskLevel: 'safe',
   allowedCallers: ['direct', 'code_execution'],
   deferLoading: true,
-  searchKeywords: ['search', 'find', 'pattern', 'regex', 'grep', 'match', 'content', 'text search', 'ripgrep', 'rg', 'locate', 'discover'],
+  searchKeywords: ['search', 'find', 'pattern', 'regex', 'grep', 'match', 'content', 'text search', 'ripgrep', 'rg', 'locate', 'discover', 'keyword', 'full text', 'fulltext', 'bm25', 'tantivy', 'ranked', 'relevance', 'fuzzy'],
   ui: {
     icon: 'search',
     label: 'Grep',
@@ -385,6 +574,19 @@ edit(file, old, new) → make changes
       type: 'ts',
       multiline: true,
       output_mode: 'content',
+    },
+    // Example 7: Ranked keyword search (BM25)
+    {
+      pattern: 'context window management token pruning',
+      ranked: true,
+      head_limit: 15,
+    },
+    // Example 8: Fuzzy ranked search by language
+    {
+      pattern: 'WebSocket connection',
+      ranked: true,
+      fuzzy: true,
+      language: 'typescript',
     },
   ],
 
@@ -440,6 +642,18 @@ edit(file, old, new) → make changes
         type: 'boolean',
         description: 'Enable multiline mode where . matches newlines',
       },
+      ranked: {
+        type: 'boolean',
+        description: 'Use BM25 ranked keyword search instead of regex. Pattern becomes keywords, results ranked by relevance score.',
+      },
+      fuzzy: {
+        type: 'boolean',
+        description: 'Enable fuzzy matching for typo tolerance (only with ranked mode, default: false)',
+      },
+      language: {
+        type: 'string',
+        description: 'Filter by programming language (only with ranked mode, e.g., "typescript", "rust", "python")',
+      },
     },
     required: ['pattern'],
   },
@@ -459,6 +673,11 @@ edit(file, old, new) → make changes
         success: false,
         output: `═══ INVALID PATTERN ═══\n\nPattern must be a non-empty string.\n\n═══ EXAMPLES ═══\n• "FIXME" - Find fixmes\n• "function\\s+\\w+" - Find function declarations\n• "import.*react" - Find React imports\n• "console\\.log" - Find console.log calls (escape the dot)`,
       };
+    }
+
+    // Ranked mode: delegate to BM25 keyword search
+    if (args.ranked) {
+      return executeRankedSearch(args, context);
     }
 
     // Try Rust backend fast grep first (indexed, gitignore-aware, faster for large codebases)
